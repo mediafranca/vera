@@ -2281,11 +2281,15 @@ export function buildTree(blocks: BlockView[]): Node[] {
  * imagen ni el cliente tiene que saber cómo se direcciona el almacén.
  */
 export function assetResolver(page: PageView): RenderOptions['resolveAsset'] {
+  const byPath = new Map(page.assets.map((asset) => [asset.path, asset]));
   return (path) => {
-    // Se consulta la colección viva. Un medio pegado manualmente puede
-    // resolverse después de que empezó la edición, sin reconstruir el editor.
-    const byPath = new Map(page.assets.map((asset) => [asset.path, asset]));
-    const found = byPath.get(path);
+    // El mapa se construye una vez. Si durante esta edición se añade un medio,
+    // el fallback consulta la colección viva y lo incorpora para las siguientes.
+    let found = byPath.get(path);
+    if (found === undefined) {
+      found = page.assets.find((asset) => asset.path === path);
+      if (found !== undefined) byPath.set(path, found);
+    }
     if (found !== undefined) return { url: found.url, mediaType: found.mediaType };
     // El corpus escribe algunas rutas con caracteres codificados y otras no.
     try {
@@ -2308,18 +2312,18 @@ export function blockResolver(page: PageView): RenderOptions['resolveBlock'] {
 }
 
 function wireCataloguedMedia(container: HTMLElement, page: PageView): void {
-  for (const asset of page.assets) {
-    for (const element of container.querySelectorAll<HTMLElement>(
-      `[src="${CSS.escape(asset.url)}"], [href="${CSS.escape(asset.url)}"]`,
-    )) {
-      if (element.classList.contains('media-catalogued')) continue;
-      element.classList.add('media-catalogued');
-      element.title = 'Previsualizar y editar metadatos';
-      element.addEventListener('click', (event) => {
-        event.preventDefault();
-        openMediaDetails(asset);
-      });
-    }
+  const byUrl = new Map(page.assets.map((asset) => [asset.url, asset]));
+  for (const element of container.querySelectorAll<HTMLElement>('[src], [href]')) {
+    if (element.classList.contains('media-catalogued')) continue;
+    const url = element.getAttribute('src') ?? element.getAttribute('href') ?? '';
+    const asset = byUrl.get(url);
+    if (asset === undefined) continue;
+    element.classList.add('media-catalogued');
+    element.title = 'Previsualizar y editar metadatos';
+    element.addEventListener('click', (event) => {
+      event.preventDefault();
+      openMediaDetails(asset);
+    });
   }
 }
 
@@ -2559,12 +2563,16 @@ export function renderOutliner(
     editor.setAttribute('aria-label', 'glosa del bloque');
     panel.append(text, editor);
 
+    let painted = false;
     const paint = (content: string): void => {
       text.innerHTML = renderMarkdown(content, options);
       markMissingImages(text);
       void renderMermaid(text);
+      painted = true;
     };
-    paint(held);
+    const ensurePainted = (): void => {
+      if (!painted) paint(glosses[block]?.content ?? '');
+    };
 
     /**
      * Dónde cae realmente la línea base de una caja de texto.
@@ -2617,8 +2625,9 @@ export function renderOutliner(
       const shift = sourceTop + baseline(getComputedStyle(source)) - baseline(getComputedStyle(gloss));
       panel.style.setProperty('--gloss-top', `${shift}px`);
     };
-    alignBaseline();
-    void document.fonts.ready.then(alignBaseline);
+    void document.fonts.ready.then(() => {
+      if (panel.classList.contains('open')) alignBaseline();
+    });
 
     // El ancho pertenece a la columna; el alto pertenece a lo escrito. Medir
     // scrollHeight incluye también las líneas blandas producidas al envolver,
@@ -2629,6 +2638,7 @@ export function renderOutliner(
     };
 
     const edit = (): void => {
+      ensurePainted();
       panel.classList.add('open', 'editing');
       toggle.setAttribute('aria-expanded', 'true');
       editor.value = glosses[block]?.content ?? '';
@@ -2661,6 +2671,7 @@ export function renderOutliner(
         updatedAt: Date.now(),
       };
       paint(next);
+      alignBaseline();
       panel.classList.toggle('empty', next === '');
       toggle.classList.toggle('empty', next === '');
       panel.classList.remove('editing');
@@ -2722,7 +2733,11 @@ export function renderOutliner(
       const open = !panel.classList.contains('open');
       panel.classList.toggle('open', open);
       toggle.setAttribute('aria-expanded', String(open));
-      if (open) text.focus();
+      if (open) {
+        ensurePainted();
+        alignBaseline();
+        text.focus();
+      }
     });
 
     row.append(toggle, panel);
@@ -4644,10 +4659,10 @@ export function renderOutliner(
       // el documento. No se sigue trabajando ni se mezcla la página anterior
       // con la nueva.
       if (!list.isConnected) return;
-      // Ocho bloques bastan para que el primer texto aparezca enseguida y
-      // mantienen cortos los turnos aun cuando uno contenga una tabla grande.
-      const until = Math.min(at + 8, entries.length);
-      while (at < until) {
+      // El costo de un bloque depende de su Markdown. Un presupuesto temporal
+      // mantiene fluido el cuadro tanto con prosa barata como con tablas caras.
+      const started = performance.now();
+      do {
         const entry = entries[at];
         if (entry !== undefined) {
           drawBlock(entry.node, entry.depth, entry.ordinal, false);
@@ -4656,7 +4671,7 @@ export function renderOutliner(
           list.append(progress);
         }
         at += 1;
-      }
+      } while (at < entries.length && performance.now() - started < 7);
       progress.textContent = `Componiendo la página… ${at} de ${entries.length} bloques`;
       if (at < entries.length) {
         window.requestAnimationFrame(batch);

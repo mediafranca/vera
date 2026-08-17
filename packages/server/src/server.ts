@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from 'node:zlib';
 
 import {
   TESTIMONY_KEY,
@@ -70,6 +71,7 @@ import {
   saveParticipant,
   saveSite,
   saveWorkspace,
+  searchStore,
   setFold,
   setTranscript,
   setSpokenOrigin,
@@ -257,6 +259,17 @@ interface Submitter {
   participant: ParticipantId;
   channel: ContributionChannel | null;
   credential: Credential | null;
+}
+
+interface GlossCrossing {
+  connective: string;
+  said: string;
+  fromBlock: string;
+  fromPage: string;
+  targetTitle: string;
+  toPage: string | null;
+  sense: 'directed';
+  term: null;
 }
 
 /**
@@ -913,6 +926,32 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       .map((entry) => ({ ...entry, url: `/media/${entry.hash}` }));
   };
 
+  // Las glosas no cambian entre dos operaciones. Derivar todos sus cruces por
+  // cada página abierta repetía un recorrido global del corpus; se rehace una
+  // vez cuando avanza el registro y después se indexa por extremo.
+  let glossCrossingSequence = -1;
+  let glossCrossingsCache: GlossCrossing[] = [];
+  const glossCrossings = (): GlossCrossing[] => {
+    const sequence = graph.log().lastSequence;
+    if (sequence === glossCrossingSequence) return glossCrossingsCache;
+    glossCrossingsCache = graph.glosses().flatMap((gloss) => {
+      const block = graph.block(gloss.block);
+      if (block === undefined) return [];
+      return referencedTitles(gloss.content).map((targetTitle): GlossCrossing => ({
+        connective: block.stableId,
+        said: gloss.content,
+        fromBlock: block.stableId,
+        fromPage: block.page,
+        targetTitle,
+        toPage: graph.pageTitled(targetTitle)?.id ?? null,
+        sense: 'directed',
+        term: null,
+      }));
+    });
+    glossCrossingSequence = sequence;
+    return glossCrossingsCache;
+  };
+
   /*
    * De qué servidores acepta este corpus una incrustación.
    *
@@ -954,14 +993,31 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     return written.length > 0 ? written : STARTER_RELATIONS;
   };
 
-  const send = (response: ServerResponse, status: number, payload: unknown): void => {
-    const body = JSON.stringify(payload);
+  const writeJson = (response: ServerResponse, status: number, json: string, extra: Record<string, string> = {}): void => {
+    let body = Buffer.from(json);
+    const accepted = String(response.req.headers['accept-encoding'] ?? '');
+    let encoding: 'br' | 'gzip' | null = null;
+    if (body.byteLength >= 1024 && /(?:^|,)\s*br(?:\s*;|\s*,|$)/i.test(accepted)) {
+      body = brotliCompressSync(body, {
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+      });
+      encoding = 'br';
+    } else if (body.byteLength >= 1024 && /(?:^|,)\s*gzip(?:\s*;|\s*,|$)/i.test(accepted)) {
+      body = gzipSync(body, { level: 5 });
+      encoding = 'gzip';
+    }
     response.writeHead(status, {
       'content-type': 'application/json; charset=utf-8',
-      'content-length': Buffer.byteLength(body),
+      'content-length': body.byteLength,
+      'vary': 'accept-encoding',
+      ...(encoding === null ? {} : { 'content-encoding': encoding }),
+      ...extra,
     });
     response.end(body);
   };
+
+  const send = (response: ServerResponse, status: number, payload: unknown): void =>
+    writeJson(response, status, JSON.stringify(payload));
 
   const serveStatic = (
     response: ServerResponse,
@@ -1154,15 +1210,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     /** Entregar memoria: se anota lo que sale, y después sale. */
     const deliver = (
       payload: unknown,
-      about: { surface: string; subject: string; delivered?: readonly string[] },
+      about: { surface: string; subject: string; delivered?: readonly string[]; cache?: boolean },
     ): void => {
       const body = JSON.stringify(payload);
+      if (about.cache === true) {
+        const etag = `"${hashBytes(Buffer.from(body))}"`;
+        if (request.headers['if-none-match'] === etag) {
+          response.writeHead(304, { etag, 'cache-control': 'private, no-cache' });
+          response.end();
+          return;
+        }
+        note(about.surface, about.subject, body.length, about.delivered ?? []);
+        writeJson(response, 200, body, { etag, 'cache-control': 'private, no-cache' });
+        return;
+      }
       note(about.surface, about.subject, body.length, about.delivered ?? []);
-      response.writeHead(200, {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(body),
-      });
-      response.end(body);
+      writeJson(response, 200, body);
     };
 
     if (request.method === 'POST' && path === '/operations') {
@@ -4347,24 +4410,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 404, { error: 'no such page' });
           return;
         }
-        const glossCrossings = graph.glosses().flatMap((gloss) => {
-          const block = graph.block(gloss.block);
-          if (block === undefined) return [];
-          return referencedTitles(gloss.content).map((targetTitle) => {
-            const target = graph.pageTitled(targetTitle);
-            return {
-              connective: block.stableId,
-              said: gloss.content,
-              fromBlock: block.stableId,
-              fromPage: block.page,
-              targetTitle,
-              toPage: target?.id ?? null,
-              sense: 'directed' as const,
-              term: null,
-            };
-          });
-        });
-        const crossingRow = (crossing: (typeof glossCrossings)[number], outgoing: boolean) => ({
+        const pageBlocks = graph.blocksOf(page.id);
+        const pageProperties = graph.propertiesOf(page.id);
+        const derivedGlossCrossings = glossCrossings();
+        const crossingRow = (crossing: GlossCrossing, outgoing: boolean) => ({
           ...crossing,
           title: outgoing
             ? (crossing.toPage === null
@@ -4394,7 +4443,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           createdAt: page.createdAt,
           originCreatedAt: page.originCreatedAt,
           lastEditedAt: graph.lastEditedAt(page.id),
-          properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
+          properties: pageProperties.map((p) => ({ key: p.key, value: p.value })),
           // Lo que el corpus ya contesta a cada una de estas claves. Es el
           // vocabulario observado, no uno declarado: mientras no haya ontología
           // es lo único que hay, y cuando la haya seguirá siendo la evidencia
@@ -4402,13 +4451,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           domains: publicAccess
             ? {}
             : Object.fromEntries(
-                [...new Set(graph.propertiesOf(page.id).map((p) => p.key))].map((key) => [
+                [...new Set(pageProperties.map((p) => p.key))].map((key) => [
                   key,
                   graph.observedValuesOf(key),
                 ]),
               ),
-          blocks: graph
-            .blocksOf(page.id)
+          blocks: pageBlocks
             .map((block) => ({
               stableId: block.stableId,
               parent: block.parent,
@@ -4418,7 +4466,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             .sort((a, b) => a.position - b.position),
           concept: (() => {
             const names = graph.propertyNames;
-            const isConcept = graph.propertiesOf(page.id).some(
+            const isConcept = pageProperties.some(
               (property) =>
                 property.key === names.kind &&
                 answersIn(property.value).some((value) => titleKey(value) === titleKey('concepto')),
@@ -4468,8 +4516,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            * tamaño de una página para decir que no hay nada.
            */
           blockProperties: Object.fromEntries(
-            graph
-              .blocksOf(page.id)
+            pageBlocks
               .map((block) => [block.stableId, graph.propertiesOf(block.stableId)] as const)
               .filter(([, said]) => said.length > 0)
               .map(([id, said]) => [id, said.map((one) => ({ key: one.key, value: one.value }))]),
@@ -4504,7 +4551,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             reads: crossing.term,
             says: excerpt(graph.block(crossing.fromBlock)?.content ?? ''),
           })).concat(
-            glossCrossings
+            derivedGlossCrossings
               .filter((crossing) => crossing.fromPage === page.id)
               .filter((crossing) => !publicAccess || (crossing.toPage !== null && isPublicPage(crossing.toPage)))
               .map((crossing) => crossingRow(crossing, true)),
@@ -4517,7 +4564,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             reads: inverseOf(crossing.term, relationVocabulary()),
             says: excerpt(graph.block(crossing.fromBlock)?.content ?? ''),
           })).concat(
-            glossCrossings
+            derivedGlossCrossings
               .filter((crossing) => crossing.toPage === page.id)
               .filter((crossing) => !publicAccess || isPublicPage(crossing.fromPage))
               .map((crossing) => crossingRow(crossing, false)),
@@ -4538,8 +4585,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           // dictado por Herbert y reescrito por Cotito aparece en los dos, y
           // nombrando participantes distintos.
           authorship: Object.fromEntries(
-            graph
-              .blocksOf(page.id)
+            pageBlocks
               .map((block) => [block.stableId, graph.authorship(block.stableId)] as const)
               .filter(([, hand]) => hand !== undefined)
               .map(([id, hand]) => [
@@ -4553,8 +4599,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               ]),
           ),
           glosses: Object.fromEntries(
-            graph
-              .blocksOf(page.id)
+            pageBlocks
               .map((block) => graph.gloss(block.stableId))
               .filter((gloss) => gloss !== undefined)
               .map((gloss) => [
@@ -4572,7 +4617,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           blockRefs: (() => {
             const seen = new Set<string>();
             const found: { id: string; page: string; excerpt: string }[] = [];
-            for (const block of graph.blocksOf(page.id)) {
+            for (const block of pageBlocks) {
               for (const match of block.content.matchAll(/\(\(([^()\s]+)\)\)/g)) {
                 const id = match[1] ?? '';
                 if (id === '' || seen.has(id)) continue;
@@ -4592,7 +4637,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           // lector descubra la diferencia sólo al pulsarlo.
           pendingLinks: (() => {
             const pending = new Set<string>();
-            for (const block of graph.blocksOf(page.id)) {
+            for (const block of pageBlocks) {
               for (const link of graph.linksOf(block.stableId)) {
                 if (link.target === null || (publicAccess && !isPublicPage(link.target))) {
                   pending.add(link.targetTitle);
@@ -4632,7 +4677,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            */
           references: (() => {
             const seen = new Map<string, { page: string | null; title: string; block: string; excerpt: string }>();
-            for (const block of graph.blocksOf(page.id)) {
+            for (const block of pageBlocks) {
               for (const link of graph.linksOf(block.stableId)) {
                 const target = link.target === null ? undefined : graph.page(link.target);
                 const key = titleKey(target?.title ?? link.targetTitle);
@@ -4652,9 +4697,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }, {
           surface: 'GET /pages/:id',
           subject: page.id,
+          cache: true,
           // Abrir una página se lleva la página entera y sus bloques: eso es lo
           // que se anota, y no sólo el título por el que se pidió.
-          delivered: [page.id, ...graph.blocksOf(page.id).map((block) => block.stableId)],
+          delivered: [page.id, ...pageBlocks.map((block) => block.stableId)],
         });
         return;
       }
@@ -4694,13 +4740,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
       if (path === '/search') {
         const asked = url.searchParams.get('q') ?? '';
-        // La búsqueda pública usa el algoritmo canónico, pero la identidad de
-        // frontera `anybody` no se admite al grafo. El resultado se recorta por
-        // publicación antes de salir; no se inventa una membresía anónima.
-        const outcome = graph.search({ text: asked, participant: publicAccess ? owner.id : participant });
-        const hits = publicAccess
-          ? outcome.hits.filter((hit) => isPublicPage(hit.page))
-          : outcome.hits;
+        // El índice FTS materializado mantiene el costo acotado aunque el corpus
+        // crezca. La frontera pública se aplica dentro de SQL; su publicación
+        // explícita se comprueba después porque no es lo mismo que visibilidad.
+        const indexed = searchStore(store, asked, {
+          limit: 50,
+          ...(publicAccess
+            ? { visibility: 'public' as const, publishedSite: publicSite()?.id ?? '' }
+            : {}),
+        });
+        const hits = indexed;
         /*
          * Una búsqueda que devolvió doce extractos expuso doce cosas, y el
          * registro tiene que poder nombrarlas: buscar es la manera barata de

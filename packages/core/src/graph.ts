@@ -112,6 +112,7 @@ export class VeraGraph {
   #childrenByParent = new Map<BlockId, Set<BlockId>>();
   #pageByTitleKey = new Map<string, PageId>();
   #propertiesBySubject = new Map<string, PropertyAssignment[]>();
+  #observedValues = new Map<string, { value: string; uses: number }[]>();
   #linksByBlock = new Map<BlockId, PageLink[]>();
   #linksByTarget = new Map<PageId, Set<PageLink>>();
   #unresolvedByTitleKey = new Map<string, Set<PageLink>>();
@@ -291,6 +292,8 @@ export class VeraGraph {
    * lecturas.
    */
   observedValuesOf(key: string): { value: string; uses: number }[] {
+    const cached = this.#observedValues.get(key);
+    if (cached !== undefined) return cached.map((one) => ({ ...one }));
     const counts = new Map<string, number>();
     for (const property of this.#allProperties()) {
       if (property.key !== key) continue;
@@ -298,9 +301,11 @@ export class VeraGraph {
         counts.set(value, (counts.get(value) ?? 0) + 1);
       }
     }
-    return [...counts]
+    const observed = [...counts]
       .map(([value, uses]) => ({ value, uses }))
       .sort((a, b) => b.uses - a.uses || a.value.localeCompare(b.value));
+    this.#observedValues.set(key, observed);
+    return observed.map((one) => ({ ...one }));
   }
 
   links(): PageLink[] {
@@ -978,6 +983,7 @@ export class VeraGraph {
         return change.block;
       }
       case 'set_property': {
+        this.#observedValues.delete(change.propertyKey);
         const held = this.#findProperty(change.page, change.block, change.propertyKey);
         if (held !== undefined) {
           held.value = change.propertyValue;
@@ -996,6 +1002,7 @@ export class VeraGraph {
         return change.page ?? change.block ?? '';
       }
       case 'remove_property': {
+        this.#observedValues.delete(change.propertyKey);
         const subject = change.page ?? change.block ?? '';
         const held = this.#propertiesBySubject.get(subject);
         if (held !== undefined) {

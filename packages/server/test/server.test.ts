@@ -299,6 +299,23 @@ describe('lecturas', () => {
     assert.equal(response.status, 404);
   });
 
+  it('evita retransmitir una PageView idéntica mediante ETag', async () => {
+    const page = await write({ kind: 'create_page', title: 'Con versión', visibility: 'private' });
+    const first = await fetch(`${base}/pages/${encodeURIComponent(page)}`);
+    const etag = first.headers.get('etag');
+    assert.ok(etag);
+    const repeated = await fetch(`${base}/pages/${encodeURIComponent(page)}`, {
+      headers: { 'if-none-match': etag },
+    });
+    assert.equal(repeated.status, 304);
+  });
+
+  it('comprime respuestas JSON grandes cuando el cliente lo admite', async () => {
+    const response = await fetch(`${base}/pages`, { headers: { 'accept-encoding': 'br' } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-encoding'), 'br');
+  });
+
   it('busca sobre el grafo', async () => {
     await write({ kind: 'create_page', title: 'Buscable', visibility: 'private' });
     const hits = (await get('/search?q=Buscable')) as { page: string; field: string }[];
