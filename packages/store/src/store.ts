@@ -918,7 +918,7 @@ function loadSitesAndPublications(store: Store, graph: VeraGraph): void {
 export interface StoredHit {
   page: string;
   block: string | null;
-  field: 'page_title' | 'block_content' | 'gloss_content';
+  field: 'page_title' | 'block_content' | 'property_value' | 'gloss_content';
   excerpt: string;
   rank: number;
 }
@@ -928,44 +928,81 @@ export interface StoredHit {
  * demostrar que la ruta SQL responde lo mismo que el grafo en memoria; el
  * plegado de diacríticos lo aporta el tokenizador declarado en el esquema.
  */
-export function searchStore(store: Store, text: string, limit = 50): StoredHit[] {
-  if (text.trim() === '') return [];
-  const term = `"${text.replace(/"/g, '""')}"`;
+export function searchStore(
+  store: Store,
+  text: string,
+  options: { limit?: number; visibility?: 'public'; publishedSite?: string } = {},
+): StoredHit[] {
+  const words = text.normalize('NFD').match(/[\p{L}\p{N}_]+/gu) ?? [];
+  if (words.length === 0) return [];
+  // Cada palabra es prefijo y todas tienen que aparecer. Las comillas impiden
+  // que puntuación escrita por alguien se convierta en sintaxis FTS.
+  const term = words.map((word) => `"${word.replace(/"/g, '""')}"*`).join(' AND ');
+  const limit = Math.max(1, Math.min(200, Math.floor(options.limit ?? 50)));
+  const visible = options.visibility ?? null;
+  const site = options.publishedSite ?? null;
 
   const pages = store.db
     .prepare(
-      `SELECT p.id AS page, p.title AS excerpt
+      `SELECT p.id AS page, p.title AS excerpt, bm25(pages_fts, 8.0) AS score
        FROM pages_fts f JOIN pages p ON p.rowid = f.rowid
-       WHERE pages_fts MATCH ? AND p.graph_id = ?
-       ORDER BY p.id LIMIT ?`,
+       WHERE pages_fts MATCH ? AND p.graph_id = ? AND (? IS NULL OR p.visibility = ?)
+         AND (? IS NULL OR EXISTS (SELECT 1 FROM publications x WHERE x.page_id = p.id AND x.site_id = ?))
+       ORDER BY score, p.id LIMIT ?`,
     )
-    .all(term, store.graphId, limit) as { page: string; excerpt: string }[];
+    .all(term, store.graphId, visible, visible, site, site, limit) as { page: string; excerpt: string; score: number }[];
 
   const blocks = store.db
     .prepare(
-      `SELECT b.page_id AS page, b.id AS block, substr(b.content, 1, 120) AS excerpt
+      `SELECT b.page_id AS page, b.id AS block,
+              snippet(blocks_fts, 0, '', '', ' … ', 24) AS excerpt,
+              bm25(blocks_fts) AS score
        FROM blocks_fts f JOIN blocks b ON b.rowid = f.rowid
-       WHERE blocks_fts MATCH ?
-       ORDER BY b.id LIMIT ?`,
+       JOIN pages p ON p.id = b.page_id
+       WHERE blocks_fts MATCH ? AND p.graph_id = ? AND (? IS NULL OR p.visibility = ?)
+         AND (? IS NULL OR EXISTS (SELECT 1 FROM publications x WHERE x.page_id = p.id AND x.site_id = ?))
+       ORDER BY score, b.id LIMIT ?`,
     )
-    .all(term, limit) as { page: string; block: string; excerpt: string }[];
+    .all(term, store.graphId, visible, visible, site, site, limit) as { page: string; block: string; excerpt: string; score: number }[];
 
   const glosses = store.db
     .prepare(
-      `SELECT b.page_id AS page, g.block_id AS block, substr(g.content, 1, 120) AS excerpt
+      `SELECT b.page_id AS page, g.block_id AS block,
+              snippet(glosses_fts, 0, '', '', ' … ', 24) AS excerpt,
+              bm25(glosses_fts) AS score
        FROM glosses_fts f
        JOIN block_glosses g ON g.rowid = f.rowid
        JOIN blocks b ON b.id = g.block_id
-       WHERE glosses_fts MATCH ?
-       ORDER BY g.block_id LIMIT ?`,
+       JOIN pages p ON p.id = b.page_id
+       WHERE glosses_fts MATCH ? AND p.graph_id = ? AND (? IS NULL OR p.visibility = ?)
+         AND (? IS NULL OR EXISTS (SELECT 1 FROM publications x WHERE x.page_id = p.id AND x.site_id = ?))
+       ORDER BY score, g.block_id LIMIT ?`,
     )
-    .all(term, limit) as { page: string; block: string; excerpt: string }[];
+    .all(term, store.graphId, visible, visible, site, site, limit) as { page: string; block: string; excerpt: string; score: number }[];
 
-  return [
+  const properties = store.db
+    .prepare(
+      `SELECT COALESCE(a.page_id, b.page_id) AS page, a.block_id AS block,
+              a.key || ': ' || snippet(properties_fts, 1, '', '', ' … ', 24) AS excerpt,
+              bm25(properties_fts, 0.25, 1.0) AS score
+       FROM properties_fts f
+       JOIN property_assignments a ON a.rowid = f.rowid
+       LEFT JOIN blocks b ON b.id = a.block_id
+       JOIN pages p ON p.id = COALESCE(a.page_id, b.page_id)
+       WHERE properties_fts MATCH ? AND a.graph_id = ? AND (? IS NULL OR p.visibility = ?)
+         AND (? IS NULL OR EXISTS (SELECT 1 FROM publications x WHERE x.page_id = p.id AND x.site_id = ?))
+       ORDER BY score, a.id LIMIT ?`,
+    )
+    .all(term, store.graphId, visible, visible, site, site, limit) as { page: string; block: string | null; excerpt: string; score: number }[];
+
+  const found = [
     ...pages.map((row) => ({ ...row, block: null, field: 'page_title' as const })),
     ...blocks.map((row) => ({ ...row, field: 'block_content' as const })),
+    ...properties.map((row) => ({ ...row, field: 'property_value' as const })),
     ...glosses.map((row) => ({ ...row, field: 'gloss_content' as const })),
-  ].map((hit, at) => ({ ...hit, rank: at + 1 }));
+  ];
+  found.sort((a, b) => a.score - b.score || a.page.localeCompare(b.page) || (a.block ?? '').localeCompare(b.block ?? ''));
+  return found.slice(0, limit).map(({ score: _score, ...hit }, at) => ({ ...hit, rank: at + 1 }));
 }
 
 /** Vecindad resuelta con una consulta recursiva, no con un recorrido en JS. */

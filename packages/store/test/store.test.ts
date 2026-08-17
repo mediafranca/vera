@@ -274,6 +274,38 @@ describe('persistencia', () => {
     store.close();
   });
 
+  it('busca prefijos, varias palabras y valores de propiedades', () => {
+    const { store, write } = freshStore();
+    const page = write({ kind: 'create_page', title: 'Cuaderno austral', visibility: 'private' });
+    write({ kind: 'create_block', page, parent: null, position: 0, content: 'navegación hospitalaria remota' });
+    write({ kind: 'set_property', page, propertyKey: 'territorio', propertyValue: 'Magallanes profundo' });
+
+    assert.equal(searchStore(store, 'nave hosp').length, 1);
+    assert.equal(searchStore(store, 'magall prof')[0]?.field, 'property_value');
+    store.close();
+  });
+
+  it('aplica visibilidad y un límite global después de ordenar', () => {
+    const { store, write } = freshStore();
+    const publicPages = new Set<string>();
+    for (let at = 0; at < 8; at += 1) {
+      const page = write({
+        kind: 'create_page',
+        title: `Hallazgo ${at}`,
+        visibility: at % 2 === 0 ? 'public' : 'private',
+      });
+      if (at % 2 === 0) publicPages.add(page);
+      write({ kind: 'create_block', page, parent: null, position: 0, content: `hallazgo interior ${at}` });
+    }
+    const limited = searchStore(store, 'hall', { limit: 5 });
+    assert.equal(limited.length, 5);
+    assert.deepEqual(limited.map((hit) => hit.rank), [1, 2, 3, 4, 5]);
+    const publicOnly = searchStore(store, 'hall', { limit: 50, visibility: 'public' });
+    assert.ok(publicOnly.length > 0);
+    assert.ok(publicOnly.every((hit) => publicPages.has(hit.page)));
+    store.close();
+  });
+
   it('deja de encontrar lo que se borró', () => {
     const { store, write } = freshStore();
     const page = write({ kind: 'create_page', title: 'P', visibility: 'private' });

@@ -112,6 +112,30 @@ describe('la lista y el estado del corpus', () => {
   });
 });
 
+describe('búsqueda en lo retenido', () => {
+  it('encuentra bloques, propiedades y glosas sin servidor y pliega acentos', async () => {
+    const held = heldOn(inMemoryKeeps());
+    const view = page('page:sur', 'Cuaderno austral');
+    view.blocks = [{ stableId: 'block:1', parent: null, position: 0, content: 'Navegación hospitalaria' }];
+    view.properties = [{ key: 'territorio', value: 'Magallanes profundo' }];
+    view.glosses = { 'block:1': { content: 'observación marítima', createdAt: 1, updatedAt: 1 } };
+    await held.keepPage(view);
+
+    assert.equal((await held.search('nave hosp')).hits[0]?.field, 'block_content');
+    assert.equal((await held.search('magall')).hits[0]?.field, 'property_value');
+    assert.equal((await held.search('observacion marit')).hits[0]?.field, 'gloss_content');
+    assert.equal((await held.search('nada')).pages, 1);
+  });
+
+  it('suelta también la proyección de una página olvidada', async () => {
+    const keeps = inMemoryKeeps();
+    const held = heldOn(keeps);
+    await held.keepPage(page('page:1', 'Encontrable'));
+    await held.forgetPage('page:1');
+    assert.deepEqual(await held.search('encontrable'), { hits: [], pages: 0 });
+  });
+});
+
 describe('olvidarlo todo', () => {
   it('deja el aparato como si nunca hubiera leído', async () => {
     const held = heldOn(inMemoryKeeps());
@@ -147,6 +171,12 @@ describe('cuando el almacén falla', () => {
     },
     clear: async () => {
       throw new Error('no se puede borrar');
+    },
+    putSearch: async () => {
+      throw new Error('no hay sitio');
+    },
+    searchDocuments: async () => {
+      throw new Error('no se puede leer');
     },
     meta: async () => {
       throw new Error('no se puede leer');

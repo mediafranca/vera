@@ -2267,9 +2267,25 @@ function wireSearch(): void {
    * vuelve a ordenarse: repetir un asunto vuelve más pertinente a la página, no
    * más larga a la lista.
    */
-  const suggest = (text: string, hits: readonly Hit[] = []): void => {
+  const suggest = (
+    text: string,
+    hits: readonly Hit[] = [],
+    scope?: { localPages: number; localHits: readonly Hit[]; remoteHits: readonly Hit[] | null },
+  ): void => {
     const suggestions = pageSearchResults(text, pages, hits).slice(0, 24);
     results.innerHTML = '';
+    if (scope !== undefined) {
+      const reach = document.createElement('p');
+      reach.className = 'search-scope';
+      const localMatches = new Set(scope.localHits.map((hit) => hit.page)).size;
+      const remoteMatches = scope.remoteHits === null
+        ? null
+        : new Set(scope.remoteHits.map((hit) => hit.page)).size;
+      reach.textContent =
+        `en este teléfono: ${localMatches} en ${scope.localPages} páginas retenidas · ` +
+        (remoteMatches === null ? 'todo Vera: sin conexión' : `todo Vera: ${remoteMatches} páginas`);
+      results.append(reach);
+    }
     for (const suggestion of suggestions) {
       const page = suggestion.page;
       const item = row('hit hit-title');
@@ -2303,7 +2319,7 @@ function wireSearch(): void {
       });
       results.append(item);
     }
-    if (suggestions.length === 0) return;
+    if (suggestions.length === 0 && scope === undefined) return;
     place();
     results.hidden = false;
   };
@@ -2316,22 +2332,41 @@ function wireSearch(): void {
       return;
     }
 
-    // Los títulos, ya: no esperan a nada. Cuando llegue el contenido se funde
-    // con ellos y la lista se reordena por página.
+    // Los títulos, ya. La proyección de las páginas retenidas llega desde
+    // IndexedDB sin esperar a la red; FTS completa después el mismo conjunto.
     suggest(text);
+    const turn = ++searchTurn;
+    let localHits: Hit[] = [];
+    let localPages = 0;
+    let remoteHits: Hit[] | null = null;
+    const merged = (): Hit[] => {
+      const seen = new Set<string>();
+      return [...localHits, ...(remoteHits ?? [])].filter((hit) => {
+        const key = `${hit.page}\0${hit.block ?? ''}\0${hit.field}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    void held.search(text).then((local) => {
+      if (turn !== searchTurn || input.value.trim() !== text) return;
+      localHits = local.hits;
+      localPages = local.pages;
+      suggest(text, merged(), { localPages, localHits, remoteHits });
+    });
 
     window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(async () => {
-      const turn = ++searchTurn;
-      let hits;
       try {
-        hits = await api.search(text);
+        remoteHits = await api.search(text);
       } catch {
+        if (turn === searchTurn && input.value.trim() === text) {
+          suggest(text, merged(), { localPages, localHits, remoteHits: null });
+        }
         return;
       }
       if (turn !== searchTurn || input.value.trim() !== text) return;
-
-      suggest(text, hits);
+      suggest(text, merged(), { localPages, localHits, remoteHits });
     }, 120);
   });
 

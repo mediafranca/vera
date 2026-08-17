@@ -23,7 +23,7 @@
 // El almacén se inyecta por la misma razón que en `outbox.ts`: IndexedDB no existe en
 // node, y lo que decide qué se suelta y cuándo tiene que poder probarse.
 
-import type { CorpusHealth, PageSummary, PageView } from './api.ts';
+import type { CorpusHealth, Hit, PageSummary, PageView } from './api.ts';
 
 /**
  * Cuántas páginas se retienen. Ver rule ForgetTheLeastRecentlyRead.
@@ -52,6 +52,51 @@ export interface KeptPage {
   view: PageView;
 }
 
+/** Proyección compacta que permite buscar sin cargar PageView enteros. */
+export interface SearchDocument {
+  id: string;
+  title: string;
+  fields: { block: string | null; field: Hit['field']; text: string }[];
+}
+
+export interface LocalSearch {
+  hits: Hit[];
+  /** Páginas retenidas que sí tenían proyección buscable. */
+  pages: number;
+}
+
+function searchDocument(view: PageView): SearchDocument {
+  const fields: SearchDocument['fields'] = [
+    { block: null, field: 'page_title', text: view.title },
+    ...view.blocks.map((block) => ({ block: block.stableId, field: 'block_content', text: block.content })),
+    ...view.properties.map((property) => ({ block: null, field: 'property_value', text: `${property.key}: ${property.value}` })),
+    ...Object.entries(view.blockProperties ?? {}).flatMap(([block, properties]) =>
+      properties.map((property) => ({ block, field: 'property_value', text: `${property.key}: ${property.value}` }))),
+    ...Object.entries(view.glosses ?? {}).map(([block, gloss]) => ({ block, field: 'gloss_content', text: gloss.content })),
+  ];
+  return { id: view.id, title: view.title, fields };
+}
+
+const foldedSearch = (text: string): string =>
+  text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+
+export function searchDocuments(documents: readonly SearchDocument[], text: string, limit = 50): LocalSearch {
+  const words = foldedSearch(text).match(/[\p{L}\p{N}_]+/gu) ?? [];
+  if (words.length === 0) return { hits: [], pages: documents.length };
+  const hits: Hit[] = [];
+  for (const document of documents) {
+    for (const field of document.fields) {
+      const haystack = foldedSearch(field.text);
+      if (!words.every((word) => haystack.includes(word))) continue;
+      const at = Math.max(0, haystack.indexOf(words[0] ?? '') - 35);
+      const excerpt = `${at > 0 ? '…' : ''}${field.text.slice(at, at + 140)}${at + 140 < field.text.length ? '…' : ''}`;
+      hits.push({ page: document.id, block: field.block, field: field.field, excerpt, rank: hits.length + 1 });
+      if (hits.length >= limit) return { hits, pages: documents.length };
+    }
+  }
+  return { hits, pages: documents.length };
+}
+
 /** Lo mínimo que retener necesita de un almacén. */
 export interface Keeps {
   put(kept: KeptPage): Promise<void>;
@@ -64,6 +109,8 @@ export interface Keeps {
   ids(): Promise<string[]>;
   drop(ids: readonly string[]): Promise<void>;
   clear(): Promise<void>;
+  putSearch(document: SearchDocument): Promise<void>;
+  searchDocuments(): Promise<SearchDocument[]>;
   meta<T>(name: string): Promise<T | null>;
   setMeta<T>(name: string, value: T): Promise<void>;
 }
@@ -117,6 +164,7 @@ export interface Held {
 
   /** Cuántas páginas hay retenidas. Se enseña en Memoria; no se decide con ello. */
   count(): Promise<number>;
+  search(text: string): Promise<LocalSearch>;
   forget(): Promise<void>;
 }
 
@@ -158,6 +206,7 @@ export function heldOn(keeps: Keeps, now: () => number = Date.now): Held {
     keepPage: (view) =>
       quietly(async () => {
         await keeps.put({ id: view.id, titleKey: view.title.toLowerCase(), at: now(), view });
+        await keeps.putSearch(searchDocument(view));
         /*
          * Y soltar lo que sobre, por última lectura.
          *
@@ -199,6 +248,7 @@ export function heldOn(keeps: Keeps, now: () => number = Date.now): Held {
     retained: () => quietly(() => keeps.ids(), []),
 
     count: () => quietly(() => keeps.count(), 0),
+    search: (text) => quietly(async () => searchDocuments(await keeps.searchDocuments(), text), { hits: [], pages: 0 }),
 
     /*
      * Olvidar todo lo retenido.
@@ -215,14 +265,29 @@ const DB = 'vera-held';
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB, 1);
+    const request = indexedDB.open(DB, 2);
     request.onupgradeneeded = () => {
-      const pages = request.result.createObjectStore('pages', { keyPath: 'id' });
-      // Por última lectura, para soltar lo más viejo; por título, para que abrir
-      // una dirección sin la lista cargada siga funcionando.
-      pages.createIndex('at', 'at');
-      pages.createIndex('titleKey', 'titleKey');
-      request.result.createObjectStore('meta', { keyPath: 'name' });
+      let pages: IDBObjectStore;
+      if (!request.result.objectStoreNames.contains('pages')) {
+        pages = request.result.createObjectStore('pages', { keyPath: 'id' });
+        pages.createIndex('at', 'at');
+        pages.createIndex('titleKey', 'titleKey');
+      } else {
+        pages = request.transaction?.objectStore('pages') as IDBObjectStore;
+      }
+      if (!request.result.objectStoreNames.contains('meta')) request.result.createObjectStore('meta', { keyPath: 'name' });
+      if (!request.result.objectStoreNames.contains('search')) {
+        const search = request.result.createObjectStore('search', { keyPath: 'id' });
+        // Las páginas retenidas antes de v2 ganan su proyección durante la
+        // migración, sin esperar a que vuelvan a abrirse.
+        pages.openCursor().onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+          if (cursor === null) return;
+          const kept = cursor.value as KeptPage;
+          search.put(searchDocument(kept.view));
+          cursor.continue();
+        };
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -231,7 +296,7 @@ function open(): Promise<IDBDatabase> {
 
 /** Una transacción, con su base cerrada al terminar. */
 async function within<T>(
-  store: 'pages' | 'meta',
+  store: 'pages' | 'meta' | 'search',
   mode: IDBTransactionMode,
   act: (store: IDBObjectStore) => IDBRequest,
 ): Promise<T> {
@@ -272,12 +337,18 @@ export function indexedDbKeeps(): Keeps {
     ids: () => within<string[]>('pages', 'readonly', (s) => s.getAllKeys()),
 
     drop: async (ids) => {
-      for (const id of ids) await within<void>('pages', 'readwrite', (store) => store.delete(id));
+      for (const id of ids) {
+        await within<void>('pages', 'readwrite', (store) => store.delete(id));
+        await within<void>('search', 'readwrite', (store) => store.delete(id));
+      }
     },
     clear: async () => {
       await within<void>('pages', 'readwrite', (store) => store.clear());
+      await within<void>('search', 'readwrite', (store) => store.clear());
       await within<void>('meta', 'readwrite', (store) => store.clear());
     },
+    putSearch: (document) => within<void>('search', 'readwrite', (store) => store.put(document)),
+    searchDocuments: () => within<SearchDocument[]>('search', 'readonly', (store) => store.getAll()),
     meta: async <T>(name: string) =>
       (await within<{ name: string; value: T } | undefined>('meta', 'readonly', (s) => s.get(name)))
         ?.value ?? null,
@@ -288,6 +359,7 @@ export function indexedDbKeeps(): Keeps {
 /** Y uno de memoria, para probar y para cuando no hay otro. */
 export function inMemoryKeeps(): Keeps {
   const pages = new Map<string, KeptPage>();
+  const search = new Map<string, SearchDocument>();
   const meta = new Map<string, unknown>();
   return {
     put: async (kept) => void pages.set(kept.id, kept),
@@ -298,12 +370,18 @@ export function inMemoryKeeps(): Keeps {
       n <= 0 ? [] : [...pages.values()].sort((a, b) => a.at - b.at).slice(0, n).map((one) => one.id),
     ids: async () => [...pages.keys()],
     drop: async (ids) => {
-      for (const id of ids) pages.delete(id);
+      for (const id of ids) {
+        pages.delete(id);
+        search.delete(id);
+      }
     },
     clear: async () => {
       pages.clear();
+      search.clear();
       meta.clear();
     },
+    putSearch: async (document) => void search.set(document.id, document),
+    searchDocuments: async () => [...search.values()],
     meta: async <T>(name: string) => (meta.get(name) as T | undefined) ?? null,
     setMeta: async (name, value) => void meta.set(name, value),
   };
@@ -335,6 +413,7 @@ export function holdsNothing(): Held {
     forgetPage: async () => {},
     retained: async () => [],
     count: async () => 0,
+    search: async () => ({ hits: [], pages: 0 }),
     forget: async () => {},
   };
 }

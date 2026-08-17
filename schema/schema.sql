@@ -246,6 +246,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS glosses_fts USING fts5 (
     tokenize = 'unicode61 remove_diacritics 2'
 );
 
+CREATE VIRTUAL TABLE IF NOT EXISTS properties_fts USING fts5 (
+    key,
+    value,
+    content = 'property_assignments',
+    content_rowid = 'rowid',
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+
 CREATE TRIGGER IF NOT EXISTS blocks_fts_insert AFTER INSERT ON blocks BEGIN
     INSERT INTO blocks_fts (rowid, content) VALUES (new.rowid, new.content);
 END;
@@ -283,6 +291,21 @@ END;
 CREATE TRIGGER IF NOT EXISTS glosses_fts_update AFTER UPDATE OF content ON block_glosses BEGIN
     INSERT INTO glosses_fts (glosses_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
     INSERT INTO glosses_fts (rowid, content) VALUES (new.rowid, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS properties_fts_insert AFTER INSERT ON property_assignments BEGIN
+    INSERT INTO properties_fts (rowid, key, value) VALUES (new.rowid, new.key, new.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS properties_fts_delete AFTER DELETE ON property_assignments BEGIN
+    INSERT INTO properties_fts (properties_fts, rowid, key, value)
+    VALUES ('delete', old.rowid, old.key, old.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS properties_fts_update AFTER UPDATE OF key, value ON property_assignments BEGIN
+    INSERT INTO properties_fts (properties_fts, rowid, key, value)
+    VALUES ('delete', old.rowid, old.key, old.value);
+    INSERT INTO properties_fts (rowid, key, value) VALUES (new.rowid, new.key, new.value);
 END;
 
 ------------------------------------------------------------

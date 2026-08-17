@@ -418,6 +418,44 @@ const addSiteEntryPoint: Migration = {
   },
 };
 
+/** 11 — los valores de propiedades participan en la búsqueda FTS. */
+const addPropertySearch: Migration = {
+  version: 11,
+  name: 'índice FTS de propiedades',
+  apply(db) {
+    const properties = db
+      .prepare("SELECT count(*) AS n FROM sqlite_schema WHERE type = 'table' AND name = 'property_assignments'")
+      .get() as { n: number };
+    // El esquema anterior a property_assignments no tiene nada que indexar. Al
+    // abrirlo mediante openStore, schema.sql crea la tabla antes de llegar aquí.
+    if (properties.n === 0) return;
+    // En openStore schema.sql llega primero; la migración también es autónoma
+    // porque migrate() es una unidad pública y sus pruebas parten del esquema
+    // histórico, sin aplicar el destino por adelantado.
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS properties_fts USING fts5 (
+        key, value, content = 'property_assignments', content_rowid = 'rowid',
+        tokenize = 'unicode61 remove_diacritics 2'
+      );
+      CREATE TRIGGER IF NOT EXISTS properties_fts_insert AFTER INSERT ON property_assignments BEGIN
+        INSERT INTO properties_fts (rowid, key, value) VALUES (new.rowid, new.key, new.value);
+      END;
+      CREATE TRIGGER IF NOT EXISTS properties_fts_delete AFTER DELETE ON property_assignments BEGIN
+        INSERT INTO properties_fts (properties_fts, rowid, key, value)
+        VALUES ('delete', old.rowid, old.key, old.value);
+      END;
+      CREATE TRIGGER IF NOT EXISTS properties_fts_update AFTER UPDATE OF key, value ON property_assignments BEGIN
+        INSERT INTO properties_fts (properties_fts, rowid, key, value)
+        VALUES ('delete', old.rowid, old.key, old.value);
+        INSERT INTO properties_fts (rowid, key, value) VALUES (new.rowid, new.key, new.value);
+      END;
+    `);
+    // Una tabla FTS de contenido externo no recoge hacia atrás las filas que ya
+    // existían: `rebuild` materializa el corpus anterior una sola vez.
+    db.exec("INSERT INTO properties_fts(properties_fts) VALUES('rebuild')");
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -429,6 +467,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addMediaMetadata,
   addPublicationProvenance,
   addSiteEntryPoint,
+  addPropertySearch,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */
