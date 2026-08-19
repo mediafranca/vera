@@ -221,6 +221,51 @@ contract AWriteCanBeRepeatedWithoutRepeating {
         -- llama tiene que poder distinguir «no puedes» de «eso no se puede».
 }
 
+-- Publicar la puerta en una red es su propio endurecimiento.
+--
+-- El transporte de casa —stdio, un proceso sin puerto— no tiene superficie de
+-- red. Por eso todo lo que en local era comodidad segura —caer al dueño cuando no
+-- hay credencial, no exigir alcance para leer, confiar en que sólo el loopback
+-- llega— se vuelve un agujero en cuanto la ruta escucha en internet. La misma
+-- frontera, publicada, no es la misma frontera: lo que la protegía era que nadie
+-- de fuera pudiera hablarle, y publicarla es justamente quitar eso.
+contract PublishingTheDoorIsItsOwnHardening {
+    expose: (route: NetworkRoute) -> PublishedDoor
+
+    @invariant AcrossTheNetworkThereIsNoOwnerFallback
+        -- Sin credencial válida la respuesta es 401 y nada más. La caída al dueño
+        -- existe sólo tras el loopback, dentro de casa; en la red una llamada
+        -- anónima no es el dueño distraído sin credencial a mano, es cualquiera.
+
+    @invariant ReadingAcrossTheNetworkRequiresItsScope
+        -- La ruta remota exige alcance `read` para leer, y cierra así la mitad que
+        -- la API local todavía deja abierta. Anotar quién leyó no basta cuando
+        -- quien puede leer es el planeta: el registro dice qué salió, pero es el
+        -- alcance el que decide si algo llega a salir.
+
+    @invariant OnlyOneScopedPathIsPublished
+        -- Se publica una única ruta acotada —la del protocolo— y nunca la raíz.
+        -- Mapear `/` expondría POST /operations y el resto de la API con su caída
+        -- al dueño detrás. La frontera que se publica es una ruta, no un servidor.
+
+    @invariant OriginAndHostAreVerifiedBeforeAnythingElse
+        -- Se comprueba que el Host sea el esperado y el Origin uno permitido antes
+        -- de mirar el cuerpo de la petición. Sin esto, un sitio que la víctima
+        -- visite habla con la puerta desde su navegador —DNS rebinding— y actúa
+        -- con su red y su alcance sin haber robado nada.
+
+    @invariant LimitsAreCountedPerIdentityAndTool
+        -- El presupuesto —peticiones, volumen, escrituras— se cuenta por
+        -- credencial y por herramienta, no en un total global. Un límite global lo
+        -- agota el primero que llega, o lo esquiva quien abre varias conexiones.
+
+    @invariant TheRemoteCallIsStillJustAConnection
+        -- Identidad, concesión, idempotencia, canal `agent_generation` y registro
+        -- de exposición son los mismos que por stdio. El transporte cambia; la
+        -- frontera no. Publicar añade defensas de red, no una segunda forma de
+        -- entrar que se salte las que ya existen.
+}
+
 ------------------------------------------------------------
 -- Entities and Values
 ------------------------------------------------------------
@@ -297,6 +342,26 @@ value Session {
     protocol: String
 }
 
+-- Una ruta acotada publicada en una red. Sólo existe cuando la puerta deja de ser
+-- un proceso local: el transporte de casa no tiene ni path ni host.
+value NetworkRoute {
+    -- La ruta que escucha. Acotada al protocolo, nunca la raíz.
+    path: String
+    -- El Host esperado. Se verifica antes de mirar el cuerpo.
+    host: String
+    -- Los Origin permitidos. Todo lo demás se rechaza antes de razonar sobre la
+    -- petición.
+    allowed_origins: List<String>
+}
+
+-- El resultado de publicar la puerta: una ruta y la afirmación de que nadie entra
+-- por ella sin credencial. `requires_credential` es siempre verdadero al otro
+-- lado de la red; queda escrito para que no pueda ser de otra manera.
+value PublishedDoor {
+    route: NetworkRoute
+    requires_credential: Boolean
+}
+
 ------------------------------------------------------------
 -- Rules
 ------------------------------------------------------------
@@ -349,6 +414,7 @@ surface MemoryOverMCP {
         fulfils AGrantIsNarrowerThanAScope
         fulfils WhatWasReadIsRecorded
         fulfils AWriteCanBeRepeatedWithoutRepeating
+        fulfils PublishingTheDoorIsItsOwnHardening
 
     provides:
         ReadThroughMCP(participant, connection, subject)
@@ -396,7 +462,14 @@ open question "¿Qué lecturas se conservan con detalle, cuáles sólo como huel
 --
 -- Contestada a medias al implementar M1: el registro de exposición se construyó
 -- en la API y no en el adaptador MCP, porque puesto en MCP el mayor lector del
--- corpus —un agente que entra por HTTP directo— quedaría fuera del registro. La
--- otra mitad sigue abierta: anotar quién leyó no es lo mismo que exigir alcance
--- para leer, y eso todavía no se exige en ninguna puerta.
+-- corpus —un agente que entra por HTTP directo— quedaría fuera del registro.
+--
+-- Contestada otra mitad al endurecer la puerta remota: la ruta MCP publicada en
+-- internet ya exige alcance `read` para leer (ver
+-- @invariant ReadingAcrossTheNetworkRequiresItsScope), así que lo que se expone a
+-- la red no hereda la comodidad de local. Lo que sigue abierto es la API local
+-- tras loopback: ahí anotar quién leyó todavía no es lo mismo que exigir alcance
+-- para leer, y ese alcance aún no se exige. La pregunta ya no es si alguna puerta
+-- exige alcance —la remota lo exige— sino si la API local se cierra hasta
+-- alcanzarla o queda para siempre más ancha detrás de localhost.
 open question "¿Se cierra primero la autorización de lectura en la API —y entonces MCP hereda una frontera que ya existe— o se cierra en MCP y la API queda con una puerta más ancha que la que se está construyendo?"
