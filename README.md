@@ -40,9 +40,17 @@ Hay dos caminos, según qué se necesite.
 ### Aplicación de escritorio (Windows y macOS)
 
 La vía más simple para probar Vera sin tocar código: instaladores firmados,
-memoria inicial ya cargada y actualización automática por canal estable. Ver
+memoria inicial ya cargada y actualización automática por canal estable.
+Descarga la última versión desde
+[Releases de Vera](https://github.com/mediafranca/vera/releases/latest). Ver
 [Distribución de Vera Desktop](docs/distribucion-escritorio.md) y, para
 Windows en particular, [Instalación en Windows](docs/instalacion-windows.md).
+
+> [!WARNING]
+> Vera es un **prototipo de investigación**: estos instaladores no son un
+> producto terminado ni tienen soporte multiusuario. Úsalos bajo tu propio
+> criterio y revisa la advertencia de seguridad más arriba antes de exponer
+> tu instancia a otras personas o dispositivos.
 
 ### Desde el código fuente
 
