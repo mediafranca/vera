@@ -2,13 +2,62 @@ import Reveal from 'reveal.js';
 import RevealNotes from 'reveal.js/plugin/notes';
 
 import { renderMarkdown, type RenderOptions } from '@vera/core';
-import type { BlockView, PageView } from './api.ts';
+import { api, type BlockView, type PageView } from './api.ts';
 import { decorateCodeBlocks } from './code-copy.ts';
 import { renderMermaid } from './mermaid.ts';
+import {
+  DEFAULT_PRESENTATION_STYLESHEET,
+  presentationThemeTitle,
+  scopedPresentationStylesheet,
+  stylesheetSource,
+  validateStylesheetSource,
+} from './presentation-style.ts';
 
 interface PresentationNode {
   block: BlockView;
   children: PresentationNode[];
+}
+
+const STYLE_CACHE_PREFIX = 'vera.presentation.stylesheet.';
+
+interface LoadedPresentationStyle {
+  css: string;
+  warnings: string[];
+}
+
+async function loadStylesheet(title: string): Promise<{ css: string; warning: string | null }> {
+  const cacheKey = `${STYLE_CACHE_PREFIX}${title}`;
+  try {
+    const page = await api.page(title, 4_000);
+    const source = stylesheetSource(page);
+    const validation = validateStylesheetSource(source);
+    if (!validation.valid) {
+      return {
+        css: localStorage.getItem(cacheKey) ?? '',
+        warning: `${title}: ${validation.reason}; se conserva la última versión válida`,
+      };
+    }
+    localStorage.setItem(cacheKey, source);
+    return { css: source, warning: null };
+  } catch {
+    const held = localStorage.getItem(cacheKey);
+    return {
+      css: held ?? '',
+      warning: held === null ? `${title}: no se pudo leer la hoja` : `${title}: se usa la última versión disponible`,
+    };
+  }
+}
+
+async function presentationStyles(page: PageView): Promise<LoadedPresentationStyle> {
+  const chosen = presentationThemeTitle(page.properties);
+  const titles = chosen === null || chosen === DEFAULT_PRESENTATION_STYLESHEET
+    ? [DEFAULT_PRESENTATION_STYLESHEET]
+    : [DEFAULT_PRESENTATION_STYLESHEET, chosen];
+  const loaded = await Promise.all(titles.map(loadStylesheet));
+  return {
+    css: loaded.map((one) => one.css).filter(Boolean).join('\n'),
+    warnings: loaded.flatMap((one) => one.warning === null ? [] : [one.warning]),
+  };
 }
 
 export function isPresentation(
@@ -70,6 +119,7 @@ export async function presentPage(
   document.querySelector('.vera-presentation')?.remove();
   const roots = treeOf(page.blocks);
   if (roots.length === 0) return;
+  const governedStyle = await presentationStyles(page);
 
   const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
@@ -78,6 +128,13 @@ export async function presentPage(
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', `Presentación: ${page.title}`);
 
+  if (governedStyle.css !== '') {
+    const style = document.createElement('style');
+    style.dataset['veraPresentationStyle'] = 'governed';
+    style.textContent = scopedPresentationStylesheet(governedStyle.css);
+    overlay.append(style);
+  }
+
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'presentation-close';
@@ -85,10 +142,20 @@ export async function presentPage(
 
   const reveal = document.createElement('div');
   reveal.className = 'reveal';
+  const stage = document.createElement('div');
+  stage.className = 'presentation-stage';
   const slides = document.createElement('div');
   slides.className = 'slides';
   reveal.append(slides);
-  overlay.append(reveal, close);
+  stage.append(reveal);
+  overlay.append(stage, close);
+  if (governedStyle.warnings.length > 0) {
+    const warning = document.createElement('p');
+    warning.className = 'presentation-style-warning';
+    warning.setAttribute('role', 'status');
+    warning.textContent = governedStyle.warnings.join(' · ');
+    overlay.append(warning);
+  }
   document.body.append(overlay);
 
   for (const root of roots) {

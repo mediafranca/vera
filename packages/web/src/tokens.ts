@@ -1,8 +1,8 @@
 // Sistema de diseño de Vera.
 //
-// @guarantee EditableDesignSystem: los tokens y la hoja de estilo se editan
-// desde dentro de Vera y siguen siendo fuente legible, no estado opaco de la
-// aplicación. Por eso viven como texto y se inyectan como variables CSS.
+// @guarantee EditableDesignSystem: los tokens se editan desde dentro de Vera y
+// siguen siendo fuente legible, no estado opaco de la aplicación. Las hojas CSS
+// gobernadas viven en páginas del corpus; ver governed-stylesheet.allium.
 //
 // @invariant DualColourScheme: cada token declara su valor claro y su oscuro.
 

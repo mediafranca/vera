@@ -4,7 +4,7 @@
 -- Scope: Vera's navigable reading, editing and graph workspace
 -- Includes: Installable progressive web application, responsive navigation,
 --   native Markdown editing, text/graph/split layouts, 2D/3D graph modes,
---   breadcrumbs, search, internal queries, editable style sources and tokens,
+--   breadcrumbs, search, internal queries, editable design tokens,
 --   light/dark themes
 -- Excludes:
 --   - CSS framework and component implementation
@@ -40,8 +40,9 @@ contract GraphQuerySupport {
 contract EditablePresentation {
     apply_theme: (theme: Theme) -> ThemeApplication
 
-    @invariant TransparentStyleSource
-        -- Theme tokens and stylesheet source remain directly inspectable and editable.
+    @invariant TransparentDesignTokens
+        -- Theme tokens remain directly inspectable and editable. Governed CSS
+        -- sources are pages and belong to governed-stylesheet.allium.
 
     @invariant DualColourScheme
         -- Every theme provides both light and dark colour schemes.
@@ -608,7 +609,6 @@ value TraceStep {
 entity Theme {
     graph: core/Graph
     name: String
-    stylesheet_source: String
     tokens: DesignToken with theme = this
 }
 
@@ -948,14 +948,6 @@ rule ParticipantReordersTheTrace {
         -- pieza, se sigue leyendo.
 }
 
-rule ParticipantEditsThemeSource {
-    when: EditThemeSource(participant, workspace, stylesheet_source)
-
-    requires: workspace.participant = participant
-
-    ensures: workspace.theme.stylesheet_source = stylesheet_source
-}
-
 rule ParticipantEditsDesignToken {
     when: EditDesignToken(participant, workspace, token, light_value, dark_value)
 
@@ -1147,7 +1139,6 @@ surface VeraWorkspace {
         ClearTrace(participant, workspace)
         OpenPageFrontMatter(participant, workspace, page)
         OpenMobileGraphNode(participant, workspace, page)
-        EditThemeSource(participant, workspace, stylesheet_source)
         EditDesignToken(participant, workspace, token, light_value, dark_value)
         SearchGraph(participant, workspace, text)
         OpenFullSearchResults(participant, workspace, text)

@@ -1,5 +1,4 @@
 @import "reveal.js/reveal.css";
-@import "reveal.js/theme/white.css";
 
 /* Hoja de estilo de Vera.
  *
@@ -1733,14 +1732,40 @@ html.presenting body {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: #fff;
-  color: #171717;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.vera-presentation .presentation-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
 }
 
 .vera-presentation .reveal {
   width: 100%;
   height: 100%;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 2rem;
 }
+
+.vera-presentation .reveal h1,
+.vera-presentation .reveal h2,
+.vera-presentation .reveal h3,
+.vera-presentation .reveal h4,
+.vera-presentation .reveal h5,
+.vera-presentation .reveal h6 {
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+
+.vera-presentation .reveal a { color: var(--accent); }
 
 .vera-presentation .reveal .slides section {
   text-align: left;
@@ -1770,14 +1795,29 @@ html.presenting body {
   position: fixed;
   top: 0.8rem;
   right: 0.8rem;
-  z-index: 1010;
+  z-index: 2;
   padding: 0.45rem 0.75rem;
   border: 1px solid currentColor;
   border-radius: 999px;
-  background: color-mix(in srgb, white 88%, transparent);
-  color: #171717;
-  font: 600 0.75rem/1 system-ui, sans-serif;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  color: var(--text);
+  font: 600 0.75rem/1 var(--font-ui);
   cursor: pointer;
+}
+
+.presentation-style-warning {
+  position: fixed;
+  left: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 2;
+  max-width: min(42rem, calc(100vw - 1.6rem));
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--warm);
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  color: var(--text);
+  font: 0.75rem/1.35 var(--font-ui);
 }
 
 @media (prefers-reduced-motion: reduce) {

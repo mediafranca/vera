@@ -1,0 +1,184 @@
+-- allium: 3
+-- governed-stylesheet.allium
+
+-- Scope: CSS authored as canonical pages in a Vera graph and applied to a
+--   presentation projection through an explicit, confined cascade
+-- Includes: Default presentation stylesheet, optional theme override, source
+--   inspection and editing, revision-stable application, validation, safe
+--   fallback and diagnostics
+-- Excludes:
+--   - Making a presentation runtime part of the ontology
+--   - Loading remote styles, fonts or resources from CSS
+--   - Allowing presentation CSS to restyle the editor or surrounding workspace
+--   - A general plugin or scripting system
+
+use "./core.allium" as core
+use "./page-presentation.allium" as presentation
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract GovernedStylesheetApplication {
+    resolve: (page: core/Page) -> AppliedPresentationStyle
+
+    @invariant SourceIsACanonicalPage
+        -- A stylesheet is ordinary graph content with page identity, history,
+        -- provenance and normal editing. Vera stores no second opaque CSS copy
+        -- as the authored source.
+
+    @invariant PresentationCascadeIsExplicit
+        -- The built-in readable baseline is followed by
+        -- `VERA: Presentaciones.css`, then by the page linked from the
+        -- presentation's `tema` property when one is declared.
+
+    @invariant PresentationStylesStayInsideTheStage
+        -- Selectors from a governed stylesheet can affect only the presentation
+        -- stage. They cannot restyle the editor, settings, navigation or any
+        -- other page of Vera.
+
+    @invariant StylesDoNotCallOutside
+        -- A governed stylesheet cannot import another stylesheet or fetch a
+        -- font, image or other resource by URL. Its appearance is reproducible
+        -- from the graph and Vera's own assets.
+
+    @invariant AStyleFailureNeverBlocksThePresentation
+        -- Invalid, unavailable or refused CSS leaves the deck readable with the
+        -- last valid version when one exists, otherwise with Vera's baseline.
+        -- The viewer explains the fallback and still permits navigation and exit.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum StylesheetRole { presentation_default | presentation_theme }
+enum StyleApplicationStatus { current | last_valid | baseline }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity GovernedStylesheet {
+    page: core/Page
+    role: StylesheetRole
+    source: String
+    source_revision: Integer
+    valid: Boolean
+}
+
+entity AppliedPresentationStyle {
+    deck: presentation/PresentationDeck
+    default_stylesheet: GovernedStylesheet?
+    theme_stylesheet: GovernedStylesheet?
+    status: StyleApplicationStatus
+    diagnostic: String?
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule ApplyTheDefaultPresentationStylesheet {
+    when: ResolveDefaultPresentationStyle(reader, deck, default_stylesheet)
+
+    requires: reader.within = deck.page.graph
+    requires: default_stylesheet.role = presentation_default
+    requires: default_stylesheet.valid = true
+
+    ensures: AppliedPresentationStyle.created(
+        deck: deck,
+        default_stylesheet: default_stylesheet,
+        theme_stylesheet: null,
+        status: current,
+        diagnostic: null
+    )
+}
+
+rule ApplyTheChosenThemeAfterTheDefault {
+    when: ResolveThemedPresentationStyle(reader, deck, default_stylesheet, theme_stylesheet)
+
+    requires: reader.within = deck.page.graph
+    requires: default_stylesheet.role = presentation_default
+    requires: default_stylesheet.valid = true
+    requires: theme_stylesheet.role = presentation_theme
+    requires: theme_stylesheet.valid = true
+
+    ensures: AppliedPresentationStyle.created(
+        deck: deck,
+        default_stylesheet: default_stylesheet,
+        theme_stylesheet: theme_stylesheet,
+        status: current,
+        diagnostic: null
+    )
+}
+
+rule PreserveTheLastValidStyleWhenCurrentSourceFails {
+    when: ResolvePresentationStyleWithInvalidSource(reader, deck, last_valid, reason)
+
+    requires: reader.within = deck.page.graph
+
+    ensures: AppliedPresentationStyle.created(
+        deck: deck,
+        default_stylesheet: last_valid,
+        theme_stylesheet: null,
+        status: last_valid,
+        diagnostic: reason
+    )
+}
+
+rule KeepTheBaselineWhenNoValidStyleExists {
+    when: ResolvePresentationStyleWithoutValidSource(reader, deck, reason)
+
+    requires: reader.within = deck.page.graph
+
+    ensures: AppliedPresentationStyle.created(
+        deck: deck,
+        default_stylesheet: null,
+        theme_stylesheet: null,
+        status: baseline,
+        diagnostic: reason
+    )
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor StyleAuthor {
+    within: core/Graph
+    identified_by: core/Participant where core/Membership{participant: this, graph: within}.status = active
+}
+
+actor PresentationReader {
+    within: core/Graph
+    identified_by: core/Participant where core/Membership{participant: this, graph: within}.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface StylesheetPageEditor {
+    facing author: StyleAuthor
+    context stylesheet: GovernedStylesheet
+
+    exposes:
+        stylesheet.page
+        stylesheet.source
+        stylesheet.valid
+}
+
+surface PresentationStyleBoundary {
+    facing reader: PresentationReader
+    context deck: presentation/PresentationDeck
+
+    provides:
+        ResolveDefaultPresentationStyle(reader, deck, default_stylesheet)
+        ResolveThemedPresentationStyle(reader, deck, default_stylesheet, theme_stylesheet)
+        ResolvePresentationStyleWithInvalidSource(reader, deck, last_valid, reason)
+        ResolvePresentationStyleWithoutValidSource(reader, deck, reason)
+
+    contracts:
+        fulfils GovernedStylesheetApplication
+}

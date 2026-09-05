@@ -10,14 +10,15 @@
 -- Excludes:
 --   - Treating an individual block as the canonical presentation container
 --   - Authoring a separate deck format or storing generated slide markup
---   - Theme implementation and the choice of presentation runtime
+--   - Choice of presentation runtime
 --   - Editing while the presentation viewer is active
 --   - Remote control, audience synchronisation and PDF export
 --   - Presenter-window transport and audience-device pairing
 -- Dependencies: Page, Block and Participant are governed by core.allium;
 --   block rendering by workspace-interface.allium; media by content-media.allium;
 --   semantic page types by controlled-ontology.allium; presenter notes are the
---   canonical block glosses governed by block-gloss.allium
+--   canonical block glosses governed by block-gloss.allium; stylesheet
+--   resolution and confinement are governed by governed-stylesheet.allium
 
 use "./core.allium" as core
 use "./block-gloss.allium" as gloss
