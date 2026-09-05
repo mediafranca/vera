@@ -3265,15 +3265,18 @@ export function renderOutliner(
   propertiesToggle.setAttribute('aria-expanded', 'false');
   propertiesToggle.title = 'Mostrar propiedades';
   heading.append(propertiesToggle);
-  if (isPresentation(page.properties, corpusNames().kind)) {
+  {
     // @guarantee DeclaredPresentationsOfferPresentationProminently
-    heading.classList.add('has-presentation');
+    const declaredPresentation = isPresentation(page.properties, corpusNames().kind);
+    heading.classList.toggle('has-presentation', declaredPresentation);
     const present = document.createElement('button');
     present.type = 'button';
     present.className = 'present-page';
-    present.textContent = 'Presentar';
+    present.textContent = declaredPresentation ? 'Presentar' : 'Ver como presentación';
+    present.hidden = !declaredPresentation;
     present.addEventListener('click', () => {
-      void presentPage(page, options, callbacks.onNavigate);
+      void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null);
+      delete present.dataset['initialBlock'];
     });
     heading.append(present);
   }
@@ -3983,6 +3986,11 @@ export function renderOutliner(
           },
         },
         {
+          label: 'Ver como presentación',
+          icon: 'eye',
+          run: () => void presentPage(page, options, callbacks.onNavigate),
+        },
+        {
           label: 'Copiar el Markdown de la página',
           icon: 'copy',
           run: () => void copyPageMarkdown(page.id),
@@ -4077,6 +4085,11 @@ export function renderOutliner(
         icon: 'cpu',
         ...(special ? { blocked: 'una página especial se edita deliberadamente y no se procesa' } : {}),
         run: () => void processPage(page, toast, callbacks),
+      },
+      {
+        label: isPresentation(page.properties, corpusNames().kind) ? 'Presentar' : 'Ver como presentación',
+        icon: 'eye',
+        run: () => void presentPage(page, options, callbacks.onNavigate),
       },
       {
         label: 'Copiar el Markdown de la página',

@@ -25,6 +25,19 @@ interface LoadedPresentationStyle {
   warnings: string[];
 }
 
+export function presentationRevision(page: Pick<PageView, 'lastEditedAt' | 'blocks'>): string {
+  return `${page.lastEditedAt ?? 0}:${page.blocks.length}`;
+}
+
+export function presentationLocation(source: URL, block: string, active: boolean): string {
+  const url = new URL(source);
+  url.searchParams.delete('present');
+  url.hash = '';
+  if (active) url.searchParams.set('present', block);
+  else if (block !== '') url.hash = encodeURIComponent(block);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 async function loadStylesheet(title: string): Promise<{ css: string; warning: string | null }> {
   const cacheKey = `${STYLE_CACHE_PREFIX}${title}`;
   try {
@@ -112,14 +125,16 @@ export async function presentPage(
   page: PageView,
   options: RenderOptions,
   onNavigate: (title: string) => void,
+  initialBlock: string | null = null,
 ): Promise<void> {
   // @invariant ThePageRemainsTheSource
   // @invariant PresentationDoesNotFlattenTheOutline
   // @invariant PresenterNotesAreGlosses
   document.querySelector('.vera-presentation')?.remove();
-  const roots = treeOf(page.blocks);
+  let sourcePage = page;
+  let roots = treeOf(sourcePage.blocks);
   if (roots.length === 0) return;
-  const governedStyle = await presentationStyles(page);
+  const governedStyle = await presentationStyles(sourcePage);
 
   const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
@@ -140,6 +155,25 @@ export async function presentPage(
   close.className = 'presentation-close';
   close.textContent = 'Salir';
 
+  const toolbar = document.createElement('div');
+  toolbar.className = 'presentation-toolbar';
+  toolbar.setAttribute('role', 'toolbar');
+  toolbar.setAttribute('aria-label', 'Controles de la presentación');
+  const control = (label: string): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    return button;
+  };
+  const previous = control('Anterior');
+  const next = control('Siguiente');
+  const overview = control('Vista general');
+  const notesToggle = control('Notas');
+  notesToggle.setAttribute('aria-pressed', 'false');
+  const fullscreen = control('Pantalla completa');
+  const refresh = control('Actualizar');
+  refresh.hidden = true;
+
   const reveal = document.createElement('div');
   reveal.className = 'reveal';
   const stage = document.createElement('div');
@@ -148,7 +182,12 @@ export async function presentPage(
   slides.className = 'slides';
   reveal.append(slides);
   stage.append(reveal);
-  overlay.append(stage, close);
+  const privateNotes = document.createElement('aside');
+  privateNotes.className = 'presentation-private-notes';
+  privateNotes.hidden = true;
+  privateNotes.setAttribute('aria-label', 'Glosa de la lámina');
+  toolbar.append(previous, next, overview, notesToggle, fullscreen, refresh, close);
+  overlay.append(stage, privateNotes, toolbar);
   if (governedStyle.warnings.length > 0) {
     const warning = document.createElement('p');
     warning.className = 'presentation-style-warning';
@@ -158,19 +197,23 @@ export async function presentPage(
   }
   document.body.append(overlay);
 
-  for (const root of roots) {
-    const slide = document.createElement('section');
-    slide.dataset['block'] = root.block.stableId;
-    slide.append(renderNode(root, options));
-    const gloss = page.glosses?.[root.block.stableId]?.content.trim() ?? '';
-    if (gloss !== '') {
-      const notes = document.createElement('aside');
-      notes.className = 'notes';
-      notes.innerHTML = renderMarkdown(gloss, options);
-      slide.append(notes);
+  const fillSlides = (): void => {
+    slides.replaceChildren();
+    for (const root of roots) {
+      const slide = document.createElement('section');
+      slide.dataset['block'] = root.block.stableId;
+      slide.append(renderNode(root, options));
+      const gloss = sourcePage.glosses?.[root.block.stableId]?.content.trim() ?? '';
+      if (gloss !== '') {
+        const notes = document.createElement('aside');
+        notes.className = 'notes';
+        notes.innerHTML = renderMarkdown(gloss, options);
+        slide.append(notes);
+      }
+      slides.append(slide);
     }
-    slides.append(slide);
-  }
+  };
+  fillSlides();
 
   decorateCodeBlocks(overlay);
   await renderMermaid(overlay);
@@ -188,14 +231,37 @@ export async function presentPage(
   });
 
   let closed = false;
+  let revisionWatch = 0;
+  let heldRevision = presentationRevision(sourcePage);
+  const sourceUrl = new URL(window.location.href);
+  sourceUrl.searchParams.delete('present');
+  const currentBlock = (): string | null => deck.getCurrentSlide()?.dataset['block'] ?? null;
+  const updateNotes = (): void => {
+    const block = currentBlock();
+    const gloss = block === null ? '' : sourcePage.glosses?.[block]?.content.trim() ?? '';
+    privateNotes.innerHTML = gloss === '' ? '<p>Esta lámina no tiene glosa.</p>' : renderMarkdown(gloss, options);
+  };
+  const writeDeepLink = (): void => {
+    const block = currentBlock();
+    if (block === null) return;
+    history.replaceState(history.state, '', presentationLocation(sourceUrl, block, true));
+  };
   const leave = async (): Promise<void> => {
     if (closed) return;
     closed = true;
+    window.clearInterval(revisionWatch);
     removeEventListener('keydown', onKey, true);
+    const block = currentBlock();
     await deck.destroy();
     overlay.remove();
     document.documentElement.classList.remove('presenting');
-    previousFocus?.focus({ preventScroll: true });
+    if (document.fullscreenElement !== null) await document.exitFullscreen().catch(() => undefined);
+    history.replaceState(history.state, '', presentationLocation(sourceUrl, block ?? '', false));
+    const source = block === null ? null : document.querySelector<HTMLElement>(`[data-block="${CSS.escape(block)}"]`);
+    if (source !== null) {
+      source.scrollIntoView({ block: 'center' });
+      source.focus({ preventScroll: true });
+    } else previousFocus?.focus({ preventScroll: true });
   };
   const onKey = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
@@ -205,6 +271,39 @@ export async function presentPage(
   };
 
   close.addEventListener('click', () => void leave());
+  previous.addEventListener('click', () => deck.prev());
+  next.addEventListener('click', () => deck.next());
+  overview.addEventListener('click', () => deck.toggleOverview());
+  notesToggle.addEventListener('click', () => {
+    privateNotes.hidden = !privateNotes.hidden;
+    notesToggle.setAttribute('aria-pressed', String(!privateNotes.hidden));
+    updateNotes();
+  });
+  fullscreen.addEventListener('click', () => {
+    void (document.fullscreenElement === null ? overlay.requestFullscreen() : document.exitFullscreen());
+  });
+  refresh.addEventListener('click', () => {
+    const block = currentBlock();
+    void api.page(sourcePage.id, 4_000).then(async (newer) => {
+      const newerRoots = treeOf(newer.blocks);
+      if (newerRoots.length === 0) {
+        refresh.textContent = 'Actualización rechazada: página vacía';
+        return;
+      }
+      sourcePage = newer;
+      roots = newerRoots;
+      heldRevision = presentationRevision(newer);
+      fillSlides();
+      deck.sync();
+      if (block !== null) {
+        const index = roots.findIndex((root) => root.block.stableId === block);
+        if (index >= 0) deck.slide(index);
+      }
+      refresh.hidden = true;
+      refresh.textContent = 'Actualizar';
+      updateNotes();
+    }).catch(() => { refresh.textContent = 'No se pudo actualizar'; });
+  });
   overlay.addEventListener('click', (event) => {
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a.wiki');
     if (link === null) return;
@@ -215,5 +314,15 @@ export async function presentPage(
   addEventListener('keydown', onKey, true);
   document.documentElement.classList.add('presenting');
   await deck.initialize();
+  const initialIndex = initialBlock === null ? -1 : roots.findIndex((root) => root.block.stableId === initialBlock);
+  if (initialIndex >= 0) deck.slide(initialIndex);
+  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); });
+  updateNotes();
+  writeDeepLink();
+  revisionWatch = window.setInterval(() => {
+    void api.page(sourcePage.id, 4_000).then((newer) => {
+      refresh.hidden = presentationRevision(newer) === heldRevision;
+    }).catch(() => undefined);
+  }, 15_000);
   close.focus({ preventScroll: true });
 }

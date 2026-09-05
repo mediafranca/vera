@@ -1579,13 +1579,21 @@ async function applyRoute(): Promise<void> {
   }
 
   workspace.focusRoot = route.focus;
+  const presentationBlock = here.searchParams.get('present');
   // Una dirección pegada, un enlace de fuera o el botón de atrás. Vera no puede
   // distinguirlos y no los distingue: los tres son llegar sin venir de dentro.
   await openPage(route.page, null, {
     fromUrl: true,
-    reveal: route.block,
+    reveal: presentationBlock === null ? route.block : null,
     gesture: 'opened_directly',
   });
+  if (presentationBlock !== null) {
+    const present = document.querySelector<HTMLButtonElement>('.present-page');
+    if (present !== null) {
+      present.dataset['initialBlock'] = presentationBlock;
+      present.click();
+    }
+  }
 }
 
 async function openSharingAdministration(push = false): Promise<void> {

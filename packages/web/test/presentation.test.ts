@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { isPresentation } from '../src/presentation.ts';
+import { isPresentation, presentationLocation, presentationRevision } from '../src/presentation.ts';
 import {
   presentationThemeTitle,
   scopedPresentationStylesheet,
@@ -17,6 +17,26 @@ describe('páginas que se pueden presentar', () => {
   it('no convierte una página ordinaria en presentación', () => {
     assert.equal(isPresentation([{ key: 'tipo', value: 'Concepto' }], 'tipo'), false);
     assert.equal(isPresentation([], 'tipo'), false);
+  });
+
+  it('da a cada lámina una dirección estable y vuelve a la fuente señalada', () => {
+    const source = new URL('https://vera.example/p/Una?focus=block%3A1#block%3Aold');
+    assert.equal(
+      presentationLocation(source, 'block:2', true),
+      '/p/Una?focus=block%3A1&present=block%3A2',
+    );
+    assert.equal(
+      presentationLocation(source, 'block:2', false),
+      '/p/Una?focus=block%3A1#block%3A2',
+    );
+  });
+
+  it('distingue una revisión nueva aunque conserve el mismo número de bloques', () => {
+    const blocks = [{ stableId: 'block:1' }] as never[];
+    assert.notEqual(
+      presentationRevision({ lastEditedAt: 1, blocks }),
+      presentationRevision({ lastEditedAt: 2, blocks }),
+    );
   });
 });
 

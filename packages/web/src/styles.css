@@ -1791,11 +1791,19 @@ html.presenting body {
   max-height: 64vh;
 }
 
-.presentation-close {
+.presentation-toolbar {
   position: fixed;
   top: 0.8rem;
   right: 0.8rem;
   z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  max-width: calc(100vw - 1.6rem);
+}
+
+.presentation-toolbar button {
   padding: 0.45rem 0.75rem;
   border: 1px solid currentColor;
   border-radius: 999px;
@@ -1803,6 +1811,30 @@ html.presenting body {
   color: var(--text);
   font: 600 0.75rem/1 var(--font-ui);
   cursor: pointer;
+}
+
+.presentation-toolbar button:hover,
+.presentation-toolbar button:focus-visible,
+.presentation-toolbar button[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--bg);
+  outline: none;
+}
+
+.presentation-private-notes {
+  position: fixed;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 2;
+  width: min(32rem, calc(100vw - 1.6rem));
+  max-height: 38vh;
+  overflow: auto;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  box-shadow: 0 0.6rem 2rem color-mix(in srgb, var(--text) 12%, transparent);
+  font: 0.9rem/1.45 var(--font-ui);
 }
 
 .presentation-style-warning {
