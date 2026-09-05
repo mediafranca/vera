@@ -4633,7 +4633,10 @@ export function renderOutliner(
       }
     }
 
-    const editGloss = renderGloss(row, body, node.block.stableId);
+    // La glosa es marginalia privada y nota del presentador. En una lectura
+    // pública no se ofrece siquiera su puerta: además de no recibir el texto,
+    // la superficie no debe sugerir que allí hay una nota oculta.
+    const editGloss = readOnly ? (): void => undefined : renderGloss(row, body, node.block.stableId);
 
     /** Abre un hermano vacío junto a este bloque y deja el cursor dentro. */
     const insertSibling = (position: number): void => {

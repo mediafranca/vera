@@ -129,6 +129,7 @@ describe('publicación del sitio personal', () => {
         content: 'Primera versión',
       })
     ).subjectId;
+    await write({ kind: 'set_block_gloss', block, content: 'nota privada para presentar' });
 
     const eligible = await fetch(`${base}/pages/${encodeURIComponent(page)}`).then((response) =>
       response.json(),
@@ -272,9 +273,18 @@ describe('publicación del sitio personal', () => {
 
     const publicPage = await fetch(`${previewBase}/pages/${encodeURIComponent(page)}`).then(
       (response) => response.json(),
-    ) as { pendingLinks: string[]; references: { title: string; page: string | null }[] };
+    ) as {
+      pendingLinks: string[];
+      references: { title: string; page: string | null }[];
+      glosses: Record<string, unknown>;
+    };
     assert.deepEqual(publicPage.pendingLinks, ['Secreta']);
     assert.equal(publicPage.references.find((one) => one.title === 'Secreta')?.page, null);
+    assert.deepEqual(publicPage.glosses, {}, 'publicar una presentación no publica sus glosas');
+    const publicReadable = await fetch(
+      `${previewBase}/pages/${encodeURIComponent(page)}?stage=readable`,
+    ).then((response) => response.json()) as { glosses: Record<string, unknown> };
+    assert.deepEqual(publicReadable.glosses, {}, 'la entrega rápida tampoco filtra notas privadas');
 
     const search = await fetch(`${previewBase}/search?q=arsenal`).then((response) => response.json()) as unknown[];
     assert.deepEqual(search, []);

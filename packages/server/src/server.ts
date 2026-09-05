@@ -5431,7 +5431,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                   writtenAt: hand?.writtenAt,
                 }]),
             ),
-            glosses: Object.fromEntries(
+            // Las glosas son la voz privada del presentador. Publicar la página
+            // publica sus láminas, nunca aquello que quien presenta se dice al
+            // margen. No basta con ocultarlas en el cliente: no cruzan la API.
+            glosses: publicAccess ? {} : Object.fromEntries(
               pageBlocks
                 .map((block) => graph.gloss(block.stableId))
                 .filter((gloss) => gloss !== undefined)
@@ -5675,7 +5678,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 },
               ]),
           ),
-          glosses: Object.fromEntries(
+          glosses: publicAccess ? {} : Object.fromEntries(
             graph
               .blocksOf(page.id)
               .map((block) => graph.gloss(block.stableId))
