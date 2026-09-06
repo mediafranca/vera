@@ -23,16 +23,13 @@ describe('el interruptor de diarios en el mapa', () => {
     assert.deepEqual(shown.links, [{ source: 'idea', target: 'other' }]);
   });
 
-  it('muestra un diario sólo cuando está encendido y es el foco', () => {
+  it('muestra un diario cuando es el foco aunque el interruptor esté apagado', () => {
     const focused: GraphData = {
       ...graph,
       nodes: graph.nodes.map((node) => ({ ...node, central: node.id === 'today' })),
     };
-    const shown = journalsInMap(focused, 'today', true);
+    const shown = journalsInMap(focused, 'today', false);
     assert.deepEqual(shown.nodes.map((node) => node.id), ['idea', 'today', 'other']);
-  });
-
-  it('apagarlo sobre un diario deja el mapa vacío, no un vecindario sin centro', () => {
-    assert.deepEqual(journalsInMap(graph, 'today', false), { nodes: [], links: [] });
+    assert.deepEqual(shown.links, graph.links);
   });
 });

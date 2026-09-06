@@ -8,18 +8,16 @@ function endpoint(value: string | GraphNode): string {
 /**
  * La ley del interruptor de diarios.
  *
- * Un diario nunca es vecindad: aparece únicamente cuando él mismo es el foco y
- * la persona decidió encender los diarios. Apagarlos mientras se está mirando
- * uno deja el mapa vacío en vez de dibujar sus vecinos sin el centro que les da
- * sentido.
+ * Un diario nunca es vecindad: aparece únicamente cuando él mismo es el foco.
+ * El foco tiene precedencia sobre el interruptor, para que apagar los diarios
+ * jamás quite el centro que da sentido a su vecindario.
  */
-export function journalsInMap(data: GraphData, focus: string, enabled: boolean): GraphData {
+export function journalsInMap(data: GraphData, focus: string, _enabled: boolean): GraphData {
   const focused = data.nodes.find((node) => node.id === focus);
   const focusIsJournal = focused !== undefined && isDateTitle(focused.name);
-  if (focusIsJournal && !enabled) return { nodes: [], links: [] };
 
   const nodes = data.nodes.filter((node) =>
-    !isDateTitle(node.name) || (enabled && focusIsJournal && node.id === focus),
+    !isDateTitle(node.name) || (focusIsJournal && node.id === focus),
   );
   const kept = new Set(nodes.map((node) => node.id));
   const links = data.links.filter((link) =>

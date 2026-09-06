@@ -397,8 +397,9 @@ surface GraphNavigation {
 
     @guarantee AJournalAppearsOnlyAsTheChosenFocus
         -- The journal switch never admits days as neighbours. With the switch
-        -- on, a day appears only when that same day is selected as the centre;
-        -- with it off, even the selected day is absent from the map.
+        -- on or off, a day appears only when that same day is selected as the
+        -- centre. The chosen focus takes precedence over the switch so the map
+        -- never loses the centre that gives its neighbourhood meaning.
 
     @guarantee NamingAPageAndWritingItAreOneGesture
         -- Following a reference to a page that does not exist creates it and
