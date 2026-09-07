@@ -2460,30 +2460,24 @@ async function exportTraceBooklet(): Promise<void> {
   const query = new URLSearchParams();
   for (const id of ids) query.append('page', id);
   query.set('title', 'Recorrido de Vera');
-  const endpoint = `/booklet/pdf?${query.toString()}`;
-  notice('componiendo el librillo…');
-
   /*
    * Safari móvil —y especialmente una PWA instalada— puede descartar una
-   * descarga iniciada después de un `await`, porque para entonces ya perdió
-   * la activación del gesto. Entrégale el endpoint en un enlace real mientras
-   * el click todavía está activo; el visor de iOS se ocupa del PDF cuando el
-   * servidor termina de componerlo. Escritorio conserva la descarga con blob,
-   * que permite informar los errores dentro de Vera.
+   * descarga iniciada después de un `await`, y también una pestaña nueva
+   * abierta por una aplicación autónoma. Navegar la ventana actual no depende
+   * de ninguno de esos dos mecanismos. El servidor marca esta respuesta como
+   * `inline` para que Quick Look la presente; «Atrás» devuelve a Vera y el
+   * rastro sigue ahí. Escritorio conserva la descarga con blob.
    */
   const iosWebKit = /iP(?:ad|hone|od)/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (iosWebKit) {
-    const link = document.createElement('a');
-    link.href = endpoint;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    document.body.append(link);
-    link.click();
-    link.remove();
+    query.set('inline', '1');
+    globalThis.location.assign(`/booklet/pdf?${query.toString()}`);
     return;
   }
 
+  const endpoint = `/booklet/pdf?${query.toString()}`;
+  notice('componiendo el librillo…');
   try {
     const answer = await fetch(endpoint);
     if (!answer.ok) {

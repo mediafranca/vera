@@ -5265,10 +5265,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const where = `http://127.0.0.1:${port}/booklet/paper?${query.toString()}`;
         void toPdf(where).then((made) => {
           if ('error' in made) return send(response, 503, made);
+          const disposition = url.searchParams.get('inline') !== null ? 'inline' : 'attachment';
           response.writeHead(200, {
             'content-type': 'application/pdf',
             'content-length': made.pdf.byteLength,
-            'content-disposition': `attachment; filename="recorrido-vera.pdf"; filename*=UTF-8''${encodeURIComponent(`${title}.pdf`)}`,
+            'content-disposition': `${disposition}; filename="recorrido-vera.pdf"; filename*=UTF-8''${encodeURIComponent(`${title}.pdf`)}`,
           });
           response.end(made.pdf);
         });
