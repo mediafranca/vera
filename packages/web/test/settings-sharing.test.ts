@@ -30,4 +30,17 @@ describe('administración de invitaciones', () => {
     assert.match(settings, /rememberedInvitationUrl\(invitation\.id\)/);
     assert.match(settings, /row\.remove\(\)/);
   });
+
+  it('permite retirar una superficie sin borrar sus páginas', () => {
+    assert.match(settings, /Eliminar superficie compartida/);
+    assert.match(settings, /No elimina ninguna página de VERA/);
+    assert.match(settings, /sharingRequest\(`\/shared-spaces\/\$\{encodeURIComponent\(space\.slug\)\}`, 'DELETE'\)/);
+  });
+
+  it('oculta por defecto los accesos revocados pero conserva su historial', () => {
+    assert.match(settings, /space\.participants\.filter\(\(person\) => person\.status === 'active'\)/);
+    assert.match(settings, /space\.participants\.filter\(\(one\) => one\.status === 'active'\)/);
+    assert.match(settings, /Accesos revocados · \$\{revoked\.length\}/);
+    assert.match(settings, /sharing-revoked-history/);
+  });
 });

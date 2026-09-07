@@ -400,6 +400,23 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.equal((await call(`/shared-spaces/vera/invitations/${encodeURIComponent(redeemed.json['id'])}/permanent`, 'DELETE')).status, 404);
   });
 
+  it('elimina una superficie y sus accesos sin borrar las páginas compartidas', async () => {
+    const page = await write({ kind: 'create_page', title: 'Superviviente', visibility: 'private' });
+    const made = await call('/shared-spaces', 'POST', {
+      name: 'Temporal', slug: 'temporal', selectorKey: 'concepto', selectorValue: 'temporal',
+    });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    const invitation = await call('/shared-spaces/temporal/invitations', 'POST', { permissions: ['read'] });
+    assert.equal(invitation.status, 201, JSON.stringify(invitation.json));
+
+    const removed = await call('/shared-spaces/temporal', 'DELETE');
+    assert.equal(removed.status, 200, JSON.stringify(removed.json));
+    assert.equal((await call('/shared-spaces/temporal', 'DELETE')).status, 404);
+    assert.ok(running.vera.graph.page(page));
+    assert.equal((running.vera.store.db.prepare('SELECT count(*) AS n FROM access_invitations WHERE id=?')
+      .get(invitation.json['id']) as { n: number }).n, 0);
+  });
+
   it('compone varios criterios con páginas explícitas y cambia permisos', async () => {
     const thematic = await write({ kind: 'create_page', title: 'Por tema', visibility: 'private' });
     await write({ kind: 'set_property', page: thematic, propertyKey: 'tema', propertyValue: 'memoria' });

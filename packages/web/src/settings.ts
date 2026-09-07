@@ -422,6 +422,20 @@ function spaceAdministration(host: HTMLElement, space: SharedAdministration, pag
   body.append(count, visit, form);
   if (!isPublic) body.append(proposals(host, space, pages), participants(host, space), invitations(host, space), invitationForm(host, space));
   body.append(effectivePages(space, pages), criteriaAdministration(host, space), manualPagesAdministration(host, space, pages));
+  const danger = document.createElement('div'); danger.className = 'sharing-group sharing-danger-zone';
+  const dangerHeading = document.createElement('h4'); dangerHeading.textContent = 'Retirar superficie compartida';
+  const dangerNote = document.createElement('p'); dangerNote.className = 'settings-note';
+  dangerNote.textContent = 'Elimina esta superficie, sus invitaciones, accesos y propuestas. No elimina ninguna página de VERA.';
+  const removeSpace = document.createElement('button'); removeSpace.type = 'button'; removeSpace.className = 'danger';
+  removeSpace.textContent = 'Eliminar superficie compartida';
+  removeSpace.onclick = () => {
+    if (!confirm(`¿Eliminar definitivamente la superficie compartida «${space.name}»? Se retirarán sus invitaciones, accesos y propuestas; las páginas de VERA se conservarán. Esta acción no se puede deshacer.`)) return;
+    removeSpace.disabled = true;
+    void sharingRequest(`/shared-spaces/${encodeURIComponent(space.slug)}`, 'DELETE')
+      .then(() => drawSharing(host))
+      .catch((error: unknown) => { removeSpace.disabled = false; alert(error instanceof Error ? error.message : 'No se pudo eliminar.'); });
+  };
+  danger.append(dangerHeading, dangerNote, removeSpace); body.append(danger);
   card.append(title, body);
   return card;
 }
@@ -469,7 +483,7 @@ function effectivePages(space: SharedAdministration, pages: PageSummary[]): HTML
 
 function peopleDirectory(spaces: SharedAdministration[]): HTMLElement {
   const people = new Map<string, { name: string; grants: { space: string; permissions: SharedPermission[]; status: string }[] }>();
-  for (const space of spaces) for (const participant of space.participants) {
+  for (const space of spaces) for (const participant of space.participants.filter((one) => one.status === 'active')) {
     const person = people.get(participant.participant) ?? { name: participant.name, grants: [] };
     person.grants.push({ space: space.name, permissions: participant.permissions, status: participant.status });
     people.set(participant.participant, person);
@@ -477,7 +491,7 @@ function peopleDirectory(spaces: SharedAdministration[]): HTMLElement {
   const details = document.createElement('details'); details.className = 'sharing-people';
   const summary = document.createElement('summary'); summary.textContent = `Personas · ${people.size}`; details.append(summary);
   const note = document.createElement('p'); note.className = 'settings-note';
-  note.textContent = 'Vista transversal de identidades que ya aceptaron acceso; las invitaciones pendientes no aparecen aquí.';
+  note.textContent = 'Vista transversal de identidades con acceso activo; las invitaciones pendientes y los accesos revocados no aparecen aquí.';
   details.append(note);
   const list = document.createElement('ul'); list.className = 'sharing-list';
   for (const person of people.values()) {
@@ -683,9 +697,11 @@ function invitations(host: HTMLElement, space: SharedAdministration): HTMLElemen
 function participants(host: HTMLElement, space: SharedAdministration): HTMLElement {
   const box = document.createElement('div'); box.className = 'sharing-group';
   const heading = document.createElement('h4'); heading.textContent = 'Participantes autenticados'; box.append(heading);
-  if (space.participants.length === 0) { const empty = document.createElement('p'); empty.className = 'settings-note'; empty.textContent = 'Nadie ha canjeado una invitación.'; box.append(empty); return box; }
+  const active = space.participants.filter((person) => person.status === 'active');
+  const revoked = space.participants.filter((person) => person.status === 'revoked');
+  if (active.length === 0) { const empty = document.createElement('p'); empty.className = 'settings-note'; empty.textContent = 'No hay participantes con acceso activo.'; box.append(empty); }
   const list = document.createElement('ul'); list.className = 'sharing-list';
-  for (const person of space.participants) {
+  for (const person of active) {
     const row = document.createElement('li');
     const text = document.createElement('span');
     text.textContent = `${person.name} · ${person.authenticators} passkey · ${person.activeSessions} sesiones · ${person.status}`;
@@ -715,7 +731,19 @@ function participants(host: HTMLElement, space: SharedAdministration): HTMLEleme
     }
     list.append(row);
   }
-  box.append(list); return box;
+  if (active.length > 0) box.append(list);
+  if (revoked.length > 0) {
+    const history = document.createElement('details'); history.className = 'sharing-revoked-history';
+    const summary = document.createElement('summary'); summary.textContent = `Accesos revocados · ${revoked.length}`;
+    const historical = document.createElement('ul'); historical.className = 'sharing-list';
+    for (const person of revoked) {
+      const row = document.createElement('li');
+      const text = document.createElement('span'); text.textContent = `${person.name} · acceso revocado`;
+      row.append(text); historical.append(row);
+    }
+    history.append(summary, historical); box.append(history);
+  }
+  return box;
 }
 
 const readableSize = (bytes: number): string =>

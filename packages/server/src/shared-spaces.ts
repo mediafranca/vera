@@ -103,6 +103,14 @@ export function updateSharedSpace(store: Store, held: SharedSpace, input: {
   return { ...held, ...input };
 }
 
+/** Elimina el límite compartido y todos sus artefactos dependientes.
+ * Las páginas del grafo no pertenecen al espacio: sólo se retiran criterios,
+ * inclusiones, invitaciones, accesos y propuestas ligados a él. */
+export function deleteSharedSpace(store: Store, held: SharedSpace): boolean {
+  return Number(store.db.prepare(`DELETE FROM shared_spaces WHERE id=? AND graph_id=?`)
+    .run(held.id, store.graphId).changes) > 0;
+}
+
 export function addSharedSpaceCriterion(store: Store, owner: string, space: SharedSpace, key: string, value: string): SharedSpaceCriterion {
   if (space.criteria.some((one) => one.key === key && one.value === value)) throw new Error('el criterio ya está activo');
   const criterion = { id: id('criterion'), key, value, status: 'active' as const };

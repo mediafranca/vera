@@ -157,6 +157,7 @@ import {
   createSharedSpace,
   decideSharedProposal,
   deleteInvitation,
+  deleteSharedSpace,
   includeManualPage,
   inspectInvitation,
   inviteToSpace,
@@ -2315,6 +2316,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }));
         } catch (error) { send(response, 409, { error: error instanceof Error ? error.message : String(error) }); }
       });
+      return;
+    }
+
+    if (request.method === 'DELETE' && /^\/shared-spaces\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const space = sharedSpaceBySlug(store, decodeURIComponent(path.split('/')[2] ?? ''));
+      if (space === null) { send(response, 404, { error: 'el espacio no existe' }); return; }
+      try {
+        const changed = deleteSharedSpace(store, space);
+        send(response, changed ? 200 : 404,
+          changed ? { status: 'deleted' } : { error: 'el espacio no existe' });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 

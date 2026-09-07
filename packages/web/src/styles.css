@@ -8494,6 +8494,11 @@ html[data-working-slow='true']::after {
 .sharing-issued-invitation button:disabled { opacity: .55; cursor: wait; }
 .sharing-list li button.danger { color: var(--danger, #9f2525); border-color: color-mix(in srgb, var(--danger, #9f2525) 55%, var(--rule)); }
 .sharing-list li button.danger:hover { background: color-mix(in srgb, var(--danger, #9f2525) 10%, var(--bg)); }
+.sharing-group > button.danger { color: var(--danger, #9f2525); border-color: color-mix(in srgb, var(--danger, #9f2525) 55%, var(--rule)); }
+.sharing-group > button.danger:hover { background: color-mix(in srgb, var(--danger, #9f2525) 10%, var(--bg)); }
+.sharing-danger-zone { padding-top: 1rem; border-top: 1px solid var(--rule); }
+.sharing-revoked-history { margin-top: .7rem; color: var(--text-dim); }
+.sharing-revoked-history > summary { cursor: pointer; }
 .sharing-group { margin: 1.35rem 0; }
 .sharing-group h4 { margin-bottom: .6rem; }
 .sharing-permissions { display: flex; flex-wrap: wrap; gap: 1rem; margin: .75rem 0; }
