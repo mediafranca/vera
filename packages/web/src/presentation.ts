@@ -222,7 +222,10 @@ export async function presentPage(
     embedded: true,
     controls: true,
     progress: true,
-    center: true,
+    // Una lámina es una página legible, no una tarjeta que siempre quepa. El
+    // centrado de Reveal convertía el exceso de altura de SVG, p5.js e iframes
+    // en un gran vacío superior y dejaba el comienzo fuera de alcance.
+    center: false,
     hash: false,
     history: false,
     transition: 'slide',

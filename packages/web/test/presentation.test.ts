@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import { isPresentation, presentationLocation, presentationRevision } from '../src/presentation.ts';
 import {
@@ -37,6 +38,13 @@ describe('páginas que se pueden presentar', () => {
       presentationRevision({ lastEditedAt: 1, blocks }),
       presentationRevision({ lastEditedAt: 2, blocks }),
     );
+  });
+
+  it('alinea arriba y deja desplazar verticalmente una lámina que no cabe', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /center: false/);
+    assert.match(styles, /\.vera-presentation \.reveal \.slides section \{[\s\S]*?overflow-y: auto;[\s\S]*?touch-action: pan-y;/);
   });
 });
 

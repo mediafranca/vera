@@ -1770,6 +1770,15 @@ html.presenting body {
 
 .vera-presentation .reveal .slides section {
   text-align: left;
+  box-sizing: border-box;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+  padding-block: 4.25rem 2.5rem;
 }
 
 .vera-presentation .presentation-block {
