@@ -1815,12 +1815,18 @@ html.presenting body {
 
 .presentation-toolbar button {
   padding: 0.45rem 0.75rem;
-  border: 1px solid currentColor;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 58%, transparent);
+  color: color-mix(in srgb, var(--text) 68%, transparent);
   font: 600 0.75rem/1 var(--font-ui);
   cursor: pointer;
+}
+
+.presentation-toolbar:hover button,
+.presentation-toolbar:focus-within button {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
 }
 
 .presentation-toolbar button:hover,
@@ -1829,6 +1835,22 @@ html.presenting body {
   background: var(--text);
   color: var(--bg);
   outline: none;
+}
+
+/* Reveal oculta deliberadamente láminas lejanas. En el overview de VERA son
+ * miniaturas de navegación y deben poder inspeccionarse todas. */
+.vera-presentation .reveal.overview .slides section {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.vera-presentation .reveal.overview .slides {
+  zoom: 1.18;
+}
+
+.vera-presentation .reveal.overview section[data-presentation-column="true"] {
+  outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 24px;
 }
 
 .presentation-private-notes {

@@ -126,6 +126,10 @@ export async function presentPage(
   options: RenderOptions,
   onNavigate: (title: string) => void,
   initialBlock: string | null = null,
+  appearance: {
+    scheme?: (() => 'light' | 'dark') | undefined;
+    onScheme?: ((scheme: 'light' | 'dark') => void) | undefined;
+  } = {},
 ): Promise<void> {
   // @invariant ThePageRemainsTheSource
   // @invariant PresentationDoesNotFlattenTheOutline
@@ -171,6 +175,15 @@ export async function presentPage(
   const notesToggle = control('Notas');
   notesToggle.setAttribute('aria-pressed', 'false');
   const fullscreen = control('Pantalla completa');
+  const scheme = control('Modo claro');
+  scheme.className = 'presentation-scheme';
+  const showScheme = (): void => {
+    const dark = (appearance.scheme?.() ?? document.documentElement.dataset['scheme']) === 'dark';
+    scheme.textContent = dark ? 'Modo claro' : 'Modo oscuro';
+    scheme.setAttribute('aria-label', dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+    scheme.setAttribute('aria-pressed', String(dark));
+  };
+  showScheme();
   const refresh = control('Actualizar');
   refresh.hidden = true;
 
@@ -186,7 +199,7 @@ export async function presentPage(
   privateNotes.className = 'presentation-private-notes';
   privateNotes.hidden = true;
   privateNotes.setAttribute('aria-label', 'Glosa de la lámina');
-  toolbar.append(previous, next, overview, notesToggle, fullscreen, refresh, close);
+  toolbar.append(previous, next, overview, notesToggle, fullscreen, scheme, refresh, close);
   overlay.append(stage, privateNotes, toolbar);
   if (governedStyle.warnings.length > 0) {
     const warning = document.createElement('p');
@@ -200,17 +213,31 @@ export async function presentPage(
   const fillSlides = (): void => {
     slides.replaceChildren();
     for (const root of roots) {
-      const slide = document.createElement('section');
-      slide.dataset['block'] = root.block.stableId;
-      slide.append(renderNode(root, options));
-      const gloss = sourcePage.glosses?.[root.block.stableId]?.content.trim() ?? '';
-      if (gloss !== '') {
-        const notes = document.createElement('aside');
-        notes.className = 'notes';
-        notes.innerHTML = renderMarkdown(gloss, options);
-        slide.append(notes);
+      const column = document.createElement('section');
+      const members = root.children.length === 0
+        ? [root]
+        : [{ ...root, children: [] }, ...root.children];
+      for (const member of members) {
+        const slide = document.createElement('section');
+        slide.dataset['block'] = member.block.stableId;
+        slide.append(renderNode(member, options));
+        const gloss = sourcePage.glosses?.[member.block.stableId]?.content.trim() ?? '';
+        if (gloss !== '') {
+          const notes = document.createElement('aside');
+          notes.className = 'notes';
+          notes.innerHTML = renderMarkdown(gloss, options);
+          slide.append(notes);
+        }
+        column.append(slide);
       }
-      slides.append(slide);
+      if (members.length === 1) {
+        const slide = column.firstElementChild!;
+        slides.append(slide);
+      } else {
+        column.dataset['block'] = root.block.stableId;
+        column.dataset['presentationColumn'] = 'true';
+        slides.append(column);
+      }
     }
   };
   fillSlides();
@@ -231,6 +258,10 @@ export async function presentPage(
     transition: 'slide',
     backgroundTransition: 'fade',
     plugins: [RevealNotes],
+    // La vista general es una previsualización, no una ventana virtualizada:
+    // todas las láminas —incluidas las columnas verticales— deben existir.
+    viewDistance: 1_000,
+    mobileViewDistance: 1_000,
   });
 
   let closed = false;
@@ -277,6 +308,14 @@ export async function presentPage(
   previous.addEventListener('click', () => deck.prev());
   next.addEventListener('click', () => deck.next());
   overview.addEventListener('click', () => deck.toggleOverview());
+  scheme.addEventListener('click', () => {
+    const current = (appearance.scheme?.() ?? document.documentElement.dataset['scheme']) === 'dark'
+      ? 'dark'
+      : 'light';
+    appearance.onScheme?.(current === 'dark' ? 'light' : 'dark');
+    showScheme();
+    void renderMermaid(overlay);
+  });
   notesToggle.addEventListener('click', () => {
     privateNotes.hidden = !privateNotes.hidden;
     notesToggle.setAttribute('aria-pressed', String(!privateNotes.hidden));
@@ -317,8 +356,13 @@ export async function presentPage(
   addEventListener('keydown', onKey, true);
   document.documentElement.classList.add('presenting');
   await deck.initialize();
-  const initialIndex = initialBlock === null ? -1 : roots.findIndex((root) => root.block.stableId === initialBlock);
-  if (initialIndex >= 0) deck.slide(initialIndex);
+  if (initialBlock !== null) {
+    const initial = deck.getSlides().find((slide) => slide.dataset['block'] === initialBlock);
+    if (initial !== undefined) {
+      const indices = deck.getIndices(initial);
+      deck.slide(indices.h, indices.v);
+    }
+  }
   deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); });
   updateNotes();
   writeDeepLink();

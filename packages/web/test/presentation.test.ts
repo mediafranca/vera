@@ -46,6 +46,20 @@ describe('páginas que se pueden presentar', () => {
     assert.match(source, /center: false/);
     assert.match(styles, /\.vera-presentation \.reveal \.slides section \{[\s\S]*?overflow-y: auto;[\s\S]*?touch-action: pan-y;/);
   });
+
+  it('conserva el outline como columnas verticales y carga todo el overview', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    assert.match(source, /dataset\['presentationColumn'\] = 'true'/);
+    assert.match(source, /viewDistance: 1_000/);
+    assert.match(source, /mobileViewDistance: 1_000/);
+  });
+
+  it('lleva el cambio claro y oscuro a la barra superior', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    assert.match(source, /toolbar\.append\([^\n]*scheme/);
+    assert.match(source, /Cambiar a modo claro/);
+    assert.match(source, /Cambiar a modo oscuro/);
+  });
 });
 
 describe('hojas gobernadas de presentación', () => {

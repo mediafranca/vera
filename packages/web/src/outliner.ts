@@ -228,6 +228,10 @@ function wireExternalLinks(container: HTMLElement): void {
 
 export interface OutlinerCallbacks {
   onNavigate(title: string): void;
+  /** Apariencia compartida con el presentador, para que no invente una segunda
+   * preferencia local mientras ocupa toda la pantalla. */
+  scheme?(): 'light' | 'dark';
+  onScheme?(scheme: 'light' | 'dark'): void;
   /** El índice que ya vive en el taller. Autocompletar una página no consulta
    *  el corpus por cada tecla: escribir tiene que seguir a la mano. */
   pageTitles?(): readonly PageSummary[];
@@ -3275,7 +3279,10 @@ export function renderOutliner(
     present.textContent = declaredPresentation ? 'Presentar' : 'Ver como presentación';
     present.hidden = !declaredPresentation;
     present.addEventListener('click', () => {
-      void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null);
+      void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null, {
+        scheme: callbacks.scheme,
+        onScheme: callbacks.onScheme,
+      });
       delete present.dataset['initialBlock'];
     });
     heading.append(present);
@@ -3988,7 +3995,10 @@ export function renderOutliner(
         {
           label: 'Ver como presentación',
           icon: 'eye',
-          run: () => void presentPage(page, options, callbacks.onNavigate),
+          run: () => void presentPage(page, options, callbacks.onNavigate, null, {
+            scheme: callbacks.scheme,
+            onScheme: callbacks.onScheme,
+          }),
         },
         {
           label: 'Copiar el Markdown de la página',
@@ -4089,7 +4099,10 @@ export function renderOutliner(
       {
         label: isPresentation(page.properties, corpusNames().kind) ? 'Presentar' : 'Ver como presentación',
         icon: 'eye',
-        run: () => void presentPage(page, options, callbacks.onNavigate),
+        run: () => void presentPage(page, options, callbacks.onNavigate, null, {
+          scheme: callbacks.scheme,
+          onScheme: callbacks.onScheme,
+        }),
       },
       {
         label: 'Copiar el Markdown de la página',
