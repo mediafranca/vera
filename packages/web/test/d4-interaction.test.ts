@@ -17,13 +17,15 @@ describe('interacción de D4', () => {
     assert.doesNotMatch(styles, /@keyframes\s+d4-arrive/);
   });
 
-  it('materializa la matriz de las tarjetas para que WebKit mueva también su HTML', () => {
+  it('usa una sola cámara viewBox en iOS y conserva la matriz SVG de escritorio', () => {
     assert.match(renderer, /world\.selectAll<SVGGraphicsElement, unknown>\('\.d4-branch, \.d4-branch-hit, \.d4-thread, \.d4-thread-stop'\)[\s\S]*?\.attr\('transform', viewport\.toString\(\)\)/);
     assert.doesNotMatch(renderer, /world\.attr\('transform'/);
-    assert.match(renderer, /viewport\.applyX\(entry\.x\)/);
-    assert.match(renderer, /viewport\.applyY\(entry\.y\)/);
-    assert.match(renderer, /entry\.card\.style\('transform', `scale\(\$\{viewport\.k\}\)`\)/);
-    assert.doesNotMatch(renderer, /entry\.foreign\.attr\('transform'/);
+    assert.match(renderer, /const iosWebKit = \/iP/);
+    assert.match(renderer, /if \(iosWebKit\) \{[\s\S]*?svg\.attr\([\s\S]*?'viewBox'/);
+    assert.match(renderer, /-viewport\.x \/ viewport\.k/);
+    assert.match(renderer, /width \/ viewport\.k/);
+    assert.match(renderer, /if \(iosWebKit\) return;[\s\S]*?entry\.foreign\.attr\('transform', viewport\.toString\(\)\)/);
+    assert.doesNotMatch(renderer, /entry\.card\.style\('transform'/);
     assert.match(renderer, /style\('height', `\$\{dim\.h\}px`\)/);
     assert.match(renderer, /svg\.append\('foreignObject'\)[\s\S]*?\.attr\('class', 'd4-card'\)/);
     assert.doesNotMatch(renderer, /world\.append\('foreignObject'\)/);

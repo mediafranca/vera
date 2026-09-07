@@ -214,9 +214,10 @@ export function renderGraphD4(
     .attr('viewBox', `0 0 ${width} ${height}`)
     .attr('role', 'img')
     .attr('aria-label', 'D4: mapa dendrítico por grados');
-  // Safari/iOS no compone de manera fiable un transform SVG aplicado a un
-  // foreignObject. La geometría conserva la matriz SVG; las tarjetas mueven su
-  // viewport con coordenadas y escalan el HTML interior mediante CSS.
+  const iosWebKit = /iP(?:ad|hone|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // En iOS la cámara será el viewBox: una sola transformación nativa mueve
+  // geometría y foreignObject. El escritorio conserva su ruta SVG ya probada.
   const world = svg.append('g').attr('class', 'd4-geometry');
   const defs = svg.append('defs');
   defs.append('marker')
@@ -239,19 +240,13 @@ export function renderGraphD4(
     card: d3.Selection<HTMLElement, unknown, null, undefined>;
   }> = [];
   const positionViewportCards = (): void => {
+    if (iosWebKit) return;
     for (const entry of viewportCards) {
-      // WebKit/iOS deja a veces inmóvil la capa HTML de un foreignObject cuando
-      // sólo cambia su atributo transform. Materializamos la matriz en su caja
-      // SVG y escalamos el artículo: título, franjas y fondo viajan juntos.
-      entry.foreign
-        .attr('x', viewport.applyX(entry.x))
-        .attr('y', viewport.applyY(entry.y))
-        .attr('width', entry.width * viewport.k)
-        .attr('height', entry.height * viewport.k);
-      entry.card.style('transform', `scale(${viewport.k})`);
+      entry.foreign.attr('transform', viewport.toString());
     }
   };
   const positionViewportGeometry = (): void => {
+    if (iosWebKit) return;
     // No confiar tampoco en el repintado de un transform heredado por el <g>:
     // Safari móvil puede conservar sus hijos en la posición anterior.
     world.selectAll<SVGGraphicsElement, unknown>('.d4-branch, .d4-branch-hit, .d4-thread, .d4-thread-stop')
@@ -271,6 +266,16 @@ export function renderGraphD4(
     .clickDistance(8)
     .on('zoom', (event) => {
       viewport = event.transform;
+      if (iosWebKit) {
+        // `transform` sobre foreignObject y CSS sobre su HTML forman dos capas
+        // de composición en WebKit. Cambiar la cámara evita ese parallax: nada
+        // dentro del dibujo recibe una segunda transformación.
+        svg.attr(
+          'viewBox',
+          `${-viewport.x / viewport.k} ${-viewport.y / viewport.k} ` +
+          `${width / viewport.k} ${height / viewport.k}`,
+        );
+      }
       positionViewportGeometry();
       positionViewportCards();
     }));
@@ -637,6 +642,7 @@ export function renderGraphD4(
       const nextHeight = Math.min(maximum, required);
       viewportEntry.y = y - nextHeight / 2;
       viewportEntry.height = nextHeight;
+      foreign.attr('y', viewportEntry.y).attr('height', viewportEntry.height);
       positionViewportCards();
       card.style('height', `${nextHeight}px`);
     };
