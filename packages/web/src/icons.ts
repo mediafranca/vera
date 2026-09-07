@@ -164,6 +164,13 @@ const SHAPES = {
     '<path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/>' +
     '<path d="M3 6l0 13M12 6l0 13M21 6l0 13"/>',
 
+  // Tabler book: un volumen cerrado que sale del sistema como documento.
+  // `spread` queda reservado a la interfaz híbrida, que sí abre dos hojas.
+  book:
+    '<path d="M3 19a2 2 0 0 0 2 2h14"/>' +
+    '<path d="M3 19v-14a2 2 0 0 1 2 -2h14v18"/>' +
+    '<path d="M13 13h4M13 17h4"/>',
+
   // Salir hacia allá. En el mapa, la flecha que aparece al lado de un nombre:
   // señalar un nodo es mirarlo, y esto es lo que hay que pulsar para entrar.
   'arrow-up-right':

@@ -2430,7 +2430,7 @@ function drawTrail(): void {
     const booklet = document.createElement('button');
     booklet.type = 'button';
     booklet.className = 'trail-booklet';
-    booklet.innerHTML = icon('spread');
+    booklet.innerHTML = icon('book');
     booklet.title = 'exportar lo andado como un solo PDF en formato librillo';
     booklet.setAttribute('aria-label', 'exportar el rastro como librillo PDF');
     booklet.addEventListener('click', () => void exportTraceBooklet());
