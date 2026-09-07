@@ -232,13 +232,23 @@ export function renderGraphD4(
   let viewport = d3.zoomIdentity;
   const viewportCards: Array<{
     foreign: d3.Selection<SVGForeignObjectElement, unknown, null, undefined>;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    card: d3.Selection<HTMLElement, unknown, null, undefined>;
   }> = [];
   const positionViewportCards = (): void => {
     for (const entry of viewportCards) {
-      // Una sola matriz SVG, aplicada directamente al foreignObject. Safari
-      // separa con facilidad la capa HTML si se combinan x/y SVG con scale CSS;
-      // ésa era la fuente del pan inmóvil y del pseudo-parallax en la PWA.
-      entry.foreign.attr('transform', viewport.toString());
+      // WebKit/iOS deja a veces inmóvil la capa HTML de un foreignObject cuando
+      // sólo cambia su atributo transform. Materializamos la matriz en su caja
+      // SVG y escalamos el artículo: título, franjas y fondo viajan juntos.
+      entry.foreign
+        .attr('x', viewport.applyX(entry.x))
+        .attr('y', viewport.applyY(entry.y))
+        .attr('width', entry.width * viewport.k)
+        .attr('height', entry.height * viewport.k);
+      entry.card.style('transform', `scale(${viewport.k})`);
     }
   };
   const positionViewportGeometry = (): void => {
@@ -471,7 +481,14 @@ export function renderGraphD4(
       .style('height', `${dim.h}px`)
       .style('transform-origin', '0 0')
       .style('font-family', options.fontFamily ?? 'system-ui, sans-serif');
-    viewportCards.push({ foreign });
+    viewportCards.push({
+      foreign,
+      x: pos.x - dim.w / 2,
+      y: pos.y - dim.h / 2,
+      width: dim.w,
+      height: dim.h,
+      card,
+    });
     positionViewportCards();
     const focusNow = (): void => {
       // La navegación trae después el nuevo vecindario, pero el gesto no debe
@@ -603,13 +620,24 @@ export function renderGraphD4(
       .style('height', `${relationHeight}px`)
       .style('transform-origin', '0 0')
       .style('font-family', options.fontFamily ?? 'system-ui, sans-serif');
-    viewportCards.push({ foreign });
+    const viewportEntry = {
+      foreign,
+      x: x - relationWidth / 2,
+      y: y - relationHeight / 2,
+      width: relationWidth,
+      height: relationHeight,
+      card,
+    };
+    viewportCards.push(viewportEntry);
+    positionViewportCards();
     const resizeRelation = (): void => {
       if (!expanded) return;
       const maximum = height * 0.8;
       const required = Math.max(118, card.node()?.scrollHeight ?? relationHeight);
       const nextHeight = Math.min(maximum, required);
-      foreign.attr('y', y - nextHeight / 2).attr('height', nextHeight);
+      viewportEntry.y = y - nextHeight / 2;
+      viewportEntry.height = nextHeight;
+      positionViewportCards();
       card.style('height', `${nextHeight}px`);
     };
     const stopMapGesture = (event: Event): void => event.stopPropagation();

@@ -77,6 +77,7 @@ import {
   workspaceOf,
   type Store,
 } from '@vera/store';
+import { composeBooklet, composePaper, toPdf } from './paper.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
@@ -118,7 +119,6 @@ import {
 import { relevantConcepts, type ConceptCandidate } from './ontology-context.ts';
 import { LOCAL_MODEL, LOCAL_MODEL_NAME, promptFor, readAnswer } from './answer.ts';
 import { formalizationOf, mentionsOf } from './mentions.ts';
-import { composePaper, toPdf } from './paper.ts';
 import { CLIENT_KEY, MCP_KIND, mcpPage } from './mcp-page.ts';
 import { mcpConnect } from './mcp-connect.ts';
 import {
@@ -5191,6 +5191,71 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 ),
           })),
         );
+        return;
+      }
+
+      /* El rastro hecho librillo: cada `page` es una parada y conserva el orden. */
+      if (path === '/booklet/paper' || path === '/booklet/pdf') {
+        const asPdf = path.endsWith('/pdf');
+        const ids = url.searchParams.getAll('page').slice(0, 64);
+        const bookletPages = ids.map((id) => graph.page(id) ?? graph.pageTitled(id));
+        if (ids.length === 0 || bookletPages.some((page) => page === undefined)) {
+          send(response, 404, { error: 'el recorrido contiene una página que ya no existe' });
+          return;
+        }
+        const found = bookletPages.filter((page): page is NonNullable<typeof page> => page !== undefined);
+        if (publicAccess && found.some((page) => !isPublicPage(page.id))) {
+          send(response, 404, { error: 'el recorrido contiene una página que no está publicada' });
+          return;
+        }
+        const title = url.searchParams.get('title')?.trim() || 'Recorrido de Vera';
+        note(asPdf ? 'GET /booklet/pdf' : 'GET /booklet/paper', found[0]!.id, 0, found.map((page) => page.id));
+        if (!asPdf) {
+          void composeBooklet({
+            title,
+            pages: found.map((page) => ({
+              title: page.title,
+              blocks: graph.blocksOf(page.id).map((block) => ({
+                stableId: block.stableId, parent: block.parent,
+                position: block.position, content: block.content,
+              })),
+              assets: assetsOf(page.id),
+              embedHosts: embedHosts(),
+              indent: url.searchParams.get('sangria') !== null,
+              resolveBlock: (stableId) => {
+                const cited = graph.block(stableId);
+                if (cited === undefined || (publicAccess && !isPublicPage(cited.page))) return null;
+                return { page: graph.page(cited.page)?.title ?? cited.page, excerpt: cited.content };
+              },
+            })),
+          }).then((html) => {
+            const body = Buffer.from(html, 'utf8');
+            response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': body.byteLength });
+            response.end(body);
+          }, (error: unknown) => send(response, 500, {
+            error: error instanceof Error ? error.message : 'no se pudo componer el librillo',
+          }));
+          return;
+        }
+        if (publicAccess && options.publicPreviewPort === undefined) {
+          send(response, 503, { error: 'la salida pública para componer PDF no está configurada' });
+          return;
+        }
+        const port = publicAccess ? options.publicPreviewPort! : (request.socket.localPort ?? 4173);
+        const query = new URLSearchParams();
+        for (const page of found) query.append('page', page.id);
+        query.set('title', title);
+        if (url.searchParams.get('sangria') !== null) query.set('sangria', '1');
+        const where = `http://127.0.0.1:${port}/booklet/paper?${query.toString()}`;
+        void toPdf(where).then((made) => {
+          if ('error' in made) return send(response, 503, made);
+          response.writeHead(200, {
+            'content-type': 'application/pdf',
+            'content-length': made.pdf.byteLength,
+            'content-disposition': `attachment; filename="recorrido-vera.pdf"; filename*=UTF-8''${encodeURIComponent(`${title}.pdf`)}`,
+          });
+          response.end(made.pdf);
+        });
         return;
       }
 

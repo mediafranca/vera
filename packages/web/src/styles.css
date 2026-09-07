@@ -1500,6 +1500,7 @@ button { touch-action: manipulation; }
    último es cuadrado porque contiene un icono en vez de un título. */
 .trail-pill,
 .trail-keep,
+.trail-booklet,
 .trail-clear {
   box-sizing: border-box;
   height: 1.4rem;
@@ -7740,6 +7741,7 @@ html[data-working-slow='true']::after {
 }
 
 .trail-keep .icon,
+.trail-booklet .icon,
 .trail-clear .icon {
   width: 0.95rem;
   height: 0.95rem;

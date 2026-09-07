@@ -17,12 +17,13 @@ describe('interacción de D4', () => {
     assert.doesNotMatch(styles, /@keyframes\s+d4-arrive/);
   });
 
-  it('sincroniza geometría y tarjetas con la misma matriz directa en iOS', () => {
+  it('materializa la matriz de las tarjetas para que WebKit mueva también su HTML', () => {
     assert.match(renderer, /world\.selectAll<SVGGraphicsElement, unknown>\('\.d4-branch, \.d4-branch-hit, \.d4-thread, \.d4-thread-stop'\)[\s\S]*?\.attr\('transform', viewport\.toString\(\)\)/);
     assert.doesNotMatch(renderer, /world\.attr\('transform'/);
-    assert.match(renderer, /entry\.foreign\.attr\('transform', viewport\.toString\(\)\)/);
-    assert.doesNotMatch(renderer, /viewport\.applyX\(entry\.x\)/);
-    assert.doesNotMatch(renderer, /style\('transform', `scale\(\$\{viewport\.k\}\)`\)/);
+    assert.match(renderer, /viewport\.applyX\(entry\.x\)/);
+    assert.match(renderer, /viewport\.applyY\(entry\.y\)/);
+    assert.match(renderer, /entry\.card\.style\('transform', `scale\(\$\{viewport\.k\}\)`\)/);
+    assert.doesNotMatch(renderer, /entry\.foreign\.attr\('transform'/);
     assert.match(renderer, /style\('height', `\$\{dim\.h\}px`\)/);
     assert.match(renderer, /svg\.append\('foreignObject'\)[\s\S]*?\.attr\('class', 'd4-card'\)/);
     assert.doesNotMatch(renderer, /world\.append\('foreignObject'\)/);

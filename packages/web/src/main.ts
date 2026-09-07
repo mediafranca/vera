@@ -2427,6 +2427,15 @@ function drawTrail(): void {
   }
 
   if (workspace.trace.length > 0) {
+    const booklet = document.createElement('button');
+    booklet.type = 'button';
+    booklet.className = 'trail-booklet';
+    booklet.innerHTML = icon('spread');
+    booklet.title = 'exportar lo andado como un solo PDF en formato librillo';
+    booklet.setAttribute('aria-label', 'exportar el rastro como librillo PDF');
+    booklet.addEventListener('click', () => void exportTraceBooklet());
+    trail.append(booklet);
+
     const clear = document.createElement('button');
     clear.type = 'button';
     clear.className = 'trail-clear';
@@ -2441,6 +2450,32 @@ function drawTrail(): void {
       void drawGraph();
     });
     trail.append(clear);
+  }
+}
+
+/** Descarga las paradas del breadcrumb, en su orden visible, como un documento. */
+async function exportTraceBooklet(): Promise<void> {
+  const ids = workspace.trace.map((step) => step.page);
+  if (ids.length === 0) return;
+  const query = new URLSearchParams();
+  for (const id of ids) query.append('page', id);
+  query.set('title', 'Recorrido de Vera');
+  notice('componiendo el librillo…');
+  try {
+    const answer = await fetch(`/booklet/pdf?${query.toString()}`);
+    if (!answer.ok) {
+      const said = await answer.json().catch(() => ({})) as { error?: string };
+      notice(said.error ?? 'no se pudo componer el librillo');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(await answer.blob());
+    link.download = 'Recorrido de Vera.pdf';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    notice('librillo descargado');
+  } catch {
+    notice('no se pudo componer el librillo');
   }
 }
 

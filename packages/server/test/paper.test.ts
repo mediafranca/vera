@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { diagramsIn, paperHtml } from '../src/paper.ts';
+import { bookletHtml, diagramsIn, paperHtml } from '../src/paper.ts';
 
 const bloque = (stableId: string, parent: string | null, position: number, content: string) => ({
   stableId,
@@ -120,6 +120,21 @@ describe('paperHtml', () => {
     const html = paperHtml({ title: '<script>alert(1)</script>', blocks: [] });
     assert.ok(!html.includes('<script>alert'));
     assert.match(html, /&lt;script&gt;/);
+  });
+});
+
+describe('bookletHtml', () => {
+  it('reúne las páginas en el orden dado y empieza cada una en hoja nueva', () => {
+    const html = bookletHtml({
+      title: 'Un recorrido',
+      pages: [
+        { title: 'Primera', blocks: [bloque('block:1', null, 0, 'uno')] },
+        { title: 'Segunda', blocks: [bloque('block:2', null, 0, 'dos')] },
+      ],
+    });
+    assert.ok(html.indexOf('Primera') < html.indexOf('Segunda'));
+    assert.equal(html.match(/class="paper-chapter"/g)?.length, 2);
+    assert.match(html, /\.paper-chapter \+ \.paper-chapter \{ break-before: page; \}/);
   });
 });
 

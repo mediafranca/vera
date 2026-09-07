@@ -83,6 +83,11 @@ export interface PaperOptions {
   indent?: boolean;
 }
 
+export interface BookletOptions {
+  title: string;
+  pages: readonly PaperOptions[];
+}
+
 /** El orden de lectura: cada bloque después de su padre, y los hijos por posición. */
 function inReadingOrder(blocks: readonly PaperBlock[]): { block: PaperBlock; depth: number }[] {
   const byParent = new Map<string | null, PaperBlock[]>();
@@ -581,6 +586,21 @@ export function paperHtml(options: PaperOptions): string {
   );
 }
 
+/** Varias páginas, en el orden de un recorrido, dentro de un solo cuadernillo. */
+export function bookletHtml(options: BookletOptions): string {
+  const chapters = options.pages.map((page) => {
+    const html = paperHtml(page);
+    const body = /<body>\n([\s\S]*)\n<\/body>/.exec(html)?.[1] ?? '';
+    return `<section class="paper-chapter">${body}</section>`;
+  }).join('\n');
+  return (
+    `<!doctype html>\n<html lang="es">\n<head>\n<meta charset="utf-8">\n` +
+    `<title>${escapeHtml(options.title)}</title>\n<style>${STYLE}\n` +
+    `.paper-chapter + .paper-chapter { break-before: page; }\n</style>\n</head>\n` +
+    `<body>\n${chapters}\n</body>\n</html>\n`
+  );
+}
+
 export interface PaperPresence {
   ready: boolean;
   binary: string | null;
@@ -763,6 +783,21 @@ export async function composePaper(
   const sources = diagramsIn(first);
   if (sources.length === 0) return first;
   return paperHtml({ ...options, diagrams: await drawDiagrams(sources, how) });
+}
+
+/** Compone de una vez todos los diagramas que aparecen en un librillo. */
+export async function composeBooklet(
+  options: BookletOptions,
+  how: { timeoutMs?: number; dark?: boolean } = {},
+): Promise<string> {
+  const first = bookletHtml(options);
+  const sources = diagramsIn(first);
+  if (sources.length === 0) return first;
+  const diagrams = await drawDiagrams(sources, how);
+  return bookletHtml({
+    ...options,
+    pages: options.pages.map((page) => ({ ...page, diagrams })),
+  });
 }
 
 /**
