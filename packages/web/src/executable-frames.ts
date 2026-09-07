@@ -26,7 +26,15 @@ function appearance(): { scheme: 'light' | 'dark'; tokens: Record<string, string
 }
 
 function send(frame: HTMLIFrameElement): void {
-  frame.contentWindow?.postMessage({ type: MESSAGE, appearance: appearance() }, '*');
+  const slide = frame.closest<HTMLElement>('.vera-presentation .slides section:not(.stack)');
+  frame.contentWindow?.postMessage({
+    type: MESSAGE,
+    appearance: appearance(),
+    // Fuera del presentador un recinto visible conserva su comportamiento. En
+    // una presentación sólo anima el de la lámina actual; los demás conservan
+    // su último cuadro como miniatura sin quemar Safari por detrás.
+    active: slide === null || slide.classList.contains('present'),
+  }, '*');
 }
 
 let maximized: { figure: HTMLElement; frame: HTMLIFrameElement; button: HTMLButtonElement; overlay: HTMLElement } | null = null;
@@ -78,6 +86,8 @@ export function syncExecutableFrames(): void {
   wireHtmlControls();
   for (const frame of frames()) send(frame);
 }
+
+addEventListener('vera-sync-executable-frames', syncExecutableFrames);
 
 addEventListener('message', (event: MessageEvent<unknown>) => {
   const data = event.data as { type?: unknown; height?: unknown } | null;

@@ -63,6 +63,8 @@ addEventListener('message', event => {
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';
+  if (event.data.active === false) window.noLoop?.();
+  else if (event.data.active === true) window.loop?.();
   report();
 });
 new ResizeObserver(report).observe(document.documentElement);

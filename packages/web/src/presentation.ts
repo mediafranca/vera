@@ -139,6 +139,7 @@ export async function presentPage(
   let roots = treeOf(sourcePage.blocks);
   if (roots.length === 0) return;
   const governedStyle = await presentationStyles(sourcePage);
+  const syncFrames = (): void => { dispatchEvent(new Event('vera-sync-executable-frames')); };
 
   const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
@@ -214,9 +215,10 @@ export async function presentPage(
     slides.replaceChildren();
     for (const root of roots) {
       const column = document.createElement('section');
-      const members = root.children.length === 0
-        ? [root]
-        : [{ ...root, children: [] }, ...root.children];
+      // Una raíz con hijos nombra y ordena una columna; no añade por obligación
+      // una portada antes de su primer contenido. Así una columna cuyo primer
+      // hijo es un iframe empieza efectivamente por el iframe.
+      const members = root.children.length === 0 ? [root] : root.children;
       for (const member of members) {
         const slide = document.createElement('section');
         slide.dataset['block'] = member.block.stableId;
@@ -236,6 +238,8 @@ export async function presentPage(
       } else {
         column.dataset['block'] = root.block.stableId;
         column.dataset['presentationColumn'] = 'true';
+        column.dataset['presentationTitle'] = root.block.content;
+        column.setAttribute('aria-label', root.block.content);
         slides.append(column);
       }
     }
@@ -258,10 +262,6 @@ export async function presentPage(
     transition: 'slide',
     backgroundTransition: 'fade',
     plugins: [RevealNotes],
-    // La vista general es una previsualización, no una ventana virtualizada:
-    // todas las láminas —incluidas las columnas verticales— deben existir.
-    viewDistance: 1_000,
-    mobileViewDistance: 1_000,
   });
 
   let closed = false;
@@ -356,6 +356,16 @@ export async function presentPage(
   addEventListener('keydown', onKey, true);
   document.documentElement.classList.add('presenting');
   await deck.initialize();
+  deck.on('overviewshown', () => {
+    // En lectura corriente los recintos siguen siendo perezosos. Sólo al pedir
+    // la vista general Safari recibe la orden de producir una miniatura de cada
+    // uno; el puente de p5 detiene enseguida los que no están activos.
+    for (const frame of overlay.querySelectorAll<HTMLIFrameElement>('iframe[loading="lazy"]')) {
+      frame.loading = 'eager';
+    }
+    syncFrames();
+  });
+  deck.on('overviewhidden', syncFrames);
   if (initialBlock !== null) {
     const initial = deck.getSlides().find((slide) => slide.dataset['block'] === initialBlock);
     if (initial !== undefined) {
@@ -363,7 +373,7 @@ export async function presentPage(
       deck.slide(indices.h, indices.v);
     }
   }
-  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); });
+  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); syncFrames(); });
   updateNotes();
   writeDeepLink();
   revisionWatch = window.setInterval(() => {
