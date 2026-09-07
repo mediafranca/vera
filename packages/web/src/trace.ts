@@ -161,6 +161,17 @@ export function dropped(trace: readonly TraceStep[], index: number): TraceStep[]
 }
 
 /**
+ * Descarta paradas cuya identidad ya no pertenece al corpus actual.
+ *
+ * El rastro vive en el aparato y puede sobrevivir a una restauración o a la
+ * consolidación de páginas. Una identidad huérfana no debe convertirse en un
+ * nombre `page:…` ni impedir que las demás paradas formen un librillo.
+ */
+export function retainingPages(trace: readonly TraceStep[], pages: ReadonlySet<string>): TraceStep[] {
+  return trace.filter((step) => pages.has(step.page));
+}
+
+/**
  * Mueve un paso a otra posición.
  *
  * @invariant ReorderingDoesNotRewriteWhatHappened: el paso conserva su gesto y su

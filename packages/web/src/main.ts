@@ -67,6 +67,7 @@ import {
   dropped,
   loadTrace,
   movedTo,
+  retainingPages,
   pagesOf,
   saveTrace,
   walked,
@@ -1687,6 +1688,20 @@ function notice(message: string): void {
 const byWeight = (all: PageSummary[]): PageSummary[] =>
   [...all].sort((a, b) => b.linkCount - a.linkCount || b.blockCount - a.blockCount);
 
+/** Repara el rastro local sólo contra un índice canónico recién recibido. */
+function reconcileTrace(all: readonly PageSummary[]): void {
+  const next = retainingPages(workspace.trace, new Set(all.map((page) => page.id)));
+  if (next.length === workspace.trace.length) return;
+  workspace.trace = next;
+  saveTrace(next);
+  // La lista fresca puede llegar después del primer dibujo cuando arrancamos
+  // desde la copia local del índice.
+  if (document.getElementById('map-trail') !== null) {
+    drawTrail();
+    void drawGraph();
+  }
+}
+
 async function loadPages(): Promise<void> {
   /*
    * El índice de la última vez, y sin esperar a nadie.
@@ -1709,6 +1724,7 @@ async function loadPages(): Promise<void> {
       .pages()
       .then((fresh) => {
         pages = byWeight(fresh);
+        reconcileTrace(fresh);
         if (!isAnybody()) void held.keepIndex(fresh);
       })
       .catch(() => undefined);
@@ -1717,6 +1733,7 @@ async function loadPages(): Promise<void> {
 
   try {
     pages = byWeight(await api.pages());
+    reconcileTrace(pages);
     if (!isAnybody()) void held.keepIndex(pages);
     return;
   } catch (error) {
@@ -2455,7 +2472,10 @@ function drawTrail(): void {
 
 /** Descarga las paradas del breadcrumb, en su orden visible, como un documento. */
 async function exportTraceBooklet(): Promise<void> {
-  const ids = workspace.trace.map((step) => step.page);
+  // El botón debe seguir siendo útil aunque se pulse antes de que la
+  // reconciliación asíncrona del índice haya limpiado una parada huérfana.
+  const known = new Set(pages.map((page) => page.id));
+  const ids = workspace.trace.map((step) => step.page).filter((id) => known.has(id));
   if (ids.length === 0) return;
   const query = new URLSearchParams();
   for (const id of ids) query.append('page', id);

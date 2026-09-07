@@ -6,6 +6,7 @@ import {
   dropped,
   loadTrace,
   movedTo,
+  retainingPages,
   saveTrace,
   walked,
   type TraceStep,
@@ -71,6 +72,13 @@ describe('rastro durable y componible', () => {
     const arranged = movedTo(steps, 2, 0);
     assert.equal(arranged[0]?.page, 'c');
     assert.deepEqual(dropped(arranged, 1).map((step) => step.page), ['c', 'b']);
+  });
+
+  it('retira identidades huérfanas sin alterar el orden de las páginas vivas', () => {
+    assert.deepEqual(
+      retainingPages(steps, new Set(['a', 'c'])).map((step) => step.page),
+      ['a', 'c'],
+    );
   });
 
   it('un valor local roto no impide abrir Vera', () => {

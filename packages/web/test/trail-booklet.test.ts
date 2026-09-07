@@ -17,4 +17,9 @@ describe('el rastro hecho librillo', () => {
     assert.match(main, /iosWebKit[\s\S]*?query\.set\('inline', '1'\);[\s\S]*?location\.assign\(`\/booklet\/pdf/);
     assert.match(main, /fetch\(endpoint\)[\s\S]*?document\.body\.append\(link\);[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?URL\.revokeObjectURL/);
   });
+
+  it('conserva el toque del libro dentro de la capa sorda del mapa', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /\.trail-keep,\s*\.trail-booklet,\s*\.trail-clear\s*\{[\s\S]*?pointer-events: auto/);
+  });
 });

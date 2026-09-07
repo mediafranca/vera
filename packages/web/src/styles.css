@@ -7710,6 +7710,7 @@ html[data-working-slow='true']::after {
    corriente sobre el rastro es volver, y promover es el que se hace de vez en
    cuando. */
 .trail-keep,
+.trail-booklet,
 .trail-clear {
   /*
    * La fila del rastro es sorda —`#map-trail` lleva `pointer-events: none` para
@@ -7748,6 +7749,7 @@ html[data-working-slow='true']::after {
 }
 
 .trail-keep:hover,
+.trail-booklet:hover,
 .trail-clear:hover {
   color: var(--accent);
   border-color: var(--accent);
