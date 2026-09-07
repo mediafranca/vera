@@ -6026,29 +6026,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           0,
           hood.nodes.map((node) => node.page),
         );
-        // La forma que ya consumen renderGraph y renderGraph3D de constel.
-        send(response, 200, {
-          nodes: hood.nodes.map((node) => ({
-            id: node.page,
-            name: graph.page(node.page)?.title ?? node.page,
-            central: node.distance === 0,
-            distance: node.distance,
-            trail: trailOf(node.page) !== null,
-            degree: node.degree,
-            blockCount: node.blockCount,
-            lines: graph.blocksOf(node.page).map((block) => ({
-              block: block.stableId,
-              content: block.content,
-              gloss: graph.gloss(block.stableId)?.content ?? null,
-            })),
-          })),
-          links: [
-            ...hood.edges.map((edge) => {
-            const written = graph.links().find((link) =>
-              link.target !== null && link.sourcePage === edge.source && link.target === edge.target,
-            ) ?? graph.links().find((link) =>
-              link.target !== null && link.sourcePage === edge.target && link.target === edge.source,
-            );
+        /*
+         * El mapa no es una descarga encubierta de 145 páginas.
+         *
+         * D4 sólo proyecta el bloque que origina cada arista visible. Antes se
+         * enviaban todos los bloques de cada vecino (2,8 MB en un caso real) y,
+         * además, se recorrían todos los enlaces dos veces por arista. El índice
+         * por par vuelve lineal la búsqueda y `neededBlocks` recorta la carga a
+         * las frases que efectivamente sostienen este mapa.
+         */
+        const linksByPair = new Map<string, ReturnType<typeof graph.links>[number]>();
+        for (const link of graph.links()) {
+          if (link.target === null) continue;
+          linksByPair.set(`${link.sourcePage}\u0000${link.target}`, link);
+        }
+        const referenceLinks = hood.edges.map((edge) => {
+            const written = linksByPair.get(`${edge.source}\u0000${edge.target}`) ??
+              linksByPair.get(`${edge.target}\u0000${edge.source}`);
               return {
               source: written?.sourcePage ?? edge.source,
               target: written?.target ?? edge.target,
@@ -6060,8 +6054,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 ? 'gloss'
                 : 'reference',
               };
-            }),
-            ...graph.crossings()
+            });
+        const crossingLinks = graph.crossings()
               .filter((crossing) =>
                 crossing.toPage !== null &&
                 hood.nodes.some((node) => node.page === crossing.fromPage) &&
@@ -6082,8 +6076,30 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 targetTitle: graph.page(crossing.toPage!)?.title ?? crossing.toPage!,
                 label: crossing.term,
                 explanation: crossing.blocks.map((block) => block.content).join('\n'),
+              }));
+        const responseLinks = [...referenceLinks, ...crossingLinks];
+        const neededBlocks = new Set(
+          referenceLinks.flatMap((link) => link.block === null ? [] : [link.block]),
+        );
+        // La forma que ya consumen renderGraph, renderGraph3D y D4.
+        send(response, 200, {
+          nodes: hood.nodes.map((node) => ({
+            id: node.page,
+            name: graph.page(node.page)?.title ?? node.page,
+            central: node.distance === 0,
+            distance: node.distance,
+            trail: trailOf(node.page) !== null,
+            degree: node.degree,
+            blockCount: node.blockCount,
+            lines: graph.blocksOf(node.page)
+              .filter((block) => neededBlocks.has(block.stableId))
+              .map((block) => ({
+                block: block.stableId,
+                content: block.content,
+                gloss: graph.gloss(block.stableId)?.content ?? null,
               })),
-          ],
+          })),
+          links: responseLinks,
         });
         return;
       }
