@@ -2460,9 +2460,32 @@ async function exportTraceBooklet(): Promise<void> {
   const query = new URLSearchParams();
   for (const id of ids) query.append('page', id);
   query.set('title', 'Recorrido de Vera');
+  const endpoint = `/booklet/pdf?${query.toString()}`;
   notice('componiendo el librillo…');
+
+  /*
+   * Safari móvil —y especialmente una PWA instalada— puede descartar una
+   * descarga iniciada después de un `await`, porque para entonces ya perdió
+   * la activación del gesto. Entrégale el endpoint en un enlace real mientras
+   * el click todavía está activo; el visor de iOS se ocupa del PDF cuando el
+   * servidor termina de componerlo. Escritorio conserva la descarga con blob,
+   * que permite informar los errores dentro de Vera.
+   */
+  const iosWebKit = /iP(?:ad|hone|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (iosWebKit) {
+    const link = document.createElement('a');
+    link.href = endpoint;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    return;
+  }
+
   try {
-    const answer = await fetch(`/booklet/pdf?${query.toString()}`);
+    const answer = await fetch(endpoint);
     if (!answer.ok) {
       const said = await answer.json().catch(() => ({})) as { error?: string };
       notice(said.error ?? 'no se pudo componer el librillo');
@@ -2471,8 +2494,12 @@ async function exportTraceBooklet(): Promise<void> {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(await answer.blob());
     link.download = 'Recorrido de Vera.pdf';
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 60_000);
     notice('librillo descargado');
   } catch {
     notice('no se pudo componer el librillo');

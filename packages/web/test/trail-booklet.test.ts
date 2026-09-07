@@ -10,6 +10,11 @@ describe('el rastro hecho librillo', () => {
     assert.match(main, /booklet\.innerHTML = icon\('book'\)/);
     assert.match(main, /workspace\.trace\.map\(\(step\) => step\.page\)/);
     assert.match(main, /query\.append\('page', id\)/);
-    assert.match(main, /fetch\(`\/booklet\/pdf\?\$\{query\.toString\(\)\}`\)/);
+    assert.match(main, /endpoint = `\/booklet\/pdf\?\$\{query\.toString\(\)\}`/);
+  });
+
+  it('conserva la activación del gesto en iOS y no revoca prematuramente el blob en escritorio', () => {
+    assert.match(main, /iosWebKit[\s\S]*?link\.href = endpoint;[\s\S]*?document\.body\.append\(link\);[\s\S]*?link\.click\(\)/);
+    assert.match(main, /fetch\(endpoint\)[\s\S]*?document\.body\.append\(link\);[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?URL\.revokeObjectURL/);
   });
 });
