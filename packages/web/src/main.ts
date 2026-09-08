@@ -2294,9 +2294,10 @@ async function drawGraph(): Promise<void> {
             page: string,
             parent: string | null,
             position: number,
+            content = '',
           ): Promise<boolean> => {
             const result = await api.submit({
-              kind: 'create_block', page, crossing, parent, position, content: '',
+              kind: 'create_block', page, crossing, parent, position, content,
             });
             if (result.status === 'rejected') {
               notice(`No se pudo añadir el bloque: ${result.reason}`);

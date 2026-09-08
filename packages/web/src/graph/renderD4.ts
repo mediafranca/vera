@@ -11,7 +11,13 @@ let focusedRelation: string | null = null;
 
 interface RelationActions {
   editBlock?: (block: string, content: string) => Promise<boolean>;
-  createBlock?: (crossing: string, page: string, parent: string | null, position: number) => Promise<boolean>;
+  createBlock?: (
+    crossing: string,
+    page: string,
+    parent: string | null,
+    position: number,
+    content?: string,
+  ) => Promise<boolean>;
   createRelation?: (fromPage: string, toPage: string) => Promise<string | null>;
   refresh?: () => Promise<void>;
 }
@@ -156,7 +162,37 @@ export function renderGraphD4(
   // dirección general sin apilar cajas ni depender de una simulación animada.
   const anchors = new Map([...held].map(([id, position]) => [id, { ...position }]));
   const movable = data.nodes.filter((node) => !node.central);
-  for (let pass = 0; pass < 96; pass += 1) {
+  const columnOf = new Map<string, number>();
+  for (const [column, nodes] of columns) for (const node of nodes) columnOf.set(node.id, column);
+  const nodeById = new Map(data.nodes.map((node) => [node.id, node]));
+  // Los enlaces operan como resortes, pero no deciden por sí solos el orden de
+  // lectura. Acercan verticalmente aquello que se relaciona y corrigen sólo una
+  // fracción de la distancia horizontal; las anclas de grado mantienen el flujo
+  // de izquierda a derecha. La simulación es finita y determinista: no deja un
+  // `requestAnimationFrame` vivo en mapas grandes.
+  for (let pass = 0; pass < 144; pass += 1) {
+    for (const link of data.links) {
+      const sourceNode = nodeById.get(endpoint(link.source));
+      const targetNode = nodeById.get(endpoint(link.target));
+      if (sourceNode === undefined || targetNode === undefined) continue;
+      const source = held.get(sourceNode.id)!;
+      const target = held.get(targetNode.id)!;
+      const sourceColumn = columnOf.get(sourceNode.id) ?? 0;
+      const targetColumn = columnOf.get(targetNode.id) ?? sourceColumn + 1;
+      const direction = Math.sign(targetColumn - sourceColumn) || 1;
+      const desiredX = Math.max(1, Math.abs(targetColumn - sourceColumn)) * columnGap * direction;
+      const xError = (target.x - source.x) - desiredX;
+      const yError = target.y - source.y;
+      const spring = link.kind === 'crossing' ? 0.018 : 0.009;
+      if (!sourceNode.central) {
+        source.x += xError * spring * 0.22;
+        source.y += yError * spring;
+      }
+      if (!targetNode.central) {
+        target.x -= xError * spring * 0.22;
+        target.y -= yError * spring;
+      }
+    }
     for (let left = 0; left < data.nodes.length; left += 1) {
       const aNode = data.nodes[left]!;
       const a = held.get(aNode.id)!;
@@ -186,8 +222,8 @@ export function renderGraphD4(
     for (const node of movable) {
       const position = held.get(node.id)!;
       const anchor = anchors.get(node.id)!;
-      position.x += (anchor.x - position.x) * 0.055;
-      position.y += (anchor.y - position.y) * 0.018;
+      position.x += (anchor.x - position.x) * 0.048;
+      position.y += (anchor.y - position.y) * 0.012;
     }
   }
 
@@ -702,6 +738,30 @@ export function renderGraphD4(
       }
     };
     drawBlocks(null, 0);
+    if (blocks.length === 0 && options.relations?.createBlock !== undefined) {
+      const empty = outline.append<HTMLTextAreaElement>('textarea')
+        .attr('class', 'd4-relation-empty')
+        .attr('aria-label', 'Escribir la relación')
+        .attr('placeholder', 'Escribe qué relación hay entre estas páginas…')
+        .attr('rows', 3);
+      let saving = false;
+      const saveFirstBlock = async (): Promise<void> => {
+        const content = empty.property('value').trim();
+        if (saving || content === '') return;
+        saving = true;
+        empty.property('disabled', true);
+        const saved = await options.relations!.createBlock!(crossing, source.id, null, 0, content);
+        if (!saved) {
+          saving = false;
+          empty.property('disabled', false).node()?.focus();
+        }
+      };
+      empty.on('blur', () => void saveFirstBlock());
+      // El editor aparece como consecuencia directa del toque en el cable. El
+      // foco diferido espera a que el foreignObject entre al árbol de WebKit.
+      window.setTimeout(() => empty.node()?.focus(), 0);
+      resizeRelation();
+    }
     if (options.relations?.createBlock !== undefined) {
       card.append('button')
         .attr('type', 'button')

@@ -1337,6 +1337,22 @@ button { touch-action: manipulation; }
   white-space: nowrap;
 }
 .d4-relation-outline { padding: 0.55rem 0.55rem 0.25rem; }
+.d4-relation-empty {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 5.5rem;
+  resize: vertical;
+  padding: 0.6rem 0.65rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--rule));
+  border-radius: 0.45rem;
+  font: 0.92rem/1.45 var(--font-body);
+}
+.d4-relation-empty:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .d4-relation-block {
   display: grid;
   grid-template-columns: 0.75rem minmax(0, 1fr);

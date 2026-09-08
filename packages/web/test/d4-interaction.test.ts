@@ -81,10 +81,12 @@ describe('interacción de D4', () => {
 
   it('relaja las columnas como anclas blandas y evita colisiones entre tarjetas', () => {
     assert.match(renderer, /const anchors = new Map/);
-    assert.match(renderer, /for \(let pass = 0; pass < 96; pass \+= 1\)/);
+    assert.match(renderer, /for \(let pass = 0; pass < 144; pass \+= 1\)/);
+    assert.match(renderer, /const spring = link\.kind === 'crossing' \? 0\.018 : 0\.009/);
+    assert.match(renderer, /const desiredX =/);
     assert.match(renderer, /const overlapX =/);
     assert.match(renderer, /const overlapY =/);
-    assert.match(renderer, /position\.x \+= \(anchor\.x - position\.x\) \* 0\.055/);
+    assert.match(renderer, /position\.x \+= \(anchor\.x - position\.x\) \* 0\.048/);
   });
 
   it('declara la dirección y permite abrir incluso una relación vacía desde el cable', () => {
@@ -101,6 +103,14 @@ describe('interacción de D4', () => {
     assert.match(renderer, /drawBlocks\(block\.stableId, depth \+ 1\)/);
     assert.match(renderer, /options\.relations\.editBlock\(block\.stableId, content\)/);
     assert.match(renderer, /options\.relations!\.createBlock!\(crossing, source\.id, null, roots\.length\)/);
+  });
+
+  it('abre un editor enfocado incluso cuando la conectiva todavía no tiene texto', () => {
+    assert.match(renderer, /if \(blocks\.length === 0 && options\.relations\?\.createBlock !== undefined\)/);
+    assert.match(renderer, /attr\('class', 'd4-relation-empty'\)/);
+    assert.match(renderer, /createBlock!\(crossing, source\.id, null, 0, content\)/);
+    assert.match(renderer, /window\.setTimeout\(\(\) => empty\.node\(\)\?\.focus\(\), 0\)/);
+    assert.match(styles, /\.d4-relation-empty\s*\{/);
   });
 
   it('dibuja el recorrido completo como hilo ordenado y no como aristas nuevas', () => {
