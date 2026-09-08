@@ -36,19 +36,20 @@ use "./core.allium" as core
 -- de ella no la contiene: la menciona. La diferencia entre contener y mencionar
 -- es la misma que hay entre una memoria y un índice.
 --
--- La excepción es una y es estrecha: un bloque cuyo texto entero es una sola
--- incrustación. No un fragmento dentro de una frase, no marcado suelto entre
--- prosa. Así la regla se puede decir en una línea —un bloque es una incrustación
--- o no lo es— y quien escribe sabe siempre en cuál de los dos casos está.
+-- La excepción es estrecha y deliberada: un bloque cuyo texto entero es una
+-- sola incrustación, o una incrustación delimitada por una valla `iframe` dentro
+-- de un bloque mixto. No un fragmento dentro de una frase ni marcado suelto
+-- entre prosa. La valla permite titular y explicar una herramienta en el mismo
+-- bloque sin convertir el resto del Markdown en marcado activo.
 contract EmbeddedContentIsSandboxed {
     present: (block: core/Block) -> Embed
 
-    @invariant AWholeBlockOrNothing
-        -- Sólo se presenta como incrustación un bloque cuyo contenido entero lo
-        -- sea. Marcado dentro de una frase sigue siendo texto: si bastara con
-        -- que apareciera en cualquier parte, pegar una nota copiada de una
-        -- página web convertiría media bitácora en marcado ajeno sin que nadie
-        -- lo hubiera decidido.
+    @invariant AWholeBlockOrAnExplicitFence
+        -- Se presenta como incrustación un bloque cuyo contenido entero lo sea,
+        -- o el contenido íntegro de una valla `iframe`. Marcado dentro de una
+        -- frase sigue siendo texto: si bastara con que apareciera en cualquier
+        -- parte, pegar una nota copiada de una página web convertiría media
+        -- bitácora en marcado ajeno sin que nadie lo hubiera decidido.
 
     @invariant OnlyFromAServerTheCorpusRegistered
         -- Se incrusta lo que viene de un servidor que el corpus declaró, y lo

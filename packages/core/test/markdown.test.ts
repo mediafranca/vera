@@ -601,6 +601,29 @@ describe('incrustaciones', () => {
     assert.match(html, /src="https:\/\/eadpucv\.github\.io\/pix\/#!\/x"/);
   });
 
+  it('una valla iframe incrusta dentro de un bloque mixto sin activar el resto del HTML', () => {
+    const html = renderMarkdown([
+      '### Herramienta',
+      '```iframe',
+      embed,
+      '```',
+      'Una explicación con <button>HTML inerte</button>.',
+    ].join('\n'), allowed);
+    assert.match(html, /<h4>Herramienta<\/h4>/);
+    assert.match(html, /<figure class="embed"/);
+    assert.match(html, /incrustado desde eadpucv\.github\.io/);
+    assert.ok(!html.includes('<button>HTML inerte</button>'));
+    assert.match(html, /&lt;button&gt;HTML inerte&lt;\/button&gt;/);
+  });
+
+  it('una valla iframe conserva como código una procedencia no autorizada', () => {
+    const source = ['```iframe', embed, '```'].join('\n');
+    const html = renderMarkdown(source, { embedHosts: ['otro.cl'] });
+    assert.ok(!html.includes('<figure class="embed"'));
+    assert.match(html, /class="language-iframe"/);
+    assert.match(html, /&lt;iframe/);
+  });
+
   it('corre encerrada: es quien es y no alcanza nada de Vera', () => {
     /*
      * @invariant NothingReachesBack. Corre con su propio origen —lo necesita

@@ -30,9 +30,9 @@
  * convertiría media bitácora en marcado ajeno sin que nadie lo hubiera decidido.
  * Ciento ocho bloques de este corpus dependen de eso.
  *
- * La excepción es una y es estrecha: el bloque entero es una sola incrustación.
- * Así la regla se dice en una línea —un bloque es una incrustación o no lo es— y
- * quien escribe sabe siempre en cuál de los dos casos está. Ver
+ * La excepción es estrecha: el bloque entero es una sola incrustación, o una
+ * parte queda señalada deliberadamente con una valla `iframe`. El marcado
+ * suelto entre prosa sigue inerte. Ver
  * specs/executable-content-sandbox.allium.
  */
 import { drawingSvg, readDrawing } from './drawing.ts';
@@ -471,8 +471,9 @@ export function inlineMarkdown(source: string, options: RenderOptions = {}): str
 
 const FENCE = /^\s*(`{3,}|~{3,})\s*([\w+-]*)\s*$/;
 
-function executableBlock(language: string, source: string): string | null {
+function executableBlock(language: string, source: string, options: RenderOptions): string | null {
   const kind = language.trim().toLowerCase();
+  if (kind === 'iframe') return embedIn(source, options.embedHosts ?? []);
   if (kind === 'mediawiki') {
     return `<figure class="mediawiki-figure"><div class="mediawiki-body">${renderMediaWiki(source)}</div><details><summary>fuente MediaWiki</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
   }
@@ -674,7 +675,7 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
         }
       }
 
-      const executable = executableBlock(language, body.join('\n'));
+      const executable = executableBlock(language, body.join('\n'), options);
       if (executable !== null) {
         html += executable;
         continue;
