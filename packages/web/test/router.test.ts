@@ -56,9 +56,9 @@ describe('parseRoute', () => {
   });
 
   it('lee una búsqueda completa, también dentro de un espacio', () => {
-    assert.equal(parseRoute(at('/search?q=memoria%20soberana')).search, 'memoria soberana');
+    assert.equal(parseRoute(at('/buscar?q=memoria%20soberana')).search, 'memoria soberana');
     assert.equal(
-      parseRoute(at('/s/axis-mundae/search?q=luz')).search,
+      parseRoute(at('/s/axis-mundae/buscar?q=luz')).search,
       'luz',
     );
   });
@@ -76,11 +76,11 @@ describe('parseRoute', () => {
 
 describe('searchRoute', () => {
   it('conserva el cerco de un espacio público', () => {
-    assert.equal(searchRoute('la luz', '/s/axis-mundae/p/1'), '/s/axis-mundae/search?q=la%20luz');
+    assert.equal(searchRoute('la luz', '/s/axis-mundae/p/1'), '/s/axis-mundae/buscar?q=la%20luz');
   });
 
   it('usa la ruta general fuera de un espacio', () => {
-    assert.equal(searchRoute('memoria', '/p/Una'), '/search?q=memoria');
+    assert.equal(searchRoute('memoria', '/p/Una'), '/buscar?q=memoria');
   });
 });
 

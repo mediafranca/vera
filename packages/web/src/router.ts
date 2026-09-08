@@ -29,7 +29,10 @@ export interface Route {
 export const EMPTY: Route = { page: null, focus: null, block: null, search: null };
 
 export function parseRoute(url: URL): Route {
-  if (/^(?:\/s\/[^/]+)?\/search\/?$/.test(url.pathname)) {
+  // `/search` es la superficie JSON histórica del servidor. La página visual
+  // necesita otro nombre: si comparte la ruta, una recarga entrega el JSON
+  // crudo antes de que la aplicación pueda arrancar.
+  if (/^(?:\/s\/[^/]+)?\/buscar\/?$/.test(url.pathname)) {
     const asked = url.searchParams.get('q')?.trim() ?? '';
     return { page: null, focus: null, block: null, search: asked === '' ? null : asked };
   }
@@ -56,7 +59,7 @@ export function parseRoute(url: URL): Route {
 /** Dirección estable de una búsqueda, conservando el cerco público si existe. */
 export function searchRoute(text: string, pathname = window.location.pathname): string {
   const space = /^(\/s\/[^/]+)(?:\/.*)?$/.exec(pathname)?.[1] ?? '';
-  return `${space}/search?q=${encodeURIComponent(text.trim())}`;
+  return `${space}/buscar?q=${encodeURIComponent(text.trim())}`;
 }
 
 /**

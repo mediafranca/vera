@@ -1311,6 +1311,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/' ||
         path === '/health' ||
         path === '/pages' ||
+        path === '/buscar' ||
         path === '/search' ||
         path === '/query' ||
         path === '/p5-frame.html' ||
