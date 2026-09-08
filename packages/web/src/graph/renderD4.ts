@@ -64,8 +64,8 @@ function projectedSentences(
 }
 
 const foldedLineHeight = 11;
-const branchHitWidth = 44;
-const nodeGap = branchHitWidth + 12;
+const branchHitWidth = 30;
+const nodeGap = branchHitWidth + 8;
 
 function sides(data: GraphData, focus: string): Map<string, Side> {
   const side = new Map<string, Side>([[focus, 0]]);
@@ -106,8 +106,8 @@ export function renderGraphD4(
   const height = Math.max(container.clientHeight, 640);
   const centreX = width / 2;
   // El vacío entre páginas no es desperdicio: es donde viven las relaciones.
-  const columnGap = Math.max(520, Math.min(760, width * 0.46));
-  const boxWidth = Math.max(300, Math.min(440, columnGap - 230));
+  const columnGap = Math.max(680, Math.min(980, width * 0.62));
+  const boxWidth = Math.max(300, Math.min(440, columnGap - 300));
   const thread = options.thread ?? null;
   const focusedLink = focusedRelation === null
     ? undefined
@@ -148,7 +148,10 @@ export function renderGraphD4(
     // distintos; el layout debe responder a la interacción, no a una altura
     // incidental del viewport.
     const total = nodes.reduce((sum, node) => sum + dims.get(node.id)!.h, 0) + Math.max(0, nodes.length - 1) * nodeGap;
-    let y = Math.max(30, (height - total) / 2);
+    // También cuando la pila es más alta que la pantalla se compone alrededor
+    // del foco. Antes se sujetaba su borde superior a y=30: en vecindarios
+    // grandes el foco quedaba, literalmente, arriba de toda la red.
+    let y = (height - total) / 2;
     for (const node of nodes) {
       const dim = dims.get(node.id)!;
       held.set(node.id, { x: centreX + column * columnGap, y: y + dim.h / 2 });
@@ -294,8 +297,11 @@ export function renderGraphD4(
     touchStarts.delete(event.pointerId);
     return start !== undefined && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8;
   };
-  svg.call(d3.zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.25, 2.5])
+  const zoom = d3.zoom<SVGSVGElement, unknown>()
+    // El mínimo fijo anterior hacía imposible encuadrar vecindarios grandes.
+    // Un límite pequeño sigue evitando singularidades sin imponer el tamaño
+    // máximo del mapa que Herbert puede mirar.
+    .scaleExtent([0.025, 2.5])
     // Safari sintetiza un click al terminar un paneo táctil. Por debajo de este
     // umbral es un toque; por encima, D4 lo conserva exclusivamente como gesto
     // espacial y no deja que navegue al elemento que quedó bajo el dedo.
@@ -314,7 +320,8 @@ export function renderGraphD4(
       }
       positionViewportGeometry();
       positionViewportCards();
-    }));
+    });
+  svg.call(zoom);
 
   const foldedLines: HTMLElement[] = [];
   const raiseReadingCards = (last?: SVGForeignObjectElement | null): void => {
@@ -433,7 +440,7 @@ export function renderGraphD4(
       focusedRelation = crossing;
       renderGraphD4(container, data, onClickPage, options);
     };
-    world.append('path')
+    const hit = world.append('path')
       .attr('class', 'd4-branch-hit')
       .attr('d', route)
       .attr('role', 'button')
@@ -450,6 +457,11 @@ export function renderGraphD4(
         event.preventDefault();
         void openRelation();
       });
+    // Toda arista es una relación editable, aunque todavía no tenga una
+    // conectiva naranja. Hacer visible el mismo affordance evita que el color
+    // se interprete como permiso.
+    hit.on('pointerenter', () => path.classed('editable-hover', true))
+      .on('pointerleave', () => path.classed('editable-hover', false));
     if (link.kind === 'crossing' && link.crossing !== undefined) {
       relationCards.push({
         link,
@@ -776,4 +788,28 @@ export function renderGraphD4(
     resizeRelation();
   }
   positionViewportCards();
+
+  // Primer encuadre: incluye tarjetas completas y conserva el centro semántico
+  // del layout. El margen deja respiración para puertos, flechas y rótulos.
+  // No se restringe a 0.25: el botón/rueda aún puede alejarse si el dibujo crece.
+  const visibleNodes = data.nodes.filter((node) => thread === null || node.id !== thread.page);
+  const boxes = visibleNodes.map((node) => {
+    const at = held.get(node.id)!;
+    const dim = dims.get(node.id)!;
+    return { left: at.x - dim.w / 2, right: at.x + dim.w / 2,
+      top: at.y - dim.h / 2, bottom: at.y + dim.h / 2 };
+  });
+  if (boxes.length > 0 && focusedLink === undefined) {
+    const left = Math.min(...boxes.map((box) => box.left));
+    const right = Math.max(...boxes.map((box) => box.right));
+    const top = Math.min(...boxes.map((box) => box.top));
+    const bottom = Math.max(...boxes.map((box) => box.bottom));
+    const margin = 72;
+    const scale = Math.min(1, width / (right - left + margin * 2), height / (bottom - top + margin * 2));
+    const framed = d3.zoomIdentity
+      .translate(width / 2, height / 2)
+      .scale(scale)
+      .translate(-(left + right) / 2, -(top + bottom) / 2);
+    svg.call(zoom.transform, framed);
+  }
 }

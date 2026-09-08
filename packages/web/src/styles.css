@@ -1246,6 +1246,11 @@ button { touch-action: manipulation; }
 }
 .d4-branch.gloss { stroke: var(--accent); stroke-dasharray: 3 3; }
 .d4-branch.crossing { stroke: var(--accent); stroke-width: 3; opacity: 0.62; }
+.d4-branch.editable-hover {
+  stroke: var(--accent);
+  stroke-width: 3;
+  opacity: 0.9;
+}
 .d4-map #d4-relation-arrow path { fill: var(--accent); }
 .d4-map.relation-focused .d4-branch.context { opacity: 0.1; }
 .d4-map.relation-focused .d4-branch.focused {
@@ -1272,7 +1277,7 @@ button { touch-action: manipulation; }
 .d4-branch-hit {
   fill: none;
   stroke: transparent;
-  stroke-width: 44;
+  stroke-width: 30;
   vector-effect: non-scaling-stroke;
   cursor: pointer;
   pointer-events: stroke;

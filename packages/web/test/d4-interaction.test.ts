@@ -55,7 +55,7 @@ describe('interacción de D4', () => {
 
   it('hace seleccionable una conectiva con un blanco táctil amplio', () => {
     assert.match(renderer, /attr\('class', 'd4-branch-hit'\)/);
-    assert.match(styles, /\.d4-branch-hit\s*\{[\s\S]*?stroke-width:\s*44/);
+    assert.match(styles, /\.d4-branch-hit\s*\{[\s\S]*?stroke-width:\s*30/);
     assert.match(renderer, /openRelations\.add\(crossing\)/);
   });
 
@@ -71,12 +71,24 @@ describe('interacción de D4', () => {
   });
 
   it('separa páginas y puertos según la geometría interactiva, no la altura del viewport', () => {
-    assert.match(renderer, /const branchHitWidth = 44/);
-    assert.match(renderer, /const nodeGap = branchHitWidth \+ 12/);
+    assert.match(renderer, /const branchHitWidth = 30/);
+    assert.match(renderer, /const nodeGap = branchHitWidth \+ 8/);
     assert.match(renderer, /y \+= dim\.h \+ nodeGap/);
     assert.match(renderer, /const targetY = \(node: GraphNode, link: GraphLink\): number =>/);
     assert.match(renderer, /const y2 = targetY\(target, link\)/);
     assert.doesNotMatch(renderer, /const y2 = b\.y/);
+  });
+
+  it('encuadra redes grandes sin relegar el foco al borde superior', () => {
+    assert.match(renderer, /let y = \(height - total\) \/ 2/);
+    assert.match(renderer, /\.scaleExtent\(\[0\.025, 2\.5\]\)/);
+    assert.match(renderer, /const scale = Math\.min\(1, width \/ \(right - left/);
+    assert.match(renderer, /svg\.call\(zoom\.transform, framed\)/);
+  });
+
+  it('explicita que cualquier enlace puede convertirse en relación editable', () => {
+    assert.match(renderer, /hit\.on\('pointerenter',[\s\S]*?editable-hover/);
+    assert.match(styles, /\.d4-branch\.editable-hover/);
   });
 
   it('relaja las columnas como anclas blandas y evita colisiones entre tarjetas', () => {
