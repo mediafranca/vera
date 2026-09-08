@@ -65,7 +65,7 @@ function projectedSentences(
 
 const foldedLineHeight = 11;
 const branchHitWidth = 30;
-const nodeGap = branchHitWidth + 8;
+const nodeGap = 14;
 
 function sides(data: GraphData, focus: string): Map<string, Side> {
   const side = new Map<string, Side>([[focus, 0]]);
@@ -227,6 +227,23 @@ export function renderGraphD4(
       const anchor = anchors.get(node.id)!;
       position.x += (anchor.x - position.x) * 0.048;
       position.y += (anchor.y - position.y) * 0.012;
+    }
+  }
+
+  // La relajación sirve para descubrir un orden vertical mejor, no para borrar
+  // las columnas ni para dejar tarjetas montadas. Cerramos el cálculo con un
+  // empaquetado exacto: x vuelve a su grado y cada columna queda compacta,
+  // centrada y sin traslapes, conservando el orden que produjeron los resortes.
+  for (const nodes of columns.values()) {
+    nodes.sort((a, b) => held.get(a.id)!.y - held.get(b.id)!.y || a.name.localeCompare(b.name));
+    const total = nodes.reduce((sum, node) => sum + dims.get(node.id)!.h, 0) +
+      Math.max(0, nodes.length - 1) * nodeGap;
+    let y = (height - total) / 2;
+    for (const node of nodes) {
+      const dim = dims.get(node.id)!;
+      const anchor = anchors.get(node.id)!;
+      held.set(node.id, { x: anchor.x, y: y + dim.h / 2 });
+      y += dim.h + nodeGap;
     }
   }
 
@@ -424,7 +441,14 @@ export function renderGraphD4(
     path.attr('marker-end', 'url(#d4-relation-arrow)');
     if (link.explanation !== undefined) path.append('title').text(link.explanation);
     const openRelation = async (): Promise<void> => {
-      let crossing = link.crossing;
+      // Una referencia y su conectiva pueden llegar como dos aristas derivadas
+      // de la misma pareja. Pulsar la gris debe abrir la conectiva existente,
+      // no intentar crear un duplicado que el dominio rechaza correctamente.
+      let crossing = link.crossing ?? data.links.find((candidate) =>
+        endpoint(candidate.source) === source.id &&
+        endpoint(candidate.target) === target.id &&
+        candidate.crossing !== undefined
+      )?.crossing;
       if (crossing === undefined && options.relations?.createRelation !== undefined) {
         crossing = await options.relations.createRelation(source.id, target.id) ?? undefined;
         if (crossing === undefined) return;

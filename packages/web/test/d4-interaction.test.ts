@@ -72,7 +72,7 @@ describe('interacción de D4', () => {
 
   it('separa páginas y puertos según la geometría interactiva, no la altura del viewport', () => {
     assert.match(renderer, /const branchHitWidth = 30/);
-    assert.match(renderer, /const nodeGap = branchHitWidth \+ 8/);
+    assert.match(renderer, /const nodeGap = 14/);
     assert.match(renderer, /y \+= dim\.h \+ nodeGap/);
     assert.match(renderer, /const targetY = \(node: GraphNode, link: GraphLink\): number =>/);
     assert.match(renderer, /const y2 = targetY\(target, link\)/);
@@ -99,6 +99,14 @@ describe('interacción de D4', () => {
     assert.match(renderer, /const overlapX =/);
     assert.match(renderer, /const overlapY =/);
     assert.match(renderer, /position\.x \+= \(anchor\.x - position\.x\) \* 0\.048/);
+    assert.match(renderer, /for \(const nodes of columns\.values\(\)\)/);
+    assert.match(renderer, /held\.set\(node\.id, \{ x: anchor\.x, y: y \+ dim\.h \/ 2 \}\)/);
+  });
+
+  it('reutiliza la conectiva de una pareja al pulsar su enlace gris', () => {
+    assert.match(renderer, /let crossing = link\.crossing \?\? data\.links\.find/);
+    assert.match(renderer, /endpoint\(candidate\.source\) === source\.id/);
+    assert.match(renderer, /endpoint\(candidate\.target\) === target\.id/);
   });
 
   it('declara la dirección y permite abrir incluso una relación vacía desde el cable', () => {
