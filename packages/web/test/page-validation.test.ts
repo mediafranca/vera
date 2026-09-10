@@ -54,4 +54,17 @@ describe('retained page validation', () => {
     assert.match(main, /workspace\.activePage !== page\.id/);
     assert.match(main, /forgetPage\(page\.id\)/);
   });
+
+  it('vuelve a comprobar la página visible al reanudar una PWA móvil', () => {
+    assert.match(main, /async function resumeVisiblePage\(\)/);
+    assert.match(main, /await catchUpWithCorpus\(\);[\s\S]*await api\.drain\(\)/);
+    assert.match(main, /document\.visibilityState === 'visible'\) void resumeVisiblePage\(\)/);
+    assert.match(main, /writing\) return;[\s\S]*await openPage\(page, null, \{ fromUrl: true, replaceRoute: true \}\)/);
+  });
+
+  it('no confunde con un día vacío uno que falta en el índice local atrasado', () => {
+    assert.match(main, /const unknownDay = route\.page !== null/);
+    assert.match(main, /if \(unknownDay\) \{[\s\S]*const fresh = await api\.pages\(\)/);
+    assert.match(main, /pages = byWeight\(fresh\);[\s\S]*held\.keepIndex\(fresh\)/);
+  });
 });

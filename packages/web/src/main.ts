@@ -1728,6 +1728,38 @@ async function loadPages(): Promise<void> {
   const remembered = isAnybody() ? null : await held.index();
   if (remembered !== null) {
     pages = byWeight(remembered);
+
+    /*
+     * Un día que falta en un índice viejo todavía no es un día vacío.
+     *
+     * Éste era el hueco que hacía desaparecer la bitácora en una PWA móvil: el
+     * teléfono arrancaba con un índice retenido anterior a la creación de hoy,
+     * `applyRoute` dibujaba «hoy todavía no tiene nada», y la lista canónica
+     * llegaba después. La promesa de abajo actualizaba `pages`, pero no volvía a
+     * aplicar la ruta, así que la pantalla seguía vacía hasta cerrar y abrir la
+     * aplicación. Peor aún: ya tenía la verdad en memoria mientras decía lo
+     * contrario.
+     *
+     * Sólo en esta ambigüedad se espera la lista canónica antes de decidir. Para
+     * una página que el índice ya conoce se conserva la apertura instantánea.
+     * Sin red se degrada al comportamiento local: el día puede empezarse igual.
+     */
+    const route = parseRoute(new URL(window.location.href));
+    const unknownDay = route.page !== null && /^\d{4}-\d{2}-\d{2}$/.test(route.page) &&
+      !remembered.some((page) => page.title === route.page);
+    if (unknownDay) {
+      try {
+        const fresh = await api.pages();
+        pages = byWeight(fresh);
+        reconcileTrace(fresh);
+        if (!isAnybody()) void held.keepIndex(fresh);
+      } catch {
+        // Sin corpus, el índice retenido sigue siendo lo único que este aparato
+        // sabe. Escribir allí conserva el comportamiento local-first.
+      }
+      return;
+    }
+
     // Y detrás, la de verdad, sin que nadie la espere.
     void api
       .pages()
@@ -1996,6 +2028,38 @@ async function catchUpWithCorpus(): Promise<void> {
     waiting = null;
   }
   announce();
+}
+
+/**
+ * Volver del fondo también es volver a Vera.
+ *
+ * En una PWA móvil la ventana no se recarga al cambiar de aplicación: puede
+ * quedar suspendida horas con la página que tenía delante. Los temporizadores
+ * tampoco corren de forma fiable mientras está suspendida, de modo que el
+ * sondeo periódico no basta. El resultado observado era especialmente malo en
+ * la bitácora: otro aparato escribía hoy y el teléfono seguía enseñando el día
+ * vacío hasta matar y abrir nuevamente la aplicación.
+ *
+ * Primero se mira el registro, para que una edición pendiente y una edición
+ * canónica concurrente puedan quedar retenidas como desacuerdo. Después se
+ * drena lo local y se vuelve a pedir la página visible. Nunca se recompone
+ * encima de una caja de edición activa: lo que la mano todavía está escribiendo
+ * manda sobre una actualización de fondo.
+ */
+async function resumeVisiblePage(): Promise<void> {
+  if (document.visibilityState !== 'visible' || isAnybody()) return;
+
+  await catchUpWithCorpus();
+  await api.drain();
+
+  const page = workspace.activePage;
+  if (page === null || document.visibilityState !== 'visible') return;
+  const active = document.activeElement;
+  const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
+    (active instanceof HTMLElement && active.isContentEditable);
+  if (writing) return;
+
+  await openPage(page, null, { fromUrl: true, replaceRoute: true });
 }
 
 /** Enciende —o apaga— el aviso de la barra. rule AnnounceWaitingCanonicalWork. */
@@ -3409,6 +3473,16 @@ async function start(): Promise<void> {
         void openPage(workspace.activePage);
       }),
     );
+  });
+
+  /*
+   * Una aplicación instalada vuelve del fondo sin un `load` ni un `online`.
+   * Esa reanudación tiene que tomar el estado canónico por sí misma; exigir que
+   * alguien cierre la PWA era dejar la sincronización escondida detrás de un
+   * gesto que no pertenece a Vera.
+   */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void resumeVisiblePage();
   });
 
   /*
