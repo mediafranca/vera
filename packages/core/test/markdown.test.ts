@@ -3,7 +3,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { headingAnchor, inlineMarkdown, renderMarkdown, uniqueAnchors } from '../src/markdown.ts';
+import { headingAnchor, inlineMarkdown, linkedResourceIn, renderMarkdown, uniqueAnchors } from '../src/markdown.ts';
 
 describe('inlineMarkdown', () => {
   it('escapa el HTML antes de cualquier otra cosa', () => {
@@ -67,6 +67,16 @@ describe('inlineMarkdown', () => {
     const rendered = inlineMarkdown('[sitio](https://herbertspencer.net)');
     assert.ok(rendered.includes('href="https://herbertspencer.net"'));
     assert.ok(rendered.includes('rel="noreferrer"'));
+  });
+
+  it('vuelve clicable una URL cruda sin exigir Markdown', () => {
+    const html = inlineMarkdown('ver https://ejemplo.cl/uno ahora');
+    assert.match(html, /<a href="https:\/\/ejemplo\.cl\/uno"/);
+    assert.match(html, />https:\/\/ejemplo\.cl\/uno<\/a>/);
+  });
+
+  it('deja fuera del enlace la puntuación de la frase', () => {
+    assert.match(inlineMarkdown('ver https://ejemplo.cl/uno.'), /uno<\/a>\.<\/a>|uno<\/a>\./);
   });
 
   it('reconoce tachado y resaltado', () => {
@@ -720,6 +730,33 @@ describe('incrustaciones', () => {
       { embedHosts: ['eadpucv.github.io'] },
     );
     assert.ok(!html.includes('<figure class="embed"'));
+  });
+});
+
+describe('recursos enlazados', () => {
+  it('presenta un PDF solitario sin pedirlo hasta pulsar Mostrar', () => {
+    const html = linkedResourceIn('https://ejemplo.cl/documento.pdf');
+    assert.match(html ?? '', /data-resource-kind="pdf"/);
+    assert.match(html ?? '', /linked-resource-show/);
+    assert.ok(!(html ?? '').includes('<iframe'));
+  });
+
+  it('usa como título el rótulo Markdown producido al procesar', () => {
+    const html = renderMarkdown('[Informe anual](https://ejemplo.cl/informe)');
+    assert.match(html, />Informe anual<\/a>/);
+    assert.match(html, /enlace · ejemplo\.cl/);
+  });
+
+  it('reconoce TikTok e Instagram como adaptadores sin ejecutar sus scripts', () => {
+    assert.match(renderMarkdown('https://www.tiktok.com/@vera/video/123'), /data-resource-kind="tiktok"/);
+    assert.match(renderMarkdown('https://www.instagram.com/p/abc/'), /data-resource-kind="instagram"/);
+    assert.ok(!renderMarkdown('https://www.instagram.com/p/abc/').includes('<script'));
+  });
+
+  it('mantiene una URL mezclada con prosa como enlace ordinario', () => {
+    const html = renderMarkdown('mira https://ejemplo.cl/archivo.pdf después');
+    assert.ok(!html.includes('linked-resource'));
+    assert.match(html, /<a href="https:\/\/ejemplo\.cl\/archivo\.pdf"/);
   });
 });
 

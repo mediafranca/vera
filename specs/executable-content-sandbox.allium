@@ -1,9 +1,9 @@
 -- allium: 3
 -- executable-content-sandbox.allium
 
--- Scope: Contenido que se presenta dentro de una página y corre —tanto lo
---   embebido desde fuera como HTML, p5.js y SVG escritos deliberadamente— y bajo qué
---   aislamiento se le deja correr
+-- Scope: Contenido externo que se reconoce o presenta dentro de una página y
+--   contenido que corre —tanto lo embebido desde fuera como HTML, p5.js y SVG
+--   escritos deliberadamente— y bajo qué aislamiento se le deja correr
 -- Includes: Qué bloque cuenta como incrustación o ejecutable local, qué se le
 --   permite, qué no puede alcanzar nunca, y qué se ve de dónde viene
 -- Excludes:
@@ -104,6 +104,40 @@ contract EmbeddedContentIsSandboxed {
         -- @invariant EditingRevealsTheSource hace para todo lo demás.
 }
 
+-- Una dirección es útil antes de que Vera conozca el servicio que hay detrás.
+-- Esta es la base del pipeline: lo específico mejora la presentación, pero
+-- jamás decide si el enlace sigue siendo alcanzable.
+contract LinkedResourcesDegradeSafely {
+    present_link: (block: core/Block) -> LinkedResource
+
+    @invariant EveryWebAddressCanBeFollowed
+        -- Toda dirección HTTP o HTTPS escrita como texto se presenta como enlace
+        -- accionable. Si aparece dentro de una frase sigue siendo parte de esa
+        -- frase; no hace falta reescribirla como Markdown para poder seguirla.
+
+    @invariant AWholeBlockMayBecomeAResource
+        -- Una dirección que ocupa el bloque entero puede presentarse como objeto
+        -- enlazado. Un PDF, imagen, audio o vídeo directo ofrece su visor; TikTok
+        -- e Instagram se reconocen como proveedores; cualquier otro destino se
+        -- presenta como página. Mezclada con prosa sigue siendo un enlace común.
+
+    @invariant RecognitionDoesNotContactTheDestination
+        -- Reconocer, rotular y volver accionable una dirección no la consulta.
+        -- El recurso remoto sólo se pide cuando alguien elige «Mostrar» o sigue
+        -- el enlace. Así abrir una bitácora no informa a cada sitio citado de que
+        -- esa página se está leyendo.
+
+    @invariant ProviderFailureReturnsToTheLink
+        -- Si Vera no conoce un proveedor, el contenido no puede incrustarse o el
+        -- visor falla, la dirección original permanece visible y accionable.
+        -- Ningún adaptador puede reemplazarla por un hueco.
+
+    @invariant AResolvedTitleIsOnlyPresentation
+        -- Cuando «Procesar» obtiene el título de una página, puede presentarlo
+        -- como rótulo de su enlace. La dirección original sigue en el destino y
+        -- editar el bloque devuelve la fuente que se guardó.
+}
+
 -- HTML, p5.js y SVG escritos dentro de Vera no son incrustaciones remotas. Son fuente
 -- del propio bloque que Vera acepta ejecutar sólo porque alguien eligió ese acto.
 contract AuthoredExecutableBlocks {
@@ -175,6 +209,7 @@ contract AuthoredExecutableBlocks {
 ------------------------------------------------------------
 
 enum AuthoredExecutableKind { html | p5js | svg }
+enum LinkedResourceKind { page | pdf | image | audio | video | tiktok | instagram }
 
 ------------------------------------------------------------
 -- Entities
@@ -198,6 +233,14 @@ value AuthoredExecutableView {
     block: core/Block
     kind: AuthoredExecutableKind
     source: String
+}
+
+value LinkedResource {
+    block: core/Block
+    address: String
+    host: String
+    kind: LinkedResourceKind
+    title: String?
 }
 
 ------------------------------------------------------------
@@ -229,6 +272,16 @@ rule PresentAuthoredExecutableBlock {
     ensures: shown(executable)
 }
 
+rule PresentLinkedResource {
+    when: RenderBlock(participant, block)
+
+    let resource = LinkedResourcesDegradeSafely.present_link(block)
+
+    requires: exists resource
+
+    ensures: shown(resource)
+}
+
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
@@ -241,10 +294,12 @@ surface EmbeddedContent {
         block.content
         Embed
         AuthoredExecutableView
+        LinkedResource
 
     contracts:
         fulfils EmbeddedContentIsSandboxed
         fulfils AuthoredExecutableBlocks
+        fulfils LinkedResourcesDegradeSafely
 
     @guarantee WhatRunsIsSeenToRun
         -- Una incrustación se distingue de lo que Vera dibuja: tiene su marco,

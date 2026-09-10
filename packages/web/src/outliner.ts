@@ -2871,6 +2871,38 @@ export function renderOutliner(
     host.innerHTML = renderMarkdown(source, options);
     decorateCodeBlocks(host);
     host.addEventListener('click', (event) => {
+      const show = (event.target as HTMLElement).closest<HTMLButtonElement>('.linked-resource-show');
+      if (show !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        const url = show.dataset['resourceUrl'] ?? '';
+        const kind = show.dataset['resourceKind'] ?? '';
+        if (!/^https:\/\//i.test(url)) return;
+        let media: HTMLElement;
+        if (kind === 'pdf') {
+          const frame = document.createElement('iframe');
+          frame.src = url;
+          frame.loading = 'lazy';
+          frame.referrerPolicy = 'no-referrer';
+          frame.title = 'PDF enlazado';
+          media = frame;
+        } else if (kind === 'image') {
+          const image = document.createElement('img');
+          image.src = url;
+          image.alt = '';
+          image.referrerPolicy = 'no-referrer';
+          media = image;
+        } else {
+          const playable = document.createElement(kind === 'audio' ? 'audio' : 'video');
+          playable.setAttribute('src', url);
+          playable.setAttribute('controls', '');
+          playable.setAttribute('preload', 'metadata');
+          media = playable;
+        }
+        show.closest('.linked-resource')?.prepend(media);
+        show.remove();
+        return;
+      }
       const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a');
       if (link === null) return;
       if (link.classList.contains('wiki')) {

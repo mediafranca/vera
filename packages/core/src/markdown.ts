@@ -45,6 +45,54 @@ const ATTRIBUTE = /(\w[\w-]*)\s*=\s*"([^"]*)"/g;
 /** Cuánto ocupa una incrustación que no dice cuánto ocupa. */
 const EMBED_HEIGHT = 460;
 
+type LinkedResourceKind = 'pdf' | 'image' | 'audio' | 'video' | 'tiktok' | 'instagram' | 'page';
+
+/**
+ * Una dirección que ocupa el bloque entero se presenta como objeto enlazado.
+ * No se pide todavía: salvo YouTube, cargar el recurso requiere el gesto
+ * «Mostrar». Así reconocer una dirección no informa al sitio de que se leyó la
+ * página que la contiene.
+ */
+export function linkedResourceIn(source: string): string | null {
+  const clean = source.trim();
+  const markdown = /^\[([^\]]+)\]\((https:\/\/[^\s)]+)\)$/.exec(clean);
+  const raw = /^https:\/\/[^\s<>]+$/.test(clean) ? clean : null;
+  const href = markdown?.[2] ?? raw;
+  if (href === null || href === undefined) return null;
+
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  const path = url.pathname.toLowerCase();
+  const kind: LinkedResourceKind =
+    host === 'tiktok.com' || host.endsWith('.tiktok.com') ? 'tiktok' :
+      host === 'instagram.com' || host.endsWith('.instagram.com') ? 'instagram' :
+        /\.pdf$/.test(path) ? 'pdf' :
+          /\.(?:avif|gif|jpe?g|png|svg|webp)$/.test(path) ? 'image' :
+            /\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav)$/.test(path) ? 'audio' :
+              /\.(?:mp4|m4v|mov|ogv|webm)$/.test(path) ? 'video' : 'page';
+  const label = markdown?.[1]?.trim() || href;
+  const named = kind === 'page' ? 'enlace' : kind;
+  const canShow = ['pdf', 'image', 'audio', 'video'].includes(kind);
+  const escapedHref = quoteAttribute(escapeHtml(href));
+
+  return (
+    `<figure class="linked-resource" data-resource-kind="${kind}">` +
+    `<figcaption><span>${escapeHtml(named)} · ${escapeHtml(host)}</span>` +
+    `<a href="${escapedHref}" rel="noreferrer" target="_blank">${escapeHtml(label)}</a>` +
+    (canShow
+      ? `<button type="button" class="linked-resource-show" data-resource-kind="${kind}" ` +
+        `data-resource-url="${escapedHref}">Mostrar</button>`
+      : '') +
+    `</figcaption></figure>`
+  );
+}
+
 export function embedIn(source: string, hosts: readonly string[] = []): string | null {
   const youtube = youtubeEmbed(source.trim());
   const found = EMBED.exec(youtube ?? source);
@@ -451,6 +499,26 @@ export function inlineMarkdown(source: string, options: RenderOptions = {}): str
     },
   );
 
+  /*
+   * Una URL cruda ya es una dirección completa: no necesita que quien escribe
+   * vuelva a envolverla en Markdown para que se pueda seguir. Corre después de
+   * las marcas explícitas, que ya quedaron apartadas en SLOT, y por eso nunca
+   * enlaza otra vez un href ni una imagen.
+   */
+  html = html.replace(/https?:\/\/[^\s<>]+/g, (found) => {
+    let href = found;
+    let tail = '';
+    while (/[.,;:!?»”'\]]$/.test(href)) {
+      tail = href.slice(-1) + tail;
+      href = href.slice(0, -1);
+    }
+    if (href === '') return found;
+    const safe = safeUrl(href);
+    return safe === null
+      ? found
+      : `${hold(`<a href="${safe}" rel="noreferrer" target="_blank">${href}</a>`)}${tail}`;
+  });
+
   html = decorate(html).replace(
     /(^|\s)#([\p{L}\p{N}_-]+)/gu,
     (_whole, before: string, tag: string) => `${before}${tagLink(tag)}`,
@@ -619,6 +687,9 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
   // marcado. Ver `embedIn` y specs/executable-content-sandbox.allium.
   const embed = embedIn(source, options.embedHosts ?? []);
   if (embed !== null) return embed;
+
+  const resource = linkedResourceIn(source);
+  if (resource !== null) return resource;
 
   const lines = source.split('\n');
   let html = '';
