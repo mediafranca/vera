@@ -145,12 +145,16 @@ El secreto vive en el equipo cliente como variable protegida; no se escribe en
 responde `401` antes de inicializar MCP o enumerar herramientas.
 
 Codex CLI, la extensión y la aplicación de escritorio comparten esta
-configuración. ChatGPT no lee `~/.codex/config.toml`: se configura por separado
-en «MCP personalizado». Desde otro equipo, selecciona `HTTP secuenciable`, usa
-`https://vera.mediafranca.net/mcp`, elige autenticación `Ninguna` y añade la
-cabecera `authorization` con valor `Bearer <TOKEN_EXCLUSIVO_DE_CHATGPT>`. No
-añadas `x-vera-client`; Vera deriva la identidad del token. La guía campo por
-campo está en [docs/conectar-una-ia.md](../../docs/conectar-una-ia.md).
+configuración. ChatGPT no lee `~/.codex/config.toml`: un formulario con `STDIO`,
+comando, argumentos y variables de entorno pertenece a Codex. ChatGPT web se
+configura por separado como aplicación MCP personalizada desde un espacio
+Business, Enterprise o Edu con modo desarrollador. Allí se usa
+`https://vera.mediafranca.net/mcp`, autenticación `Ninguna` y la cabecera
+`authorization` con valor `Bearer <TOKEN_EXCLUSIVO_DE_CHATGPT>`. Después de
+escanear y crear la aplicación hay que abrir un chat nuevo y seleccionarla en
+**+ → Más** o invocarla con `@Vera`. No añadas `x-vera-client`; Vera deriva la
+identidad del token. La guía completa está en
+[docs/conectar-una-ia.md](../../docs/conectar-una-ia.md).
 
 El token lo genera Vera al crear la conexión en «VERA: Puerta MCP» y se muestra
 una sola vez. Para la conexión ya existente «Codex en Andrei» hay una copia

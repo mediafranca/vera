@@ -199,7 +199,7 @@ function connectPanel(
   guideHeading.textContent = 'Instrucciones por proveedor';
   const guideList = document.createElement('ul');
   for (const [title, label] of [
-    ['VERA — conectar OpenAI por MCP', 'OpenAI · Codex y ChatGPT de escritorio'],
+    ['VERA — conectar OpenAI por MCP', 'OpenAI · Codex local y ChatGPT web'],
     ['VERA — conectar Claude por MCP', 'Anthropic · Claude Code por HTTPS o stdio'],
     ['VERA — conectar LM Studio por MCP', 'LM Studio · modelos locales por HTTPS o stdio'],
     ['VERA — conectar Gemini por MCP', 'Google · Gemini CLI'],

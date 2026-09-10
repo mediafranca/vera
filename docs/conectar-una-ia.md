@@ -50,7 +50,7 @@ Al día de hoy, aplicado a los servicios más habituales:
 | Proveedor | Cliente que entra | Cliente que no |
 | --- | --- | --- |
 | Anthropic | Claude Code y clientes de escritorio con HTTP + bearer | claude.ai cuando exige un conector alojado |
-| OpenAI | Codex CLI, extensión y app; ChatGPT con «MCP personalizado» por HTTPS | ChatGPT no lee la configuración local de Codex |
+| OpenAI | Codex CLI, extensión y app; ChatGPT web en un espacio Business, Enterprise o Edu con modo desarrollador | ChatGPT no lee la configuración local de Codex; las cuentas personales no admiten hoy MCP personalizados |
 | LM Studio | la app 0.3.17 o posterior, con un modelo capaz de usar herramientas | — |
 | Google | Gemini CLI | Gemini en el navegador |
 | Microsoft | VS Code / Copilot (`mcp.json`) | Copilot en el navegador |
@@ -333,19 +333,25 @@ más rápida y evita guardar el bearer en `mcp.json`; la pública corresponde a 
 LM Studio remoto.
 
 Codex CLI, la extensión y la aplicación comparten `~/.codex/config.toml`.
-ChatGPT no lee esa configuración: su formulario de «MCP personalizado» es una
-conexión independiente. Si Vera vive en otro equipo, se configura por la puerta
-HTTPS como sigue.
+ChatGPT no lee esa configuración. Un formulario que ofrece `STDIO`, `Comando
+para iniciar`, `Argumentos`, variables de entorno y directorio de trabajo es de
+**Codex**, aunque ambas aplicaciones sean de OpenAI. Configurar Vera allí sólo
+la vuelve disponible para Codex en ese equipo.
 
-### ChatGPT en otro equipo: campo por campo
+### ChatGPT web: crear y habilitar la aplicación MCP
 
-En **Conectar con un MCP personalizado**:
+ChatGPT admite aplicaciones MCP personalizadas actualmente sólo en la web y en
+espacios Business, Enterprise o Edu. Hace falta ser administrador o propietario
+en Business; Enterprise/Edu también puede conceder acceso de desarrollador por
+rol. Una cuenta personal no muestra este recorrido.
+
+Primero activa el modo desarrollador en la configuración del espacio de trabajo.
+Luego entra a **Configuración → Aplicaciones → Crear** y completa la aplicación:
 
 | Campo | Valor |
 | --- | --- |
 | **Nombre** | `Vera` |
-| **Tipo** | `HTTP secuenciable` |
-| **URL** | `https://vera.mediafranca.net/mcp` |
+| **URL / endpoint MCP** | `https://vera.mediafranca.net/mcp` |
 | **Autenticación** | `Ninguna` |
 | **Cabecera adicional · nombre** | `authorization` |
 | **Cabecera adicional · valor** | `Bearer <TOKEN_EXCLUSIVO_DE_CHATGPT>` |
@@ -355,18 +361,18 @@ completa, sin comillas, corchetes ni signos `< >`. Los nombres de cabecera HTTP
 no distinguen mayúsculas, de modo que `authorization` y `Authorization` son
 equivalentes. No añadas `x-vera-client`: la identidad la deriva Vera del token.
 
-No elijas `STDIO`: eso intentaría ejecutar un proceso local en el equipo donde
-está ChatGPT y exigiría instalar allí Vera y Node. Tampoco elijas OAuth mientras
-Vera no publique un servidor OAuth; la credencial bearer se transmite como
-cabecera adicional. Deja vacíos `Comando para iniciar`, `Argumentos`, `Variables
-de entorno`, `Paso de variables de entorno` y `Directorio de trabajo`: son
-campos de `STDIO` y desaparecen o dejan de aplicar al cambiar el tipo.
+Si ves una selección `STDIO`/`HTTP secuenciable` y campos de comando, estás en
+Codex, no en ChatGPT. En ChatGPT pulsa **Escanear herramientas**, espera a que
+aparezcan las herramientas de Vera y después pulsa **Crear**. La aplicación
+queda como borrador; crearla no la incorpora retroactivamente a chats abiertos.
 
-Guarda la conexión, abre un chat nuevo, habilita Vera en el menú de herramientas
-y pide primero ejecutar `vera_quien_soy`. Debe responder la identidad destinada
-a ChatGPT en ese equipo y sus alcances; `participant:herbert` o cualquier otra
-identidad es un fallo de configuración. Un `401` significa que falta la palabra
-`Bearer`, el espacio, parte del token, o que la credencial fue retirada.
+Abre un chat nuevo en la web. En el botón **+**, entra a **Más** y selecciona
+Vera; también puedes invocarla mediante `@Vera` si aparece disponible. Sólo
+entonces pide ejecutar `vera_quien_soy`. Que el modelo diga que no encuentra una
+app llamada Vera significa que esa conversación no la tiene seleccionada, o que
+la aplicación quedó en otro espacio de trabajo. Debe responder la identidad
+destinada a ChatGPT y sus alcances; `participant:herbert` u otra identidad es un
+fallo. Un `401` indica un bearer incompleto o retirado.
 
 ChatGPT aloja esta conexión: la URL debe ser alcanzable desde Internet. La
 configuración de una aplicación MCP personalizada y la disponibilidad de sus
