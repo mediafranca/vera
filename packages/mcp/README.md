@@ -145,9 +145,12 @@ El secreto vive en el equipo cliente como variable protegida; no se escribe en
 responde `401` antes de inicializar MCP o enumerar herramientas.
 
 Codex CLI, la extensión y la aplicación de escritorio comparten esta
-configuración. ChatGPT de escritorio también puede usar los servidores MCP
-configurados en el host de Codex. ChatGPT web no lee `~/.codex/config.toml`: usa
-plugins alojados y queda fuera de esta receta local.
+configuración. ChatGPT no lee `~/.codex/config.toml`: se configura por separado
+en «MCP personalizado». Desde otro equipo, selecciona `HTTP secuenciable`, usa
+`https://vera.mediafranca.net/mcp`, elige autenticación `Ninguna` y añade la
+cabecera `authorization` con valor `Bearer <TOKEN_EXCLUSIVO_DE_CHATGPT>`. No
+añadas `x-vera-client`; Vera deriva la identidad del token. La guía campo por
+campo está en [docs/conectar-una-ia.md](../../docs/conectar-una-ia.md).
 
 El token lo genera Vera al crear la conexión en «VERA: Puerta MCP» y se muestra
 una sola vez. Para la conexión ya existente «Codex en Andrei» hay una copia
@@ -177,8 +180,8 @@ del agente.
 Los clientes configurables ya pueden conectarse por Streamable HTTP.
 «Públicamente alcanzable» no significa publicar la aplicación privada ni
 permitir lecturas anónimas. OAuth sigue siendo M6 para los servicios alojados
-que lo exijan; no es requisito de Codex, Claude Code ni ChatGPT de escritorio
-cuando el host puede proporcionar el bearer.
+que lo exijan; no es requisito de Codex, Claude Code ni ChatGPT cuando el
+formulario permite proporcionar el bearer como cabecera propia.
 
 ## Latencia: pública no significa local
 
