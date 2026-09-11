@@ -134,6 +134,88 @@ export async function renderMermaid(root: HTMLElement): Promise<void> {
   }
 }
 
+const scheduled = new WeakSet<HTMLElement>();
+const activeRoots = new Map<HTMLElement, Set<IntersectionObserver>>();
+let lifecycle: MutationObserver | null = null;
+
+function watchProgressiveRoots(): void {
+  if (lifecycle !== null) return;
+  lifecycle = new MutationObserver(() => {
+    for (const [root, observers] of activeRoots) {
+      if (root.isConnected) continue;
+      for (const observer of observers) observer.disconnect();
+      activeRoots.delete(root);
+    }
+    if (activeRoots.size === 0) {
+      lifecycle?.disconnect();
+      lifecycle = null;
+    }
+  });
+  lifecycle.observe(document.body, { childList: true, subtree: true });
+}
+
+/**
+ * Hidrata diagramas cerca de la lectura sin retener detrás de ellos el texto.
+ * Puede llamarse después de cada lote: cada cercado se registra una sola vez.
+ */
+export function renderMermaidProgressively(root: HTMLElement): void {
+  const blocks = [...root.querySelectorAll<HTMLElement>('code.language-mermaid')]
+    .filter((block) => !scheduled.has(block));
+  if (blocks.length === 0) return;
+
+  let remaining = blocks.length;
+  const finished = (): void => {
+    remaining -= 1;
+    if (remaining > 0 || observer === null) return;
+    observer.disconnect();
+    const observers = activeRoots.get(root);
+    observers?.delete(observer);
+    if (observers?.size === 0) activeRoots.delete(root);
+  };
+  const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      observer?.unobserve(entry.target);
+      void hydrate(entry.target as HTMLElement).finally(finished);
+    }
+  }, { root: root.closest('#text'), rootMargin: '700px 0px' });
+  if (observer !== null) {
+    const observers = activeRoots.get(root) ?? new Set<IntersectionObserver>();
+    observers.add(observer);
+    activeRoots.set(root, observers);
+    watchProgressiveRoots();
+  }
+
+  const hydrate = async (block: HTMLElement): Promise<void> => {
+    if (!block.isConnected) return;
+    const row = block.closest<HTMLElement>('.block');
+    const scroller = root.closest<HTMLElement>('#text');
+    const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
+    const beforeTop = row?.getBoundingClientRect().top ?? 0;
+    const beforeHeight = row?.getBoundingClientRect().height ?? 0;
+    await renderMermaid(block.closest('pre') ?? block);
+    row?.classList.remove('rich-pending');
+    if (row?.classList.contains('rich-native-pending') !== true) row?.removeAttribute('aria-busy');
+    // Si algo que ya quedó sobre la lectura cambia de alto, compensarlo en el
+    // recinto y conservar el renglón que la persona tenía bajo los ojos.
+    if (row !== null && scroller !== null && beforeTop < scrollerTop) {
+      scroller.scrollTop += row.getBoundingClientRect().height - beforeHeight;
+    }
+  };
+
+  for (const block of blocks) {
+    scheduled.add(block);
+    const row = block.closest<HTMLElement>('.block');
+    row?.classList.add('rich-pending');
+    row?.setAttribute('aria-busy', 'true');
+    if (observer === null) {
+      window.setTimeout(() => void hydrate(block).finally(finished), 0);
+    } else {
+      observer.observe(block);
+    }
+  }
+}
+
 /**
  * Ajusta el dibujo al ancho de la columna, guardando su proporción.
  *

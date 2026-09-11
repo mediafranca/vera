@@ -45,7 +45,7 @@ import { sourceSelection, type SourceSelection } from './source-selection.ts';
 import { completeInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
 import { answerQueryBlock } from './query-block.ts';
-import { renderMermaid } from './mermaid.ts';
+import { renderMermaid, renderMermaidProgressively } from './mermaid.ts';
 import { decorateCodeBlocks } from './code-copy.ts';
 import { is, isTextComposing } from './bindings.ts';
 import { icon, type IconName } from './icons.ts';
@@ -3041,6 +3041,25 @@ export function renderOutliner(
 
   const glosses = page.glosses ?? {};
 
+  const markNativeRichPending = (row: HTMLElement, root: HTMLElement): void => {
+    const pending = [...root.querySelectorAll<HTMLElement>('iframe[loading="lazy"], img[loading="lazy"]')]
+      .filter((element) => !(element instanceof HTMLImageElement && element.complete));
+    if (pending.length === 0) return;
+    row.classList.add('rich-native-pending');
+    row.setAttribute('aria-busy', 'true');
+    let remaining = pending.length;
+    const settled = (): void => {
+      remaining -= 1;
+      if (remaining > 0) return;
+      row.classList.remove('rich-native-pending');
+      if (!row.classList.contains('rich-pending')) row.removeAttribute('aria-busy');
+    };
+    for (const element of pending) {
+      element.addEventListener('load', settled, { once: true });
+      element.addEventListener('error', settled, { once: true });
+    }
+  };
+
   /** Contenido que, a diferencia de la prosa, usa el ancho entero del bloque. */
   const hasWideContent = (body: HTMLElement): boolean =>
     body.matches('.drawn-body') ||
@@ -4609,6 +4628,7 @@ export function renderOutliner(
       decorateCodeBlocks(text);
       markMissingImages(text);
       body.append(text);
+      markNativeRichPending(row, text);
 
       const transcript = text.querySelector<HTMLButtonElement>('button.youtube-transcript[data-youtube-source]');
       if (transcript !== null) {
@@ -5518,6 +5538,9 @@ export function renderOutliner(
         }
         at += 1;
       }
+      // Los diagramas del lote visible pueden empezar ahora; no esperan a que
+      // cientos de bloques posteriores terminen de entrar al documento.
+      renderMermaidProgressively(list);
       first = false;
       progress.textContent = `Componiendo la página… ${at} de ${entries.length} bloques`;
       if (at < entries.length) {
@@ -5527,8 +5550,7 @@ export function renderOutliner(
       wireFootnotes(list);
       wireAnchors(list);
       wireCataloguedMedia(container, page);
-      progress.textContent = 'Componiendo diagramas…';
-      void renderMermaid(list).finally(() => progress.remove());
+      progress.remove();
     };
     // El primer lote se compone ahora: el título y el inicio llegan en la misma
     // pintura. Los siguientes sí ceden un cuadro entre sí.
@@ -5668,7 +5690,7 @@ export function renderOutliner(
 
   // Los diagramas se dibujan después del texto: la biblioteca se carga sola y
   // la página no espera por ella para poder leerse.
-  if (!progressive) void renderMermaid(list);
+  if (!progressive) renderMermaidProgressively(list);
 
   /*
    * Una página `tipo:: concepto` es, además de su escritura ordinaria, el lugar

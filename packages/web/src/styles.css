@@ -3651,6 +3651,21 @@ pre.copyable-code {
   margin: 0.2em 0 0.6em;
 }
 
+/* La página ya está disponible; sólo este objeto sigue componiéndose. */
+.block:is(.rich-pending, .rich-native-pending) > .body {
+  border-inline-start: 2px solid var(--warm);
+  animation: rich-pending-pulse 1.25s ease-in-out infinite alternate;
+}
+
+@keyframes rich-pending-pulse {
+  from { border-inline-start-color: color-mix(in srgb, var(--warm) 35%, transparent); }
+  to { border-inline-start-color: var(--warm); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block:is(.rich-pending, .rich-native-pending) > .body { animation: none; }
+}
+
 /* Wikitext básico: una lectura segura, sin fingir que Vera ejecuta la extensa
    maquinaria de plantillas y extensiones de MediaWiki. */
 .mediawiki-figure {
