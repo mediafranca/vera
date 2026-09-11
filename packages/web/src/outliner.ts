@@ -2213,6 +2213,7 @@ async function showHistory(
   block: string,
   row: HTMLElement,
   notify: (message: string) => void,
+  returnFocus?: HTMLElement,
 ): Promise<void> {
   row.querySelector('.history')?.remove();
   let said;
@@ -2235,7 +2236,14 @@ async function showHistory(
   shut.type = 'button';
   shut.className = 'history-close';
   shut.textContent = 'cerrar';
-  shut.addEventListener('click', () => panel.remove());
+  shut.addEventListener('click', (event) => {
+    // El cierre es un gesto completo: no debe subir al bloque ni volver a abrir
+    // el panel mediante los oyentes delegados de la lectura pública.
+    event.preventDefault();
+    event.stopPropagation();
+    panel.remove();
+    returnFocus?.focus();
+  });
   head.append(shut);
   panel.append(head);
 
@@ -4715,7 +4723,11 @@ export function renderOutliner(
       if (draggedMoved) return;
       if (readOnly) {
         if (transparentBlockTraceability) {
-          void showHistory(node.block.stableId, row, toast);
+          openBlockMenu(bullet, [[{
+            label: 'Mostrar historial',
+            icon: 'clock',
+            run: () => showHistory(node.block.stableId, row, toast, bullet),
+          }]]);
         }
         return;
       }

@@ -9,4 +9,11 @@ describe('autoría navegable en el historial de un bloque', () => {
     assert.match(outliner, /author\.href = participantActivityPath\(state\.participant\)/);
     assert.match(outliner, /author\.textContent = state\.by/);
   });
+
+  it('explica la acción pública antes de abrir y permite cerrar sin reabrir', () => {
+    assert.match(outliner, /label: 'Mostrar historial'/);
+    assert.match(outliner, /icon: 'clock'/);
+    assert.match(outliner, /run: \(\) => showHistory\(node\.block\.stableId, row, toast, bullet\)/);
+    assert.match(outliner, /shut\.addEventListener\('click', \(event\) => \{[\s\S]*?event\.stopPropagation\(\);[\s\S]*?panel\.remove\(\);[\s\S]*?returnFocus\?\.focus\(\)/);
+  });
 });
