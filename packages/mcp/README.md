@@ -144,15 +144,15 @@ El secreto vive en el equipo cliente como variable protegida; no se escribe en
 `config.toml`. La URL es pública, el corpus no: sin bearer válido la puerta
 responde `401` antes de inicializar MCP o enumerar herramientas.
 
-Codex CLI, la extensión y la aplicación de escritorio comparten esta
-configuración. ChatGPT no lee `~/.codex/config.toml`: un formulario con `STDIO`,
-comando, argumentos y variables de entorno pertenece a Codex. ChatGPT web se
-configura por separado como aplicación MCP personalizada desde un espacio
-Business, Enterprise o Edu con modo desarrollador. Allí se usa
+OpenAI puede compartir la configuración de plugins y aplicaciones entre Codex y
+ChatGPT. Un formulario con `STDIO`, comando y variables no demuestra por sí solo
+que la conexión sea exclusiva de Codex. Para la puerta remota se usa
 `https://vera.mediafranca.net/mcp`, autenticación `Ninguna` y la cabecera
 `authorization` con valor `Bearer <TOKEN_EXCLUSIVO_DE_CHATGPT>`. Después de
-escanear y crear la aplicación hay que abrir un chat nuevo y seleccionarla en
-**+ → Más** o invocarla con `@Vera`. No añadas `x-vera-client`; Vera deriva la
+guardar o escanear la aplicación hay que confirmar que esté habilitada en el
+mismo espacio/proyecto, abrir un chat nuevo y seleccionarla en **+ → Más** o
+invocarla con `@Vera`. Configurarla y exponerla en una conversación son pasos
+distintos. No añadas `x-vera-client`; Vera deriva la
 identidad del token. La guía completa está en
 [docs/conectar-una-ia.md](../../docs/conectar-una-ia.md).
 
