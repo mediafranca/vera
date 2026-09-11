@@ -18,7 +18,7 @@ interface RelationActions {
     position: number,
     content?: string,
   ) => Promise<boolean>;
-  createRelation?: (fromPage: string, toPage: string) => Promise<string | null>;
+  createRelation?: (fromPage: string, toPage: string, content: string) => Promise<string | null>;
   refresh?: () => Promise<void>;
 }
 
@@ -493,12 +493,52 @@ export function renderGraphD4(
       // no intentar crear un duplicado que el dominio rechaza correctamente.
       let crossing = link.crossing ?? crossingBetween(data, source.id, target.id)?.crossing;
       if (crossing === undefined && options.relations?.createRelation !== undefined) {
-        crossing = await options.relations.createRelation(source.id, target.id) ?? undefined;
-        if (crossing === undefined) return;
-        focusedRelation = crossing;
-        openRelations.clear();
-        openRelations.add(crossing);
-        await options.relations.refresh?.();
+        // Una conectiva no puede existir vacía. El toque sólo abre el lugar de
+        // escritura; el acto canónico nace al decir qué relación hay.
+        svg.selectAll('.d4-relation-draft-card').remove();
+        const draft = svg.append('foreignObject')
+          .attr('class', 'd4-relation-draft-card')
+          .attr('x', (x1 + x2) / 2 - 180)
+          .attr('y', (y1 + y2) / 2 - 64)
+          .attr('width', 360)
+          .attr('height', 128)
+          .style('overflow', 'visible');
+        const article = draft.append<HTMLElement>('xhtml:article')
+          .attr('class', 'd4-relation expanded')
+          .style('width', '360px')
+          .style('height', '128px')
+          .style('font-family', options.fontFamily ?? 'system-ui, sans-serif');
+        article.on('pointerdown', (event: Event) => event.stopPropagation());
+        article.append('header').append('span')
+          .attr('class', 'd4-relation-direction')
+          .text(`${source.name} → ${target.name}`);
+        const editor = article.append<HTMLTextAreaElement>('textarea')
+          .attr('class', 'd4-relation-empty')
+          .attr('aria-label', 'Escribir la relación')
+          .attr('placeholder', 'Escribe qué relación hay entre estas páginas…')
+          .attr('rows', 3);
+        let saving = false;
+        const save = async (): Promise<void> => {
+          const content = editor.property('value').trim();
+          if (saving || content === '') return;
+          saving = true;
+          editor.property('disabled', true);
+          crossing = await options.relations!.createRelation!(source.id, target.id, content) ?? undefined;
+          if (crossing === undefined) {
+            saving = false;
+            editor.property('disabled', false).node()?.focus();
+            return;
+          }
+          focusedRelation = crossing;
+          openRelations.clear();
+          openRelations.add(crossing);
+          await options.relations?.refresh?.();
+        };
+        editor.on('blur', () => void save());
+        editor.on('keydown', (event: KeyboardEvent) => {
+          if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void save();
+        });
+        window.setTimeout(() => editor.node()?.focus(), 0);
         return;
       }
       if (crossing === undefined) return;

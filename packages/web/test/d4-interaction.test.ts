@@ -139,7 +139,7 @@ describe('interacción de D4', () => {
     assert.match(renderer, /path\.attr\('marker-end', 'url\(#d4-relation-arrow\)'\)/);
     assert.match(renderer, /if \(link\.kind === 'crossing' && link\.crossing !== undefined\) \{/);
     assert.match(renderer, /attr\('class', 'd4-branch-hit'\)/);
-    assert.match(renderer, /options\.relations\.createRelation\(source\.id, target\.id\)/);
+    assert.match(renderer, /options\.relations!\.createRelation!\(source\.id, target\.id, content\)/);
     assert.match(renderer, /attr\('aria-label', link\.crossing === undefined/);
   });
 
@@ -157,6 +157,14 @@ describe('interacción de D4', () => {
     assert.match(actions, /kind: 'edit_block'/);
     assert.match(actions, /kind: 'create_block'/);
     assert.match(actions, /kind: 'create_crossing'/);
+    assert.doesNotMatch(actions, /content: ''/);
+  });
+
+  it('no intenta crear una conectiva hasta que su primer bloque tiene contenido', () => {
+    assert.match(renderer, /attr\('class', 'd4-relation-draft-card'\)/);
+    assert.match(renderer, /createRelation!\(source\.id, target\.id, content\)/);
+    assert.match(renderer, /if \(saving \|\| content === ''\) return/);
+    assert.doesNotMatch(renderer, /createRelation\(source\.id, target\.id\) \?\?/);
   });
 
   it('abre un editor enfocado incluso cuando la conectiva todavía no tiene texto', () => {

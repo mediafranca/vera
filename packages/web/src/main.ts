@@ -2378,9 +2378,9 @@ async function drawGraph(): Promise<void> {
             await drawGraph();
             return true;
           },
-          createRelation: async (fromPage: string, toPage: string): Promise<string | null> => {
+          createRelation: async (fromPage: string, toPage: string, content: string): Promise<string | null> => {
             const result = await api.submitCanonical({
-              kind: 'create_crossing', fromPage, toPage, content: '',
+              kind: 'create_crossing', fromPage, toPage, content,
             });
             if (result.status === 'rejected') {
               notice(`No se pudo crear la relación: ${result.reason}`);
