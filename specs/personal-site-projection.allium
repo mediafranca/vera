@@ -565,7 +565,7 @@ rule ImportHistoricalContentIntoGraph {
 -- PersonalSite existente; el sitio, sus publicaciones y sus revisiones siguen
 -- siendo las entidades gobernadas por core.allium.
 rule ConfigurePersonalSiteFromPublicationPage {
-    when: ConfigurePersonalSite(owner, publication_page, site, title, canonical_domain, entry_point)
+    when: ConfigurePersonalSite(owner, publication_page, site, title, canonical_domain, entry_point, transparent_block_traceability)
 
     requires: owner = site.owner
     requires: owner.kind = human
@@ -583,6 +583,7 @@ rule ConfigurePersonalSiteFromPublicationPage {
         site.title = title
         site.canonical_domain = canonical_domain
         site.entry_point = entry_point
+        site.transparent_block_traceability = transparent_block_traceability
 
     @guidance
         -- canonical_domain names an origin only: scheme and host, with no path,
@@ -740,10 +741,13 @@ surface PersonalWebsite {
         site.title
         site.canonical_domain
         site.entry_point.title
+        site.transparent_block_traceability
         for publication in readable_publications:
             publication.path
             publication.page.title
             publication.page.blocks
+            if site.transparent_block_traceability:
+                publication.public_revisions
 
     provides:
         SearchPublishedPages(site, text)
@@ -769,6 +773,11 @@ surface PersonalWebsite {
         -- This surface is present only through an identity/PublicReadingSession
         -- whose identity is `anybody`. It never borrows the authenticated owner
         -- that may be using another origin of the same Vera application.
+
+    @guarantee BlockHistoryBelongsToThisSurface
+        -- A bullet offers traceable block history only when this site enables
+        -- transparent block traceability, and never reveals revisions from
+        -- before the page entered this site.
 }
 
 -- The bounded input that the shared Vera application receives at a public

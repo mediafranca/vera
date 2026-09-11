@@ -1748,6 +1748,7 @@ export class VeraGraph {
     owner: ParticipantId;
     title: string;
     canonicalDomain: string;
+    transparentBlockTraceability?: boolean;
     id?: PersonalSiteId;
   }): PersonalSite {
     const owner = this.#participants.get(input.owner);
@@ -1771,6 +1772,7 @@ export class VeraGraph {
       title,
       canonicalDomain,
       entryPoint: null,
+      transparentBlockTraceability: input.transparentBlockTraceability ?? false,
     };
     this.#sites.set(site.id, site);
     return site;
@@ -1801,6 +1803,7 @@ export class VeraGraph {
     participant: ParticipantId;
     title: string;
     canonicalDomain: string;
+    transparentBlockTraceability?: boolean;
   }): PersonalSite {
     const site = this.#sites.get(input.site);
     if (site === undefined) throw new Error(`no such site ${input.site}`);
@@ -1817,6 +1820,8 @@ export class VeraGraph {
     }
     site.title = title;
     site.canonicalDomain = canonicalDomain;
+    site.transparentBlockTraceability = input.transparentBlockTraceability ??
+      site.transparentBlockTraceability;
     return site;
   }
 

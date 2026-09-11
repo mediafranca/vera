@@ -60,6 +60,7 @@ export interface PublicationSiteView {
   title: string;
   canonicalDomain: string;
   entryPoint: string | null;
+  transparentBlockTraceability: boolean;
   previewUrl: string | null;
   projectionError?: string;
   publications: {
@@ -780,6 +781,8 @@ export interface CorpusHealth {
   canViewOwner?: boolean;
   /** Portada del sitio cuando la lectura ocurre por el origen público. */
   entryPoint?: string | null;
+  /** La superficie pública permite abrir la historia pública desde la viñeta. */
+  transparentBlockTraceability?: boolean;
   pages: number;
   blocks: number;
   lastSequence: number;
@@ -1088,6 +1091,7 @@ export const api = {
     title: string;
     canonicalDomain: string;
     entryPoint: string | null;
+    transparentBlockTraceability: boolean;
   }) =>
     json<PublicationSiteView>('/publication-site', {
       method: 'PUT',

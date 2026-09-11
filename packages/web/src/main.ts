@@ -1049,7 +1049,8 @@ async function openPage(
   derivedStale = false;
   window.clearTimeout(catchUpTimer);
 
-  renderOutliner(text, page, callbacksFor(page), focus, workspace.focusRoot, isReadOnly());
+  renderOutliner(text, page, callbacksFor(page), focus, workspace.focusRoot, isReadOnly(),
+    isAnybody() && corpus?.transparentBlockTraceability === true);
   if (options.reveal !== undefined && options.reveal !== null) {
     revealBlock(options.reveal, page.id);
   }
@@ -1151,7 +1152,8 @@ async function openPage(
           return;
         }
         const viewport = holdTextViewport(text);
-        renderOutliner(text, openView, callbacksFor(openView), null, workspace.focusRoot, isReadOnly());
+        renderOutliner(text, openView, callbacksFor(openView), null, workspace.focusRoot, isReadOnly(),
+          isAnybody() && corpus?.transparentBlockTraceability === true);
         restoreTextViewport(text, viewport);
       };
       finish();
@@ -1302,7 +1304,8 @@ function continueBackwards(from: string, keptScroll: number): void {
         // Cada tramo se dibuja con el mismo outliner que el día de arriba: se
         // edita igual, se pliega igual y habla con las mismas teclas. Un diario
         // que sólo se pudiera leer hacia atrás sería un archivo, no un cuaderno.
-        renderOutliner(slice, older, callbacksForJournalSlice(older, slice), null, null, isReadOnly());
+      renderOutliner(slice, older, callbacksForJournalSlice(older, slice), null, null, isReadOnly(),
+        isAnybody() && corpus?.transparentBlockTraceability === true);
         text.append(slice);
         journalDepth += 1;
         if (journalDepth >= refill) settle();
@@ -1341,7 +1344,8 @@ function callbacksForJournalSlice(page: PageView, slice: HTMLElement): OutlinerC
       if (!slice.isConnected) return;
       const text = $('#text');
       const viewport = holdTextViewport(text);
-      renderOutliner(slice, fresh, callbacksForJournalSlice(fresh, slice), focus, null, isReadOnly());
+      renderOutliner(slice, fresh, callbacksForJournalSlice(fresh, slice), focus, null, isReadOnly(),
+        isAnybody() && corpus?.transparentBlockTraceability === true);
       restoreTextViewport(text, viewport);
     }).catch((error) => {
       notice(`No se pudo actualizar ${page.title}: ${error instanceof Error ? error.message : 'error'}.`);
@@ -1483,7 +1487,8 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
         openView.blockProperties = blockPropertiesOf(replica);
         openView.properties = pagePropertiesOf(replica);
         openView.visibility = replica.graph.page(replica.page)?.visibility ?? openView.visibility;
-        renderOutliner(text, openView, callbacksFor(openView), focus, workspace.focusRoot, isReadOnly());
+        renderOutliner(text, openView, callbacksFor(openView), focus, workspace.focusRoot, isReadOnly(),
+          isAnybody() && corpus?.transparentBlockTraceability === true);
         restoreTextViewport(text, viewport);
         catchUp();
         return;

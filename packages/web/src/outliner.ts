@@ -2761,16 +2761,20 @@ export function renderOutliner(
   focus: { block: string; at: number | null } | null = null,
   focusRoot: string | null = null,
   readOnly = false,
+  transparentBlockTraceability = false,
 ): void {
   document.querySelector('.librarian-active-overlay')?.remove();
   container.innerHTML = '';
   container.dataset['page'] = page.id;
   container.classList.toggle('read-only', readOnly);
+  container.dataset['transparentBlockTraceability'] = String(transparentBlockTraceability);
   if (container.dataset['readOnlyGuard'] !== 'true') {
     container.dataset['readOnlyGuard'] = 'true';
     container.addEventListener('click', (event) => {
       if (!container.classList.contains('read-only')) return;
       const target = event.target as HTMLElement;
+      if (target.closest('.bullet') !== null &&
+          container.dataset['transparentBlockTraceability'] === 'true') return;
       if (target.closest('.page-title, .properties, .bullet, .drawn-edit, .gloss-text') === null) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -3466,14 +3470,14 @@ export function renderOutliner(
       const entry = document.createElement('button');
       entry.type = 'button';
       entry.className = 'publication-entry';
-      entry.textContent = 'Hacer portada';
+      entry.textContent = `Hacer portada de ${page.publication.siteTitle}`;
       entry.addEventListener('click', () => {
         entry.disabled = true;
         void api
           .publish(page.id, page.publication!.path, true)
           .then((publication) => {
             page.publication = publication;
-            toast('ahora es la portada');
+            toast(`ahora es la portada de ${page.publication!.siteTitle}`);
             callbacks.onReload(null);
           })
           .catch((error) => toast(error instanceof Error ? error.message : 'no se pudo elegir la portada'))
@@ -4341,7 +4345,8 @@ export function renderOutliner(
           page.folded = shut
             ? page.folded.filter((id) => id !== node.block.stableId)
             : [...page.folded, node.block.stableId];
-          renderOutliner(container, page, callbacks, focus, focusRoot, true);
+          renderOutliner(container, page, callbacks, focus, focusRoot, true,
+            transparentBlockTraceability);
           restoreViewport(container, viewport);
           return;
         }
@@ -4708,6 +4713,12 @@ export function renderOutliner(
     bullet.addEventListener('click', (event) => {
       event.stopPropagation();
       if (draggedMoved) return;
+      if (readOnly) {
+        if (transparentBlockTraceability) {
+          void showHistory(node.block.stableId, row, toast);
+        }
+        return;
+      }
       /*
        * Cinco grupos, y el orden de los cinco es un argumento.
        *

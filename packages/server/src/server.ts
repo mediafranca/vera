@@ -687,6 +687,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       title,
       canonicalDomain,
       entryPoint: site?.entryPoint ?? null,
+      transparentBlockTraceability: site?.transparentBlockTraceability ?? false,
       previewUrl,
       publications,
     };
@@ -1317,6 +1318,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/p5-frame.html' ||
         path === '/p5.min.js' ||
         path.startsWith('/pages/') ||
+        (/^\/blocks\/[^/]+\/history$/.test(path) &&
+          publicSite()?.transparentBlockTraceability === true) ||
         path.startsWith('/graph/') ||
         path.startsWith('/media/') ||
         path.startsWith('/invite/') ||
@@ -2061,7 +2064,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
-        let body: { title?: unknown; canonicalDomain?: unknown; entryPoint?: unknown };
+        let body: { title?: unknown; canonicalDomain?: unknown; entryPoint?: unknown;
+          transparentBlockTraceability?: unknown };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
         } catch {
@@ -2076,6 +2080,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 400, { error: 'entryPoint must be a page id or null' });
           return;
         }
+        if (body.transparentBlockTraceability !== undefined &&
+            typeof body.transparentBlockTraceability !== 'boolean') {
+          send(response, 400, { error: 'transparentBlockTraceability must be boolean' });
+          return;
+        }
 
         store.db.exec('SAVEPOINT configure_public_site');
         try {
@@ -2085,6 +2094,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               owner: owner.id,
               title: body.title,
               canonicalDomain: body.canonicalDomain,
+              transparentBlockTraceability: body.transparentBlockTraceability ?? false,
             });
           } else {
             graph.configureSite({
@@ -2092,6 +2102,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               participant: owner.id,
               title: body.title,
               canonicalDomain: body.canonicalDomain,
+              transparentBlockTraceability: body.transparentBlockTraceability ??
+                site.transparentBlockTraceability,
             });
           }
           graph.setSiteEntryPoint({
@@ -4223,7 +4235,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        */
       if (path.startsWith('/blocks/') && path.endsWith('/history')) {
         const id = decodeURIComponent(path.slice('/blocks/'.length, -'/history'.length));
-        const log = graph.operations();
+        const block = graph.block(id);
+        const completeLog = graph.operations();
+        let log = completeLog;
+        let publicBoundary: { sequence: number; publishedAt: number } | null = null;
+        if (publicAccess) {
+          const site = publicScopedSpace === null ? publicSite() : undefined;
+          const publication = block === undefined || site === undefined
+            ? undefined
+            : graph.publicationsOf(site.id).find((one) => one.page === block.page);
+          if (site?.transparentBlockTraceability !== true || publication === undefined) {
+            send(response, 404, { error: 'not found' });
+            return;
+          }
+          const boundary = log.find((one) => one.id === publication.firstRevision)?.sequence;
+          if (boundary === undefined) {
+            send(response, 404, { error: 'not found' });
+            return;
+          }
+          publicBoundary = { sequence: boundary, publishedAt: publication.publishedAt };
+          log = log.filter((one) => one.sequence >= boundary);
+        }
         const said: {
           sequence: number;
           at: number;
@@ -4261,6 +4293,29 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 ? change.content
                 : null,
           });
+        }
+        if (publicBoundary !== null && !said.some((state) => state.sequence === publicBoundary.sequence)) {
+          const prior = [...completeLog].reverse().find((one) => {
+            const change = one.submission.change;
+            return one.sequence < publicBoundary!.sequence && (
+              (change.kind === 'create_block' && one.subjectId === id) ||
+              (change.kind === 'edit_block' && change.block === id)
+            );
+          });
+          if (prior !== undefined) {
+            const change = prior.submission.change;
+            said.unshift({
+              sequence: publicBoundary.sequence,
+              at: publicBoundary.publishedAt,
+              by: graph.participant(prior.submission.submittedBy)?.name ?? 'autor desconocido',
+              participant: prior.submission.submittedBy,
+              channel: prior.submission.channel,
+              what: 'al publicarse',
+              content: change.kind === 'create_block' || change.kind === 'edit_block'
+                ? change.content
+                : null,
+            });
+          }
         }
         // La historia de un bloque es todo lo que ese bloque dijo alguna vez,
         // incluido lo que se borró: se lleva más que leerlo.
@@ -5159,6 +5214,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           canContribute: publicAccess ? canContributeScopedSpace : false,
           canViewOwner: !publicOrigin,
           entryPoint: publicAccess && siteEntry !== null && isPublicPage(siteEntry) ? siteEntry : null,
+          transparentBlockTraceability: publicAccess && publicScopedSpace === null
+            ? (publicSite()?.transparentBlockTraceability ?? false)
+            : false,
           /*
            * Cómo llama este corpus a las propiedades que Vera necesita conocer.
            *

@@ -96,17 +96,20 @@ describe('publicación del sitio personal', () => {
         title: 'Vera publicada',
         canonicalDomain: 'https://publica.example',
         entryPoint: null,
+        transparentBlockTraceability: true,
       }),
     });
     assert.equal(configuredResponse.status, 200);
     const configured = await configuredResponse.json() as {
       title: string;
       canonicalDomain: string;
+      transparentBlockTraceability: boolean;
       previewUrl: string;
       publications: unknown[];
     };
     assert.equal(configured.title, 'Vera publicada');
     assert.equal(configured.canonicalDomain, 'https://publica.example');
+    assert.equal(configured.transparentBlockTraceability, true);
     assert.equal(
       configured.previewUrl,
       `https://${hostname().split('.')[0]?.toLowerCase()}.tuatara-carat.ts.net:${PREVIEW_PORT}/`,
@@ -186,10 +189,12 @@ describe('publicación del sitio personal', () => {
       access: string;
       entryPoint: string;
       pages: number;
+      transparentBlockTraceability: boolean;
     };
     assert.equal(health.access, 'anybody');
     assert.equal(health.entryPoint, page);
     assert.equal(health.pages, 1);
+    assert.equal(health.transparentBlockTraceability, true);
 
     const visible = await fetch(`${previewBase}/pages`).then((response) => response.json()) as {
       id: string;
@@ -206,6 +211,13 @@ describe('publicación del sitio personal', () => {
     );
     assert.equal((await fetch(`${previewBase}/pages/${encodeURIComponent(hidden.subjectId)}`)).status, 404);
     assert.equal((await fetch(`${previewBase}/exposures`)).status, 404);
+    const history = await fetch(`${previewBase}/blocks/${encodeURIComponent(block)}/history`);
+    assert.equal(history.status, 200);
+    const publicHistory = await history.json() as { states: { content: string | null }[] };
+    assert.deepEqual(
+      publicHistory.states.map((state) => state.content).filter((content) => content !== null),
+      ['Primera versión', 'Segunda versión y [[Secreta]]'],
+    );
     assert.equal((await fetch(`${previewBase}/operations`, { method: 'POST' })).status, 405);
 
     const publicQuery = await fetch(`${previewBase}/query`, {
@@ -292,7 +304,22 @@ describe('publicación del sitio personal', () => {
     const edited = await write({ kind: 'edit_block', block, content: 'Tercera versión' });
     assert.equal(edited.httpStatus, 201);
     assert.match(readFileSync(join(output, 'index.html'), 'utf8'), /Tercera versión/);
-    assert.doesNotMatch(readFileSync(join(output, 'index.html'), 'utf8'), /Primera versión/);
+    assert.match(readFileSync(join(output, 'index.html'), 'utf8'), /class="traceable-block"/);
+
+    const opaque = await fetch(`${base}/publication-site`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Vera publicada', canonicalDomain: 'https://publica.example', entryPoint: page,
+        transparentBlockTraceability: false,
+      }),
+    });
+    assert.equal(opaque.status, 200);
+    assert.equal(
+      (await fetch(`${previewBase}/blocks/${encodeURIComponent(block)}/history`)).status,
+      404,
+    );
+    assert.doesNotMatch(readFileSync(join(output, 'index.html'), 'utf8'), /class="traceable-block"/);
 
     const refused = await write({ kind: 'set_page_visibility', page, visibility: 'private' });
     assert.equal(refused.httpStatus, 422);

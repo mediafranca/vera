@@ -110,6 +110,7 @@ function renderBlocks(
   graph: VeraGraph,
   page: Page,
   published: ReadonlyMap<string, { page: Page; path: string }>,
+  publication: Publication,
 ): string {
   const byParent = new Map<string | null, Block[]>();
   for (const block of graph.blocksOf(page.id)) {
@@ -134,11 +135,62 @@ function renderBlocks(
         },
       );
 
+  const operations = graph.operations();
+  const boundary = operations.find((one) => one.id === publication.firstRevision)?.sequence ?? 0;
+  const publicHistory = (block: Block): string => {
+    if (!publication || !graph.site(publication.site)?.transparentBlockTraceability) return '';
+    const changes = operations.filter((one) => {
+      const change = one.submission.change;
+      return one.sequence >= boundary && (
+        (change.kind === 'create_block' && one.subjectId === block.stableId) ||
+        ((change.kind === 'edit_block' || change.kind === 'move_block' ||
+          change.kind === 'remove_block') && change.block === block.stableId)
+      );
+    });
+    const before = [...operations].reverse().find((one) => {
+      const change = one.submission.change;
+      return one.sequence < boundary && (
+        (change.kind === 'create_block' && one.subjectId === block.stableId) ||
+        (change.kind === 'edit_block' && change.block === block.stableId)
+      );
+    });
+    const initial = before === undefined || changes.some((one) => one.sequence === boundary) ? [] : [{
+      at: publication.publishedAt,
+      by: graph.participant(before.submission.submittedBy)?.name ?? 'autor desconocido',
+      what: 'al publicarse',
+      content: before.submission.change.kind === 'create_block' ||
+        before.submission.change.kind === 'edit_block'
+        ? before.submission.change.content
+        : null,
+    }];
+    const states = [...initial, ...changes.map((one) => {
+      const change = one.submission.change;
+      return {
+        at: one.appliedAt,
+        by: graph.participant(one.submission.submittedBy)?.name ?? 'autor desconocido',
+        what: change.kind === 'create_block' ? 'nació' : change.kind === 'edit_block'
+          ? 'se escribió' : change.kind === 'move_block' ? 'se mudó' : 'se borró',
+        content: change.kind === 'create_block' || change.kind === 'edit_block'
+          ? change.content : null,
+      };
+    })];
+    const rows = states.map((state) => `<li><time datetime="${new Date(state.at).toISOString()}">${
+      new Date(state.at).toISOString().slice(0, 10)
+    }</time> · ${escapeHtml(state.what)} · ${escapeHtml(state.by)}${
+      state.content === null ? '' : `<div>${renderBlockMarkdown(state.content)}</div>`
+    }</li>`).join('');
+    return `<ol class="block-history">${rows || '<li>Sin cambios desde que se publicó.</li>'}</ol>`;
+  };
+
   const render = (parent: string | null): string => {
     const children = sorted(byParent.get(parent) ?? []);
     if (children.length === 0) return '';
     return `<ul>${children
-      .map((block) => `<li>${renderBlockMarkdown(block.content)}${render(block.stableId)}</li>`)
+      .map((block) => graph.site(publication.site)?.transparentBlockTraceability
+        ? `<li><details class="traceable-block"><summary>${renderBlockMarkdown(block.content)}</summary>${
+            publicHistory(block)
+          }</details>${render(block.stableId)}</li>`
+        : `<li>${renderBlockMarkdown(block.content)}${render(block.stableId)}</li>`)
       .join('')}</ul>`;
   };
   return render(null);
@@ -192,6 +244,11 @@ function document(input: {
     'strong{font-weight:700}',
     'ul{list-style:none;margin:0;padding:0}',
     'li>ul{border-left:1px solid color-mix(in srgb,currentColor 20%,transparent);padding-left:1.25rem}',
+    '.traceable-block>summary{cursor:pointer;list-style-position:outside;margin-left:1rem;padding-left:.25rem}',
+    '.traceable-block>summary::marker{color:color-mix(in srgb,currentColor 58%,transparent)}',
+    '.traceable-block>summary>p{display:inline}',
+    '.block-history{margin:.65rem 0 1rem 1.25rem;padding-left:1rem;border-left:1px solid color-mix(in srgb,currentColor 20%,transparent);font:clamp(.78rem,1.6vw,.9rem)/1.5 ui-sans-serif,system-ui,sans-serif;color:color-mix(in srgb,currentColor 76%,transparent)}',
+    '.block-history li{margin:.45rem 0}.block-history p{font:inherit;margin:.2rem 0;color:inherit}',
     'a{color:inherit;text-decoration-thickness:.08em;text-underline-offset:.18em}',
     '.unavailable{color:color-mix(in srgb,currentColor 72%,transparent)}',
     '.executable{margin:1.25rem 0}.executable iframe{display:block;width:100%;height:6rem;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:.3rem;background:inherit}.executable summary{cursor:pointer;font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;margin-top:.45rem}.executable pre{overflow:auto}',
@@ -304,7 +361,7 @@ export function projectPublicSite(
         siteTitle: options.site.title,
         canonicalUrl: canonicalUrl(options.site.canonicalDomain, path),
         brandImageUrl: `${options.site.canonicalDomain.replace(/\/+$/, '')}/icon-512.png`,
-        body: `<main><h1>${escapeHtml(page.title)}</h1>${renderBlocks(graph, page, publishedByTitle)}</main>`,
+        body: `<main><h1>${escapeHtml(page.title)}</h1>${renderBlocks(graph, page, publishedByTitle, publication)}</main>`,
         branded: options.brandingAssets !== undefined,
       }),
       'utf8',
@@ -320,7 +377,7 @@ export function projectPublicSite(
   const indexBody =
     entryPoint === null
       ? `<main><h1>${escapeHtml(options.site.title)}</h1><ul>${links}</ul></main>`
-      : `<main><h1>${escapeHtml(entryPoint.page.title)}</h1>${renderBlocks(graph, entryPoint.page, publishedByTitle)}${
+      : `<main><h1>${escapeHtml(entryPoint.page.title)}</h1>${renderBlocks(graph, entryPoint.page, publishedByTitle, entryPoint.publication)}${
           links === '' ? '' : `<nav aria-label="Páginas publicadas"><ul>${links}</ul></nav>`
         }</main>`;
   writeFileSync(

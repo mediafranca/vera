@@ -154,6 +154,9 @@ entity PersonalSite {
     -- publicada puede ocuparla en el mismo gesto; después siempre nombra una
     -- publicación vigente del propio sitio.
     entry_point: Page?
+    -- Cada superficie decide si su lectura anónima permite abrir desde la
+    -- viñeta la historia pública trazable de sus bloques.
+    transparent_block_traceability: Boolean
     publications: Publication with site = this
 }
 
@@ -486,6 +489,7 @@ surface PersonalSitePublication {
         site.title
         site.canonical_domain
         site.entry_point
+        site.transparent_block_traceability
         site.publications
 
     provides:

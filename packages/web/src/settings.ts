@@ -325,13 +325,23 @@ function publicSiteAdministration(host: HTMLElement, site: PublicationSiteView, 
     option.selected = publication.page === site.entryPoint; entry.append(option);
   }
   entryLabel.append(entryName, entry);
+  const traceability = document.createElement('label');
+  traceability.className = 'sharing-public-choice';
+  const traceabilityInput = document.createElement('input');
+  traceabilityInput.type = 'checkbox';
+  traceabilityInput.checked = site.transparentBlockTraceability;
+  traceability.append(
+    traceabilityInput,
+    document.createTextNode(' Trazabilidad transparente de bloques'),
+  );
   const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Guardar sitio público';
   const saved = document.createElement('span'); saved.className = 'settings-note';
-  form.append(title.label, domain.label, entryLabel, save, saved);
+  form.append(title.label, domain.label, entryLabel, traceability, save, saved);
   form.addEventListener('submit', (event) => void (async () => {
     event.preventDefault(); save.disabled = true;
     const result = await api.configurePublicationSite({ title: title.input.value,
-      canonicalDomain: domain.input.value, entryPoint: entry.value || null });
+      canonicalDomain: domain.input.value, entryPoint: entry.value || null,
+      transparentBlockTraceability: traceabilityInput.checked });
     if ('error' in result) { saved.textContent = String(result.error); save.disabled = false; return; }
     await drawSharing(host);
   })());

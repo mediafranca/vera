@@ -719,6 +719,22 @@ const addDendriticGraphView: Migration = {
   },
 };
 
+/** 19 — cada superficie decide si hace transparente la historia pública de sus bloques. */
+const addTransparentBlockTraceability: Migration = {
+  version: 19,
+  name: 'trazabilidad transparente de bloques por superficie',
+  apply(db) {
+    const table = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = 'personal_sites'",
+    ).get() as { present: number } | undefined;
+    if (table === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(personal_sites)').all() as Array<{ name: string }>;
+    if (columns.some((column) => column.name === 'transparent_block_traceability')) return;
+    db.exec(`ALTER TABLE personal_sites ADD COLUMN transparent_block_traceability
+      INTEGER NOT NULL DEFAULT 0 CHECK (transparent_block_traceability IN (0, 1))`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -738,6 +754,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addCrossingBlockOwners,
   addAgentConversations,
   addDendriticGraphView,
+  addTransparentBlockTraceability,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

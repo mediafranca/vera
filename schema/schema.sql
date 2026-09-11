@@ -523,7 +523,8 @@ CREATE TABLE IF NOT EXISTS personal_sites (
     owner_id          TEXT NOT NULL REFERENCES participants (id),
     title             TEXT NOT NULL,
     canonical_domain  TEXT NOT NULL,
-    entry_point       TEXT REFERENCES pages (id) ON DELETE SET NULL
+    entry_point       TEXT REFERENCES pages (id) ON DELETE SET NULL,
+    transparent_block_traceability INTEGER NOT NULL DEFAULT 0 CHECK (transparent_block_traceability IN (0, 1))
 ) STRICT;
 
 -- Publicar es una operación, no un atributo de la página: deja escrito qué

@@ -61,9 +61,15 @@ function publicPage(corpus: VeraGraph): string {
   return page.id;
 }
 
-function published(corpus: VeraGraph, path = 'pagina-publica', entryPoint = false) {
+function published(
+  corpus: VeraGraph,
+  path = 'pagina-publica',
+  entryPoint = false,
+  transparentBlockTraceability = false,
+) {
   const site = corpus.createSite({
     owner: OWNER, title: 'Vera', canonicalDomain: 'https://vera.mediafranca.net',
+    transparentBlockTraceability,
   });
   const publication = corpus.publish({
     site: site.id, page: publicPage(corpus), path, participant: OWNER,
@@ -169,6 +175,32 @@ describe('proyección pública', () => {
     assert.match(index, /<h1>Página pública<\/h1>/);
     assert.match(index, /<p>Texto &lt;visible&gt;<\/p>/);
     assert.match(index, /rel="canonical" href="https:\/\/vera\.mediafranca\.net\/"/);
+  });
+
+  it('abre en la viñeta sólo la historia trazable desde la publicación cuando la superficie lo permite', () => {
+    const corpus = graph();
+    const block = corpus.blocksOf(publicPage(corpus))[0];
+    assert.ok(block);
+    corpus.submitOperation({
+      originId: 'public:draft', participant: OWNER,
+      change: { kind: 'edit_block', block: block.stableId, content: 'borrador privado' },
+    });
+    corpus.submitOperation({
+      originId: 'public:opening', participant: OWNER,
+      change: { kind: 'edit_block', block: block.stableId, content: 'versión al publicar' },
+    });
+    const options = published(corpus, 'pagina-publica', false, true);
+    corpus.submitOperation({
+      originId: 'public:later', participant: OWNER,
+      change: { kind: 'edit_block', block: block.stableId, content: 'versión posterior' },
+    });
+    const target = scratch();
+    projectPublicSite(corpus, target, options);
+    const html = readFileSync(join(target, 'pagina-publica', 'index.html'), 'utf8');
+    assert.match(html, /class="traceable-block"/);
+    assert.match(html, /versión al publicar/);
+    assert.match(html, /versión posterior/);
+    assert.doesNotMatch(html, /borrador privado/);
   });
 
   it('rechaza una portada que no pertenece a sus publicaciones', () => {

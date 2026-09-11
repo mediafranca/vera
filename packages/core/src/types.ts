@@ -342,6 +342,7 @@ export interface PersonalSite {
   title: string;
   canonicalDomain: string;
   entryPoint: PageId | null;
+  transparentBlockTraceability: boolean;
 }
 
 /**

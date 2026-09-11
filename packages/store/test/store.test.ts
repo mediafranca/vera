@@ -170,6 +170,7 @@ describe('persistencia', () => {
       owner: OWNER,
       title: 'Vera',
       canonicalDomain: 'https://vera.mediafranca.net',
+      transparentBlockTraceability: true,
     });
     const publication = graph.publish({
       site: site.id,
@@ -185,6 +186,7 @@ describe('persistencia', () => {
 
     const loaded = loadGraph(store);
     assert.equal(loaded.site(site.id)?.entryPoint, page);
+    assert.equal(loaded.site(site.id)?.transparentBlockTraceability, true);
     assert.equal(loaded.publicationsOf(site.id)[0]?.path, 'portada');
     assert.deepEqual(checkInvariants(loaded), []);
     store.close();

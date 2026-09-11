@@ -259,12 +259,16 @@ describe('migraciones', () => {
 
     migrate(db, false);
 
-    const row = db.prepare('SELECT title, entry_point FROM personal_sites').get() as {
+    const row = db.prepare(
+      'SELECT title, entry_point, transparent_block_traceability FROM personal_sites',
+    ).get() as {
       title: string;
       entry_point: string | null;
+      transparent_block_traceability: number;
     };
     assert.equal(row.title, 'Vera');
     assert.equal(row.entry_point, null);
+    assert.equal(row.transparent_block_traceability, 0);
     assert.equal(version(db), SCHEMA_VERSION);
     db.close();
   });
