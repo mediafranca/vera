@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { separateRelationCards } from '../src/graph/renderD4.ts';
+import type { GraphLink, GraphNode } from '../src/graph/types.ts';
 
 const renderer = readFileSync(new URL('../src/graph/renderD4.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
@@ -104,9 +106,31 @@ describe('interacción de D4', () => {
   });
 
   it('reutiliza la conectiva de una pareja al pulsar su enlace gris', () => {
-    assert.match(renderer, /let crossing = link\.crossing \?\? data\.links\.find/);
-    assert.match(renderer, /endpoint\(candidate\.source\) === source\.id/);
-    assert.match(renderer, /endpoint\(candidate\.target\) === target\.id/);
+    assert.match(renderer, /function crossingBetween/);
+    assert.match(renderer, /\(from === source && to === target\) \|\| \(from === target && to === source\)/);
+    assert.match(renderer, /let crossing = link\.crossing \?\? crossingBetween\(data, source\.id, target\.id\)/);
+  });
+
+  it('trata los rótulos de relaciones como objetos del layout y evita que colisionen', () => {
+    assert.match(renderer, /export function separateRelationCards/);
+    assert.match(renderer, /const overlapX = cardWidth \+ gap/);
+    assert.match(renderer, /const overlapY = cardHeight \+ gap/);
+    assert.match(renderer, /if \(focusedLink === undefined\) separateRelationCards\(relationCards\)/);
+    const source = { id: 'a', name: 'A' } as GraphNode;
+    const cards = ['r1', 'r2', 'r3'].map((crossing) => ({
+      link: { source: 'a', target: 'b', crossing } as GraphLink,
+      source,
+      x: 500,
+      y: 300,
+    }));
+    separateRelationCards(cards);
+    for (let left = 0; left < cards.length; left += 1) {
+      for (let right = left + 1; right < cards.length; right += 1) {
+        const a = cards[left]!;
+        const b = cards[right]!;
+        assert.ok(Math.abs(a.x - b.x) >= 200 || Math.abs(a.y - b.y) >= 46);
+      }
+    }
   });
 
   it('declara la dirección y permite abrir incluso una relación vacía desde el cable', () => {

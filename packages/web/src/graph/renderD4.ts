@@ -22,6 +22,58 @@ interface RelationActions {
   refresh?: () => Promise<void>;
 }
 
+interface RelationCardPosition {
+  link: GraphLink;
+  source: GraphNode;
+  x: number;
+  y: number;
+}
+
+/** La conectiva es una sola entidad aunque el mapa la alcance desde el otro extremo. */
+function crossingBetween(data: GraphData, source: string, target: string): GraphLink | undefined {
+  return data.links.find((candidate) => {
+    if (candidate.crossing === undefined) return false;
+    const from = endpoint(candidate.source);
+    const to = endpoint(candidate.target);
+    return (from === source && to === target) || (from === target && to === source);
+  });
+}
+
+/**
+ * Los rótulos son objetos del layout, no adornos del cable. Se separan en un
+ * orden estable alrededor de su punto medio para que una madeja de relaciones
+ * siga siendo legible sin introducir una simulación animada.
+ */
+export function separateRelationCards(
+  cards: RelationCardPosition[],
+  cardWidth = 190,
+  cardHeight = 36,
+  gap = 10,
+): void {
+  const ordered = [...cards].sort((a, b) =>
+    a.y - b.y || a.x - b.x || (a.link.crossing ?? '').localeCompare(b.link.crossing ?? '')
+  );
+  for (let pass = 0; pass < ordered.length * 4; pass += 1) {
+    for (let index = 0; index < ordered.length; index += 1) {
+      const a = ordered[index]!;
+      for (let other = index + 1; other < ordered.length; other += 1) {
+        const b = ordered[other]!;
+        const overlapX = cardWidth + gap - Math.abs(b.x - a.x);
+        const overlapY = cardHeight + gap - Math.abs(b.y - a.y);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        // Preservar el centro horizontal mantiene el rótulo asociado a su
+        // cable; el aire se obtiene sobre todo en el eje de lectura vertical.
+        const amount = overlapY / 2 + 0.5;
+        const sign = b.y === a.y
+          ? ((b.link.crossing ?? '').localeCompare(a.link.crossing ?? '') || 1)
+          : Math.sign(b.y - a.y);
+        a.y -= sign * amount;
+        b.y += sign * amount;
+      }
+    }
+  }
+}
+
 function endpoint(value: string | GraphNode): string {
   return typeof value === 'string' ? value : value.id;
 }
@@ -410,12 +462,7 @@ export function renderGraphD4(
     const span = Math.max(0, Math.min(dim.h - 24, (links.length - 1) * 18));
     return links.length < 2 ? pos.y : pos.y - span / 2 + span * index / (links.length - 1);
   };
-  const relationCards: Array<{
-    link: GraphLink;
-    source: GraphNode;
-    x: number;
-    y: number;
-  }> = [];
+  const relationCards: RelationCardPosition[] = [];
   for (const link of data.links) {
     const source = data.nodes.find((node) => node.id === endpoint(link.source));
     const target = data.nodes.find((node) => node.id === endpoint(link.target));
@@ -444,11 +491,7 @@ export function renderGraphD4(
       // Una referencia y su conectiva pueden llegar como dos aristas derivadas
       // de la misma pareja. Pulsar la gris debe abrir la conectiva existente,
       // no intentar crear un duplicado que el dominio rechaza correctamente.
-      let crossing = link.crossing ?? data.links.find((candidate) =>
-        endpoint(candidate.source) === source.id &&
-        endpoint(candidate.target) === target.id &&
-        candidate.crossing !== undefined
-      )?.crossing;
+      let crossing = link.crossing ?? crossingBetween(data, source.id, target.id)?.crossing;
       if (crossing === undefined && options.relations?.createRelation !== undefined) {
         crossing = await options.relations.createRelation(source.id, target.id) ?? undefined;
         if (crossing === undefined) return;
@@ -495,6 +538,8 @@ export function renderGraphD4(
       });
     }
   }
+
+  if (focusedLink === undefined) separateRelationCards(relationCards);
 
   // D4 ordena el vecindario en columnas, pero el argumento no nace de esa
   // geometría: conserva la secuencia que declaró su texto. El hilo se superpone
