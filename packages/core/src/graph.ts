@@ -93,6 +93,7 @@ export class VeraGraph {
 
   namesProperties(names: PropertyNames): void {
     this.#names = names;
+    this.#queryResultLinksCache = null;
   }
 
   get propertyNames(): PropertyNames {
@@ -118,6 +119,7 @@ export class VeraGraph {
   #linksByBlock = new Map<BlockId, PageLink[]>();
   /** Consultas alojadas cuyo resultado vigente proyecta relaciones derivadas. */
   #queryBlocks = new Set<BlockId>();
+  #queryResultLinksCache: PageLink[] | null = null;
   #linksByTarget = new Map<PageId, Set<PageLink>>();
   #unresolvedByTitleKey = new Map<string, Set<PageLink>>();
   #unportedByBlock = new Map<BlockId, UnportedQuery>();
@@ -350,6 +352,11 @@ export class VeraGraph {
 
   /** Relaciones derivadas desde cada consulta alojada hacia su respuesta vigente. */
   #queryResultLinks(onlyBlock?: BlockId): PageLink[] {
+    if (this.#queryResultLinksCache !== null) {
+      return onlyBlock === undefined
+        ? [...this.#queryResultLinksCache]
+        : this.#queryResultLinksCache.filter((link) => link.sourceBlock === onlyBlock);
+    }
     const links: PageLink[] = [];
     for (const id of this.#queryBlocks) {
       if (onlyBlock !== undefined && id !== onlyBlock) continue;
@@ -370,7 +377,10 @@ export class VeraGraph {
         });
       }
     }
-    return links;
+    this.#queryResultLinksCache = links;
+    return onlyBlock === undefined
+      ? [...links]
+      : links.filter((link) => link.sourceBlock === onlyBlock);
   }
 
   // -------------------------------------------------------------------------
@@ -895,6 +905,8 @@ export class VeraGraph {
    * sujeto mismo cuando el sujeto es una página.
    */
   #apply(change: Change, recordedSubject: string | null, at: number): string {
+    // Toda operación puede cambiar la selección o mover la consulta que la aloja.
+    this.#queryResultLinksCache = null;
     const beforehand =
       'block' in change && typeof change.block === 'string'
         ? (this.#blocks.get(change.block)?.page ?? null)

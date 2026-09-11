@@ -556,6 +556,21 @@ describe('a block that asks is not a block that says', () => {
     assert.equal(graph.backlinks(second).length, 1);
   });
 
+  it('invalidates the derived answer when the graph changes', () => {
+    const graph = inhabitedGraph();
+    const related = makePage(graph, 'Relacionada');
+    submit(graph, { kind: 'set_property', page: related, propertyKey: 'concepto', propertyValue: 'VERA' });
+    const asking = makePage(graph, 'Proyecto VERA');
+    const query = makeBlock(graph, asking, '? concepto=VERA');
+
+    assert.equal(graph.linksOf(query).length, 1);
+    assert.equal(graph.backlinks(related).length, 1);
+
+    submit(graph, { kind: 'remove_property', page: related, propertyKey: 'concepto' });
+    assert.deepEqual(graph.linksOf(query), []);
+    assert.deepEqual(graph.backlinks(related), []);
+  });
+
   it('and the block beside it still links as it always did', () => {
     const graph = inhabitedGraph();
     const centre = makePage(graph, 'Centro');
