@@ -2781,8 +2781,9 @@ export function renderOutliner(
     container.addEventListener('click', (event) => {
       if (!container.classList.contains('read-only')) return;
       const target = event.target as HTMLElement;
-      if (target.closest('.bullet') !== null &&
-          container.dataset['transparentBlockTraceability'] === 'true') return;
+      // La viñeta pública conserva un menú de lectura aunque la superficie no
+      // exponga trazabilidad: copiar el bloque sigue siendo una acción inocua.
+      if (target.closest('.bullet') !== null) return;
       if (target.closest('.page-title, .properties, .bullet, .drawn-edit, .gloss-text') === null) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -4722,13 +4723,18 @@ export function renderOutliner(
       event.stopPropagation();
       if (draggedMoved) return;
       if (readOnly) {
-        if (transparentBlockTraceability) {
-          openBlockMenu(bullet, [[{
-            label: 'Mostrar historial',
+        openBlockMenu(bullet, [[
+          {
+            label: 'Copiar',
+            icon: 'copy',
+            run: () => copyText(node.block.content, toast),
+          },
+          ...(transparentBlockTraceability ? [{
+            label: 'Ver historial del bloque',
             icon: 'clock',
             run: () => showHistory(node.block.stableId, row, toast, bullet),
-          }]]);
-        }
+          } satisfies MenuAction] : []),
+        ]]);
         return;
       }
       /*
