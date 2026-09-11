@@ -337,14 +337,30 @@ function publicSiteAdministration(host: HTMLElement, site: PublicationSiteView, 
   const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Guardar sitio público';
   const saved = document.createElement('span'); saved.className = 'settings-note';
   form.append(title.label, domain.label, entryLabel, traceability, save, saved);
-  form.addEventListener('submit', (event) => void (async () => {
-    event.preventDefault(); save.disabled = true;
+  const persistSite = async (changedTraceability = false): Promise<void> => {
+    save.disabled = true;
+    traceabilityInput.disabled = true;
+    saved.textContent = changedTraceability ? 'Aplicando y reconstruyendo el sitio…' : '';
     const result = await api.configurePublicationSite({ title: title.input.value,
       canonicalDomain: domain.input.value, entryPoint: entry.value || null,
       transparentBlockTraceability: traceabilityInput.checked });
-    if ('error' in result) { saved.textContent = String(result.error); save.disabled = false; return; }
+    if ('error' in result) {
+      if (changedTraceability) traceabilityInput.checked = site.transparentBlockTraceability;
+      saved.textContent = String(result.error);
+      save.disabled = false;
+      traceabilityInput.disabled = false;
+      return;
+    }
     await drawSharing(host);
-  })());
+  };
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void persistSite();
+  });
+  // Es una política de la superficie, no un borrador de formulario: cambiarla
+  // la aplica de inmediato. Antes parecía ligada al acto de publicar, pero sólo
+  // se guardaba mediante otro botón y era muy fácil dejarla sin persistir.
+  traceabilityInput.addEventListener('change', () => void persistSite(true));
 
   const open = document.createElement('a'); open.href = site.canonicalDomain || '/'; open.target = '_blank';
   open.rel = 'noreferrer'; open.textContent = 'Abrir sitio público';

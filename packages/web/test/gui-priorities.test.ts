@@ -47,4 +47,10 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(graph, /Visualización del grafo de conocimiento/);
     assert.match(outliner, /acciones del bloque: \$\{blockSummary\}/);
   });
+
+  it('aplica la trazabilidad pública al cambiar el switch, sin un segundo gesto oculto', () => {
+    assert.match(settings, /traceabilityInput\.addEventListener\('change', \(\) => void persistSite\(true\)\)/);
+    assert.match(settings, /Aplicando y reconstruyendo el sitio/);
+    assert.match(settings, /traceabilityInput\.checked = site\.transparentBlockTraceability/);
+  });
 });
