@@ -2058,7 +2058,31 @@ async function resumeVisiblePage(): Promise<void> {
   await api.drain();
 
   const page = workspace.activePage;
-  if (page === null || document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') return;
+  if (page === null) {
+    /*
+     * Un día que estaba vacío no tiene `activePage`: todavía no había entidad
+     * que señalar. Si nació en otro aparato mientras esta PWA dormía, salir aquí
+     * conservaría para siempre el dibujo provisional aunque el corpus ya tenga
+     * la página. Revalidamos únicamente esa ruta fechada y la sustituimos por la
+     * bitácora canónica en cuanto exista.
+     */
+    const route = parseRoute(new URL(window.location.href));
+    if (route.page === null || !/^\d{4}-\d{2}-\d{2}$/.test(route.page)) return;
+    try {
+      const fresh = await api.pages();
+      pages = byWeight(fresh);
+      reconcileTrace(fresh);
+      await held.keepIndex(fresh);
+      const arrived = dayPage(route.page);
+      if (arrived !== undefined && document.visibilityState === 'visible') {
+        await openPage(arrived.id, null, { fromUrl: true, replaceRoute: true });
+      }
+    } catch {
+      // Sin conexión se conserva el día escribible que ya estaba a la vista.
+    }
+    return;
+  }
   const active = document.activeElement;
   const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
     (active instanceof HTMLElement && active.isContentEditable);
