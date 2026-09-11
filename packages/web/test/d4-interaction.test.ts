@@ -6,6 +6,7 @@ import type { GraphLink, GraphNode } from '../src/graph/types.ts';
 
 const renderer = readFileSync(new URL('../src/graph/renderD4.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
 describe('interacción de D4', () => {
   it('acusa el cambio de foco antes de esperar el nuevo vecindario', () => {
@@ -147,6 +148,15 @@ describe('interacción de D4', () => {
     assert.match(renderer, /drawBlocks\(block\.stableId, depth \+ 1\)/);
     assert.match(renderer, /options\.relations\.editBlock\(block\.stableId, content\)/);
     assert.match(renderer, /options\.relations!\.createBlock!\(crossing, source\.id, null, roots\.length\)/);
+  });
+
+  it('escribe relaciones fuera de la réplica parcial de la página abierta', () => {
+    const actions = main.slice(main.indexOf('relations: {'), main.indexOf('refresh: drawGraph'));
+    assert.equal((actions.match(/api\.submitCanonical\(/g) ?? []).length, 3);
+    assert.doesNotMatch(actions, /api\.submit\(/);
+    assert.match(actions, /kind: 'edit_block'/);
+    assert.match(actions, /kind: 'create_block'/);
+    assert.match(actions, /kind: 'create_crossing'/);
   });
 
   it('abre un editor enfocado incluso cuando la conectiva todavía no tiene texto', () => {

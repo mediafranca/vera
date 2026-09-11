@@ -2354,7 +2354,10 @@ async function drawGraph(): Promise<void> {
         ...settings,
         relations: {
           editBlock: async (block: string, content: string): Promise<boolean> => {
-            const result = await api.submit({ kind: 'edit_block', block, content });
+            // Los bloques de una relación no viven en el outline de la página
+            // abierta. La réplica local los rechazaría como inexistentes antes
+            // de que el cambio alcanzara el corpus canónico.
+            const result = await api.submitCanonical({ kind: 'edit_block', block, content });
             if (result.status === 'rejected') notice(`No se pudo editar la relación: ${result.reason}`);
             return result.status !== 'rejected';
           },
@@ -2365,7 +2368,7 @@ async function drawGraph(): Promise<void> {
             position: number,
             content = '',
           ): Promise<boolean> => {
-            const result = await api.submit({
+            const result = await api.submitCanonical({
               kind: 'create_block', page, crossing, parent, position, content,
             });
             if (result.status === 'rejected') {
@@ -2376,7 +2379,7 @@ async function drawGraph(): Promise<void> {
             return true;
           },
           createRelation: async (fromPage: string, toPage: string): Promise<string | null> => {
-            const result = await api.submit({
+            const result = await api.submitCanonical({
               kind: 'create_crossing', fromPage, toPage, content: '',
             });
             if (result.status === 'rejected') {
