@@ -7,7 +7,7 @@
 
 import { answersIn } from './vocabulary.ts';
 import { normaliseCanonicalDomain, normalisePublicPath } from './site.ts';
-import { looksLikeQuery } from './query-source.ts';
+import { looksLikeQuery, readQuery } from './query-source.ts';
 import { relationKeyOf, senseIn, titleIn } from './relations.ts';
 import type { Crossing } from './relations.ts';
 import { DEFAULT_PROPERTY_NAMES, derivedRole } from './property-names.ts';
@@ -116,6 +116,8 @@ export class VeraGraph {
   #pageByTitleKey = new Map<string, PageId>();
   #propertiesBySubject = new Map<string, PropertyAssignment[]>();
   #linksByBlock = new Map<BlockId, PageLink[]>();
+  /** Consultas alojadas cuyo resultado vigente proyecta relaciones derivadas. */
+  #queryBlocks = new Set<BlockId>();
   #linksByTarget = new Map<PageId, Set<PageLink>>();
   #unresolvedByTitleKey = new Map<string, Set<PageLink>>();
   #unportedByBlock = new Map<BlockId, UnportedQuery>();
@@ -334,11 +336,41 @@ export class VeraGraph {
   }
 
   links(): PageLink[] {
-    return [...this.#linksByBlock.values()].flat();
+    return [...this.#writtenLinks(), ...this.#queryResultLinks()];
   }
 
   backlinks(target: PageId): PageLink[] {
-    return [...(this.#linksByTarget.get(target) ?? [])];
+    return this.links().filter((link) => link.target === target);
+  }
+
+  /** Enlaces afirmados por contenido ordinario, sin respuestas de consultas. */
+  #writtenLinks(): PageLink[] {
+    return [...this.#linksByBlock.values()].flat();
+  }
+
+  /** Relaciones derivadas desde cada consulta alojada hacia su respuesta vigente. */
+  #queryResultLinks(onlyBlock?: BlockId): PageLink[] {
+    const links: PageLink[] = [];
+    for (const id of this.#queryBlocks) {
+      if (onlyBlock !== undefined && id !== onlyBlock) continue;
+      const block = this.#blocks.get(id);
+      if (block === undefined) continue;
+      const read = readQuery(block.content);
+      if ('error' in read) continue;
+      for (const target of this.#select(read.expression)) {
+        const page = this.#pages.get(target);
+        if (page === undefined) continue;
+        links.push({
+          id: `query-link:${id}:${target}`,
+          graph: this.id,
+          sourcePage: block.page,
+          sourceBlock: id,
+          targetTitle: page.title,
+          target,
+        });
+      }
+    }
+    return links;
   }
 
   // -------------------------------------------------------------------------
@@ -426,7 +458,10 @@ export class VeraGraph {
 
   /** Enlaces que nacen de un bloque, sin recorrer todos los del grafo. */
   linksOf(block: BlockId): PageLink[] {
-    return [...(this.#linksByBlock.get(block) ?? [])];
+    return [
+      ...(this.#linksByBlock.get(block) ?? []),
+      ...this.#queryResultLinks(block),
+    ];
   }
 
   tagsOf(block: BlockId): string[] {
@@ -1163,6 +1198,7 @@ export class VeraGraph {
     // Las menciones de una conectiva pertenecen al discurso de la relación.
     // Hasta que exista su índice propio no se atribuyen al extremo de origen.
     if (block.crossing != null) {
+      this.#queryBlocks.delete(id);
       this.#linksByBlock.set(id, []);
       this.#tags.set(id, []);
       this.#unportedByBlock.delete(id);
@@ -1183,11 +1219,14 @@ export class VeraGraph {
      * lo que no ocurre es que cuente como un enlace del corpus.
      */
     if (looksLikeQuery(block.content)) {
+      this.#queryBlocks.add(id);
       this.#linksByBlock.set(id, []);
       this.#tags.set(id, []);
       this.#unportedByBlock.delete(id);
       return;
     }
+
+    this.#queryBlocks.delete(id);
 
     const fresh: PageLink[] = [];
     for (const title of referencedTitles(block.content)) {
@@ -1559,7 +1598,7 @@ export class VeraGraph {
       case 'LinksToTerm': {
         const wanted = titleKey(expression.targetTitle);
         return new Set(
-          this.links()
+          this.#writtenLinks()
             .filter((l) => titleKey(l.targetTitle) === wanted && (scope === null || scope.has(l.sourcePage)))
             .map((l) => l.sourcePage),
         );
@@ -1568,7 +1607,7 @@ export class VeraGraph {
         const from = this.#pageTitled(expression.originTitle);
         if (from === undefined || (scope !== null && !scope.has(from.id))) return new Set<PageId>();
         return new Set(
-          this.links()
+          this.#writtenLinks()
             .filter((l) => l.sourcePage === from.id && l.target !== null && (scope === null || scope.has(l.target)))
             .map((l) => l.target as PageId),
         );

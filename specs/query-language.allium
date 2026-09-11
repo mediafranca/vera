@@ -106,6 +106,13 @@ contract CompactQuerySource {
         -- se sigue pulsando en el texto de la pregunta; lo que no ocurre es que
         -- cuente como un enlace del corpus.
 
+    @invariant AStandingAnswerFormallyRelatesItsPage
+        -- La pregunta no afirma sus términos, pero su respuesta vigente sí
+        -- proyecta relaciones formales desde la página que aloja la consulta hacia
+        -- cada página seleccionada. Son relaciones derivadas: aparecen en
+        -- retroenlaces y vecindarios, se recalculan con el grafo y no se guardan
+        -- como contenido ni participan al evaluar términos de enlace.
+
     @invariant TheSourceIsTheQuestion
         -- Lo que se guarda es el texto que se escribió, y de él sale el árbol
         -- cada vez. No se guarda el árbol serializado aparte ni, mucho menos, una
@@ -502,6 +509,11 @@ surface GraphQuerying {
         -- graph as it is then. No result is stored. A stored result ages without
         -- saying so, and a list claiming to be every project while missing last
         -- week's is worse than no list: it is trusted and wrong.
+
+    @guarantee AStandingAnswerIsNavigableAsGraph
+        -- Cada página de la respuesta vigente es una relación derivada de la página
+        -- que aloja la consulta. Se ve en sus retroenlaces y en el vecindario sin
+        -- convertir la pregunta ni la respuesta en contenido persistido.
 
     @guarantee PresentationDoesNotChangeSelection
         -- Una respuesta se lee como lista de páginas, tabla de páginas o lista de

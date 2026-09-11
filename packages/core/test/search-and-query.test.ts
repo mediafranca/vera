@@ -524,6 +524,38 @@ describe('a block that asks is not a block that says', () => {
     assert.deepEqual(graph.tagsOf(block), []);
   });
 
+  it('formally relates its page to every page in the current answer', () => {
+    const graph = inhabitedGraph();
+    const related = makePage(graph, 'Relacionada');
+    submit(graph, { kind: 'set_property', page: related, propertyKey: 'concepto', propertyValue: 'VERA' });
+    const asking = makePage(graph, 'Proyecto VERA');
+    const query = makeBlock(graph, asking, '? concepto=VERA;tabla');
+
+    const [link] = graph.backlinks(related);
+    assert.equal(link?.sourcePage, asking);
+    assert.equal(link?.sourceBlock, query);
+    assert.equal(link?.target, related);
+    assert.equal(graph.linksOf(query)[0]?.target, related);
+  });
+
+  it('recomputes formal answer relations without treating them as queryable assertions', () => {
+    const graph = inhabitedGraph();
+    const first = makePage(graph, 'Primera');
+    submit(graph, { kind: 'set_property', page: first, propertyKey: 'concepto', propertyValue: 'VERA' });
+    const asking = makePage(graph, 'Proyecto VERA');
+    makeBlock(graph, asking, '? concepto=VERA');
+
+    assert.equal(graph.backlinks(first).length, 1);
+    assert.deepEqual(
+      graph.query({ expression: linksTo('Primera'), participant: OWNER }).matchingPages,
+      [],
+    );
+
+    const second = makePage(graph, 'Segunda');
+    submit(graph, { kind: 'set_property', page: second, propertyKey: 'concepto', propertyValue: 'VERA' });
+    assert.equal(graph.backlinks(second).length, 1);
+  });
+
   it('and the block beside it still links as it always did', () => {
     const graph = inhabitedGraph();
     const centre = makePage(graph, 'Centro');
