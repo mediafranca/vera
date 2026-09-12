@@ -20,6 +20,7 @@ import {
   needsProgressiveComposition,
   nodeMarkdown,
   projectedReferenceText,
+  referenceExcerptAddsContext,
   reloadAfterServerWriting,
   reloadOptionsFor,
 } from '../src/outliner.ts';
@@ -160,6 +161,16 @@ describe('aparatos de enlaces proyectados fuera del cuerpo', () => {
 
   it('presenta el texto canónico completo en la referencia saliente', () => {
     assert.equal(projectedReferenceText(page, 'poema', 'Poema entero…'), 'Poema entero → [[Otra]]');
+  });
+});
+
+describe('extractos de referencias', () => {
+  it('no repite debajo del título un bloque que sólo contiene ese mismo enlace', () => {
+    assert.equal(referenceExcerptAddsContext('William Wong', '[[William Wong]]'), false);
+  });
+
+  it('conserva una frase que explica el contexto de la referencia', () => {
+    assert.equal(referenceExcerptAddsContext('William Wong', 'Conversé con [[William Wong]]'), true);
   });
 });
 

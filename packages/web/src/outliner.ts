@@ -2714,6 +2714,17 @@ export function projectedReferenceText(
 }
 
 /**
+ * El título de una referencia ya dice adónde lleva.
+ *
+ * Cuando el bloque no dice nada más que ese mismo wikienlace —el caso de cada
+ * parada de un recorrido— repetirlo debajo no añade contexto: hace parecer que
+ * hay dos referencias. Se conserva cualquier frase, alias o texto adicional.
+ */
+export function referenceExcerptAddsContext(title: string, excerpt: string): boolean {
+  return excerpt.trim().toLocaleLowerCase() !== `[[${title.trim()}]]`.toLocaleLowerCase();
+}
+
+/**
  * Traduce las rutas del corpus a los objetos que Vera guarda.
  *
  * La página trae ya resueltas las suyas, así que no hay una petición por
@@ -6016,9 +6027,12 @@ export function renderOutliner(
 
           const said = document.createElement('div');
           said.className = 'backlink-excerpt markdown-preview';
-          renderPreview(said, row.excerpt, gesture);
+          if (referenceExcerptAddsContext(row.title, row.excerpt)) {
+            renderPreview(said, row.excerpt, gesture);
+          }
 
-          link.append(where, said);
+          link.append(where);
+          if (said.childNodes.length > 0) link.append(said);
           if (row.says !== undefined) {
             const answers = document.createElement('div');
             answers.className = 'backlink-excerpt reciprocal markdown-preview';

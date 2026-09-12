@@ -1166,7 +1166,11 @@ surface TrailOnTheMap {
         -- aquella sesión siga abierta.
 
     @guarantee TheWholeShapeAtOnce
-        -- Se encienden todos los nodos a la vez, no uno a uno según se lee. La
+        -- El mapa del recorrido muestra exclusivamente sus paradas: no incluye la
+        -- página del recorrido ni el vecindario lateral de cada parada. Es una
+        -- proyección del argumento, no una consulta por proximidad sobre el corpus.
+        --
+        -- Se encienden todas las paradas a la vez, no una a una según se lee. La
         -- forma del argumento —un tramo recto, un rodeo que vuelve, una estrella
         -- desde un solo sitio— es en sí misma legible, y no se puede ver una forma
         -- por partes. Es también lo que hace que un recorrido se recuerde: por su
@@ -1234,43 +1238,23 @@ surface TrailOnTheMap {
         -- —vecindarios, grados, alcance—, que es lo que esta garantía protege.
 
     @guarantee TheThreadStraightensWhileItIsRead
-        -- Mientras el recorrido está abierto, y sólo entonces, sus paradas llevan
-        -- encima dos resortes flojos: uno tira de cada parada hacia el punto medio
-        -- de sus dos vecinas en el hilo, y otro lleva cada tramo hacia la longitud
-        -- media de todos. El argumento tiende a leerse como una línea de trazos
-        -- parejos.
-        --
-        -- Es una reparación de legibilidad y no una tesis sobre el mapa. Con las
-        -- fuerzas del vecindario solas, un recorrido de doce paradas cae en una
-        -- madeja: cada parada se coloca por sus enlaces con el corpus, que no
-        -- tienen por qué parecerse al orden del argumento, y el hilo las cose en un
-        -- orden que cruza el dibujo de un lado a otro. Un enredo no se lee como un
-        -- recorrido, y entonces la forma que TheWholeShapeAtOnce promete no está.
-        --
-        -- **Flojos es parte de la garantía.** No ganan a los enlaces ni a la
-        -- repulsión: los acompañan. Si dos paradas están lejos porque el corpus las
-        -- tiene lejos, lejos se quedan y el tramo se dibuja largo. Un recorrido que
-        -- se enderezara del todo dibujaría todos los recorridos iguales, y el rodeo
-        -- que vuelve y la estrella desde un solo sitio dejarían de distinguirse:
-        -- se habría cambiado la forma por la comodidad de leerla.
+        -- Mientras el recorrido está abierto, y sólo entonces, sus paradas se
+        -- disponen en su orden como una fila casi recta, con tramos de paso parejo.
+        -- La secuencia manda sobre la geometría del vecindario, que no forma parte
+        -- de esta proyección. Los distintos trazos conservan el color o estilo de
+        -- su clase para distinguir camino existente de campo través.
         --
         -- Los resortes no cruzan un puente cortado. Enderezar por encima del hueco
         -- afirmaría que las dos mitades van en línea, y de eso el recorrido no dice
         -- nada.
         --
-        -- Cerrado el recorrido, la fuerza no está: el mapa de quien no está leyendo
-        -- un argumento es el de siempre. Lo que se movió se queda movido, como se
-        -- queda cualquier nodo que alguien arrastró — devolverlo a su sitio sería
-        -- el mapa moviéndose solo, que es justo lo que TheMapHoldsItsPositions
-        -- impide.
+        -- Cerrado el recorrido, esta disposición no está: el mapa ordinario vuelve
+        -- a enseñar el vecindario y conserva sus propias posiciones.
 
     @guarantee TheMapIsSeenToSettle
-        -- Al abrir un recorrido sobre un mapa que ya estaba puesto, el acomodo se
-        -- ve ocurrir: no aparece ya hecho. Es la única animación de esta vista, y
-        -- lo es porque aquí el movimiento es lo que hay que ver. Ver de dónde tira
-        -- cada parada dice qué sostiene el argumento en el corpus mejor de lo que
-        -- lo dice el resultado ya puesto, y además enseña que el mapa no se
-        -- rehizo: se acomodó.
+        -- Al abrir un recorrido sobre un mapa que ya estaba puesto, la transición
+        -- hacia su fila se ve ocurrir: queda claro que se cambió de la proyección
+        -- del vecindario a la proyección del argumento.
 
     @guarantee ABrokenBridgeIsDrawnBroken
         -- Un nodo que no lleva a ningún sitio conserva su número y su tramo, y se

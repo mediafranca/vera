@@ -49,6 +49,7 @@ import { sameReadablePage } from './page-validation.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
+import { graphOfThread } from './graph/thread.ts';
 import { renderGraph3D, cleanupGraph3D, forgetCamera, selectNode3D } from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
@@ -2287,6 +2288,7 @@ async function drawGraph(completeD4 = false): Promise<void> {
       delivery.signal,
     );
     data = journalsInMap(data, workspace.activePage, workspace.graphJournals);
+    data = graphOfThread(data, openTrail);
   } catch {
     if (delivery.signal.aborted) return;
     /*

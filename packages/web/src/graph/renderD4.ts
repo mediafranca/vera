@@ -299,6 +299,27 @@ export function renderGraphD4(
     }
   }
 
+  /*
+   * Un recorrido no hereda las columnas del vecindario que acabamos de excluir.
+   * Sus tarjetas forman una sola fila en el orden declarado; el hilo conserva
+   * el color de cada cruce y el encuadre final se ocupa de hacerla caber.
+   */
+  if (thread !== null) {
+    const ordered = [...data.nodes].sort((a, b) =>
+      (threadOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (threadOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+    const gap = 120;
+    const total = ordered.reduce((sum, node) => sum + dims.get(node.id)!.w, 0) +
+      Math.max(0, ordered.length - 1) * gap;
+    let x = centreX - total / 2;
+    for (const node of ordered) {
+      const dim = dims.get(node.id)!;
+      held.set(node.id, { x: x + dim.w / 2, y: height / 2 });
+      x += dim.w + gap;
+    }
+  }
+
   // Al trabajar una relación, sus páginas dejan de obedecer temporalmente al
   // stack de su grado y se enfrentan alrededor del editor. No cambia el grafo ni
   // se guardan estas posiciones: es el equivalente espacial de enfocar un campo.

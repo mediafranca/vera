@@ -193,4 +193,9 @@ describe('interacción de D4', () => {
     assert.match(renderer, /thread !== null && node\.id === thread\.page/);
     assert.doesNotMatch(renderer, /data\.links\.push\([^)]*thread/s);
   });
+
+  it('pone las paradas del recorrido en una sola fila según su ordinal', () => {
+    assert.match(renderer, /const ordered = \[\.\.\.data\.nodes\]\.sort/);
+    assert.match(renderer, /held\.set\(node\.id, \{ x: x \+ dim\.w \/ 2, y: height \/ 2 \}\)/);
+  });
 });
