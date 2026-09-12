@@ -167,6 +167,14 @@ describe('interacción de D4', () => {
     assert.doesNotMatch(renderer, /createRelation\(source\.id, target\.id\) \?\?/);
   });
 
+  it('entrega grado uno antes de pedir el alcance completo de D4', () => {
+    assert.match(main, /const progressiveD4 = workspace\.graphView === 'graph_d4' && workspace\.depth > 1/);
+    assert.match(main, /const requestedDepth = progressiveD4 && !completeD4 \? 1 : workspace\.depth/);
+    assert.match(main, /api\.graph\([\s\S]*requestedDepth/);
+    assert.match(main, /requestAnimationFrame\(\(\) => \{[\s\S]*drawGraph\(true\)/);
+    assert.match(main, /if \(turn === graphTurn\)/);
+  });
+
   it('abre un editor enfocado incluso cuando la conectiva todavía no tiene texto', () => {
     assert.match(renderer, /if \(blocks\.length === 0 && options\.relations\?\.createBlock !== undefined\)/);
     assert.match(renderer, /attr\('class', 'd4-relation-empty'\)/);

@@ -2262,7 +2262,7 @@ async function bringItOver(taking: Behind): Promise<void> {
 let graphTurn = 0;
 let graphDelivery: AbortController | null = null;
 
-async function drawGraph(): Promise<void> {
+async function drawGraph(completeD4 = false): Promise<void> {
   if (workspace.activePage === null) return;
   const container = $('#graph');
   const turn = ++graphTurn;
@@ -2277,10 +2277,12 @@ async function drawGraph(): Promise<void> {
     notice('Esta página no está publicada; el mapa vuelve a mostrar tu espacio.');
   }
   let data;
+  const progressiveD4 = workspace.graphView === 'graph_d4' && workspace.depth > 1;
+  const requestedDepth = progressiveD4 && !completeD4 ? 1 : workspace.depth;
   try {
     data = await api.graph(
       workspace.activePage,
-      workspace.depth,
+      requestedDepth,
       workspace.mapScope === 'published',
       delivery.signal,
     );
@@ -2433,6 +2435,19 @@ async function drawGraph(): Promise<void> {
   } finally {
     container.append(controls, trail);
     drawTrail();
+  }
+
+  /*
+   * D4 llega en dos cortes. El primero ya quedó pintado e interactivo; sólo
+   * entonces se pide el alcance elegido. `requestAnimationFrame` fuerza esa
+   * primera pintura antes de iniciar el trabajo que puede volver a ocupar el
+   * hilo principal. El mapa de grado uno permanece intacto durante la espera y
+   * cualquier navegación aborta la segunda entrega mediante `graphTurn`.
+   */
+  if (progressiveD4 && !completeD4 && turn === graphTurn) {
+    window.requestAnimationFrame(() => {
+      if (turn === graphTurn) void drawGraph(true);
+    });
   }
 }
 
