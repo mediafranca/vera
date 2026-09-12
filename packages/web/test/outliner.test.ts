@@ -17,6 +17,7 @@ import {
   invokeMenuAction,
   isSpecialPage,
   matchingMovePages,
+  needsProgressiveComposition,
   nodeMarkdown,
   projectedReferenceText,
   reloadAfterServerWriting,
@@ -29,6 +30,29 @@ const block = (stableId: string, parent: string | null, position: number, conten
   parent,
   position,
   content,
+});
+
+describe('composición progresiva de páginas', () => {
+  it('reparte una página mediana antes del antiguo umbral de cien bloques', () => {
+    assert.equal(
+      needsProgressiveComposition(Array.from({ length: 32 }, (_, index) => block(`b${index}`, null, index))),
+      true,
+    );
+  });
+
+  it('reparte una página de menos bloques cuando su fuente es costosa', () => {
+    const blocks = Array.from({ length: 16 }, (_, index) =>
+      block(`b${index}`, null, index, index < 2 ? '| una | tabla |\n| --- | --- |' : 'prosa'),
+    );
+    assert.equal(needsProgressiveComposition(blocks), true);
+  });
+
+  it('mantiene inmediata una página breve y liviana', () => {
+    assert.equal(
+      needsProgressiveComposition(Array.from({ length: 20 }, (_, index) => block(`b${index}`, null, index, 'prosa'))),
+      false,
+    );
+  });
 });
 
 describe('enlaces salientes', () => {

@@ -2746,6 +2746,29 @@ export function blockResolver(page: PageView): RenderOptions['resolveBlock'] {
   };
 }
 
+/**
+ * Decide si componer los bloques en más de una pintura.
+ *
+ * El número de bloques por sí solo era una mala aproximación: una página de
+ * noventa bloques con tablas, código o mucho Markdown seguía bloqueando el hilo
+ * principal porque el antiguo umbral empezaba recién en cien. Esta estimación
+ * es deliberadamente barata y conservadora; se ejecuta antes de tocar el DOM.
+ */
+export function needsProgressiveComposition(blocks: readonly BlockView[]): boolean {
+  if (blocks.length >= 32) return true;
+
+  let sourceLength = 0;
+  let costlyBlocks = 0;
+  for (const block of blocks) {
+    sourceLength += block.content.length;
+    if (/```|\|[^\n]*\||!\[|<(?:iframe|svg|video|audio)\b|\{\{renderer\b/i.test(block.content)) {
+      costlyBlocks += 1;
+    }
+  }
+
+  return sourceLength >= 12_000 || (blocks.length >= 16 && costlyBlocks >= 2);
+}
+
 function wireCataloguedMedia(container: HTMLElement, page: PageView): void {
   for (const asset of page.assets) {
     for (const element of container.querySelectorAll<HTMLElement>(
@@ -5502,7 +5525,7 @@ export function renderOutliner(
   };
   for (const root of tree) queue(root, 0, null);
 
-  const progressive = focus === null && focusRoot === null && entries.length >= 100;
+  const progressive = focus === null && focusRoot === null && needsProgressiveComposition(page.blocks);
   if (!progressive) {
     for (const root of tree) drawBlock(root, 0);
     wireFootnotes(list);
@@ -5521,14 +5544,16 @@ export function renderOutliner(
       // el documento. No se sigue trabajando ni se mezcla la página anterior
       // con la nueva.
       if (!list.isConnected) return;
-      // El primer cuadro entrega ocho bloques. Los siguientes usan un pequeño
+      // El primer cuadro entrega doce bloques: suele cubrir el primer viewport
+      // sin convertir una página mediana en una aparición bloqueante. Los
+      // siguientes usan un pequeño
       // presupuesto temporal: una página de prosa sencilla no necesita ciento
       // cuarenta cuadros para componerse, pero una tabla costosa tampoco puede
       // secuestrar el hilo indefinidamente.
       const began = performance.now();
-      const cap = Math.min(at + (first ? 8 : 64), entries.length);
-      const minimum = Math.min(at + 8, entries.length);
-      while (at < cap && (at < minimum || performance.now() - began < 8)) {
+      const cap = Math.min(at + (first ? 12 : 64), entries.length);
+      const minimum = Math.min(at + (first ? 12 : 6), entries.length);
+      while (at < cap && (at < minimum || performance.now() - began < 6)) {
         const entry = entries[at];
         if (entry !== undefined) {
           drawBlock(entry.node, entry.depth, entry.ordinal, false);
