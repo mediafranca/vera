@@ -60,9 +60,10 @@ describe('retained page validation', () => {
     assert.match(main, /await catchUpWithCorpus\(\);[\s\S]*await api\.drain\(\)/);
     assert.match(main, /document\.visibilityState === 'visible'\) void resumeVisiblePage\(\)/);
     assert.match(main, /writing\) return;[\s\S]*await openPage\(page, null, \{ fromUrl: true, replaceRoute: true \}\)/);
-    assert.match(main, /if \(page === null\) \{[\s\S]*const route = parseRoute[\s\S]*const fresh = await api\.pages\(\)/);
+    assert.match(main, /if \(page === null\) \{[\s\S]*await revalidateUnstartedDay\(\)/);
     assert.match(main, /const arrived = dayPage\(route\.page\)/);
     assert.match(main, /openPage\(arrived\.id, null, \{ fromUrl: true, replaceRoute: true \}\)/);
+    assert.match(main, /announce\(\);[\s\S]*await revalidateUnstartedDay\(\)/);
   });
 
   it('no confunde con un día vacío uno que falta en el índice local atrasado', () => {

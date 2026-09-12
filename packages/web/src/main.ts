@@ -2033,6 +2033,30 @@ async function catchUpWithCorpus(): Promise<void> {
     waiting = null;
   }
   announce();
+  // Una pantalla de día aún no iniciado no tiene `activePage`, pero eso no la
+  // vuelve ajena a los cambios: el sondeo periódico debe sustituirla cuando el
+  // día nace en otro aparato, aunque esta pestaña nunca haya ido al fondo.
+  await revalidateUnstartedDay();
+}
+
+/** Sustituye la representación provisional de un día cuando ya existe. */
+async function revalidateUnstartedDay(): Promise<boolean> {
+  if (workspace.activePage !== null || document.visibilityState !== 'visible') return false;
+  const route = parseRoute(new URL(window.location.href));
+  if (route.page === null || !/^\d{4}-\d{2}-\d{2}$/.test(route.page)) return false;
+  try {
+    const fresh = await api.pages();
+    pages = byWeight(fresh);
+    reconcileTrace(fresh);
+    await held.keepIndex(fresh);
+    const arrived = dayPage(route.page);
+    if (arrived === undefined || document.visibilityState !== 'visible') return false;
+    await openPage(arrived.id, null, { fromUrl: true, replaceRoute: true });
+    return true;
+  } catch {
+    // Sin conexión se conserva el día escribible que ya estaba a la vista.
+    return false;
+  }
 }
 
 /**
@@ -2067,20 +2091,7 @@ async function resumeVisiblePage(): Promise<void> {
      * la página. Revalidamos únicamente esa ruta fechada y la sustituimos por la
      * bitácora canónica en cuanto exista.
      */
-    const route = parseRoute(new URL(window.location.href));
-    if (route.page === null || !/^\d{4}-\d{2}-\d{2}$/.test(route.page)) return;
-    try {
-      const fresh = await api.pages();
-      pages = byWeight(fresh);
-      reconcileTrace(fresh);
-      await held.keepIndex(fresh);
-      const arrived = dayPage(route.page);
-      if (arrived !== undefined && document.visibilityState === 'visible') {
-        await openPage(arrived.id, null, { fromUrl: true, replaceRoute: true });
-      }
-    } catch {
-      // Sin conexión se conserva el día escribible que ya estaba a la vista.
-    }
+    await revalidateUnstartedDay();
     return;
   }
   const active = document.activeElement;
