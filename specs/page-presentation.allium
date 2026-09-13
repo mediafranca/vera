@@ -115,7 +115,7 @@ contract PresentationNavigation {
 
 enum Direction { previous | next | left | right }
 enum PresentationStatus { active | left }
-enum PresentationAvailability { declared | preview }
+enum PresentationAvailability { declared }
 
 ------------------------------------------------------------
 -- Values and entities
@@ -204,55 +204,6 @@ rule RefuseAnEmptyDeclaredPresentation {
     requires: exists membership
     requires: membership.status = active
     requires: semantic_type(page) = "presentación"
-    requires: first_level_blocks(page).count = 0
-
-    ensures: PresentationRefusal.created(
-        page: page,
-        participant: participant,
-        reason: "la página no contiene ningún bloque que pueda ser una lámina"
-    )
-}
-
--- Preview is deliberately weaker than declaring the page a presentation. It
--- lets a person inspect whether an ordinary outline reads well as slides without
--- silently changing what that page is in the corpus.
-rule EnterAnOrdinaryPagePresentationPreview {
-    when: ParticipantPreviewsPageAsPresentation(participant, page, address?)
-
-    let membership = core/Membership{graph: page.graph, participant: participant}
-
-    requires: exists membership
-    requires: membership.status = active
-    requires: semantic_type(page) != "presentación"
-    requires: first_level_blocks(page).count > 0
-
-    ensures:
-        let deck = PresentationDeck.created(
-            page: page,
-            source_revision: current_revision(page),
-            availability: preview
-        )
-        PresentationSession.created(
-            participant: participant,
-            deck: deck,
-            current: addressed_or_first_slide(deck, address),
-            status: active,
-            fullscreen: false,
-            controls_visible: true,
-            notes_visible: false,
-            overview_visible: false,
-            newer_revision_available: false
-        )
-}
-
-rule RefuseAnEmptyPresentationPreview {
-    when: ParticipantPreviewsPageAsPresentation(participant, page, address?)
-
-    let membership = core/Membership{graph: page.graph, participant: participant}
-
-    requires: exists membership
-    requires: membership.status = active
-    requires: semantic_type(page) != "presentación"
     requires: first_level_blocks(page).count = 0
 
     ensures: PresentationRefusal.created(
@@ -438,7 +389,7 @@ invariant ASlidesPresenterNotesAreItsSourceGloss {
 
 invariant ADeckRemembersHowItWasEntered {
     for deck in PresentationDecks:
-        deck.availability = declared or deck.availability = preview
+        deck.availability = declared
 }
 
 invariant ADeckNamesTheRevisionItProjects {
@@ -480,7 +431,6 @@ surface PresentationViewer {
 
     provides:
         ParticipantPresentsPage(participant, page, address?)
-        ParticipantPreviewsPageAsPresentation(participant, page, address?)
         ParticipantMovesInPresentation(session, direction)
         ParticipantOpensPresentationOverview(session)
         ParticipantClosesPresentationOverview(session)
@@ -501,11 +451,10 @@ surface PresentationViewer {
         -- primary page action. The participant need not know a URL convention or
         -- edit source markup to enter the viewer.
 
-    @guarantee PreviewDoesNotCompeteWithOrdinaryReading
-        -- Every ordinary readable page may be tested as slides, but the action is
-        -- secondary and explicitly described as a preview. It is not shown as
-        -- though every note, daily log or administrative page were intended for
-        -- an audience, and previewing never changes the page's semantic type.
+    @guarantee OrdinaryPagesDoNotOfferPresentation
+        -- Presentar aparece sólo cuando el tipo semántico de la página es
+        -- `presentación`. Una nota, jornada o página administrativa corriente no
+        -- ofrece una acción que contradiga lo que la propia página dice que es.
 
     @guarantee TheViewerUsesTheWholeAvailableStage
         -- The active slide occupies the presentation stage without Vera's text,

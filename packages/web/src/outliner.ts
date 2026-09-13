@@ -3428,14 +3428,14 @@ export function renderOutliner(
   propertiesToggle.setAttribute('aria-expanded', 'false');
   propertiesToggle.title = 'Mostrar propiedades';
   heading.append(propertiesToggle);
+  const declaredPresentation = isPresentation(page.properties, corpusNames().kind);
   {
     // @guarantee DeclaredPresentationsOfferPresentationProminently
-    const declaredPresentation = isPresentation(page.properties, corpusNames().kind);
     heading.classList.toggle('has-presentation', declaredPresentation);
     const present = document.createElement('button');
     present.type = 'button';
     present.className = 'present-page';
-    present.textContent = declaredPresentation ? 'Presentar' : 'Ver como presentación';
+    present.textContent = 'Presentar';
     present.hidden = !declaredPresentation;
     present.addEventListener('click', () => {
       void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null, {
@@ -3446,6 +3446,14 @@ export function renderOutliner(
     });
     heading.append(present);
   }
+  const presentationActions: MenuAction[] = declaredPresentation ? [{
+    label: 'Presentar',
+    icon: 'eye',
+    run: () => void presentPage(page, options, callbacks.onNavigate, null, {
+      scheme: callbacks.scheme,
+      onScheme: callbacks.onScheme,
+    }),
+  }] : [];
   header.append(heading);
 
   // El front matter no es decoración: son propiedades del grafo, y se editan.
@@ -4151,14 +4159,7 @@ export function renderOutliner(
             chooseProperties(!session.frontMatterOpen());
           },
         },
-        {
-          label: 'Ver como presentación',
-          icon: 'eye',
-          run: () => void presentPage(page, options, callbacks.onNavigate, null, {
-            scheme: callbacks.scheme,
-            onScheme: callbacks.onScheme,
-          }),
-        },
+        ...presentationActions,
         {
           label: 'Copiar el Markdown de la página',
           icon: 'copy',
@@ -4255,14 +4256,7 @@ export function renderOutliner(
         ...(special ? { blocked: 'una página especial se edita deliberadamente y no se procesa' } : {}),
         run: () => void processPage(page, toast, callbacks),
       },
-      {
-        label: isPresentation(page.properties, corpusNames().kind) ? 'Presentar' : 'Ver como presentación',
-        icon: 'eye',
-        run: () => void presentPage(page, options, callbacks.onNavigate, null, {
-          scheme: callbacks.scheme,
-          onScheme: callbacks.onScheme,
-        }),
-      },
+      ...presentationActions,
       {
         label: 'Copiar el Markdown de la página',
         icon: 'copy',
