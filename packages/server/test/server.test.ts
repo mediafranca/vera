@@ -56,6 +56,23 @@ async function get(path: string): Promise<unknown> {
   return response.json();
 }
 
+describe('modelos de procesamiento', () => {
+  it('ofrece sólo identidades presentables y nunca rutas ni secretos', async () => {
+    const result = await get('/processing/models') as {
+      models: { id: string; name: string; provider: string; location: string; path?: string; key?: string }[];
+    };
+    assert.ok(Array.isArray(result.models));
+    for (const model of result.models) {
+      assert.match(model.id, /^(local|openai):/);
+      assert.ok(model.name.length > 0);
+      assert.ok(['local', 'openai'].includes(model.provider));
+      assert.ok(['this_device', 'external'].includes(model.location));
+      assert.equal(model.path, undefined);
+      assert.equal(model.key, undefined);
+    }
+  });
+});
+
 describe('POST /operations', () => {
   it('aplica una operación válida y devuelve su secuencia', async () => {
     const { status, json } = await post({

@@ -5341,6 +5341,40 @@ body.settings-open #text {
 
 /* --- Procesar una página --------------------------------------------------- */
 
+.processing-model-choice {
+  display: grid;
+  gap: .65rem;
+}
+
+.processing-model-choice label {
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: .84rem;
+}
+
+.processing-model-choice select {
+  width: 100%;
+  padding: .55rem .6rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.processing-model-start {
+  justify-self: start;
+  padding: .48rem .75rem;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.processing-model-start:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+
 /*
  * La bitácora de lo que está pasando.
  *

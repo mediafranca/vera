@@ -11,7 +11,7 @@
 // venga— es escribir otro módulo con esta misma forma.
 
 import { execFile } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { access, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -30,6 +30,68 @@ const home = homedir();
 const DEFAULT_MODEL = join(home, '.local', 'share', 'llama', 'qwen2.5-3b-instruct-q4_k_m.gguf');
 const NAMES = ['llama-cli'];
 
+export interface ProcessingModel {
+  id: string;
+  name: string;
+  provider: 'local' | 'openai';
+  location: 'this_device' | 'external';
+}
+
+const localDirectories = (): string[] => {
+  const configured = process.env['VERA_LLAMA_MODELS_DIR'];
+  return configured === undefined
+    ? [join(home, '.local', 'share', 'llama')]
+    : configured.split(':').map((one) => one.trim()).filter((one) => one !== '');
+};
+
+const openAIModels = (): string[] => {
+  if ((process.env['OPENAI_API_KEY'] ?? '').trim() === '') return [];
+  const configured = process.env['VERA_OPENAI_MODELS'] ?? process.env['VERA_OPENAI_MODEL'] ?? 'gpt-5.6-luna';
+  return configured.split(',').map((one) => one.trim()).filter((one) => one !== '');
+};
+
+/** Modelos utilizables ahora, sin revelar rutas ni credenciales al navegador. */
+export async function processingModels(): Promise<ProcessingModel[]> {
+  const binary = findTool(NAMES, process.env['VERA_LLAMA']);
+  const paths = new Set<string>();
+  const explicit = process.env['VERA_LLAMA_MODEL'] ?? DEFAULT_MODEL;
+  try {
+    await access(explicit);
+    paths.add(explicit);
+  } catch { /* no está instalado */ }
+  for (const directory of localDirectories()) {
+    try {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (entry.isFile() && entry.name.toLowerCase().endsWith('.gguf')) paths.add(join(directory, entry.name));
+      }
+    } catch { /* un directorio configurado puede no existir */ }
+  }
+  const local = binary === null ? [] : [...paths].sort().map((path) => ({
+    id: `local:${Buffer.from(path).toString('base64url')}`,
+    name: path.split('/').at(-1)?.replace(/\.gguf$/i, '') ?? 'modelo local',
+    provider: 'local' as const,
+    location: 'this_device' as const,
+  }));
+  const remote = openAIModels().map((model) => ({
+    id: `openai:${model}`,
+    name: model,
+    provider: 'openai' as const,
+    location: 'external' as const,
+  }));
+  return [...local, ...remote];
+}
+
+async function selectedModel(id?: string): Promise<{ descriptor: ProcessingModel; path?: string } | null> {
+  const catalog = await processingModels();
+  const descriptor = id === undefined ? catalog[0] : catalog.find((one) => one.id === id);
+  if (descriptor === undefined) return null;
+  if (descriptor.provider === 'local') {
+    const path = Buffer.from(descriptor.id.slice('local:'.length), 'base64url').toString('utf8');
+    return { descriptor, path };
+  }
+  return { descriptor };
+}
+
 export interface ModelPresence {
   ready: boolean;
   binary: string | null;
@@ -37,7 +99,15 @@ export interface ModelPresence {
 }
 
 /** ¿Hay con qué leer? Se pregunta antes de prometer nada. */
-export async function modelPresence(): Promise<ModelPresence> {
+export async function modelPresence(id?: string): Promise<ModelPresence> {
+  if (id !== undefined) {
+    const selected = await selectedModel(id);
+    if (selected === null) return { ready: false, binary: null, model: null };
+    if (selected.descriptor.provider === 'openai') {
+      return { ready: true, binary: 'openai', model: selected.descriptor.name };
+    }
+    return { ready: true, binary: findTool(NAMES, process.env['VERA_LLAMA']), model: selected.path ?? null };
+  }
   const binary = findTool(NAMES, process.env['VERA_LLAMA']);
   const model = process.env['VERA_LLAMA_MODEL'] ?? DEFAULT_MODEL;
   let present = true;
@@ -54,6 +124,8 @@ export interface AskOptions {
   timeoutMs?: number;
   /** Cuántos tokens como mucho. Lo que se pide aquí son respuestas cortas. */
   maxTokens?: number;
+  /** Identidad opaca devuelta por processingModels. */
+  model?: string;
 }
 
 /**
@@ -67,7 +139,43 @@ export async function ask(
   prompt: string,
   options: AskOptions = {},
 ): Promise<{ text: string } | { error: string }> {
-  const presence = await modelPresence();
+  const selected = await selectedModel(options.model);
+  if (selected?.descriptor.provider === 'openai') {
+    const endpoint = `${(process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/responses`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${process.env['OPENAI_API_KEY'] ?? ''}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selected.descriptor.name,
+          input: prompt,
+          max_output_tokens: options.maxTokens ?? 200,
+          store: false,
+        }),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 120_000),
+      });
+      const body = await response.json() as {
+        error?: { message?: string };
+        output_text?: string;
+        output?: { content?: { type?: string; text?: string }[] }[];
+      };
+      if (!response.ok) return { error: body.error?.message ?? `OpenAI respondió ${response.status}` };
+      const text = body.output_text ?? body.output
+        ?.flatMap((item) => item.content ?? [])
+        .filter((item) => item.type === 'output_text')
+        .map((item) => item.text ?? '')
+        .join('') ?? '';
+      return text.trim() === '' ? { error: 'OpenAI no respondió nada' } : { text: text.trim() };
+    } catch (error) {
+      const why = error instanceof Error ? error.message : 'error desconocido';
+      return { error: `OpenAI no pudo leer la página: ${why}` };
+    }
+  }
+
+  const presence = await modelPresence(options.model);
   if (!presence.ready || presence.binary === null || presence.model === null) {
     return { error: 'no hay un modelo local instalado' };
   }
@@ -180,6 +288,7 @@ export interface StructureBlock {
 export async function proposeHierarchy(
   title: string,
   blocks: StructureBlock[],
+  model?: string,
 ): Promise<{ changes: Change[]; explanation: string } | { error: string }> {
   const candidates = blocks
     .slice(0, 40)
@@ -203,7 +312,10 @@ Responde SÓLO con JSON de esta forma:
 - No propongas parent null: esta tarea anida, nunca aplana.
 - No muevas un bloque que ya tiene padre.
 - No formes ciclos. Si dudas, omite el bloque.
-- explanation es una frase breve en castellano.`, { maxTokens: 500 });
+- explanation es una frase breve en castellano.`, {
+    maxTokens: 500,
+    ...(model === undefined ? {} : { model }),
+  });
   if ('error' in answer) return answer;
   const parsed = lastObjectIn(answer.text);
   if (parsed === null || !Array.isArray(parsed.parents)) {
@@ -363,10 +475,11 @@ export async function readPage(
   text: string,
   vocabulary: string[] = STARTER_TYPES,
   context: OntologyContext = { objects: [], properties: [], candidates: [] },
+  model?: string,
 ): Promise<Reading | { error: string }> {
   const answer = await ask(
     readingPrompt(title, text, vocabulary, context),
-    { maxTokens: 300 },
+    { maxTokens: 300, ...(model === undefined ? {} : { model }) },
   );
 
   if ('error' in answer) return answer;

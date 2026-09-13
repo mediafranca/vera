@@ -111,6 +111,7 @@ import {
   readPage,
   mergeReadings,
   modelPresence,
+  processingModels,
   proposeHierarchy,
   MOST_PASSES,
   READABLE_CHARS,
@@ -3678,6 +3679,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // @guarantee RememberedSessionPresentation: va con el participante y no con
     // el navegador, para que ajustar el sistema de diseño en una máquina no haya
     // que repetirlo en la siguiente.
+    // Los modelos que esta instalación puede usar para procesar.
+    //
+    // Sólo sale identidad presentable y procedencia. Las rutas locales y las
+    // credenciales remotas no atraviesan esta frontera.
+    if (request.method === 'GET' && path === '/processing/models') {
+      send(response, 200, { models: await processingModels() });
+      return;
+    }
+
     // Procesar una página: leerla y decir qué se ve en ella.
     //
     // Deliberado y sobre una página concreta, nunca de oficio. Salen
@@ -3694,6 +3704,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 422, {
           error: 'una página especial gobierna Vera y no se procesa automáticamente',
         });
+        return;
+      }
+      const requestedModel = url.searchParams.get('model') ?? undefined;
+      const withoutModel = requestedModel === 'none';
+      const availableModels = await processingModels();
+      const chosenModel = withoutModel
+        ? undefined
+        : requestedModel === undefined
+        ? availableModels[0]
+        : availableModels.find((model) => model.id === requestedModel);
+      if (requestedModel !== undefined && !withoutModel && chosenModel === undefined) {
+        send(response, 422, { error: 'ese modelo no está disponible en esta instalación' });
         return;
       }
 
@@ -3798,6 +3820,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
       const blocks = graph.blocksOf(page.id);
       say({ step: 'reading', blocks: blocks.length, chars: text.length });
+      say({
+        step: 'model_selected',
+        model: chosenModel?.name ?? null,
+        provider: chosenModel?.provider ?? null,
+      });
 
       // Dónde vive cada dirección, para poder proponer el arreglo sobre el
       // bloque que la lleva y no sobre la página entera.
@@ -3885,22 +3912,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
       const asked: Promise<{ reading: Reading; hierarchy: { changes: Change[]; explanation: string }; notDone: string[] }> = (async () => {
         const notDone: string[] = [];
+        // Sin modelo no se pregunta ocho veces para fallar ocho veces: se dice
+        // una. @invariant TheModelIsLocalOrThereIsNone.
+        const presence = withoutModel
+          ? { ready: false, binary: null, model: null }
+          : await modelPresence(chosenModel?.id);
+        if (!presence.ready) {
+          say({ step: 'model', state: 'failed', why: 'no hay un modelo disponible' });
+          return {
+            reading: { types: [], existingConcepts: [], newConcepts: [] },
+            hierarchy: { changes: [], explanation: '' },
+            notDone: [...notDone, 'no hay un modelo disponible'],
+          };
+        }
         if (reparto.left > 0) {
           notDone.push(
             `el modelo leyó ${reparto.passes.length} partes de la página y ${reparto.left} caracteres quedaron sin leer`,
           );
-        }
-
-        // Sin modelo no se pregunta ocho veces para fallar ocho veces: se dice
-        // una. @invariant TheModelIsLocalOrThereIsNone.
-        const presence = await modelPresence();
-        if (!presence.ready) {
-          say({ step: 'model', state: 'failed', why: 'no hay un modelo local instalado' });
-          return {
-            reading: { types: [], existingConcepts: [], newConcepts: [] },
-            hierarchy: { changes: [], explanation: '' },
-            notDone: [...notDone, 'no hay un modelo local instalado'],
-          };
         }
 
         const readings: Reading[] = [];
@@ -3917,7 +3945,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             objects,
             properties: ontologyProperties,
             candidates,
-          });
+          }, chosenModel?.id);
           if ('error' in understood) {
             // Un pase que falla no cancela los demás: la parte de la página que
             // sí se pudo leer sigue valiendo, y la que no se dice.
@@ -3939,7 +3967,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         let hierarchy = { changes: [] as Change[], explanation: '' };
         if (structure.observations.some((one) => one.defect === 'flat_list')) {
           say({ step: 'model', state: 'structuring' });
-          const proposed = await proposeHierarchy(page.title, blocks);
+          const proposed = await proposeHierarchy(page.title, blocks, chosenModel?.id);
           if ('error' in proposed) {
             notDone.push(`la estructura latente no se pudo proponer: ${proposed.error}`);
             say({ step: 'model', state: 'structure_failed', why: proposed.error });

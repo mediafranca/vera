@@ -1457,6 +1457,7 @@ async function processPage(
   page: { id: string; title: string; properties?: { key: string; value: string }[] },
   notify: (message: string) => void,
   callbacks?: OutlinerCallbacks,
+  selectedModel?: string,
 ): Promise<void> {
   const panel = document.querySelector<HTMLElement>('#tokens');
   if (panel === null) return;
@@ -1484,6 +1485,54 @@ async function processPage(
   const body = document.createElement('div');
   body.className = 'settings-body';
   panel.append(body);
+
+  /*
+   * Elegir con qué leer antes de empezar.
+   *
+   * La lista viene del servidor: el navegador no conoce rutas de pesos ni
+   * secretos. «Sólo estructura» conserva la mitad determinista del proceso y
+   * hace explícito que no se enviará el texto a ningún modelo.
+   */
+  if (selectedModel === undefined) {
+    const group = document.createElement('div');
+    group.className = 'processing-model-choice';
+    const label = document.createElement('label');
+    label.textContent = 'Modelo para comprender y conectar';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Modelo para procesar la página');
+    const structural = document.createElement('option');
+    structural.value = 'none';
+    structural.textContent = 'Sólo estructura · nada sale de Vera';
+    select.append(structural);
+    try {
+      const response = await fetch('/processing/models');
+      const catalog = await response.json() as {
+        models?: { id: string; name: string; provider: 'local' | 'openai'; location: string }[];
+      };
+      for (const model of catalog.models ?? []) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = model.provider === 'local'
+          ? `${model.name} · en este equipo`
+          : `${model.name} · OpenAI · envía contenido fuera`;
+        select.append(option);
+      }
+      if (select.options.length > 1) select.selectedIndex = 1;
+    } catch {
+      const note = document.createElement('p');
+      note.className = 'settings-note';
+      note.textContent = 'No se pudo consultar los modelos; todavía se puede revisar la estructura.';
+      body.append(note);
+    }
+    const start = document.createElement('button');
+    start.type = 'button';
+    start.className = 'processing-model-start';
+    start.textContent = 'Procesar página completa';
+    start.addEventListener('click', () => void processPage(page, notify, callbacks, select.value));
+    group.append(label, select, start);
+    body.append(group);
+    return;
+  }
 
   /*
    * La bitácora de lo que está pasando.
@@ -1524,7 +1573,8 @@ async function processPage(
   let reading: PageReading | null = null;
 
   try {
-    const answer = await fetch(`/pages/${encodeURIComponent(page.id)}/process`, { method: 'POST' });
+    const query = new URLSearchParams({ model: selectedModel });
+    const answer = await fetch(`/pages/${encodeURIComponent(page.id)}/process?${query}`, { method: 'POST' });
     if (!answer.ok || answer.body === null) {
       step('no se pudo procesar la página', 'bad');
       return;
@@ -1546,6 +1596,17 @@ async function processPage(
         if (line.trim() === '') continue;
         const event = JSON.parse(line) as Record<string, unknown>;
         switch (event['step']) {
+          case 'model_selected': {
+            const model = event['model'];
+            const provider = event['provider'];
+            step(
+              model === null
+                ? 'sin modelo: sólo estructura y coincidencias verificables'
+                : `modelo: ${String(model)}${provider === 'openai' ? ' · contenido enviado a OpenAI' : ' · en este equipo'}`,
+              'note',
+            );
+            break;
+          }
           case 'reading':
             step(`leídos ${String(event['blocks'])} bloques · ${String(event['chars'])} caracteres`, 'ok');
             pending.say('mirando la forma de la página');

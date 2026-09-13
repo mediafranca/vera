@@ -88,6 +88,23 @@ contract StarterProcessingForms {
         -- aporta un comienzo, no un vocabulario cerrado ni nombres perpetuos.
 }
 
+-- Lo que esta instalación puede usar ahora para comprender una página.
+contract ProcessingModelChoice {
+    available_models: () -> Set<ProcessingModel>
+
+    @invariant OnlyUsableModelsAreOffered
+        -- Un modelo local aparece sólo si están los pesos y el motor que los
+        -- ejecuta. Uno externo aparece sólo si hay una conexión configurada.
+
+    @invariant AChoiceSaysWhenContentLeavesVera
+        -- Antes de iniciar, cada opción dice si procesa en este dispositivo o
+        -- entrega el contenido a un servicio externo.
+
+    @invariant SecretsAndPathsStayOnTheServer
+        -- El selector recibe identidad, nombre, proveedor y ubicación. Nunca
+        -- recibe credenciales ni rutas de archivos locales.
+}
+
 ------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
@@ -124,6 +141,8 @@ enum ResultShape {
 
 enum ProcessingStatus { running | observed | proposed | applied | failed | stale }
 
+enum ModelLocation { this_device | external }
+
 ------------------------------------------------------------
 -- Entities
 ------------------------------------------------------------
@@ -140,6 +159,15 @@ entity ProcessingForm {
     result_shape: ResultShape
     enabled: Boolean
     version: Integer
+}
+
+-- Una capacidad efectiva de la instalación, reconstruida al abrir el selector.
+-- No es contenido del corpus ni promete seguir instalada mañana.
+entity ProcessingModel {
+    identity: String
+    name: String
+    provider: String
+    location: ModelLocation
 }
 
 -- Una página o un bloque entregado a una forma.
@@ -335,6 +363,7 @@ surface ProcessingForms {
         fulfils ProcessingFormDefinition
         fulfils ProcessingExecution
         fulfils StarterProcessingForms
+        fulfils ProcessingModelChoice
 
     @guarantee OnlyApplicableFormsAreOffered
         -- En una página aparecen sólo formas de página; en un bloque, sólo
@@ -345,6 +374,10 @@ surface ProcessingForms {
         -- Antes de ejecutar se sabe si la forma observará, propondrá, pedirá
         -- confirmación o escribirá directamente, y qué parte del corpus podrá
         -- consultar.
+
+    @guarantee StructuralWorkNeedsNoModel
+        -- «Sin modelo» sigue siendo una elección válida: conserva la lectura de
+        -- estructura y las coincidencias verificables del corpus.
 }
 
 surface ProcessingResult {
