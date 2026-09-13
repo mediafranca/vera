@@ -103,6 +103,13 @@ contract ProcessingModelChoice {
     @invariant SecretsAndPathsStayOnTheServer
         -- El selector recibe identidad, nombre, proveedor y ubicación. Nunca
         -- recibe credenciales ni rutas de archivos locales.
+
+    @invariant ALocalModelCannotMakeTheHostUnavailable
+        -- Vera ejecuta a lo sumo una inferencia local a la vez, reserva memoria
+        -- para el sistema y limita los hilos de cálculo. Toda llamada tiene un
+        -- plazo finito y, si el proceso no obedece el cierre normal, se termina
+        -- por la fuerza. Rechazar o interrumpir la lectura es preferible a dejar
+        -- Alexei inaccesible.
 }
 
 ------------------------------------------------------------

@@ -11,10 +11,9 @@
 // venga— es escribir otro módulo con esta misma forma.
 
 import { execFile } from 'node:child_process';
-import { access, readdir } from 'node:fs/promises';
+import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 
 import { findTool } from './transcribe.ts';
 import { titleKey, type Change } from '@vera/core';
@@ -24,8 +23,11 @@ import {
   type OntologyContext,
 } from './ontology-context.ts';
 
-const run = promisify(execFile);
 const home = homedir();
+const LOCAL_MODEL_TIMEOUT_MS = 120_000;
+const LOCAL_MODEL_KILL_GRACE_MS = 5_000;
+const LOCAL_MODEL_RESERVE_BYTES = 1280 * 1024 * 1024;
+let localModelBusy = false;
 
 const DEFAULT_MODEL = join(home, '.local', 'share', 'llama', 'qwen2.5-3b-instruct-q4_k_m.gguf');
 const NAMES = ['llama-cli'];
@@ -128,6 +130,43 @@ export interface AskOptions {
   model?: string;
 }
 
+/** Memoria que el kernel todavía considera utilizable sin ahogar la máquina. */
+async function availableMemory(): Promise<number | null> {
+  try {
+    const info = await readFile('/proc/meminfo', 'utf8');
+    const found = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(info);
+    return found?.[1] === undefined ? null : Number(found[1]) * 1024;
+  } catch {
+    // Otros sistemas no tienen procfs. La ausencia del dato no vuelve el modelo
+    // inutilizable; el límite duro de tiempo sigue protegiendo la ejecución.
+    return null;
+  }
+}
+
+/**
+ * Ejecuta llama.cpp con dos frenos que execFile por sí solo no da.
+ *
+ * `timeout` sólo envía SIGTERM. llama-cli puede atraparlo y, bajo presión de
+ * memoria, no llegar nunca a salir. Cinco segundos después se escala a SIGKILL.
+ */
+function runLocalModel(binary: string, args: string[], timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let hard: ReturnType<typeof setTimeout> | null = null;
+    const child = execFile(binary, args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+      clearTimeout(soft);
+      if (hard !== null) clearTimeout(hard);
+      if (error !== null) reject(error);
+      else resolve(stdout);
+    });
+    const soft = setTimeout(() => {
+      child.kill('SIGTERM');
+      hard = setTimeout(() => child.kill('SIGKILL'), LOCAL_MODEL_KILL_GRACE_MS);
+      hard.unref();
+    }, timeoutMs);
+    soft.unref();
+  });
+}
+
 /**
  * Le hace una pregunta al modelo y devuelve lo que respondió, en crudo.
  *
@@ -180,23 +219,35 @@ export async function ask(
     return { error: 'no hay un modelo local instalado' };
   }
 
+  if (localModelBusy) {
+    return { error: 'ya hay otro modelo local procesando; espera a que termine antes de iniciar otro' };
+  }
+
+  const [memory, weights] = await Promise.all([availableMemory(), stat(presence.model)]);
+  if (memory !== null && memory < weights.size + LOCAL_MODEL_RESERVE_BYTES) {
+    return { error: 'no hay memoria disponible suficiente para cargar este modelo sin degradar Alexei' };
+  }
+
+  localModelBusy = true;
   try {
     // El orden importa: con `-p` antes de `-no-cnv`, llama-cli entra igual en
     // modo conversación y devuelve su banner, el menú de comandos y el prompt
     // repetido antes de la respuesta. Las banderas van primero y el texto al
     // final, que es como funciona.
-    const { stdout } = await run(
+    const stdout = await runLocalModel(
       presence.binary,
       [
         '-m', presence.model,
         '-no-cnv', '-st', '--no-warmup',
-        '-t', '8',
+        // Cuatro núcleos físicos: usar los ocho hilos dejaba SSH compitiendo con
+        // la inferencia y no mejoraba proporcionalmente el tiempo de respuesta.
+        '-t', '4',
         '-c', '4096',
         '-n', String(options.maxTokens ?? 200),
         '--temp', '0',
         '-p', prompt,
       ],
-      { timeout: options.timeoutMs ?? 120_000, maxBuffer: 8 * 1024 * 1024 },
+      options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS,
     );
 
     /*
@@ -233,6 +284,8 @@ export async function ask(
   } catch (error) {
     const why = error instanceof Error ? error.message : 'error desconocido';
     return { error: `el modelo no pudo leer la página: ${why}` };
+  } finally {
+    localModelBusy = false;
   }
 }
 
