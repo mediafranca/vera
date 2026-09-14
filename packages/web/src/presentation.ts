@@ -4,6 +4,7 @@ import RevealNotes from 'reveal.js/plugin/notes';
 import { renderMarkdown, type RenderOptions } from '@vera/core';
 import { api, type BlockView, type PageView } from './api.ts';
 import { decorateCodeBlocks } from './code-copy.ts';
+import { icon, type IconName } from './icons.ts';
 import { renderMermaid } from './mermaid.ts';
 import {
   DEFAULT_PRESENTATION_STYLESHEET,
@@ -158,34 +159,40 @@ export async function presentPage(
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'presentation-close';
-  close.textContent = 'Salir';
+  close.innerHTML = icon('x');
+  close.title = 'Salir';
+  close.setAttribute('aria-label', 'Salir de la presentación');
 
   const toolbar = document.createElement('div');
   toolbar.className = 'presentation-toolbar';
   toolbar.setAttribute('role', 'toolbar');
   toolbar.setAttribute('aria-label', 'Controles de la presentación');
-  const control = (label: string): HTMLButtonElement => {
+  const control = (label: string, symbol: IconName): HTMLButtonElement => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = label;
+    button.innerHTML = icon(symbol);
+    button.title = label;
+    button.setAttribute('aria-label', label);
     return button;
   };
-  const previous = control('Anterior');
-  const next = control('Siguiente');
-  const overview = control('Vista general');
-  const notesToggle = control('Notas');
+  const previous = control('Anterior', 'chevron-left');
+  const next = control('Siguiente', 'chevron-right');
+  const overview = control('Vista general', 'grid');
+  const notesToggle = control('Notas', 'feather');
   notesToggle.setAttribute('aria-pressed', 'false');
-  const fullscreen = control('Pantalla completa');
-  const scheme = control('Modo claro');
+  const fullscreen = control('Pantalla completa', 'maximize');
+  const scheme = control('Modo claro', 'sun');
   scheme.className = 'presentation-scheme';
   const showScheme = (): void => {
     const dark = (appearance.scheme?.() ?? document.documentElement.dataset['scheme']) === 'dark';
-    scheme.textContent = dark ? 'Modo claro' : 'Modo oscuro';
-    scheme.setAttribute('aria-label', dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+    const label = dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+    scheme.innerHTML = icon(dark ? 'sun' : 'moon');
+    scheme.title = label;
+    scheme.setAttribute('aria-label', label);
     scheme.setAttribute('aria-pressed', String(dark));
   };
   showScheme();
-  const refresh = control('Actualizar');
+  const refresh = control('Actualizar', 'refresh-cw');
   refresh.hidden = true;
 
   const reveal = document.createElement('div');
@@ -329,7 +336,8 @@ export async function presentPage(
     void api.page(sourcePage.id, 4_000).then(async (newer) => {
       const newerRoots = treeOf(newer.blocks);
       if (newerRoots.length === 0) {
-        refresh.textContent = 'Actualización rechazada: página vacía';
+        refresh.title = 'Actualización rechazada: página vacía';
+        refresh.setAttribute('aria-label', refresh.title);
         return;
       }
       sourcePage = newer;
@@ -342,9 +350,13 @@ export async function presentPage(
         if (index >= 0) deck.slide(index);
       }
       refresh.hidden = true;
-      refresh.textContent = 'Actualizar';
+      refresh.title = 'Actualizar';
+      refresh.setAttribute('aria-label', refresh.title);
       updateNotes();
-    }).catch(() => { refresh.textContent = 'No se pudo actualizar'; });
+    }).catch(() => {
+      refresh.title = 'No se pudo actualizar';
+      refresh.setAttribute('aria-label', refresh.title);
+    });
   });
   overlay.addEventListener('click', (event) => {
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a.wiki');

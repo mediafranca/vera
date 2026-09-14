@@ -61,6 +61,17 @@ describe('páginas que se pueden presentar', () => {
     assert.match(source, /Cambiar a modo claro/);
     assert.match(source, /Cambiar a modo oscuro/);
   });
+
+  it('usa la familia de iconos de Vera en vez de píldoras de texto', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    for (const name of ['chevron-left', 'chevron-right', 'grid', 'feather', 'maximize', 'refresh-cw']) {
+      assert.match(source, new RegExp(`['"]${name}['"]`));
+    }
+    assert.match(source, /icon\(dark \? 'sun' : 'moon'\)/);
+    assert.match(styles, /\.presentation-toolbar button \{[^}]*width: 2\.15rem;[^}]*border-radius: 0\.45rem;/);
+    assert.doesNotMatch(styles, /\.presentation-toolbar button \{[^}]*border-radius: 999px;/);
+  });
 });
 
 describe('hojas gobernadas de presentación', () => {

@@ -24,6 +24,18 @@ const SHAPES = {
   'chevron-down': '<polyline points="6 9 12 15 18 9"/>',
   'chevron-left': '<polyline points="15 18 9 12 15 6"/>',
 
+  grid:
+    '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>' +
+    '<rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+
+  maximize:
+    '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
+
+  'refresh-cw':
+    '<polyline points="23 4 23 10 17 10"/>' +
+    '<polyline points="1 20 1 14 7 14"/>' +
+    '<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+
   // «Hoy» es un calendario y no una casa: lo que hay al otro lado del botón es
   // el día en curso, no un tablero ni una portada.
   calendar:

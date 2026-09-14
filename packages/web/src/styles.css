@@ -1835,13 +1835,22 @@ html.presenting body {
 }
 
 .presentation-toolbar button {
-  padding: 0.45rem 0.75rem;
+  display: grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  padding: 0.5rem;
   border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
-  border-radius: 999px;
+  border-radius: 0.45rem;
   background: color-mix(in srgb, var(--bg) 58%, transparent);
   color: color-mix(in srgb, var(--text) 68%, transparent);
-  font: 600 0.75rem/1 var(--font-ui);
+  font-size: 1rem;
   cursor: pointer;
+}
+
+.presentation-toolbar button .icon {
+  width: 100%;
+  height: 100%;
 }
 
 .presentation-toolbar:hover button,
