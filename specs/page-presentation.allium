@@ -459,7 +459,10 @@ surface PresentationViewer {
     @guarantee TheViewerUsesTheWholeAvailableStage
         -- The active slide occupies the presentation stage without Vera's text,
         -- graph or editing chrome competing with it. Fullscreen is optional and
-        -- leaving it does not leave the presentation session.
+        -- leaving it does not leave the presentation session. The stage does not
+        -- inherit the ordinary page's lateral column or add a second virtual
+        -- margin: prose remains deliberately readable and centred, while images,
+        -- diagrams and other spatial content may use nearly all available space.
 
     @guarantee ThePageOrderIsTheSlideOrder
         -- Previous and next follow the order of first-level blocks. The overview

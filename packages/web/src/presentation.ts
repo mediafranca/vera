@@ -258,6 +258,12 @@ export async function presentPage(
 
   const deck = new Reveal(reveal, {
     embedded: true,
+    // El escenario de Vera ya es el viewport completo. Reveal no necesita
+    // imponer además su lienzo histórico de 960 × 700 ni reservar otro margen:
+    // hacerlo encoge y desplaza contenido que debería aprovechar la pantalla.
+    width: '100%',
+    height: '100%',
+    margin: 0,
     controls: true,
     progress: true,
     // Una lámina es una página legible, no una tarjeta que siempre quepa. El

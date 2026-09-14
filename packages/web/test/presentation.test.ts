@@ -47,6 +47,15 @@ describe('páginas que se pueden presentar', () => {
     assert.match(styles, /\.vera-presentation \.reveal \.slides section \{[\s\S]*?overflow-y: auto;[\s\S]*?touch-action: pan-y;/);
   });
 
+  it('usa todo el escenario y deja que los medios crezcan sin márgenes heredados', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /width: '100%',\s*\n\s*height: '100%',\s*\n\s*margin: 0,/);
+    assert.match(styles, /\.vera-presentation \.reveal \{[^}]*--content-width: 34em;/);
+    assert.match(styles, /max-height: calc\(100dvh - clamp\(7rem, 15vh, 10rem\)\);/);
+    assert.doesNotMatch(styles, /\.vera-presentation \.body svg \{[^}]*max-height: 64vh;/);
+  });
+
   it('conserva el outline como columnas verticales y activa sus miniaturas a demanda', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
     assert.match(source, /dataset\['presentationColumn'\] = 'true'/);
