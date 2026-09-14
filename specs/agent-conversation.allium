@@ -5,7 +5,8 @@
 -- Includes: One conversation reached by voice, command, block or conversation
 --   page; explicit graph context; request lifecycle; attributed replies;
 --   authenticated dispatch to the named agent; truthful waiting, cancellation,
---   retry and separately reviewable proposals
+--   retry, inspectable interpretation, causal provenance and separately
+--   reviewable proposals
 -- Excludes:
 --   - Mirroring Telegram or another external channel automatically
 --   - Model choice, prompts, token budgets and OpenClaw's internal session format
@@ -46,6 +47,23 @@ contract ConversationWithAgent {
         -- Every request and reply names who produced it and the modality by which
         -- it entered. Generated text never passes as Herbert's writing, and a
         -- transcript never passes as typed text.
+
+    @invariant OriginalInputSurvivesInterpretation
+        -- The source as Vera observed it, the transcription made from it and the
+        -- agent's account of what it understood are three different records. A
+        -- later interpretation may correct an earlier one without rewriting the
+        -- human's words or replacing the recording that proves them.
+
+    @invariant ContextSelectionIsInspectable
+        -- A request says not only which pages and blocks were sent, but why they
+        -- were considered pertinent. The explanation travels with the frozen
+        -- snapshot, so a reply can be audited against the context that actually
+        -- informed it rather than today's version of those pages.
+
+    @invariant ConsequencesPointBackToTheirTurn
+        -- A proposal, accepted operation or other durable consequence keeps the
+        -- request that caused it. Traversal works in both directions: from a turn
+        -- to its consequences and from a graph change back to the source turn.
 
     @invariant FailureLeavesARecoverableTurn
         -- If Vera, OpenClaw or the model stops, the request remains pending or
@@ -113,6 +131,8 @@ entity ConversationRequest {
     context_pages: Set<core/Page>
     context_blocks: Set<core/Block>
     context_snapshot: String
+    context_selection_reason: String
+    interpretation: String?
     retry_of: ConversationRequest?
     status: RequestStatus
     created_at: Timestamp
@@ -214,13 +234,14 @@ rule HumanReopensConversation {
 }
 
 rule HumanAsksLibrarianByAudio {
-    when: AskLibrarianByAudio(human, conversation, recording, transcript, context_pages, context_blocks)
+    when: AskLibrarianByAudio(human, conversation, recording, transcript, context_pages, context_blocks, context_selection_reason)
 
     requires: conversation.human = human
     requires: conversation.status = active
     requires: recording.graph = conversation.graph
     requires: recording.captured_by = human
     requires: transcript != ""
+    requires: context_selection_reason != ""
 
     ensures: ConversationRequest.created(
         conversation: conversation,
@@ -233,6 +254,8 @@ rule HumanAsksLibrarianByAudio {
         context_pages: context_pages,
         context_blocks: context_blocks,
         context_snapshot: snapshot(context_pages, context_blocks),
+        context_selection_reason: context_selection_reason,
+        interpretation: null,
         retry_of: null,
         status: queued,
         created_at: now,
@@ -246,12 +269,13 @@ rule HumanAsksLibrarianByAudio {
 }
 
 rule HumanAsksLibrarianByCommand {
-    when: AskLibrarianByCommand(human, conversation, text, source_page, context_pages, context_blocks)
+    when: AskLibrarianByCommand(human, conversation, text, source_page, context_pages, context_blocks, context_selection_reason)
 
     requires: conversation.human = human
     requires: conversation.status = active
     requires: text != ""
     requires: source_page = null or source_page.graph = conversation.graph
+    requires: context_selection_reason != ""
 
     ensures: ConversationRequest.created(
         conversation: conversation,
@@ -264,6 +288,8 @@ rule HumanAsksLibrarianByCommand {
         context_pages: context_pages,
         context_blocks: context_blocks,
         context_snapshot: snapshot(context_pages, context_blocks),
+        context_selection_reason: context_selection_reason,
+        interpretation: null,
         retry_of: null,
         status: queued,
         created_at: now,
@@ -277,12 +303,13 @@ rule HumanAsksLibrarianByCommand {
 }
 
 rule HumanAsksLibrarianFromBlock {
-    when: AskLibrarianFromBlock(human, conversation, block, instruction, context_pages, context_blocks)
+    when: AskLibrarianFromBlock(human, conversation, block, instruction, context_pages, context_blocks, context_selection_reason)
 
     requires: conversation.human = human
     requires: conversation.status = active
     requires: block.page.graph = conversation.graph
     requires: instruction != ""
+    requires: context_selection_reason != ""
 
     ensures: ConversationRequest.created(
         conversation: conversation,
@@ -295,6 +322,8 @@ rule HumanAsksLibrarianFromBlock {
         context_pages: context_pages,
         context_blocks: context_blocks + { block },
         context_snapshot: snapshot(context_pages, context_blocks + { block }),
+        context_selection_reason: context_selection_reason,
+        interpretation: null,
         retry_of: null,
         status: queued,
         created_at: now,
@@ -313,11 +342,12 @@ rule HumanAsksLibrarianFromBlock {
 }
 
 rule HumanAsksLibrarianFromConversationPage {
-    when: AskLibrarianFromConversationPage(human, conversation, text, context_pages, context_blocks)
+    when: AskLibrarianFromConversationPage(human, conversation, text, context_pages, context_blocks, context_selection_reason)
 
     requires: conversation.human = human
     requires: conversation.status = active
     requires: text != ""
+    requires: context_selection_reason != ""
 
     ensures: ConversationRequest.created(
         conversation: conversation,
@@ -330,6 +360,8 @@ rule HumanAsksLibrarianFromConversationPage {
         context_pages: context_pages,
         context_blocks: context_blocks,
         context_snapshot: snapshot(context_pages, context_blocks),
+        context_selection_reason: context_selection_reason,
+        interpretation: null,
         retry_of: null,
         status: queued,
         created_at: now,
@@ -343,14 +375,16 @@ rule HumanAsksLibrarianFromConversationPage {
 }
 
 rule LibrarianBeginsARequest {
-    when: BeginAgentRequest(agent, request)
+    when: BeginAgentRequest(agent, request, interpretation)
 
     requires: request.conversation.agent = agent
     requires: request.status = queued
+    requires: interpretation != ""
 
     ensures:
         request.status = working
         request.started_at = now
+        request.interpretation = interpretation
 }
 
 rule VeraDispatchesAQueuedRequest {
@@ -480,6 +514,8 @@ rule HumanRetriesARequest {
         context_pages: request.context_pages,
         context_blocks: request.context_blocks,
         context_snapshot: request.context_snapshot,
+        context_selection_reason: request.context_selection_reason,
+        interpretation: null,
         retry_of: request,
         status: queued,
         created_at: now,
@@ -542,7 +578,7 @@ surface LibrarianByAudio {
         conversation.requests
 
     provides:
-        AskLibrarianByAudio(human, conversation, recording, transcript, context_pages, context_blocks)
+        AskLibrarianByAudio(human, conversation, recording, transcript, context_pages, context_blocks, context_selection_reason)
 
     contracts:
         fulfils ConversationWithAgent
@@ -561,7 +597,7 @@ surface LibrarianByCommand {
         conversation.requests
 
     provides:
-        AskLibrarianByCommand(human, conversation, text, source_page, context_pages, context_blocks)
+        AskLibrarianByCommand(human, conversation, text, source_page, context_pages, context_blocks, context_selection_reason)
 
     contracts:
         fulfils ConversationWithAgent
@@ -580,7 +616,7 @@ surface LibrarianFromBlock {
         conversation.requests
 
     provides:
-        AskLibrarianFromBlock(human, conversation, block, instruction, context_pages, context_blocks)
+        AskLibrarianFromBlock(human, conversation, block, instruction, context_pages, context_blocks, context_selection_reason)
 
     contracts:
         fulfils ConversationWithAgent
@@ -604,6 +640,8 @@ surface LibrarianConversationPage {
         ConversationRequest.context_pages
         ConversationRequest.context_blocks
         ConversationRequest.context_snapshot
+        ConversationRequest.context_selection_reason
+        ConversationRequest.interpretation
         ConversationRequest.status
         ConversationRequest.failure_reason
         AgentReply.text
@@ -612,7 +650,7 @@ surface LibrarianConversationPage {
 
     provides:
         StartConversation(human, agent, graph, title)
-        AskLibrarianFromConversationPage(human, conversation, text, context_pages, context_blocks)
+        AskLibrarianFromConversationPage(human, conversation, text, context_pages, context_blocks, context_selection_reason)
             when conversation.status = active
         CloseConversation(human, conversation) when conversation.status = active
         ReopenConversation(human, conversation) when conversation.status = closed
@@ -643,6 +681,8 @@ surface LibrarianConversationWorker {
         conversation.requests
         ConversationRequest.text
         ConversationRequest.context_snapshot
+        ConversationRequest.context_selection_reason
+        ConversationRequest.interpretation
         ConversationRequest.status
 
     provides:
@@ -650,7 +690,7 @@ surface LibrarianConversationWorker {
             when request.status = queued and request.dispatch_status in {pending, failed}
         FailAgentDispatch(request, reason)
             when request.status = queued and request.dispatch_status in {pending, failed}
-        BeginAgentRequest(agent, request) when request.status = queued
+        BeginAgentRequest(agent, request, interpretation) when request.status = queued
         AnswerAgentRequest(agent, request, text, changes) when request.status = working
         FailAgentRequest(agent, request, reason)
             when request.status in {queued, working}
@@ -681,3 +721,5 @@ open question "¿El traspaso explícito entre Telegram y Vera mueve la continuid
 open question "¿Qué conversaciones se conservan completas, cuáles se destilan en decisiones y cuáles pueden caducar sin entrar al corpus durable?"
 
 open question "¿Un comando sin conversación elegida retoma el último hilo activo, pregunta cuál usar o crea uno nuevo?"
+
+open question "¿La página diaria contiene una proyección legible de cada conversación iniciada ese día, o sólo un enlace cuando el intercambio produjo una decisión o cambió el grafo?"

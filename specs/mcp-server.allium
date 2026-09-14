@@ -6,8 +6,8 @@
 --   de lo que se llevó
 -- Includes: Qué es MCP para Vera y qué no, de dónde sale la identidad de una
 --   conexión, qué distingue un alcance de una concesión, el registro de
---   exposición, la idempotencia y las precondiciones de escritura, y las etapas
---   en que esto se construye
+--   exposición, la procedencia parcial de las llamadas, la idempotencia y las
+--   precondiciones de escritura, y las etapas en que esto se construye
 -- Excludes:
 --   - Las credenciales y la autoría por bloque, que ya se gobiernan
 --     (ver agent-participation.allium)
@@ -206,8 +206,9 @@ contract WhatWasReadIsRecorded {
 
     @invariant ItRecordsWhatWasDeliveredAndNotWhatWasAsked
         -- Se anotan las páginas y los bloques que efectivamente viajaron, no la
-        -- consulta que los pidió. Una búsqueda que devolvió doce extractos expuso
-        -- doce cosas, y el registro tiene que poder nombrarlas.
+        -- mera lista de lo solicitado. La llamada conserva la consulta exacta,
+        -- pero la exposición nombra lo que realmente salió: una búsqueda que
+        -- devolvió doce extractos expuso doce cosas, aunque hubiera pedido cien.
 
     @invariant EveryCallLeavesItsTrace
         -- Hora, participante, credencial, cliente declarado, versión del
@@ -215,11 +216,23 @@ contract WhatWasReadIsRecorded {
         -- volumen. Una escritura enlaza además las operaciones que produjo, para
         -- poder ir de lo que se leyó a lo que se cambió.
 
+    @invariant TheToolCallIsObservedButThePromptUsuallyIsNot
+        -- Vera conserva la llamada MCP estructurada exacta que recibió. El prompt
+        -- humano anterior o la conversación privada del modelo están ausentes a
+        -- menos que el cliente los entregue deliberadamente; el registro nunca
+        -- inventa ni insinúa acceso a contexto que no cruzó la frontera.
+
+    @invariant ClientDeclaredOriginRemainsAClaim
+        -- Un cliente puede adjuntar las palabras humanas, una referencia de
+        -- conversación o un resumen de intención. Vera conserva quién entregó
+        -- ese relato y lo marca como declaración del cliente, distinto de la
+        -- fuente observada directamente y de la interpretación de un agente.
+
     @invariant TheTranscriptIsOptionalAndTheTraceIsNot
-        -- Guardar el texto completo de lo que se pidió y lo que se contestó es
-        -- opcional y tiene política de retención. Copiarlo siempre multiplicaría
-        -- lo sensible: se acabaría con una segunda copia del corpus, hecha sin
-        -- decidirlo, dentro del registro que existía para vigilarlo.
+        -- La llamada exacta y su resultado protocolar siempre dejan rastro. El
+        -- diálogo completo que ocurrió antes o después en el cliente es opcional
+        -- y tiene política de retención: copiarlo sin decidirlo multiplicaría lo
+        -- sensible y crearía una segunda memoria dentro del registro de acceso.
 
     @invariant TheOwnerCanReadTheirOwnExposure
         -- Quien es dueño del grafo puede mirar y filtrar por conexión,
@@ -325,10 +338,23 @@ value Call {
     -- El método del protocolo y el nombre de lo que se pidió.
     method: String
     subject: String
+    -- Entrada estructurada completa que cruzó la frontera MCP de Vera. Es
+    -- evidencia observada, a diferencia de cualquier relato del prompt anterior.
+    input: String
+    upstream_origin: UpstreamOrigin?
     outcome: String
     -- Lo que la respuesta ocupó, para poder ver de un vistazo cuánta memoria
     -- salió por ahí.
     volume: Integer
+}
+
+value UpstreamOrigin {
+    -- `verbatim` afirma que son las palabras humanas originales; `reference`
+    -- apunta a una conversación gobernada por el cliente; `summary` sólo relata
+    -- la intención. Ninguna declaración se promueve a observada silenciosamente.
+    kind: verbatim | reference | summary
+    content: String
+    supplied_by: String
 }
 
 -- Y lo que esa llamada entregó de verdad.
@@ -478,6 +504,12 @@ surface MemoryOverMCP {
         -- y qué riesgo corre. Ampliar la autoridad de una herramienta exige
         -- versión nueva: un nombre familiar no puede ganar poder en silencio.
 
+    @guarantee ExternalPromptProvenanceIsTruthfullyPartial
+        -- Cada invocación deja su entrada MCP exacta en el registro. Cuando el
+        -- cliente no entregó el prompt humano anterior, Vera dice que ese origen
+        -- no está disponible en vez de tratar los argumentos de la herramienta
+        -- como si fueran toda la conversación que los causó.
+
     @guarantee TheDoorIsPreferablyLocal
         -- El transporte de casa es un proceso que el cliente arranca, sin puerto
         -- abierto. Publicar la puerta en una red es una decisión aparte, con su
@@ -520,6 +552,8 @@ open question "¿Cómo se representa una propuesta dentro del grafo, si una prop
 open question "¿Qué precondición de revisión expone el núcleo para editar: la secuencia, una revisión propia del bloque, o el hash de lo que se leyó?"
 
 open question "¿Qué lecturas se conservan con detalle, cuáles sólo como huella, y durante cuánto tiempo?"
+
+open question "¿Qué clientes MCP pueden adjuntar procedencia de origen y mediante qué extensión interoperable, sin convertir un campo opcional de Vera en una falsa garantía sobre todos los clientes?"
 
 -- Y una que aparece al escribir esto: hoy las rutas de lectura de Vera no exigen
 -- alcance `read`, y sin credencial la escritura local se asume del dueño. Las dos
