@@ -1486,6 +1486,19 @@ async function processPage(
   body.className = 'settings-body';
   panel.append(body);
 
+  /**
+   * El título no puede seguir diciendo «Procesando» después del último evento.
+   *
+   * El registro conserva el detalle, pero su último renglón queda fácilmente
+   * fuera de vista cuando debajo aparecen sugerencias. La cabecera es el lugar
+   * estable del gesto: cambia de estado y el aviso permite enterarse aunque se
+   * esté mirando otra parte de la página.
+   */
+  const conclude = (message: string, announcement = message): void => {
+    title.textContent = message;
+    notify(announcement);
+  };
+
   /*
    * Elegir con qué leer antes de empezar.
    *
@@ -1578,6 +1591,7 @@ async function processPage(
     const answer = await fetch(`/pages/${encodeURIComponent(page.id)}/process?${query}`, { method: 'POST' });
     if (!answer.ok || answer.body === null) {
       step('no se pudo procesar la página', 'bad');
+      conclude(`No se pudo procesar «${page.title}»`);
       return;
     }
 
@@ -1764,6 +1778,11 @@ async function processPage(
             reading = event as unknown as PageReading;
             if (reading.notDone.length > 0) incomplete = true;
             step(incomplete ? 'procesamiento finalizado con pendientes' : 'terminado', incomplete ? 'note' : 'ok');
+            conclude(
+              incomplete
+                ? `Procesamiento finalizado con pendientes · «${page.title}»`
+                : `Procesamiento terminado · «${page.title}»`,
+            );
             break;
           default:
             break;
@@ -1772,6 +1791,7 @@ async function processPage(
     }
   } catch {
     step('se perdió la conexión con el servidor a mitad', 'bad');
+    conclude(`Procesamiento interrumpido · «${page.title}»`);
     broke = true;
     return;
   } finally {
@@ -1786,6 +1806,7 @@ async function processPage(
 
   if (reading === null) {
     step('el servidor no llegó a decir qué encontró', 'bad');
+    conclude(`Procesamiento incompleto · «${page.title}»`);
     return;
   }
 

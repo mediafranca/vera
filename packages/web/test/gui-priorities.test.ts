@@ -53,4 +53,10 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(settings, /Aplicando y reconstruyendo el sitio/);
     assert.match(settings, /traceabilityInput\.checked = site\.transparentBlockTraceability/);
   });
+
+  it('deja inequívoco en la cabecera cuándo terminó de procesar una página', () => {
+    assert.match(outliner, /Procesamiento terminado · «\$\{page\.title\}»/);
+    assert.match(outliner, /Procesamiento finalizado con pendientes · «\$\{page\.title\}»/);
+    assert.match(outliner, /Procesamiento interrumpido · «\$\{page\.title\}»/);
+  });
 });
