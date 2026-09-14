@@ -1571,6 +1571,7 @@ async function processPage(
   };
 
   let reading: PageReading | null = null;
+  let incomplete = false;
 
   try {
     const query = new URLSearchParams({ model: selectedModel });
@@ -1689,8 +1690,9 @@ async function processPage(
             if (event['state'] === 'structuring') {
               pending.say('preguntando cómo se relacionan los bloques planos', 'process:model');
             } else if (event['state'] === 'structure_failed') {
+              incomplete = true;
               step(String(event['why']), 'bad');
-              pending.say('el servidor sigue trabajando');
+              pending.say('el servidor sigue trabajando', null, 'failed');
             } else if (event['state'] === 'structured') {
               const moves = Number(event['moves'] ?? 0);
               step(
@@ -1709,8 +1711,9 @@ async function processPage(
                */
               pending.say(`preguntando al modelo local qué es y de qué trata${part}`, 'process:model');
             } else if (event['state'] === 'failed') {
+              incomplete = true;
               step(String(event['why']), 'bad');
-              pending.say('el servidor sigue trabajando');
+              pending.say('el servidor sigue trabajando', null, 'failed');
             } else {
               /*
                * Lo que tardó se queda en el registro.
@@ -1759,7 +1762,8 @@ async function processPage(
           }
           case 'done':
             reading = event as unknown as PageReading;
-            step('terminado', 'ok');
+            if (reading.notDone.length > 0) incomplete = true;
+            step(incomplete ? 'procesamiento finalizado con pendientes' : 'terminado', incomplete ? 'note' : 'ok');
             break;
           default:
             break;

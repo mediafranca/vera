@@ -231,7 +231,7 @@ export interface Pending {
    * tardar 12 s» de una espera que era de otra cosa. Contar no puede
    * equivocarse —el tiempo pasó— y nombrar sí.
    */
-  say(text: string, key?: string | null): void;
+  say(text: string, key?: string | null, outcome?: Outcome): void;
   /** Cuánto lleva esperándose lo de ahora. */
   elapsed(): number;
   /**
@@ -269,8 +269,8 @@ export function pendingLine(host: HTMLElement, now: () => number = Date.now): Pe
   return {
     element: line,
     elapsed: () => now() - started,
-    say(text, next = null) {
-      if (key !== null) remember(key, now() - started);
+    say(text, next = null, outcome = 'succeeded') {
+      if (key !== null && outcome === 'succeeded') remember(key, now() - started);
       key = next;
       started = now();
       what.textContent = text;

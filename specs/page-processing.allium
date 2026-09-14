@@ -556,6 +556,12 @@ rule ProcessingDeclaresWhatItCouldNotDo {
         -- comprendió entera. Un recorte de contexto, un modelo ausente o un
         -- enlace que no contestó aparecen enumerados, y ninguna pantalla puede
         -- presentar un resultado parcial como una lectura completa.
+
+    @invariant ARunWideFailureIsSaidOnce
+        -- Si el modelo no puede arrancar por memoria, ocupación o ausencia, la
+        -- causa vale para todos los pases de esa ejecución. Se informa una vez,
+        -- no se reintenta cada sección y el cierre dice que quedaron pendientes;
+        -- tampoco se afirma que el modelo contestó si no hubo una respuesta.
 }
 
 ------------------------------------------------------------

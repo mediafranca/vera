@@ -130,6 +130,12 @@ export interface AskOptions {
   model?: string;
 }
 
+export interface ModelFailure {
+  error: string;
+  /** Reintentar otra parte no puede cambiar este fallo durante esta ejecución. */
+  fatal?: boolean;
+}
+
 /** Memoria que el kernel todavía considera utilizable sin ahogar la máquina. */
 async function availableMemory(): Promise<number | null> {
   try {
@@ -177,7 +183,7 @@ function runLocalModel(binary: string, args: string[], timeoutMs: number): Promi
 export async function ask(
   prompt: string,
   options: AskOptions = {},
-): Promise<{ text: string } | { error: string }> {
+): Promise<{ text: string } | ModelFailure> {
   const selected = await selectedModel(options.model);
   if (selected?.descriptor.provider === 'openai') {
     const endpoint = `${(process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/responses`;
@@ -216,16 +222,22 @@ export async function ask(
 
   const presence = await modelPresence(options.model);
   if (!presence.ready || presence.binary === null || presence.model === null) {
-    return { error: 'no hay un modelo local instalado' };
+    return { error: 'no hay un modelo local instalado', fatal: true };
   }
 
   if (localModelBusy) {
-    return { error: 'ya hay otro modelo local procesando; espera a que termine antes de iniciar otro' };
+    return {
+      error: 'ya hay otro modelo local procesando; espera a que termine antes de iniciar otro',
+      fatal: true,
+    };
   }
 
   const [memory, weights] = await Promise.all([availableMemory(), stat(presence.model)]);
   if (memory !== null && memory < weights.size + LOCAL_MODEL_RESERVE_BYTES) {
-    return { error: 'no hay memoria disponible suficiente para cargar este modelo sin degradar Alexei' };
+    return {
+      error: 'no hay memoria disponible suficiente para cargar este modelo sin degradar Alexei',
+      fatal: true,
+    };
   }
 
   localModelBusy = true;
@@ -342,7 +354,7 @@ export async function proposeHierarchy(
   title: string,
   blocks: StructureBlock[],
   model?: string,
-): Promise<{ changes: Change[]; explanation: string } | { error: string }> {
+): Promise<{ changes: Change[]; explanation: string } | ModelFailure> {
   const candidates = blocks
     .slice(0, 40)
     .map((block) => ({
@@ -529,7 +541,7 @@ export async function readPage(
   vocabulary: string[] = STARTER_TYPES,
   context: OntologyContext = { objects: [], properties: [], candidates: [] },
   model?: string,
-): Promise<Reading | { error: string }> {
+): Promise<Reading | ModelFailure> {
   const answer = await ask(
     readingPrompt(title, text, vocabulary, context),
     { maxTokens: 300, ...(model === undefined ? {} : { model }) },

@@ -19,7 +19,7 @@ const store = new Map<string, string>();
   length: 0,
 } as unknown as Storage;
 
-const { beginActivity, countInto, elapsedSaid, remember, saySeconds, usuallyTakes } = await import(
+const { beginActivity, countInto, elapsedSaid, pendingLine, remember, saySeconds, usuallyTakes } = await import(
   '../src/waiting.ts'
 );
 
@@ -161,6 +161,31 @@ describe('contar dentro de un elemento', () => {
     at = 4_000;
     counting.close('failed');
     assert.equal(usuallyTakes('voz:falla'), null);
+  });
+
+  it('cambiar de paso después de un fallo tampoco lo recuerda como éxito', () => {
+    const made = (): HTMLElement => ({
+      textContent: '',
+      className: '',
+      classList: { add() {}, remove() {} },
+      append() {},
+      remove() {},
+    }) as unknown as HTMLElement;
+    const held = globalThis.document;
+    (globalThis as unknown as { document: Document }).document = {
+      documentElement: { dataset: {} },
+      createElement: () => made(),
+    } as unknown as Document;
+    const host = { append() {} } as unknown as HTMLElement;
+    let now = 0;
+    const pending = pendingLine(host, () => now);
+    pending.say('preguntando', 'modelo');
+    now = 2_000;
+    pending.say('el servidor sigue trabajando', null, 'failed');
+    assert.equal(usuallyTakes('modelo'), null);
+    pending.close();
+    if (held === undefined) delete (globalThis as unknown as { document?: Document }).document;
+    else (globalThis as unknown as { document: Document }).document = held;
   });
 
   it('lo que sí salió bien queda medido', () => {

@@ -3947,25 +3947,30 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             candidates,
           }, chosenModel?.id);
           if ('error' in understood) {
-            // Un pase que falla no cancela los demás: la parte de la página que
-            // sí se pudo leer sigue valiendo, y la que no se dice.
+            // Una respuesta ilegible puede ser propia de este pase y deja
+            // aprovechar los demás. Un freno de la ejecución —memoria, modelo
+            // ocupado o ausente— no va a cambiar al preguntar la sección
+            // siguiente: se dice una vez y se deja de insistir.
             say({ step: 'model', state: 'failed', why: understood.error, pass: pass.ordinal });
             notDone.push(`la parte ${pass.ordinal} de la página no se pudo leer: ${understood.error}`);
+            if (understood.fatal === true) break;
             continue;
           }
           readings.push(understood);
         }
 
         const reading = mergeReadings(readings);
-        say({
-          step: 'model',
-          state: 'done',
-          types: reading.types,
-          existingConcepts: reading.existingConcepts,
-          newConcepts: reading.newConcepts,
-        });
+        if (readings.length > 0) {
+          say({
+            step: 'model',
+            state: 'done',
+            types: reading.types,
+            existingConcepts: reading.existingConcepts,
+            newConcepts: reading.newConcepts,
+          });
+        }
         let hierarchy = { changes: [] as Change[], explanation: '' };
-        if (structure.observations.some((one) => one.defect === 'flat_list')) {
+        if (readings.length > 0 && structure.observations.some((one) => one.defect === 'flat_list')) {
           say({ step: 'model', state: 'structuring' });
           const proposed = await proposeHierarchy(page.title, blocks, chosenModel?.id);
           if ('error' in proposed) {
