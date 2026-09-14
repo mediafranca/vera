@@ -59,6 +59,23 @@ contract TruthfulWaiting {
         -- the whole interface. It never replaces the local account of what is
         -- happening, how long it has taken, what failed or what can be done.
 
+    @invariant SystemNoticesShareOneMovableOverlay
+        -- Transient system messages and the account of active work appear in one
+        -- consistent overlay whose corner the participant may change. A message
+        -- does not change colour or jump above a page, below its properties or
+        -- inside the map merely because a different subsystem produced it.
+
+    @invariant BackgroundWorkDoesNotTakeTheHand
+        -- Refreshing the account of work never rebuilds the page being read or
+        -- edited, steals keyboard focus, changes the selection or returns the
+        -- reading viewport to the beginning. Canonical content is recomposed only
+        -- when it actually changed, and waits until an active edit can survive it.
+
+    @invariant AWorkingObjectBreathesAroundItsWholePerimeter
+        -- When an individual object such as a Mermaid diagram is still rendering,
+        -- its local work signal follows all four edges and their rounded corners.
+        -- A detached left stroke is not presented as the frame of a rounded box.
+
     @invariant MotionIsNeverRequiredToUnderstandWork
         -- The global work signal remains legible without animation. A participant
         -- who requests reduced motion receives a stable indication with the same

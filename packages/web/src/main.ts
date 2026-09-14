@@ -34,6 +34,7 @@ import {
   type OutlinerCallbacks,
 } from './outliner.ts';
 import { holdViewport as holdTextViewport, restoreViewport as restoreTextViewport } from './viewport.ts';
+import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
 import { isDay, today } from './autocomplete.ts';
 import { GOVERNING_KINDS } from './governing-table.ts';
@@ -1683,12 +1684,7 @@ function revealBlock(stableId: string, page: string): void {
 
 /** Un aviso a la vez, en texto plano: el corpus no dicta marcado. */
 function notice(message: string): void {
-  const text = $('#text');
-  text.querySelector('.notice')?.remove();
-  const paragraph = document.createElement('p');
-  paragraph.className = 'notice';
-  paragraph.textContent = message;
-  text.prepend(paragraph);
+  systemNotice(message);
 }
 
 /**

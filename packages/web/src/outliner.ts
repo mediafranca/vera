@@ -90,6 +90,7 @@ import { audioUrl, voice, type Recording } from './voice.ts';
 import { type NavigationGesture } from './trace.ts';
 import { openMediaDetails } from './media-dialog.ts';
 import { holdViewport, restoreViewport } from './viewport.ts';
+import { systemNotice as toast } from './system-notice.ts';
 import { session } from './tokens.ts';
 import {
   resolveArrow,
@@ -652,25 +653,6 @@ async function moveBlockToPage(
   callbacks.onOpen(destination.id, 'searched');
 }
 
-let toastTimer: number | undefined;
-
-/** Un aviso breve. Nunca lleva marcado: el corpus no dicta la interfaz. */
-function toast(message: string): void {
-  let element = document.querySelector<HTMLElement>('.toast');
-  if (element === null) {
-    element = document.createElement('div');
-    element.className = 'toast';
-    element.setAttribute('role', 'status');
-    document.body.append(element);
-  }
-  element.textContent = message;
-  element.hidden = false;
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    if (element !== null) element.hidden = true;
-  }, 3000);
-}
-
 async function askLibrarian(
   page: PageView,
   block: BlockView | null,
@@ -733,7 +715,7 @@ const librarianOverlayCorners = ['bottom-right', 'bottom-left', 'top-left', 'top
 type LibrarianOverlayCorner = typeof librarianOverlayCorners[number];
 
 function rememberedLibrarianCorner(): LibrarianOverlayCorner {
-  const remembered = window.localStorage.getItem('vera:librarian-overlay-corner');
+  const remembered = window.localStorage.getItem('vera:system-overlay-corner');
   return librarianOverlayCorners.includes(remembered as LibrarianOverlayCorner)
     ? remembered as LibrarianOverlayCorner
     : 'bottom-right';
@@ -774,7 +756,7 @@ function showLibrarianOverlay(requests: LibrarianRequestView[]): void {
     const at = librarianOverlayCorners.indexOf(overlay.dataset['corner'] as LibrarianOverlayCorner);
     const corner = librarianOverlayCorners[(at + 1) % librarianOverlayCorners.length]!;
     overlay.dataset['corner'] = corner;
-    window.localStorage.setItem('vera:librarian-overlay-corner', corner);
+    window.localStorage.setItem('vera:system-overlay-corner', corner);
   });
   heading.append(title, move);
 
@@ -789,6 +771,8 @@ function showLibrarianOverlay(requests: LibrarianRequestView[]): void {
     count.textContent = `${requests.length - 1} solicitud${requests.length === 2 ? '' : 'es'} más en curso`;
     overlay.append(count);
   }
+  const notice = document.querySelector<HTMLElement>('.toast:not([hidden])');
+  if (notice !== null) overlay.append(notice);
   document.body.append(overlay);
 }
 
@@ -816,9 +800,11 @@ async function showLibrarianTurns(
     const turn = librarianTurn(request);
     container.querySelector('.page-header')?.after(turn);
   }
-  if (active.length > 0) {
-    window.setTimeout(() => callbacks.onReload(null), 3_000);
-  }
+  if (active.length > 0) window.setTimeout(() => {
+    if (container.isConnected && container.dataset['page'] === page.id) {
+      void showLibrarianTurns(container, page, callbacks);
+    }
+  }, 3_000);
 }
 
 /**
