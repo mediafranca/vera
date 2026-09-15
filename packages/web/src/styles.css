@@ -1750,6 +1750,16 @@ html.presenting body {
   overflow: hidden;
 }
 
+/*
+ * La base es una reserva, no un adversario de la hoja gobernada.
+ *
+ * Las hojas de presentación viven en páginas y se insertan después, sin capa.
+ * Una regla sin capa vence a cualquier regla de una capa nombrada antes de
+ * comparar especificidad. Así quien escribe `.reveal { … }` no tiene que conocer
+ * ni copiar `.vera-presentation .reveal`: la cascada prometida es base → hoja
+ * predeterminada → tema, también en la proyección pública.
+ */
+@layer vera-presentation-base {
 .vera-presentation {
   position: fixed;
   inset: 0;
@@ -1927,6 +1937,7 @@ html.presenting body {
   .vera-presentation .reveal .slides section {
     transition: none !important;
   }
+}
 }
 
 .page-heading .page-title {

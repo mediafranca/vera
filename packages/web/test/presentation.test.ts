@@ -102,4 +102,10 @@ describe('hojas gobernadas de presentación', () => {
       '@scope (.vera-presentation .presentation-stage) {\n* { color: red; }\n}',
     );
   });
+
+  it('deja la base en una capa inferior y la hoja gobernada fuera de ella', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /@layer vera-presentation-base \{[\s\S]*?\.vera-presentation \.reveal \{/);
+    assert.doesNotMatch(scopedPresentationStylesheet('.reveal { font-size: 1rem; }'), /@layer/);
+  });
 });

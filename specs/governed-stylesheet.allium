@@ -32,6 +32,19 @@ contract GovernedStylesheetApplication {
         -- `VERA: Presentaciones.css`, then by the page linked from the
         -- presentation's `tema` property when one is declared.
 
+    @invariant AuthoredStylesOverrideTheBaseline
+        -- Within the confined stage, a valid declaration from a governed
+        -- stylesheet overrides Vera's readable baseline without requiring the
+        -- author to know or defeat Vera's internal selector specificity. The
+        -- chosen theme similarly overrides the default presentation stylesheet.
+
+    @invariant PublicPresentationUsesPublishedStylePages
+        -- A public presentation resolves the same canonical stylesheet pages as
+        -- its source, provided those pages are published to the same public site.
+        -- Their public paths may change without changing the cascade; an
+        -- unpublished or unavailable stylesheet falls back visibly and never
+        -- opens a path into the private graph.
+
     @invariant PresentationStylesStayInsideTheStage
         -- Selectors from a governed stylesheet can affect only the presentation
         -- stage. They cannot restyle the editor, settings, navigation or any
