@@ -38,6 +38,12 @@ contract GovernedStylesheetApplication {
         -- author to know or defeat Vera's internal selector specificity. The
         -- chosen theme similarly overrides the default presentation stylesheet.
 
+    @invariant RefreshResolvesTheCascadeAgain
+        -- When a reader explicitly refreshes an active presentation, Vera reads
+        -- the canonical default and theme pages again. A stylesheet revision is
+        -- reported as an available presentation update even when the source page
+        -- itself has not changed.
+
     @invariant PublicPresentationUsesPublishedStylePages
         -- A public presentation resolves the same canonical stylesheet pages as
         -- its source, provided those pages are published to the same public site.

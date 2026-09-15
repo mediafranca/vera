@@ -51,17 +51,31 @@ describe('páginas que se pueden presentar', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     assert.match(source, /width: '100%',\s*\n\s*height: '100%',\s*\n\s*margin: 0,/);
-    assert.match(styles, /\.vera-presentation \.reveal \{[^}]*--content-width: 34em;/);
-    assert.match(styles, /max-height: calc\(100dvh - clamp\(7rem, 15vh, 10rem\)\);/);
+    assert.match(styles, /\.vera-presentation \.reveal \{[^}]*--content-width: min\(44em, 100%\);/);
+    assert.match(styles, /max-height: calc\(100dvh - clamp\(5\.5rem, 11vh, 7\.5rem\)\);/);
     assert.doesNotMatch(styles, /\.vera-presentation \.body svg \{[^}]*max-height: 64vh;/);
   });
 
-  it('conserva el outline como columnas verticales y activa sus miniaturas a demanda', () => {
+  it('convierte cada bloque raíz en una lámina y conserva dentro sus descendientes', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
-    assert.match(source, /dataset\['presentationColumn'\] = 'true'/);
+    assert.match(source, /slide\.append\(renderNode\(root, options\)\)/);
+    assert.doesNotMatch(source, /dataset\['presentationColumn'\]/);
     assert.match(source, /deck\.on\('overviewshown'/);
     assert.match(source, /frame\.loading = 'eager'/);
     assert.doesNotMatch(source, /viewDistance: 1_000/);
+  });
+
+  it('vuelve a resolver la hoja gobernada al actualizar y detecta sus cambios', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    assert.match(source, /governedStyle = await presentationStyles\(newer\)/);
+    assert.match(source, /style\.textContent = scopedPresentationStylesheet\(heldStyle\)/);
+    assert.match(source, /newerStyle\.css === heldStyle/);
+  });
+
+  it('da ancho útil a tablas y reserva un pie legible para medios', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /\.vera-presentation \.body-text table \{[^}]*width: 100%;[^}]*max-width: none;/);
+    assert.match(styles, /\.vera-presentation \.body figcaption \{[^}]*font: 0\.72rem\/1\.35 var\(--font-ui\);/);
   });
 
   it('lleva el cambio claro y oscuro a la barra superior', () => {

@@ -463,6 +463,13 @@ surface PresentationViewer {
         -- inherit the ordinary page's lateral column or add a second virtual
         -- margin: prose remains deliberately readable and centred, while images,
         -- diagrams and other spatial content may use nearly all available space.
+        -- A media-led slide gives the medium the largest size that still leaves
+        -- an authored caption visible without requiring vertical scrolling.
+
+    @guarantee TablesUseTheStageBeforeShrinking
+        -- A table uses the available slide width symmetrically before Vera makes
+        -- its type smaller. It is not displaced by indentation inherited from
+        -- the outline or by a presentation runtime's virtual canvas.
 
     @guarantee ThePageOrderIsTheSlideOrder
         -- Previous and next follow the order of first-level blocks. The overview

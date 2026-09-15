@@ -139,7 +139,7 @@ export async function presentPage(
   let sourcePage = page;
   let roots = treeOf(sourcePage.blocks);
   if (roots.length === 0) return;
-  const governedStyle = await presentationStyles(sourcePage);
+  let governedStyle = await presentationStyles(sourcePage);
   const syncFrames = (): void => { dispatchEvent(new Event('vera-sync-executable-frames')); };
 
   const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -149,12 +149,10 @@ export async function presentPage(
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-label', `Presentación: ${page.title}`);
 
-  if (governedStyle.css !== '') {
-    const style = document.createElement('style');
-    style.dataset['veraPresentationStyle'] = 'governed';
-    style.textContent = scopedPresentationStylesheet(governedStyle.css);
-    overlay.append(style);
-  }
+  const style = document.createElement('style');
+  style.dataset['veraPresentationStyle'] = 'governed';
+  style.textContent = scopedPresentationStylesheet(governedStyle.css);
+  overlay.append(style);
 
   const close = document.createElement('button');
   close.type = 'button';
@@ -221,34 +219,19 @@ export async function presentPage(
   const fillSlides = (): void => {
     slides.replaceChildren();
     for (const root of roots) {
-      const column = document.createElement('section');
-      // Una raíz con hijos nombra y ordena una columna; no añade por obligación
-      // una portada antes de su primer contenido. Así una columna cuyo primer
-      // hijo es un iframe empieza efectivamente por el iframe.
-      const members = root.children.length === 0 ? [root] : root.children;
-      for (const member of members) {
-        const slide = document.createElement('section');
-        slide.dataset['block'] = member.block.stableId;
-        slide.append(renderNode(member, options));
-        const gloss = sourcePage.glosses?.[member.block.stableId]?.content.trim() ?? '';
-        if (gloss !== '') {
-          const notes = document.createElement('aside');
-          notes.className = 'notes';
-          notes.innerHTML = renderMarkdown(gloss, options);
-          slide.append(notes);
-        }
-        column.append(slide);
+      // La estructura de autoría ya es suficiente: cada raíz es una lámina y
+      // sus descendientes son su contenido. Reveal sólo mueve entre ellas.
+      const slide = document.createElement('section');
+      slide.dataset['block'] = root.block.stableId;
+      slide.append(renderNode(root, options));
+      const gloss = sourcePage.glosses?.[root.block.stableId]?.content.trim() ?? '';
+      if (gloss !== '') {
+        const notes = document.createElement('aside');
+        notes.className = 'notes';
+        notes.innerHTML = renderMarkdown(gloss, options);
+        slide.append(notes);
       }
-      if (members.length === 1) {
-        const slide = column.firstElementChild!;
-        slides.append(slide);
-      } else {
-        column.dataset['block'] = root.block.stableId;
-        column.dataset['presentationColumn'] = 'true';
-        column.dataset['presentationTitle'] = root.block.content;
-        column.setAttribute('aria-label', root.block.content);
-        slides.append(column);
-      }
+      slides.append(slide);
     }
   };
   fillSlides();
@@ -280,6 +263,7 @@ export async function presentPage(
   let closed = false;
   let revisionWatch = 0;
   let heldRevision = presentationRevision(sourcePage);
+  let heldStyle = governedStyle.css;
   const sourceUrl = new URL(window.location.href);
   sourceUrl.searchParams.delete('present');
   const currentBlock = (): string | null => deck.getCurrentSlide()?.dataset['block'] ?? null;
@@ -349,6 +333,9 @@ export async function presentPage(
       sourcePage = newer;
       roots = newerRoots;
       heldRevision = presentationRevision(newer);
+      governedStyle = await presentationStyles(newer);
+      heldStyle = governedStyle.css;
+      style.textContent = scopedPresentationStylesheet(heldStyle);
       fillSlides();
       deck.sync();
       if (block !== null) {
@@ -395,8 +382,8 @@ export async function presentPage(
   updateNotes();
   writeDeepLink();
   revisionWatch = window.setInterval(() => {
-    void api.page(sourcePage.id, 4_000).then((newer) => {
-      refresh.hidden = presentationRevision(newer) === heldRevision;
+    void Promise.all([api.page(sourcePage.id, 4_000), presentationStyles(sourcePage)]).then(([newer, newerStyle]) => {
+      refresh.hidden = presentationRevision(newer) === heldRevision && newerStyle.css === heldStyle;
     }).catch(() => undefined);
   }, 15_000);
   close.focus({ preventScroll: true });
