@@ -1865,6 +1865,16 @@ html.presenting body {
   margin: 0 auto;
 }
 
+/* Un iframe ya pide el 100%, pero ese porcentaje debe medirse contra la
+   lámina y no contra el ancho intrínseco de un figure ajustado al contenido. */
+.vera-presentation .body figure:has(iframe) {
+  width: 100%;
+}
+
+.vera-presentation .body figure:has(iframe) iframe {
+  width: 100%;
+}
+
 .vera-presentation .body figcaption {
   margin-top: 0.35rem;
   color: color-mix(in srgb, var(--text) 68%, transparent);

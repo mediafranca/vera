@@ -75,6 +75,8 @@ describe('páginas que se pueden presentar', () => {
   it('da ancho útil a tablas y reserva un pie legible para medios', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     assert.match(styles, /\.vera-presentation \.body-text table \{[^}]*width: 100%;[^}]*max-width: none;/);
+    assert.match(styles, /\.vera-presentation \.body figure:has\(iframe\) \{[^}]*width: 100%;/);
+    assert.match(styles, /\.vera-presentation \.body figure:has\(iframe\) iframe \{[^}]*width: 100%;/);
     assert.match(styles, /\.vera-presentation \.body figcaption \{[^}]*font: 0\.72rem\/1\.35 var\(--font-ui\);/);
   });
 
