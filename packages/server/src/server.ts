@@ -182,6 +182,7 @@ import {
   ceremonyFor,
   finishAuthentication,
   finishRegistration,
+  issueSession,
   participantForSession,
   registrationOptions,
   revokeSession,
@@ -2545,6 +2546,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    const ceremony = () => ceremonyFor(request.headers.host ?? 'localhost',
+      typeof request.headers['x-forwarded-proto'] === 'string' ? request.headers['x-forwarded-proto'] : undefined);
+    const setHumanSession = (secret: string, expiresAt: number): void => {
+      const secure = ceremony().origin.startsWith('https:') ? '; Secure' : '';
+      response.setHeader('set-cookie', `vera_session=${encodeURIComponent(secret)}; Path=/; HttpOnly; SameSite=Strict${secure}; Expires=${new Date(expiresAt).toUTCString()}`);
+    };
+
     if (request.method === 'GET' && /^\/invitations\/[^/]+$/.test(path)) {
       const invitation = decodeURIComponent(path.split('/')[2] ?? '');
       const proof = url.searchParams.get('secret') ?? '';
@@ -2569,18 +2577,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const redeemed = redeemInvitation(store, invitation, proof, name);
           graph.addParticipant({ id: redeemed.participant, name, kind: 'human' });
           graph.admit(redeemed.participant);
-          send(response, 201, redeemed);
+          const session = issueSession(store, redeemed.participant);
+          setHumanSession(session.secret, session.expiresAt);
+          send(response, 201, { ...redeemed, sessionExpiresAt: session.expiresAt });
         } catch (error) { send(response, 409, { error: error instanceof Error ? error.message : String(error) }); }
       });
       return;
     }
-
-    const ceremony = () => ceremonyFor(request.headers.host ?? 'localhost',
-      typeof request.headers['x-forwarded-proto'] === 'string' ? request.headers['x-forwarded-proto'] : undefined);
-    const setHumanSession = (secret: string, expiresAt: number): void => {
-      const secure = ceremony().origin.startsWith('https:') ? '; Secure' : '';
-      response.setHeader('set-cookie', `vera_session=${encodeURIComponent(secret)}; Path=/; HttpOnly; SameSite=Strict${secure}; Expires=${new Date(expiresAt).toUTCString()}`);
-    };
 
     if (request.method === 'POST' && path === '/human-auth/registration/options') {
       const chunks: Buffer[] = [];

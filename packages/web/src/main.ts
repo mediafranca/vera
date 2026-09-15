@@ -84,7 +84,7 @@ import {
   seedTrail,
 } from './promote.ts';
 import { renderMarkdown } from '@vera/core';
-import { handlesSharedAccess } from './shared-access.ts';
+import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
 
 const PHONE = 640;
 
@@ -3650,6 +3650,7 @@ async function start(): Promise<void> {
 
   applyLayout();
   await applyRoute();
+  offerPasskeyEnrollment();
 
   /*
    * Y ahora sí: primero qué ha pasado, después lo que estaba por salir.

@@ -102,33 +102,78 @@ async function invitation(id: string, secret: string): Promise<void> {
     const field = document.createElement('label'); field.className = 'invitation-field'; field.textContent = 'Tu nombre';
     const name = document.createElement('input'); name.placeholder = 'Nombre y apellido'; name.autocomplete = 'name'; name.required = true;
     field.append(name);
-    const accept = document.createElement('button'); accept.textContent = 'aceptar y crear una passkey';
-    let redeemed: any | null = null;
+    const accept = document.createElement('button'); accept.textContent = 'Entrar a Vera';
     accept.onclick = () => void (async () => {
       if (name.value.trim() === '') { name.focus(); notice(main, 'Escribe tu nombre para continuar.', true); return; }
-      accept.disabled = true; notice(main, 'Creando tu identidad y preparando la passkey…');
+      accept.disabled = true; notice(main, 'Creando tu acceso…');
       try {
-        // El canje es de un solo uso, pero la ceremonia del navegador puede ser
-        // cancelada o fallar. Conservar sus credenciales permite reintentar la
-        // passkey sin intentar gastar por segunda vez la invitación.
-        redeemed ??= await json(`/invitations/${encodeURIComponent(id)}/redeem`, 'POST',
+        const redeemed = await json(`/invitations/${encodeURIComponent(id)}/redeem`, 'POST',
           { secret, name: name.value.trim() });
-        name.disabled = true;
-        const options = await json('/human-auth/registration/options', 'POST',
-          { enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret });
-        const response = await startRegistration({ optionsJSON: options });
-        await json('/human-auth/registration/verify', 'POST',
-          { enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret, response });
+        sessionStorage.setItem('vera-passkey-enrollment', JSON.stringify({
+          enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret,
+        }));
         localStorage.setItem(`vera-human:${redeemed.spaceSlug}`, redeemed.participant);
         location.assign(`/s/${encodeURIComponent(redeemed.spaceSlug)}`);
       } catch (error) {
         notice(main, error instanceof Error ? error.message : 'No se pudo aceptar la invitación.', true);
-        if (redeemed !== null) accept.textContent = 'volver a intentar la passkey';
         accept.disabled = false;
       }
     })();
     main.append(detail, field, accept);
   } catch (error) { notice(main, error instanceof Error ? error.message : 'La invitación no está disponible.', true); }
+}
+
+interface PendingPasskeyEnrollment { enrollment: string; secret: string }
+
+function pendingPasskeyEnrollment(): PendingPasskeyEnrollment | null {
+  const raw = sessionStorage.getItem('vera-passkey-enrollment');
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingPasskeyEnrollment>;
+    return typeof parsed.enrollment === 'string' && typeof parsed.secret === 'string'
+      ? { enrollment: parsed.enrollment, secret: parsed.secret } : null;
+  } catch { return null; }
+}
+
+/** Offers durable access only after the invitation has already opened Vera. */
+export function offerPasskeyEnrollment(): void {
+  const pending = pendingPasskeyEnrollment();
+  if (pending === null) return;
+  sessionStorage.removeItem('vera-passkey-enrollment');
+
+  const dialog = document.createElement('dialog');
+  dialog.className = 'passkey-enrollment-dialog';
+  const title = document.createElement('h2'); title.textContent = 'Guarda tu acceso en este dispositivo';
+  const explanation = document.createElement('p');
+  explanation.textContent = 'Tu acceso ya está activo. Para conservarlo si esta sesión vence o se borra, puedes crear una passkey ahora.';
+  const handoff = document.createElement('p');
+  handoff.textContent = 'Al continuar, tu dispositivo abrirá una ventana propia y puede pedirte rostro, huella o PIN. También puede mencionar Apple, Google o Windows. Vera no recibe ninguno de esos datos.';
+  const consequence = document.createElement('p');
+  consequence.textContent = 'Si eliges “Ahora no”, seguirás dentro con esta sesión. Si la pierdes, necesitarás otra invitación.';
+  const actions = document.createElement('div'); actions.className = 'dialog-actions';
+  const later = document.createElement('button'); later.textContent = 'Ahora no';
+  const create = document.createElement('button'); create.className = 'dialog-primary-action'; create.textContent = 'Guardar mi acceso';
+  later.onclick = () => dialog.close();
+  create.onclick = () => void (async () => {
+    create.disabled = true; later.disabled = true; create.textContent = 'Abriendo tu dispositivo…';
+    try {
+      const options = await json('/human-auth/registration/options', 'POST', pending);
+      const response = await startRegistration({ optionsJSON: options });
+      await json('/human-auth/registration/verify', 'POST', { ...pending, response });
+      title.textContent = 'Acceso guardado';
+      explanation.textContent = 'Podrás volver a entrar usando la passkey de este dispositivo.';
+      handoff.remove(); consequence.remove(); actions.replaceChildren();
+      const done = document.createElement('button'); done.className = 'dialog-primary-action'; done.textContent = 'Continuar';
+      done.onclick = () => dialog.close(); actions.append(done);
+    } catch (error) {
+      create.disabled = false; later.disabled = false; create.textContent = 'Volver a intentar';
+      consequence.textContent = error instanceof Error ? error.message : 'No se pudo guardar el acceso. Puedes intentarlo nuevamente o seguir sin passkey.';
+      consequence.dataset['bad'] = 'true';
+    }
+  })();
+  dialog.addEventListener('close', () => dialog.remove());
+  dialog.append(title, explanation, handoff, consequence, actions);
+  document.body.append(dialog); dialog.showModal();
 }
 
 /**

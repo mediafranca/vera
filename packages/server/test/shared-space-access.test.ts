@@ -25,7 +25,8 @@ async function call(path: string, method = 'GET', body?: unknown, headers: Recor
     method, headers: { 'content-type': 'application/json', ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  return { status: response.status, json: await response.json() as Record<string, any> };
+  return { status: response.status, headers: response.headers,
+    json: await response.json() as Record<string, any> };
 }
 
 async function callPublic(path: string, method = 'GET', body?: unknown) {
@@ -78,6 +79,10 @@ describe('primer corte vertical de espacios compartidos', () => {
     });
     assert.equal(redeemed.status, 201, JSON.stringify(redeemed.json));
     assert.match(redeemed.json['enrollmentSecret'], /^vera_enroll_/);
+    assert.match(redeemed.headers.get('set-cookie') ?? '', /^vera_session=/);
+    const invitationSession = (redeemed.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    assert.equal((await call('/s/doctorado/api/pages', 'GET', undefined,
+      { cookie: invitationSession })).status, 200);
     const passkey = await call('/human-auth/registration/options', 'POST', {
       enrollment: redeemed.json['enrollment'], secret: redeemed.json['enrollmentSecret'],
     });

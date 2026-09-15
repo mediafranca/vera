@@ -52,7 +52,7 @@ export async function registrationOptions(store: Store, enrollmentId: string, pr
   return options;
 }
 
-function issueSession(store: Store, participant: string): { secret: string; expiresAt: number } {
+export function issueSession(store: Store, participant: string): { secret: string; expiresAt: number } {
   const secret = opaque('vera_session_');
   const now = Date.now();
   const expiresAt = now + 30 * 24 * 60 * 60 * 1000;

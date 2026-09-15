@@ -128,10 +128,10 @@ contract SharedSpaceAccess {
         -- which it acts.
 
     @invariant PeopleWithoutVeraCanParticipateFully
-        -- A person may accept an invitation in an ordinary browser, register a
-        -- passkey and receive the same permissions as a person whose identity is
-        -- federated from another Vera. Owning a Vera graph is never a condition
-        -- of participation.
+        -- A person may accept an invitation in an ordinary browser and enter the
+        -- shared space immediately. Registering a passkey afterwards preserves
+        -- access beyond that browser session but is never a condition for the
+        -- first entry or for receiving the invitation's permissions.
 
     @invariant ContributionAndEditingAreDifferentPromises
         -- `contribute` submits an attributed proposal for the owner's review.
@@ -210,8 +210,9 @@ contract InvitationCapability {
         -- represented.
 
     @invariant ACapabilityIsSingleUseAndExpiring
-        -- A successful redemption consumes the invitation. An expired, revoked
-        -- or already redeemed invitation creates no session, identity or grant.
+        -- A successful redemption consumes the invitation and creates one
+        -- bounded session for its participant. An expired, revoked or already
+        -- redeemed invitation creates no session, identity or grant.
 
     @invariant TheSecretIsNotRecoverableFromVera
         -- Vera retains what is needed to verify an invitation secret, never the
@@ -250,7 +251,7 @@ enum InclusionStatus { active | removed }
 enum AuthenticatorKind { passkey }
 enum AuthenticatorStatus { active | revoked }
 enum SessionStatus { active | ended | expired }
-enum SessionAuthenticationMethod { passkey | federated_vera }
+enum SessionAuthenticationMethod { invitation | passkey | federated_vera }
 enum BootstrapStatus { awaiting_first_passkey | ready }
 enum SpaceStatus { active | withdrawn }
 enum InvitationStatus { pending | redeemed | revoked | expired }
@@ -284,6 +285,7 @@ entity HumanSession {
     participant: core/Participant
     authenticator: HumanAuthenticator?
     federated_binding: FederatedIdentityBinding?
+    invitation: AccessInvitation?
     authentication_method: SessionAuthenticationMethod
     status: SessionStatus
     began_at: Timestamp
@@ -543,6 +545,7 @@ rule HumanAuthenticatesWithPasskey {
         participant: authenticator.participant,
         authenticator: authenticator,
         federated_binding: null,
+        invitation: null,
         authentication_method: passkey,
         status: active,
         began_at: now,
@@ -770,6 +773,18 @@ rule PersonWithoutVeraRedeemsInvitation {
             status: pending,
             expires_at: now + config.enrollment_lifetime
         )
+        HumanSession.created(
+            instance: instance,
+            participant: participant,
+            authenticator: null,
+            federated_binding: null,
+            invitation: invitation,
+            authentication_method: invitation,
+            status: active,
+            began_at: now,
+            expires_at: now + config.session_lifetime,
+            ended_at: null
+        )
         invitation.status = redeemed
         invitation.redeemed_by = participant
         invitation.redeemed_at = now
@@ -926,6 +941,7 @@ rule FederatedParticipantAuthenticates {
             participant: binding.participant,
             authenticator: null,
             federated_binding: binding,
+            invitation: null,
             authentication_method: federated_vera,
             status: active,
             began_at: now,
@@ -984,10 +1000,18 @@ invariant ASessionFederatedBindingNamesTheSamePerson {
             session.federated_binding.participant = session.participant
 }
 
+invariant ASessionInvitationNamesTheSamePerson {
+    for session in HumanSessions:
+        session.invitation != null implies
+            session.invitation.redeemed_by = session.participant
+}
+
 invariant EverySessionHasExactlyOneProof {
     for session in HumanSessions:
-        (session.authenticator != null or session.federated_binding != null) and
-        not (session.authenticator != null and session.federated_binding != null)
+        (session.authenticator != null or session.federated_binding != null or session.invitation != null) and
+        not (session.authenticator != null and session.federated_binding != null) and
+        not (session.authenticator != null and session.invitation != null) and
+        not (session.federated_binding != null and session.invitation != null)
 }
 
 invariant EveryInstanceHasOneHumanAccessBootstrap {
@@ -1186,9 +1210,19 @@ surface InvitationRedemption {
         -- and expiry, not its pages or any fact about the surrounding graph.
 
     @guarantee RedemptionContinuesIntoTheInvitedSpace
-        -- After authentication and successful redemption, Vera opens the
-        -- invited space. If the invitation was reached while requesting one of
-        -- its pages, that page is the continuation; otherwise its space home is.
+        -- Successful redemption opens a bounded session and takes the person to
+        -- the invited space without first requiring an operating-system
+        -- authentication ceremony. If the invitation was reached while
+        -- requesting one of its pages, that page is the continuation; otherwise
+        -- its space home is.
+
+    @guarantee APasskeyIsProgressiveAndExplained
+        -- Once inside, Vera offers to preserve access with a passkey but allows
+        -- the person to defer it. Before invoking the operating-system dialog,
+        -- Vera explains that the device may ask for face, fingerprint or PIN,
+        -- may name its credential manager, and shares none of those secrets
+        -- with Vera. Deferring means a lost or expired session requires another
+        -- invitation.
 }
 
 surface HumanSessionBoundary {
@@ -1200,6 +1234,7 @@ surface HumanSessionBoundary {
         session.authentication_method
         session.authenticator
         session.federated_binding
+        session.invitation
         session.expires_at
 
     provides:
