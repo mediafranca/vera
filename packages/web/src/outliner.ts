@@ -308,6 +308,16 @@ export function reloadAfterServerWriting(): ReloadOptions {
 }
 
 /**
+ * Una relación y los backlinks son proyecciones del corpus completo, no de la
+ * réplica de la página abierta. Tras escribirlos hay que reconciliar con el
+ * corpus canónico; redibujar desde la réplica conserva precisamente la versión
+ * vieja y hace que el cambio desaparezca hasta recargar a mano.
+ */
+export function reloadAfterDerivedWriting(): ReloadOptions {
+  return { fromCorpus: true };
+}
+
+/**
  * El bloque donde hay que empezar a grabar en cuanto se dibuje.
  *
  * `/audio` ocurre en un editor que el redibujado se lleva por delante, así que
@@ -2604,11 +2614,11 @@ function renderRelationOutline(
   ).sort((a, b) => a.position - b.position);
 
   const create = async (parent: string | null, position: number, content = ''): Promise<void> => {
-    const born = await api.submit({
+    const born = await api.submitCanonical({
       kind: 'create_block', page: relation.fromPage, crossing: relation.stableId,
       parent, position, content,
     });
-    if (born.status === 'applied') callbacks.onReload({ block: born.subjectId, at: 0 });
+    if (born.status === 'applied') callbacks.onReload(null, reloadAfterDerivedWriting());
   };
 
   const draw = (node: Node, depth: number): HTMLElement => {
@@ -2652,7 +2662,7 @@ function renderRelationOutline(
     const save = async (): Promise<boolean> => {
       const content = editor.textContent ?? '';
       if (content === node.block.content) return true;
-      const result = await api.submit({ kind: 'edit_block', block: node.block.stableId, content });
+      const result = await api.submitCanonical({ kind: 'edit_block', block: node.block.stableId, content });
       if (result.status === 'applied') {
         node.block.content = content;
         callbacks.onChanged();
@@ -2684,24 +2694,24 @@ function renderRelationOutline(
         const at = siblings.findIndex((one) => one.stableId === node.block.stableId);
         if (!event.shiftKey && at > 0) {
           const parent = siblings[at - 1]!;
-          void api.submit({
+          void api.submitCanonical({
             kind: 'move_block', block: node.block.stableId, page: relation.fromPage,
             crossing: relation.stableId, parent: parent.stableId,
             position: relation.blocks.filter((one) => one.parent === parent.stableId).length,
-          }).then((result) => { if (result.status === 'applied') callbacks.onReload(null); });
+          }).then((result) => { if (result.status === 'applied') callbacks.onReload(null, reloadAfterDerivedWriting()); });
         } else if (event.shiftKey && node.block.parent !== null) {
           const parent = relation.blocks.find((one) => one.stableId === node.block.parent);
-          if (parent !== undefined) void api.submit({
+          if (parent !== undefined) void api.submitCanonical({
             kind: 'move_block', block: node.block.stableId, page: relation.fromPage,
             crossing: relation.stableId, parent: parent.parent, position: parent.position + 1,
-          }).then((result) => { if (result.status === 'applied') callbacks.onReload(null); });
+          }).then((result) => { if (result.status === 'applied') callbacks.onReload(null, reloadAfterDerivedWriting()); });
         }
         return;
       }
       if (event.key === 'Backspace' && (editor.textContent ?? '') === '' && node.children.length === 0) {
         event.preventDefault();
-        void api.submit({ kind: 'remove_block', block: node.block.stableId })
-          .then((result) => { if (result.status === 'applied') callbacks.onReload(null); });
+        void api.submitCanonical({ kind: 'remove_block', block: node.block.stableId })
+          .then((result) => { if (result.status === 'applied') callbacks.onReload(null, reloadAfterDerivedWriting()); });
       }
     });
     const body = document.createElement('div');
@@ -2763,22 +2773,22 @@ function renderRelationTypeControl(
         .filter((block) => block.parent === null)
         .sort((a, b) => a.position - b.position)[0];
       if (relation.fromBlock === null) {
-        const result = await api.submit({
+        const result = await api.submitCanonical({
           kind: 'edit_crossing',
           crossing: relation.stableId,
           content: root?.content ?? relation.said,
           term: term === '' ? undefined : term,
         });
-        if (result.status === 'applied') callbacks.onReload(null);
+        if (result.status === 'applied') callbacks.onReload(null, reloadAfterDerivedWriting());
         return;
       }
       const result = term === ''
-        ? await api.submit({ kind: 'remove_property', block: relation.connective, propertyKey: names.term })
-        : await api.submit({
+        ? await api.submitCanonical({ kind: 'remove_property', block: relation.connective, propertyKey: names.term })
+        : await api.submitCanonical({
             kind: 'set_property', block: relation.connective,
             propertyKey: names.term, propertyValue: term,
           });
-      if (result.status === 'applied') callbacks.onReload(null);
+      if (result.status === 'applied') callbacks.onReload(null, reloadAfterDerivedWriting());
     })();
   });
 }
@@ -6404,20 +6414,23 @@ async function explainTowards(
      */
     if (held !== undefined) {
       if (held.fromBlock === null) {
-        const written = await api.submit({
+        const written = await api.submitCanonical({
           kind: 'edit_crossing',
           crossing: held.stableId,
           content: clean,
           term: term === '' ? undefined : term,
         });
-        if (written.status === 'rejected') notify(`no se pudo guardar: ${written.reason}`);
+        if (written.status === 'rejected') {
+          notify(`no se pudo guardar: ${written.reason}`);
+          callbacks.onReload(null, reloadAfterDerivedWriting());
+        }
         else {
           notify(`cambiada la conectiva con ${title}`);
-          callbacks.onReload(null);
+          callbacks.onReload(null, reloadAfterDerivedWriting());
         }
         return;
       }
-      const written = await api.submit({
+      const written = await api.submitCanonical({
         kind: 'edit_block',
         block: held.connective,
         content: clean,
@@ -6429,14 +6442,14 @@ async function explainTowards(
       }
       if (term === '') {
         if (held.term !== null) {
-          await api.submit({
+          await api.submitCanonical({
             kind: 'remove_property',
             block: held.connective,
             propertyKey: names.term,
           });
         }
       } else {
-        await api.submit({
+        await api.submitCanonical({
           kind: 'set_property',
           block: held.connective,
           propertyKey: names.term,
@@ -6444,7 +6457,7 @@ async function explainTowards(
         });
       }
       notify(`cambiada la relación con ${title}`);
-      callbacks.onReload(null);
+      callbacks.onReload(null, reloadAfterDerivedWriting());
       return;
     }
 
@@ -6461,7 +6474,7 @@ async function explainTowards(
       asking.remove();
       return;
     }
-    const born = await api.submit({
+    const born = await api.submitCanonical({
       kind: 'create_crossing',
       fromPage: page.id,
       toPage: target,
@@ -6470,11 +6483,14 @@ async function explainTowards(
     });
     if (born.status === 'rejected') {
       notify(`no se pudo explicar: ${born.reason}`);
-      asking.remove();
+      // Puede haber sido aceptada antes y haberse perdido sólo la respuesta.
+      // Reconciliar enseña esa relación en vez de dejar una caja vacía que al
+      // segundo intento contesta «ya existe».
+      callbacks.onReload(null, reloadAfterDerivedWriting());
       return;
     }
     notify(`explicada la conectiva con ${title}`);
-    callbacks.onReload(null);
+    callbacks.onReload(null, reloadAfterDerivedWriting());
   };
 
   field.addEventListener('keydown', (event) => {

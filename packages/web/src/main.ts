@@ -1514,11 +1514,19 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
        */
       if (options?.fromCorpus === true) {
         if (workspace.activePage !== null) {
-          void openPage(
-            workspace.activePage,
-            focus,
-            options.replaceRoute === true ? { replaceRoute: true } : {},
-          );
+          const active = workspace.activePage;
+          void (async () => {
+            await openPage(
+              active,
+              focus,
+              options.replaceRoute === true ? { replaceRoute: true } : {},
+            );
+            // Volver al corpus puede insertar o retirar aparatos derivados por
+            // encima del lugar que se estaba mirando. Restaurar sólo scrollTop
+            // movería visualmente el texto; el ancla semántica conserva el
+            // bloque y su posición en la ventana.
+            restoreTextViewport(text, viewport);
+          })();
         }
         return;
       }

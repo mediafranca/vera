@@ -22,6 +22,7 @@ import {
   projectedReferenceText,
   referenceExcerptAddsContext,
   reloadAfterServerWriting,
+  reloadAfterDerivedWriting,
   reloadOptionsFor,
 } from '../src/outliner.ts';
 import type { BlockView } from '../src/api.ts';
@@ -84,6 +85,10 @@ describe('redibujar después de escribir', () => {
 
   it('una transformación escrita por el servidor vuelve al corpus', () => {
     assert.deepEqual(reloadAfterServerWriting(), { fromCorpus: true });
+  });
+
+  it('una relación vuelve al corpus porque no vive en la réplica de una página', () => {
+    assert.deepEqual(reloadAfterDerivedWriting(), { fromCorpus: true });
   });
 });
 
