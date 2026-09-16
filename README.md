@@ -4,14 +4,69 @@
 
 # Vera
 
-> Una memoria viva para profundizar y trabajar con inteligencias artificiales
-> sin entregar el control de tu conocimiento.
+> Una infraestructura para conservar y recorrer una memoria intelectual propia,
+> y trabajar con inteligencias artificiales sin entregarles su gobierno.
 
 ![Vera muestra una página y su grafo de relaciones](https://vera.mediafranca.net/assets/vera-interface.png)
 
-Vera es una wiki personal, *local-first* y mantenible por personas y agentes. El
-proyecto se documenta desde su propio corpus para no sostener versiones paralelas
-de la misma explicación.
+VERA no busca construir otra inteligencia artificial ni sustituir las plataformas
+existentes. Investiga y materializa una capa que hoy falta entre la persona y
+esas plataformas: una memoria intelectual longitudinal, soberana y trazable,
+gobernada por su autora o autor, sobre la cual distintas inteligencias pueden
+trabajar sin apropiarse de ella.
+
+La pregunta universitaria que organiza el proyecto es ésta: **¿cómo conservar la
+agencia, la memoria, la autoría y la capacidad crítica de una persona cuando
+múltiples inteligencias artificiales participan durante años en su formación e
+investigación?** VERA es simultáneamente el instrumento experimental para
+investigar esa pregunta y el artefacto tecnológico sometido a prueba. No se
+presupone que la respuesta ya esté resuelta ni que el software produzca por sí
+solo mejores aprendizajes.
+
+## Una cadena de soberanía
+
+VERA es más que una aplicación aislada. Es una cadena de decisiones y garantías:
+
+1. la persona conserva su corpus en formatos legibles y trasladables;
+2. cada intervención mantiene identidad, procedencia, autoría e historia;
+3. la persona decide qué puede leer, escribir o publicar cada agente;
+4. cambiar de dispositivo, institución, interfaz o proveedor de IA no exige
+   abandonar la memoria acumulada;
+5. los grafos soberanos pueden colaborar mediante estándares compartidos sin
+   fundirse en una base central.
+
+Lo decisivo no es solamente el texto final. Es también el **recorrido
+intelectual**: fuentes, preguntas, relaciones, revisiones, desacuerdos y aportes
+humanos o maquínicos que hicieron posible una idea. En el ámbito universitario,
+ese recorrido puede ser objeto de estudio, reflexión y evaluación sin reducir la
+autoría a la falsa pregunta de si una frase fue escrita enteramente por una
+persona o por una máquina.
+
+Técnicamente, VERA es una wiki personal *local-first*, mantenible por personas y
+agentes. El proyecto se documenta desde su propio corpus para no sostener
+versiones paralelas de la misma explicación.
+
+## Nacida desde dentro
+
+VERA comenzó en una situación individual: su propio corpus sirvió para pensar,
+discutir y documentar el sistema mientras éste se construía. En esa primera
+etapa, un **Bibliotecario** instalado por separado —una instancia de OpenClaw—
+trabajó como agente sobre la memoria mediante las mismas puertas que VERA ofrece
+a otros agentes. El desarrollo posterior también ha usado otras herramientas,
+entre ellas Codex, directamente sobre el repositorio.
+
+El Bibliotecario no viene incorporado en VERA y no es una autoridad privilegiada.
+Es una configuración posible: un agente con identidad, permisos y procedencia
+explícitos. Quien replique el sistema puede conectarle otro agente, darle otro
+nombre o no instalar ninguno. La capacidad transferible no es ese personaje,
+sino la separación entre el corpus soberano, la aplicación que lo gobierna y los
+agentes sustituibles autorizados para colaborar con él.
+
+Ahora el proyecto busca llevar esa experiencia situada a una conversación
+colectiva y contrastable. Que el sistema haya servido para examinar su propia
+construcción es un antecedente valioso; no demuestra por sí solo que la
+configuración se generalice sin fricciones. Esa cuestión debe comprobarse con
+otras personas, corpus y contextos universitarios.
 
 ## Conocer Vera
 

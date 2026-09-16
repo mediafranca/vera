@@ -27,6 +27,19 @@ para otros una Vera modificada ocultando ese código.
 Se adopta la expresión SPDX `AGPL-3.0-only`: esta versión concreta, sin conceder
 automáticamente versiones futuras de la licencia.
 
+La licencia es una pieza de una cadena de soberanía, no la cadena completa. AGPL
+mantiene abierto el programa y sus modificaciones de red; el diseño *local-first*
+mantiene el corpus bajo gobierno de su persona; los formatos portables permiten
+salir; la procedencia hace visibles las intervenciones; y los permisos separan
+leer, escribir, publicar y entrenar. Ninguna de estas garantías reemplaza a las
+otras.
+
+VERA tampoco reclama propiedad sobre el recorrido intelectual que ayuda a
+conservar. El programa puede registrar fuentes, revisiones y contribuciones para
+hacerlas trazables, pero las notas, relaciones, medios y decisiones del corpus
+siguen perteneciendo a sus titulares. Abrir el código no significa publicar la
+memoria personal ni concederla para entrenar modelos.
+
 ## Qué puedo hacer
 
 | Quiero… | ¿Puedo? |

@@ -5,6 +5,19 @@ cambio concreto. Este archivo lo dice entero. Léelo antes del primer commit: ca
 todo lo que aquí se rechaza se rechaza por la forma, no por el fondo, y la forma
 se puede saber de antemano.
 
+Contribuir a VERA no es solamente ampliar un programa. Es intervenir en una
+infraestructura que media entre una persona, su memoria intelectual y los agentes
+que trabajan sobre ella. Por eso una mejora de comodidad nunca puede borrar
+procedencia; una automatización no puede apropiarse de una decisión; y una
+integración no puede volver cautivo el corpus. El criterio rector es preservar la
+cadena de soberanía completa, no optimizar una pieza a costa de las demás.
+
+Una contribución debe poder explicar qué capacidad humana protege o amplía, qué
+garantía mantiene y cómo podría comprobarse que no dañó las anteriores. Las
+afirmaciones pedagógicas o epistemológicas se formulan como hipótesis cuando aún
+no existe evidencia: VERA es también un instrumento de investigación y debe poder
+producir resultados negativos sin ocultarlos.
+
 **Lo esencial, en cuatro líneas:**
 
 1. **Primero la spec, después el código.** Si no hay spec que lo cubra, se
