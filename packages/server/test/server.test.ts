@@ -439,6 +439,45 @@ describe('POST /mcp/discards', () => {
     };
     assert.equal(keptView.properties.some((one) => one.key === 'por borrar'), false);
   });
+
+  it('permite retirar una página especial heredada sólo si está obsoleta y marcada', async () => {
+    const retired = await write({
+      kind: 'create_page',
+      title: `Página especial obsoleta ${Date.now()}`,
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: retired, propertyKey: 'tipo', propertyValue: 'página especial' });
+    await write({ kind: 'set_property', page: retired, propertyKey: 'estado', propertyValue: 'obsoleta' });
+    await write({ kind: 'set_property', page: retired, propertyKey: 'por borrar', propertyValue: 'sí' });
+
+    const response = await fetch(`${base}/mcp/discards`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decisions: [{ page: retired, decision: 'delete' }] }),
+    });
+    assert.equal(response.status, 200, await response.text());
+    const pages = (await get('/pages')) as { id: string }[];
+    assert.equal(pages.some((page) => page.id === retired), false);
+  });
+
+  it('no retira una página rectora aunque esté obsoleta y marcada', async () => {
+    const governing = await write({
+      kind: 'create_page',
+      title: `Página rectora marcada ${Date.now()}`,
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'special-kind', propertyValue: 'test' });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'tipo', propertyValue: 'página especial' });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'estado', propertyValue: 'obsoleta' });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'por borrar', propertyValue: 'sí' });
+
+    const response = await fetch(`${base}/mcp/discards`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decisions: [{ page: governing, decision: 'delete' }] }),
+    });
+    assert.equal(response.status, 422);
+  });
 });
 
 describe('lecturas', () => {

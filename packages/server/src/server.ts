@@ -805,6 +805,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     );
   };
 
+  /**
+   * Una declaración rectora (`special-kind`) no se retira nunca desde la
+   * interfaz. Una página heredada que sólo conserva el tipo humano puede salir
+   * de circulación, pero únicamente después de dos decisiones explícitas:
+   * declararla obsoleta y marcarla para borrar.
+   */
+  const isSpecialPageProtectedFromDeletion = (pageId: string): boolean => {
+    const folded = (value: string): string =>
+      value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
+    const properties = graph.propertiesOf(pageId);
+    if (properties.some((property) => property.key === SPECIAL_KIND)) return true;
+    if (!isSpecialPage(pageId)) return false;
+    const obsolete = properties.some(
+      (property) => folded(property.key) === 'estado' && folded(property.value) === 'obsoleta',
+    );
+    const marked = properties.some(
+      (property) => folded(property.key) === folded(propertyNames().discard_request),
+    );
+    return !(obsolete && marked);
+  };
+
   /*
    * Los bloques de una página especial que declaran algo.
    *
@@ -1912,7 +1933,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           (block) => graph.block(block)?.page,
         );
         if (protectedPage !== null && isSpecialPage(protectedPage)) {
-          if (input.change.kind === 'remove_page') {
+          if (
+            input.change.kind === 'remove_page' &&
+            isSpecialPageProtectedFromDeletion(protectedPage)
+          ) {
             send(response, 422, {
               status: 'rejected',
               reason: 'una página especial gobierna Vera y no se puede eliminar',
@@ -2113,7 +2137,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             send(response, 409, { error: `la página ${page} ya no está marcada para borrar` });
             return;
           }
-          if (decision === 'delete' && isSpecialPage(page)) {
+          if (decision === 'delete' && isSpecialPageProtectedFromDeletion(page)) {
             send(response, 422, { error: `la página especial ${page} no se puede eliminar` });
             return;
           }
