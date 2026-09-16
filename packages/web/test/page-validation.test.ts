@@ -71,4 +71,26 @@ describe('retained page validation', () => {
     assert.match(main, /if \(unknownDay\) \{[\s\S]*const fresh = await api\.pages\(\)/);
     assert.match(main, /pages = byWeight\(fresh\);[\s\S]*held\.keepIndex\(fresh\)/);
   });
+
+  it('abre el taller con el estado retenido sin esperar la salud canónica', () => {
+    const start = main.slice(main.indexOf('async function start()'), main.indexOf('/**\n * Arrancar puede fallar'));
+    assert.match(start, /const canonicalHealth = api\.health\(\)/);
+    assert.match(start, /const rememberedCorpus = await held\.corpus\(\)/);
+    assert.match(start, /useCorpus\(rememberedCorpus\)/);
+    assert.match(start, /void canonicalHealth\.then/);
+    assert.match(start, /await loadPages\(\);[\s\S]*await applyRoute\(\)/);
+    assert.ok(
+      start.indexOf('useCorpus(rememberedCorpus)') < start.indexOf('await loadPages()'),
+      'el estado local debe gobernar antes de abrir la lista y la ruta',
+    );
+  });
+
+  it('retiene el texto base antes de esperar relaciones y procedencia', () => {
+    const opening = main.slice(main.indexOf('async function openPage('), main.indexOf('/** Abrir por título'));
+    const keep = opening.indexOf('held.keepPage(openView)');
+    const enrich = opening.indexOf('api.pageEnrichment(page.id');
+    assert.ok(keep >= 0, 'la entrega legible debe quedar retenida');
+    assert.ok(enrich >= 0, 'la información derivada debe seguir completándose');
+    assert.ok(keep < enrich, 'retener el texto no puede depender del enriquecimiento');
+  });
 });

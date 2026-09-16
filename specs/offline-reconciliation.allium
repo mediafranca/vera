@@ -397,11 +397,10 @@ rule DeliverCanonicallyWhatWasNeverRead {
 rule OpenWorkspaceWithoutTheServer {
     when: ReplicaOpened(replica)
 
-    requires: replica.connection = offline
-
     ensures:
         DurableReplicaLoaded(replica: replica)
         replica.availability = available
+        BackgroundSynchronisationBegins(replica: replica)
 
     @guidance
         -- Opening cannot depend on an answer from the network. A workspace that shows
@@ -409,6 +408,12 @@ rule OpenWorkspaceWithoutTheServer {
         -- condition of reading one's own memory, which is the one thing a sovereign
         -- memory may not do. See workspace-interface.allium, invariant
         -- OfflineReadingAndWriting.
+        --
+        -- This is equally binding when the server is reachable but slow. Retained
+        -- corpus state, page index and readable page content open the workspace first;
+        -- checking health, refreshing the index and enriching derived relations happen
+        -- behind that reading. Connectivity is not local-first merely because it will
+        -- eventually time out.
 }
 
 ------------------------------------------------------------

@@ -290,6 +290,32 @@ let corpus: CorpusHealth | null = null;
 const isAnybody = (): boolean => corpus?.access === 'anybody';
 const isReadOnly = (): boolean => isAnybody() && corpus?.canEdit !== true && corpus?.canContribute !== true;
 
+/**
+ * Hace efectivo un estado del corpus, venga de este aparato o del servidor.
+ *
+ * No consulta nada: separar la aplicación de la obtención es lo que permite que
+ * el estado retenido abra el taller mientras la copia canónica se actualiza por
+ * detrás. Antes ambas cosas eran una sola espera a `/health`, puesta delante de
+ * `loadPages` y `applyRoute`; por eso una página que ya estaba en IndexedDB podía
+ * pasar un minuto escondida detrás de una comprobación de red.
+ */
+function useCorpus(health: CorpusHealth): void {
+  corpus = health;
+  document.documentElement.dataset['access'] = health.access ?? 'owner';
+  if (isAnybody()) {
+    workspace.trace = [];
+    workspace.scheme = session.publicScheme();
+    workspace.graphView = session.publicGraphView();
+    applyTokens(tokens, workspace.scheme);
+    $('#brand').title = 'Portada publicada';
+    $('#brand').setAttribute('aria-label', 'Ir a la portada publicada');
+  }
+  $('#insert-voice').hidden = isAnybody();
+  $('#sync-state').hidden = isAnybody();
+  if (health.names !== undefined) nameProperties(health.names);
+  if (health.embedHosts !== undefined) allowEmbedsFrom(health.embedHosts);
+}
+
 async function openHome(): Promise<void> {
   if (isAnybody() && corpus?.entryPoint != null) {
     await openPage(corpus.entryPoint);
@@ -1058,6 +1084,18 @@ async function openPage(
   }
   showingKept = fromKept;
   markShowing(text, fromKept);
+
+  /*
+   * El texto base ya fue entregado y ya se puede leer: se conserva ahora.
+   *
+   * Antes la copia durable se escribía sólo cuando terminaba `pageEnrichment`.
+   * Ese segundo viaje calcula relaciones, retroenlaces y procedencia; si quedaba
+   * esperando, cerrar o volver atrás descartaba también el título y los bloques
+   * que sí habían llegado. Lo derivado se actualizará en la misma entrada cuando
+   * llegue, pero no tiene derecho a impedir que la lectura quede disponible para
+   * el próximo arranque.
+   */
+  if (!isAnybody() && !fromKept) void held.keepPage(openView);
 
   /*
    * Una copia retenida abre primero, pero ya no pasa por canónica por silencio.
@@ -3609,42 +3647,40 @@ async function start(): Promise<void> {
    */
   held = await heldHere();
 
-  // El estado del corpus se guarda, no se dibuja: ahora vive en Ajustes →
-  // Memoria y se pinta cuando alguien lo abre.
-  try {
-    corpus = await api.health();
-    document.documentElement.dataset['access'] = corpus.access ?? 'owner';
-    if (isAnybody()) {
-      workspace.trace = [];
-      workspace.scheme = session.publicScheme();
-      workspace.graphView = session.publicGraphView();
-      applyTokens(tokens, workspace.scheme);
-    }
-    if (isAnybody()) {
-      $('#brand').title = 'Portada publicada';
-      $('#brand').setAttribute('aria-label', 'Ir a la portada publicada');
-    }
-    $('#insert-voice').hidden = isAnybody();
-    $('#sync-state').hidden = isAnybody();
-    if (!isAnybody()) void held.keepCorpus(corpus);
-  } catch (error) {
-    /*
-     * El servidor no está. Si este aparato ya abrió Vera alguna vez, se sigue.
-     *
-     * Y si no —una instalación nueva, sin nada retenido— no hay nada que enseñar
-     * y el fallo sube a `boot`, que es quien sabe avisar y reintentar. Fingir un
-     * corpus vacío sería peor que decir que no se pudo: enseñaría una Vera sin
-     * páginas a quien tiene mil novecientas.
-     */
-    const remembered = isAnybody() ? null : await held.corpus();
-    if (remembered === null) throw error;
-    corpus = remembered;
-    showingKept = true;
+  /*
+   * Local primero también en el arranque, no sólo dentro de `openPage`.
+   *
+   * `/health` iba antes de la lista y de la ruta. Eso convertía una comprobación
+   * remota en la puerta de todo el taller: aunque página, índice y estado ya
+   * vivieran en este aparato, nada podía pintarse hasta que contestara. Se inicia
+   * la consulta ya, pero si hay estado retenido se usa y se continúa; la respuesta
+   * canónica lo reemplaza después sin bloquear lectura.
+   *
+   * En el primer uso no hay de dónde arrancar y sí se espera: inventar un corpus
+   * vacío sería decir que no existen páginas que simplemente aún no se conocen.
+   */
+  // Se recoge el rechazo desde el primer instante. IndexedDB puede tardar lo
+  // bastante para que un fallo de red ocurra antes de que decidamos si hay una
+  // copia local; dejar la promesa rechazada sin observador produciría un error
+  // global aunque un arranque local perfectamente válido estuviera en curso.
+  const canonicalHealth = api.health().then(
+    (fresh) => ({ fresh } as const),
+    (error: unknown) => ({ error } as const),
+  );
+  const rememberedCorpus = await held.corpus();
+  if (rememberedCorpus === null) {
+    const answer = await canonicalHealth;
+    if ('error' in answer) throw answer.error;
+    useCorpus(answer.fresh);
+    if (!isAnybody()) void held.keepCorpus(answer.fresh);
+  } else {
+    useCorpus(rememberedCorpus);
+    void canonicalHealth.then((answer) => {
+      if ('error' in answer) return;
+      useCorpus(answer.fresh);
+      if (!isAnybody()) void held.keepCorpus(answer.fresh);
+    });
   }
-  // Las palabras del corpus, antes de dibujar nada: la cabecera de una página
-  // las necesita para llamar a sus renglones como los llame quien escribe.
-  if (corpus?.names !== undefined) nameProperties(corpus.names);
-  if (corpus?.embedHosts !== undefined) allowEmbedsFrom(corpus.embedHosts);
 
   await loadPages();
 
