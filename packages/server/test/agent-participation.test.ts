@@ -104,6 +104,28 @@ describe('credenciales', () => {
     assert.equal(mine['secret'], undefined, 'el secreto no puede volver a leerse');
   });
 
+  it('capture deposita por su puerta pero no abre páginas ni operaciones', async () => {
+    const issued = await call('/agents/credentials', {
+      method: 'POST',
+      body: { participant: COTITO, scopes: ['capture'], label: 'clipper' },
+    });
+    assert.equal(issued.status, 201, JSON.stringify(issued.json));
+    const secret = issued.json['secret'] as string;
+    const captured = await call('/captures', {
+      method: 'POST', secret,
+      body: {
+        kind: 'selection', title: 'Fuente capturada', url: 'https://example.com/capture',
+        content: 'Texto capturado', capturedAt: '2026-09-16T12:00:00Z', idempotencyKey: 'capture-authority-test',
+      },
+    });
+    assert.equal(captured.status, 202, JSON.stringify(captured.json));
+    assert.equal((await call('/pages', { secret })).status, 403);
+    assert.equal((await submit(
+      { kind: 'create_page', title: 'No autorizada por capture', visibility: 'private' },
+      { secret, participant: COTITO },
+    )).status, 403);
+  });
+
   it('una persona no recibe credencial: no se autentica con un token', async () => {
     const reply = await call('/agents/credentials', {
       method: 'POST',

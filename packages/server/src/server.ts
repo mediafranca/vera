@@ -34,6 +34,7 @@ import {
   canonicalUrl,
   suggestedPathFor,
   titleKey,
+  calendarDay,
   writeQuery,
   STARTER_RELATIONS,
   CHANGE_KINDS as CORE_CHANGE_KINDS,
@@ -1390,6 +1391,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    // Una credencial de captura es una ranura, no una llave de lectura. Puede
+    // depositar exactamente en /captures y no abre ninguna otra superficie.
+    const presentedCredential = who.credential === null ? null : credentialById(store, who.credential);
+    if (
+      presentedCredential?.scopes.includes('capture') === true &&
+      !presentedCredential.scopes.includes('read') &&
+      !(request.method === 'POST' && path === '/captures')
+    ) {
+      send(response, 403, { error: 'esta credencial sólo autoriza capturas' });
+      return;
+    }
+
     /*
      * Anotar que algo salió.
      *
@@ -1441,17 +1454,113 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (who.participant !== librarianAgent || who.credential === null) return false;
       return credentialById(store, who.credential)?.scopes.includes('write') ?? false;
     };
-    const readSmallJson = async (): Promise<Record<string, unknown>> => {
+    const readSmallJson = async (maximum = 64 * 1024): Promise<Record<string, unknown>> => {
       const chunks: Buffer[] = [];
       let size = 0;
       for await (const chunk of request) {
         const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         size += bytes.length;
-        if (size > 64 * 1024) throw new Error('el cuerpo excede 64 KiB');
+        if (size > maximum) throw new Error(`el cuerpo excede ${maximum} bytes`);
         chunks.push(bytes);
       }
       return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
     };
+
+    /*
+     * Puerta estrecha de Vera Clip.
+     *
+     * La captura nace en la bitácora del día como un subárbol importado. El
+     * identificador del navegador gobierna tanto las operaciones como los ids
+     * estables: perder la respuesta y reenviar nunca duplica el depósito.
+     */
+    if (request.method === 'POST' && path === '/captures') {
+      if (presentedCredential !== null && !presentedCredential.scopes.includes('capture')) {
+        send(response, 403, { error: 'la credencial no tiene alcance capture' });
+        return;
+      }
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(2_100_000); }
+      catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
+
+      const kind = body.kind === 'selection' || body.kind === 'article' ? body.kind : null;
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      const content = typeof body.content === 'string' ? body.content.trim() : '';
+      const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
+      const capturedAt = typeof body.capturedAt === 'string' ? Date.parse(body.capturedAt) : Number.NaN;
+      if (kind === null || title === '' || content === '' || idempotencyKey === '' || !Number.isFinite(capturedAt)) {
+        send(response, 422, { error: 'la captura necesita kind, title, content, capturedAt e idempotencyKey válidos' });
+        return;
+      }
+      if (Buffer.byteLength(content, 'utf8') > 2_000_000) {
+        send(response, 413, { error: 'la captura supera 2 MB' });
+        return;
+      }
+      let parsedUrl: URL;
+      try { parsedUrl = new URL(url); }
+      catch { send(response, 422, { error: 'la captura necesita una URL válida' }); return; }
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        send(response, 422, { error: 'la captura sólo admite fuentes HTTP o HTTPS' });
+        return;
+      }
+
+      const fingerprint = hashBytes(Buffer.from(idempotencyKey, 'utf8'));
+      const origin = `capture:${fingerprint}`;
+      const prior = graph.operations().find((operation) => operation.originId === `${origin}:root`);
+      if (prior !== undefined) {
+        send(response, 200, { status: 'duplicate', page: pageTouchedBy(prior.submission.change, prior.subjectId, (block) => graph.block(block)?.page), block: prior.subjectId });
+        return;
+      }
+
+      const day = calendarDay(capturedAt);
+      const existingDay = graph.pageTitled(day);
+      const pageId = existingDay?.id ?? `page:day:${day}`;
+      const rootId = `block:capture:${fingerprint.slice(0, 32)}`;
+      const sourceId = `${rootId}:source`;
+      const contentId = `${rootId}:content`;
+      const changes: Array<{ originId: string; change: Change }> = [];
+      if (existingDay === undefined) {
+        changes.push({ originId: `${origin}:page`, change: { kind: 'create_page', stableId: pageId, title: day, visibility: 'private' } });
+      }
+      const position = existingDay === undefined ? 0 : graph.blocksOf(pageId).filter((block) => block.parent === null).length;
+      const safeTitle = title.replace(/\]/g, '\\]');
+      changes.push(
+        { originId: `${origin}:root`, change: { kind: 'create_block', stableId: rootId, page: pageId, parent: null, position, content: `[${safeTitle}](${parsedUrl.toString()})` } },
+        { originId: `${origin}:source`, change: { kind: 'create_block', stableId: sourceId, page: pageId, parent: rootId, position: 0, content: `Fuente: ${parsedUrl.toString()} · captura ${kind === 'selection' ? 'de selección' : 'de artículo'} · ${new Date(capturedAt).toISOString()}` } },
+        { originId: `${origin}:content`, change: { kind: 'create_block', stableId: contentId, page: pageId, parent: rootId, position: 1, content } },
+      );
+
+      const trial = graph.replayFromLog();
+      const applied: Operation[] = [];
+      const captureChannel: ContributionChannel = graph.participant(who.participant)?.kind === 'agent'
+        ? 'agent_generation'
+        : 'import';
+      for (const entry of changes) {
+        const outcome = trial.submitOperation({
+          originId: entry.originId,
+          participant: who.participant,
+          channel: captureChannel,
+          change: entry.change,
+        });
+        if (outcome.status !== 'applied') {
+          send(response, 422, { error: outcome.status === 'rejected' ? outcome.reason : 'la captura ya existe parcialmente' });
+          return;
+        }
+        applied.push(outcome.operation);
+      }
+      store.db.exec('BEGIN');
+      try {
+        for (const operation of applied) recordOperation(store, trial, operation);
+        store.db.exec('COMMIT');
+        graph = trial;
+      } catch (error) {
+        store.db.exec('ROLLBACK');
+        send(response, 500, { error: 'no se pudo depositar la captura', detail: error instanceof Error ? error.message : String(error) });
+        return;
+      }
+      send(response, 202, { status: 'accepted', page: pageId, block: rootId });
+      return;
+    }
 
     if (request.method === 'POST' && path === '/librarian/requests') {
       if (graph.participant(who.participant)?.kind !== 'human') {
@@ -2825,6 +2934,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           leer: { scopes: ['read'], permission: 'leer', fenced: false },
           propio: { scopes: ['read', 'write'], permission: 'escribe en lo suyo', fenced: true },
           todo: { scopes: ['read', 'write', 'discard'], permission: 'todo', fenced: false },
+          capturar: { scopes: ['capture'], permission: 'depositar capturas', fenced: false },
         };
         const chosen = DEALS[deal];
         if (chosen === undefined) {

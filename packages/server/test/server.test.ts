@@ -284,6 +284,44 @@ describe('POST /operations/batch', () => {
   });
 });
 
+describe('POST /captures', () => {
+  it('deposita en la bitácora y un reintento no duplica el subárbol', async () => {
+    const capture = {
+      kind: 'selection',
+      title: 'Una fuente',
+      url: 'https://example.com/articulo',
+      content: 'Fragmento capturado',
+      capturedAt: '2026-09-16T12:00:00.000Z',
+      idempotencyKey: 'capture-server-test',
+    };
+    const sendCapture = async () => {
+      const response = await fetch(`${base}/captures`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(capture),
+      });
+      return { status: response.status, json: await response.json() as Record<string, unknown> };
+    };
+    const first = await sendCapture();
+    const second = await sendCapture();
+    assert.equal(first.status, 202, JSON.stringify(first.json));
+    assert.equal(second.status, 200, JSON.stringify(second.json));
+    assert.equal(second.json['status'], 'duplicate');
+    const page = await get(`/pages/${encodeURIComponent(String(first.json['page']))}`) as { blocks: { content: string }[] };
+    assert.equal(page.blocks.filter((block) => block.content === 'Fragmento capturado').length, 1);
+    assert.ok(page.blocks.some((block) => block.content.includes('https://example.com/articulo')));
+  });
+
+  it('rechaza una captura demasiado grande antes de escribir', async () => {
+    const response = await fetch(`${base}/captures`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'article', title: 'Grande', url: 'https://example.com',
+        content: 'x'.repeat(2_000_001), capturedAt: '2026-09-16T12:00:00Z', idempotencyKey: 'too-large',
+      }),
+    });
+    assert.equal(response.status, 413);
+  });
+});
+
 describe('GET /activity', () => {
   it('conserva una tumba restaurable con la identidad y el árbol borrados', async () => {
     const page = await write({

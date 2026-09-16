@@ -166,6 +166,10 @@ export class DesktopConecta {
     if (typeof raw !== 'string') return;
     let envelope: any;
     try { envelope = JSON.parse(raw); } catch { return; }
+    if (envelope?.tipo === 'captura' && typeof envelope.request_id === 'string') {
+      await this.receiveCapture(socket, envelope);
+      return;
+    }
     if (envelope?.tipo !== 'sobre' || typeof envelope.request_id !== 'string') return;
     socket.send(JSON.stringify({ tipo: 'sobre_acuse', request_id: envelope.request_id }));
     const scopes = Array.isArray(envelope.alcances) ? envelope.alcances.filter((x: unknown) => typeof x === 'string') : [];
@@ -190,13 +194,45 @@ export class DesktopConecta {
     }
   }
 
+  private async receiveCapture(socket: LiveSocket, envelope: any): Promise<void> {
+    if (
+      typeof envelope.principal_id !== 'string' ||
+      typeof envelope.identificador_de_idempotencia !== 'string' ||
+      typeof envelope.cuerpo !== 'string'
+    ) return;
+    const credential = await this.credential(envelope.principal_id, ['capture']);
+    if (credential === null) {
+      socket.send(JSON.stringify({ tipo: 'captura_rechazada', request_id: envelope.request_id, payload: { codigo: 'acceso_retirado' } }));
+      return;
+    }
+    try {
+      const response = await fetch(`${this.localUrl}/captures`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential.token}`,
+          'x-vera-client': credential.client,
+          'content-type': 'application/json',
+        },
+        body: envelope.cuerpo,
+      });
+      const payload = await response.json().catch(() => ({ aceptada: response.ok }));
+      socket.send(JSON.stringify({
+        tipo: response.ok ? 'captura_aceptada' : 'captura_rechazada',
+        request_id: envelope.request_id,
+        payload,
+      }));
+    } catch {
+      socket.send(JSON.stringify({ tipo: 'captura_rechazada', request_id: envelope.request_id, payload: { codigo: 'vera_no_disponible' } }));
+    }
+  }
+
   private async credential(principal: string, scopes: string[]): Promise<{ token: string; client: string } | null> {
     const saved = this.store.read();
     if (saved === null || principal === '') return null;
     const key = keyFor(principal, scopes);
     const existing = saved.credentials[key];
     if (existing !== undefined) return existing;
-    const deal = scopes.includes('write') ? 'propio' : 'leer';
+    const deal = scopes.includes('capture') ? 'capturar' : scopes.includes('write') ? 'propio' : 'leer';
     const client = `conecta-${principal.slice(0, 12)}`;
     const response = await fetch(`${this.localUrl}/mcp/connections`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
