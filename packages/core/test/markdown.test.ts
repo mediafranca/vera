@@ -588,7 +588,14 @@ describe('incrustaciones', () => {
    * Estas pruebas hablan de un corpus que ya registró a estos dos servidores;
    * sin registro no entra nadie, y de eso hablan las últimas de aquí abajo.
    */
-  const allowed = { embedHosts: ['eadpucv.github.io', 'ejemplo.cl', 'youtube-nocookie.com'] };
+  const allowed = { embedHosts: [
+    'eadpucv.github.io',
+    'ejemplo.cl',
+    'youtube-nocookie.com',
+    'player.vimeo.com',
+    'w.soundcloud.com',
+    'platform.twitter.com',
+  ] };
 
   it('una URL de YouTube pegada sola usa el reproductor sin cookies', () => {
     const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ', allowed);
@@ -609,6 +616,41 @@ describe('incrustaciones', () => {
     const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ');
     assert.ok(!html.includes('<iframe'));
     assert.match(html, /href="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
+  });
+
+  it('incrusta videos de Vimeo desde su reproductor oficial', () => {
+    const html = renderMarkdown('https://vimeo.com/1226797047', allowed);
+    assert.match(html, /player\.vimeo\.com\/video\/1226797047/);
+    assert.match(html, /sandbox=/);
+  });
+
+  it('conserva el hash de un video no listado de Vimeo', () => {
+    const html = renderMarkdown('https://vimeo.com/1226797047/092e059678', allowed);
+    assert.match(html, /player\.vimeo\.com\/video\/1226797047\?h=092e059678/);
+  });
+
+  it('incrusta pistas y listas de SoundCloud mediante su widget', () => {
+    const source = 'https://soundcloud.com/vera/una-pista';
+    const html = renderMarkdown(source, allowed);
+    assert.match(html, /w\.soundcloud\.com\/player\/\?url=/);
+    assert.match(html, /https%3A%2F%2Fsoundcloud\.com%2Fvera%2Funa-pista/);
+  });
+
+  it('incrusta posts de X y Twitter por su identidad estable', () => {
+    const x = renderMarkdown('https://x.com/vera/status/1234567890123456789', allowed);
+    const twitter = renderMarkdown('https://twitter.com/vera/status/1234567890123456789', allowed);
+    assert.match(x, /platform\.twitter\.com\/embed\/Tweet\.html\?id=1234567890123456789/);
+    assert.match(twitter, /platform\.twitter\.com\/embed\/Tweet\.html\?id=1234567890123456789/);
+  });
+
+  it('ningún adaptador nuevo elude la autorización del corpus', () => {
+    for (const source of [
+      'https://vimeo.com/1226797047',
+      'https://soundcloud.com/vera/una-pista',
+      'https://x.com/vera/status/1234567890123456789',
+    ]) {
+      assert.ok(!renderMarkdown(source).includes('<iframe'));
+    }
   });
 
   it('un bloque que es una incrustación entera se presenta como tal', () => {

@@ -49,8 +49,9 @@ type LinkedResourceKind = 'pdf' | 'image' | 'audio' | 'video' | 'tiktok' | 'inst
 
 /**
  * Una dirección que ocupa el bloque entero se presenta como objeto enlazado.
- * No se pide todavía: salvo YouTube, cargar el recurso requiere el gesto
- * «Mostrar». Así reconocer una dirección no informa al sitio de que se leyó la
+ * No se pide todavía: cargar un medio directo requiere el gesto «Mostrar».
+ * Los proveedores con adaptador de incrustación se reconocen por separado en
+ * `embedIn`. Así reconocer una dirección no informa al sitio de que se leyó la
  * página que la contiene.
  */
 export function linkedResourceIn(source: string): string | null {
@@ -94,8 +95,8 @@ export function linkedResourceIn(source: string): string | null {
 }
 
 export function embedIn(source: string, hosts: readonly string[] = []): string | null {
-  const youtube = youtubeEmbed(source.trim());
-  const found = EMBED.exec(youtube ?? source);
+  const provider = providerEmbed(source.trim());
+  const found = EMBED.exec(provider ?? source);
   if (found === null) return null;
 
   const said = new Map<string, string>();
@@ -227,6 +228,56 @@ function youtubeEmbed(source: string): string | null {
     }
     if (!/^[\w-]{6,20}$/.test(id)) return null;
     return `<iframe src="https://www.youtube-nocookie.com/embed/${id}" height="460"></iframe>`;
+  } catch {
+    return null;
+  }
+}
+
+/** Una URL reconocida se proyecta al reproductor oficial de su proveedor. */
+function providerEmbed(source: string): string | null {
+  return youtubeEmbed(source) ?? vimeoEmbed(source) ?? soundCloudEmbed(source) ?? xPostEmbed(source);
+}
+
+function vimeoEmbed(source: string): string | null {
+  if (!/^https:\/\//i.test(source)) return null;
+  try {
+    const url = new URL(source);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (host === 'player.vimeo.com') return null; // ya es una dirección de reproductor
+    if (host !== 'vimeo.com') return null;
+    const found = /^\/(?:video\/)?(\d+)(?:\/([a-z0-9]+))?\/?$/i.exec(url.pathname);
+    const id = found?.[1];
+    if (id === undefined) return null;
+    const hash = found?.[2];
+    const query = hash === undefined ? '' : `?h=${encodeURIComponent(hash)}`;
+    return `<iframe src="https://player.vimeo.com/video/${id}${query}" height="460"></iframe>`;
+  } catch {
+    return null;
+  }
+}
+
+function soundCloudEmbed(source: string): string | null {
+  if (!/^https:\/\//i.test(source)) return null;
+  try {
+    const url = new URL(source);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (host !== 'soundcloud.com' && host !== 'on.soundcloud.com') return null;
+    if (url.pathname === '/' || url.pathname === '') return null;
+    return `<iframe src="https://w.soundcloud.com/player/?url=${encodeURIComponent(source)}" height="166"></iframe>`;
+  } catch {
+    return null;
+  }
+}
+
+function xPostEmbed(source: string): string | null {
+  if (!/^https:\/\//i.test(source)) return null;
+  try {
+    const url = new URL(source);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (host !== 'x.com' && host !== 'twitter.com' && host !== 'mobile.twitter.com') return null;
+    const id = /^\/[^/]+\/status\/(\d+)/.exec(url.pathname)?.[1];
+    if (id === undefined) return null;
+    return `<iframe src="https://platform.twitter.com/embed/Tweet.html?id=${id}" height="520"></iframe>`;
   } catch {
     return null;
   }
