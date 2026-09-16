@@ -156,7 +156,7 @@ export function embedIn(source: string, hosts: readonly string[] = []): string |
    * Se admite el servidor y sus subdominios: registrar `github.io` deja entrar a
    * `eadpucv.github.io`, y quien quiera sólo uno registra el nombre entero.
    */
-  const allowed = host === 'www.youtube-nocookie.com' || hosts.some((one) => {
+  const allowed = hosts.some((one) => {
     const clean = one.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     return clean !== '' && (host === clean || host.endsWith(`.${clean}`));
   });

@@ -588,10 +588,10 @@ describe('incrustaciones', () => {
    * Estas pruebas hablan de un corpus que ya registró a estos dos servidores;
    * sin registro no entra nadie, y de eso hablan las últimas de aquí abajo.
    */
-  const allowed = { embedHosts: ['eadpucv.github.io', 'ejemplo.cl'] };
+  const allowed = { embedHosts: ['eadpucv.github.io', 'ejemplo.cl', 'youtube-nocookie.com'] };
 
   it('una URL de YouTube pegada sola usa el reproductor sin cookies', () => {
-    const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ');
+    const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ', allowed);
     assert.match(html, /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
     assert.match(html, /sandbox=/);
     assert.match(html, /referrerpolicy="strict-origin-when-cross-origin"/);
@@ -600,9 +600,15 @@ describe('incrustaciones', () => {
   });
 
   it('reconoce watch, shorts y no incrusta una URL mezclada con prosa', () => {
-    assert.match(renderMarkdown('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), /youtube-nocookie/);
-    assert.match(renderMarkdown('https://youtube.com/shorts/dQw4w9WgXcQ'), /youtube-nocookie/);
-    assert.ok(!renderMarkdown('mira https://youtu.be/dQw4w9WgXcQ').includes('<iframe'));
+    assert.match(renderMarkdown('https://www.youtube.com/watch?v=dQw4w9WgXcQ', allowed), /youtube-nocookie/);
+    assert.match(renderMarkdown('https://youtube.com/shorts/dQw4w9WgXcQ', allowed), /youtube-nocookie/);
+    assert.ok(!renderMarkdown('mira https://youtu.be/dQw4w9WgXcQ', allowed).includes('<iframe'));
+  });
+
+  it('YouTube tampoco se incrusta sin autorización del corpus', () => {
+    const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ');
+    assert.ok(!html.includes('<iframe'));
+    assert.match(html, /href="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
   });
 
   it('un bloque que es una incrustación entera se presenta como tal', () => {
