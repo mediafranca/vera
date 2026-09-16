@@ -56,6 +56,55 @@ async function get(path: string): Promise<unknown> {
   return response.json();
 }
 
+describe('ontología rectora de relaciones', () => {
+  it('lee tipos estructurados desde VERA: Relaciones sin exigir restricciones', async () => {
+    const page = await write({
+      kind: 'create_page',
+      stableId: 'page:test-relations-governing',
+      title: 'VERA: Relaciones',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page, propertyKey: 'special-kind', propertyValue: 'relations' });
+    const block = await write({
+      kind: 'create_block',
+      stableId: 'block:test-relation-contradice',
+      page,
+      parent: null,
+      position: 0,
+      content: 'contradice',
+    });
+    await write({ kind: 'set_property', block, propertyKey: 'inversa', propertyValue: 'es contradicha por' });
+    await write({ kind: 'set_property', block, propertyKey: 'dominio', propertyValue: 'Afirmación, Publicación' });
+    await write({ kind: 'set_property', block, propertyKey: 'estado', propertyValue: 'aprobada' });
+    const starter = await write({
+      kind: 'create_block',
+      stableId: 'block:test-relation-profundiza',
+      page,
+      parent: null,
+      position: 1,
+      content: 'profundiza',
+    });
+    await write({ kind: 'set_property', block: starter, propertyKey: 'inversa', propertyValue: 'es profundizada por' });
+
+    const ontology = await get('/ontology') as {
+      relations: { name: string; inverse: string; domain: string[]; range: string[] }[];
+    };
+    const contradice = ontology.relations.find((relation) => relation.name === 'contradice');
+    assert.deepEqual(contradice, {
+      block,
+      name: 'contradice',
+      inverse: 'es contradicha por',
+      domain: ['Afirmación', 'Publicación'],
+      range: [],
+      symmetric: null,
+      transitive: null,
+      status: 'aprobada',
+      says: null,
+      external: [],
+    });
+  });
+});
+
 describe('modelos de procesamiento', () => {
   it('ofrece sólo identidades presentables y nunca rutas ni secretos', async () => {
     const result = await get('/processing/models') as {

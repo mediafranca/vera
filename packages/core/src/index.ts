@@ -54,6 +54,7 @@ export {
   missingFor,
   readObjectDeclarations,
   readPropertyDeclarations,
+  readRelationDeclarations,
 } from './ontology.ts';
 export type {
   DeclaredBlock,
@@ -61,6 +62,7 @@ export type {
   ObjectDeclaration,
   PropertyDeclaration,
   PropertySubject,
+  RelationDeclaration,
 } from './ontology.ts';
 
 /*

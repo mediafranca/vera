@@ -10,6 +10,7 @@ const openRelations = new Set<string>();
 let focusedRelation: string | null = null;
 
 interface RelationActions {
+  types?: readonly string[];
   editBlock?: (block: string, content: string) => Promise<boolean>;
   createBlock?: (
     crossing: string,
@@ -18,7 +19,8 @@ interface RelationActions {
     position: number,
     content?: string,
   ) => Promise<boolean>;
-  createRelation?: (fromPage: string, toPage: string, content: string) => Promise<string | null>;
+  createRelation?: (fromPage: string, toPage: string, content: string, term?: string) => Promise<string | null>;
+  setType?: (crossing: string, content: string, term?: string) => Promise<boolean>;
   refresh?: () => Promise<void>;
 }
 
@@ -533,6 +535,11 @@ export function renderGraphD4(
         article.append('header').append('span')
           .attr('class', 'd4-relation-direction')
           .text(`${source.name} → ${target.name}`);
+        const type = article.append<HTMLSelectElement>('select')
+          .attr('class', 'd4-relation-type')
+          .attr('aria-label', 'Tipo de relación');
+        type.append('option').attr('value', '').text('Sin tipificar');
+        for (const name of options.relations.types ?? []) type.append('option').attr('value', name).text(name);
         const editor = article.append<HTMLTextAreaElement>('textarea')
           .attr('class', 'd4-relation-empty')
           .attr('aria-label', 'Escribir la relación')
@@ -544,7 +551,8 @@ export function renderGraphD4(
           if (saving || content === '') return;
           saving = true;
           editor.property('disabled', true);
-          crossing = await options.relations!.createRelation!(source.id, target.id, content) ?? undefined;
+          const term = type.property('value').trim() || undefined;
+          crossing = await options.relations!.createRelation!(source.id, target.id, content, term) ?? undefined;
           if (crossing === undefined) {
             saving = false;
             editor.property('disabled', false).node()?.focus();
@@ -846,6 +854,24 @@ export function renderGraphD4(
       .text(link.label?.trim() || 'relación');
     if (!expanded) continue;
     head.append('span').attr('class', 'd4-relation-direction').text(`${source.name} → ${link.targetTitle ?? ''}`);
+    const type = card.append<HTMLSelectElement>('select')
+      .attr('class', 'd4-relation-type')
+      .attr('aria-label', 'Tipo de relación');
+    type.append('option').attr('value', '').text('Sin tipificar');
+    const types = new Set(options.relations?.types ?? []);
+    if (link.label?.trim()) types.add(link.label.trim());
+    for (const name of types) type.append('option').attr('value', name).text(name);
+    type.property('value', link.label?.trim() ?? '');
+    if (options.relations?.setType === undefined) type.property('disabled', true);
+    else type.on('change', async () => {
+      const roots = blocks.filter((block) => block.parent === null).sort((a, b) => a.position - b.position);
+      const content = roots[0]?.content ?? link.explanation ?? '';
+      const term = type.property('value').trim() || undefined;
+      if (await options.relations!.setType!(crossing, content, term)) {
+        link.label = term ?? null;
+        await options.relations?.refresh?.();
+      }
+    });
     const outline = card.append('div').attr('class', 'd4-relation-outline');
     const byParent = new Map<string | null, typeof blocks>();
     for (const block of blocks) {

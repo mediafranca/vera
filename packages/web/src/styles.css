@@ -6120,6 +6120,26 @@ html[data-working-slow='true']::after {
   outline: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
   background: var(--bg);
 }
+
+.relation-meta {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  margin: .35rem 0 .45rem;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.relation-meta select,
+.d4-relation-type {
+  min-width: 10rem;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: .45rem;
+  background: var(--surface, Canvas);
+  color: inherit;
+  padding: .25rem .45rem;
+}
 .relation-outline-add {
   appearance: none;
   margin: 0.35rem 0 0 1rem;

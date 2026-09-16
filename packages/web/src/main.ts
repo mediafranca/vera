@@ -2423,9 +2423,15 @@ async function drawGraph(completeD4 = false): Promise<void> {
       renderGraph3D(container, data, onClick, settings);
     } else if (workspace.graphView === 'graph_d4') {
       cleanupGraph3D();
+      const relationTypes = await api.ontology()
+        .then((ontology) => ontology.relations
+          .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
+          .map((one) => one.name))
+        .catch(() => [] as string[]);
       renderGraphD4(container, data, onClick, {
         ...settings,
         relations: {
+          types: relationTypes,
           editBlock: async (block: string, content: string): Promise<boolean> => {
             // Los bloques de una relación no viven en el outline de la página
             // abierta. La réplica local los rechazaría como inexistentes antes
@@ -2451,15 +2457,20 @@ async function drawGraph(completeD4 = false): Promise<void> {
             await drawGraph();
             return true;
           },
-          createRelation: async (fromPage: string, toPage: string, content: string): Promise<string | null> => {
+          createRelation: async (fromPage: string, toPage: string, content: string, term?: string): Promise<string | null> => {
             const result = await api.submitCanonical({
-              kind: 'create_crossing', fromPage, toPage, content,
+              kind: 'create_crossing', fromPage, toPage, content, term,
             });
             if (result.status === 'rejected') {
               notice(`No se pudo crear la relación: ${result.reason}`);
               return null;
             }
             return result.subjectId;
+          },
+          setType: async (crossing: string, content: string, term?: string): Promise<boolean> => {
+            const result = await api.submitCanonical({ kind: 'edit_crossing', crossing, content, term });
+            if (result.status === 'rejected') notice(`No se pudo cambiar el tipo: ${result.reason}`);
+            return result.status !== 'rejected';
           },
           refresh: drawGraph,
         },

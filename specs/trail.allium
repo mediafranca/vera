@@ -1354,7 +1354,7 @@ entity Crossing {
     sense: CrossingSense
 
     -- De qué clase es la relación, cuando quien la explica quiere decirlo. Sale
-    -- del vocabulario de relaciones que gobierna la página de ontología, y falta
+    -- del vocabulario de relaciones que gobierna «VERA: Relaciones», y falta
     -- mientras nadie lo ponga: la prosa es obligatoria y el término no.
     --
     -- Es la mitad consultable de esto. Con prosa sola, un corpus se lee; con
@@ -1391,7 +1391,7 @@ entity CrossingRevision {
 -- B. Eso no crea una conectiva de vuelta: sólo permite leer correctamente la
 -- conectiva entrante. Si B responde a A, esa respuesta es otra entidad dirigida.
 --
--- Vive en la página de ontología y no aquí. @invariant DefaultsLiveInTheCode: lo
+-- Vive en «VERA: Relaciones» y no aquí. @invariant DefaultsLiveInTheCode: lo
 -- que Vera trae es un mínimo, y lo que rige es lo que esa página diga.
 value RelationTerm {
     name: String

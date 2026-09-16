@@ -201,16 +201,19 @@ corpus, no código.
 
 ### 4.3 La ontología
 
-El vocabulario con que Vera clasifica vive en **una página del corpus**
-(`special-kind: ontology`), no en el código. Lo que el código trae es un juego
+El vocabulario con que Vera clasifica vive en **páginas rectoras del corpus**,
+no en el código: `VERA: Objetos` declara las clases, `VERA: Propiedades` las
+preguntas estructuradas y `VERA: Relaciones` los tipos de arista. La política
+para contenido ejecutable externo vive aparte en `VERA: Incrustaciones`, porque
+es seguridad y no ontología. Lo que el código trae es un juego
 mínimo de tipos por defecto (`STARTER_TYPES` en `packages/server/src/model.ts`:
 Persona, Organización, Lugar, Idea, Pregunta, Afirmación, Nota, Proyecto, Tarea,
 Trámite, Entrada diaria, Bitácora, Evento…) que rige mientras esa página no
-exista y que la página pisa en cuanto exista — `@invariant DefaultsLiveInTheCode`.
+existan declaraciones y que éstas pisan cuando aparecen — `@invariant DefaultsLiveInTheCode`.
 
 Es deliberado que sea así: la ontología de una memoria personal es una decisión
 de quien la habita, no del programa. Tu instancia arranca con el mínimo y lo hace
-crecer escribiendo su propia página de ontología. **No heredas las categorías de
+crecer escribiendo sus propias páginas rectoras. **No heredas las categorías de
 nadie**, y para un uso donde las categorías describen la vida de alguien, eso es
 el punto entero.
 

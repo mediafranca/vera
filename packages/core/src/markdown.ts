@@ -322,7 +322,7 @@ export interface RenderOptions {
    * Vacía o ausente, ninguno: una incrustación es contenido de fuera que corre
    * dentro de una página propia, y quién puede hacer eso lo dice el corpus y no
    * quien escribió el bloque. Ver specs/executable-content-sandbox.allium y la
-   * página de ontología, bajo «Incrustaciones».
+   * página rectora `VERA: Incrustaciones`.
    */
   embedHosts?: readonly string[];
   resolveAsset?: (path: string) => { url: string; mediaType: string } | null;

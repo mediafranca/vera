@@ -57,8 +57,8 @@ contract EmbeddedContentIsSandboxed {
         -- página propia no puede decidirlo quien pegó la dirección: una
         -- dirección se copia y se pega sin mirar, y entonces la decisión la
         -- estaría tomando el sitio de donde se copió. La lista vive donde vive
-        -- el resto del vocabulario —la página de ontología, bajo
-        -- «Incrustaciones»— y un servidor registrado registra a los suyos:
+        -- el resto del vocabulario —la página rectora «VERA: Incrustaciones»—
+        -- y un servidor registrado registra a los suyos:
         -- `github.io` deja entrar a `eadpucv.github.io`, y quien quiera uno solo
         -- escribe el nombre entero. Sin lista no entra nadie: el corpus que no
         -- dijo nada no dijo que sí.

@@ -27,6 +27,7 @@ import {
   namesFromRoles,
   readObjectDeclarations,
   readPropertyDeclarations,
+  readRelationDeclarations,
   readPropertyNames,
   readQuery,
   referencedTitles,
@@ -835,6 +836,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /** Cada clase de cosa, con qué propiedades la constituyen. */
   const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
 
+  /** Cada tipo de arista que este corpus ofrece al escribir una relación. */
+  const declaredRelations = () => readRelationDeclarations(declaredIn('relations'));
+
   /*
    * Cómo llama este corpus a lo que el dominio necesita conocer.
    *
@@ -1052,8 +1056,19 @@ export function createVeraServer(options: ServerOptions): VeraServer {
    * así que lo decide el corpus, en la página que ya gobierna el resto de su
    * vocabulario. Ver specs/executable-content-sandbox.allium.
    */
-  const embedHosts = (): string[] =>
-    declared(/^Incrustaciones/i)
+  const embedHosts = (): string[] => {
+    const page = governing('embeddings');
+    const current = page === undefined
+      ? []
+      : graph.blocksOf(page.id)
+        .flatMap((block) => {
+          const host = graph.propertiesOf(block.stableId)
+            .find((property) => property.key.trim().toLowerCase() === 'servidor')
+            ?.value.trim();
+          return host === undefined || host === '' ? [] : [host];
+        });
+    const written = current.length > 0 ? current : declared(/^Incrustaciones/i);
+    return written
       .map((line) => line.replace(/^[-*·]\s*/, '').trim())
       // Un renglón puede llevar una explicación detrás del servidor; lo que vale
       // es la primera palabra, que es la que nombra a quien aloja.
@@ -1062,9 +1077,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       // llevar prosa entre los renglones sin que una frase acabe leyéndose como
       // un permiso.
       .filter((host) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host));
+  };
   graph.namesProperties(propertyNames());
 
   const relationVocabulary = (): { name: string; inverse: string }[] => {
+    const current = declaredRelations();
+    if (current.length > 0) {
+      return current
+        .filter((relation) => relation.status?.trim().toLowerCase() !== 'obsoleta')
+        .map((relation) => ({ name: relation.name, inverse: relation.inverse }));
+    }
     const ontology = ontologyPage();
     if (ontology === undefined) return STARTER_RELATIONS;
 
@@ -4236,6 +4258,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 200, {
           properties: declaredNow.map((one) => ({ ...one, uses: usesOf(one.name) })),
           objects: declaredObjects(),
+          relations: declaredRelations(),
           names: propertyNames(),
           fields: FIELD_KINDS,
           /*

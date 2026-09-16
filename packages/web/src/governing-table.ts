@@ -52,9 +52,11 @@ export const GOVERNING_KINDS: {
   mode: SpecialPageMode;
   what: string;
 }[] = [
-  { key: 'ontology', label: 'Ontología', mode: 'rectora', what: 'relaciones, incrustaciones y compatibilidad del vocabulario' },
+  { key: 'ontology', label: 'Ontología anterior', mode: 'documentación', what: 'compatibilidad temporal durante la migración' },
   { key: 'properties', label: 'Propiedades', mode: 'rectora', what: 'cada propiedad y qué clase de campo es' },
   { key: 'objects', label: 'Objetos', mode: 'rectora', what: 'cada clase de cosa y qué propiedades la constituyen' },
+  { key: 'relations', label: 'Relaciones', mode: 'rectora', what: 'cada tipo de arista y cómo se lee desde ambos extremos' },
+  { key: 'embeddings', label: 'Incrustaciones', mode: 'rectora', what: 'qué servidores pueden ejecutar contenido dentro de una página' },
   { key: 'service', label: 'Servicio', mode: 'rectora', what: 'con qué servicio de fuera habla el corpus' },
   { key: 'mcp', label: 'Puerta MCP', mode: 'rectora', what: 'quién entra, con qué identidad y permiso declarado' },
   { key: 'publication', label: 'Publicación', mode: 'superficie', what: 'administra el sitio guardado en el registro' },

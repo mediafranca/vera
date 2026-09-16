@@ -6,6 +6,7 @@ import {
   missingFor,
   readObjectDeclarations,
   readPropertyDeclarations,
+  readRelationDeclarations,
 } from '../src/ontology.ts';
 import { namesFromRoles } from '../src/property-names.ts';
 
@@ -14,6 +15,40 @@ const block = (content: string, properties: Record<string, string> = {}) => ({
   block: `block:${(at += 1)}`,
   content,
   properties: Object.entries(properties).map(([key, value]) => ({ key, value })),
+});
+
+describe('readRelationDeclarations', () => {
+  it('separa el tipo de arista de sus restricciones orientativas', () => {
+    const [said] = readRelationDeclarations([
+      block('contradice', {
+        inversa: 'es contradicha por',
+        dominio: 'Afirmación, Publicación',
+        rango: 'Afirmación',
+        simétrica: 'no',
+        transitiva: 'no',
+        estado: 'aprobada',
+        definición: 'presenta razones incompatibles con el destino',
+        'equivalente externo': 'http://example.org/contradicts',
+      }),
+    ]);
+    assert.equal(said?.name, 'contradice');
+    assert.equal(said?.inverse, 'es contradicha por');
+    assert.deepEqual(said?.domain, ['Afirmación', 'Publicación']);
+    assert.deepEqual(said?.range, ['Afirmación']);
+    assert.equal(said?.symmetric, false);
+    assert.equal(said?.transitive, false);
+    assert.equal(said?.status, 'aprobada');
+    assert.deepEqual(said?.external, ['http://example.org/contradicts']);
+  });
+
+  it('permite declarar un tipo sin fingir restricciones todavía desconocidas', () => {
+    const [said] = readRelationDeclarations([block('dialoga con', { simétrica: 'sí' })]);
+    assert.equal(said?.inverse, 'dialoga con');
+    assert.deepEqual(said?.domain, []);
+    assert.deepEqual(said?.range, []);
+    assert.equal(said?.symmetric, true);
+    assert.equal(said?.transitive, null);
+  });
 });
 
 describe('readPropertyDeclarations', () => {

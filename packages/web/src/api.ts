@@ -358,6 +358,18 @@ export interface ObjectDeclared {
 export interface OntologyView {
   properties: PropertyDeclared[];
   objects: ObjectDeclared[];
+  relations: {
+    block: string;
+    name: string;
+    inverse: string;
+    domain: string[];
+    range: string[];
+    symmetric: boolean | null;
+    transitive: boolean | null;
+    status: string | null;
+    says: string | null;
+    external: string[];
+  }[];
   names: Record<string, string>;
   fields: string[];
   /** Las que el corpus usa sin haberlas declarado, con cuántas veces. */

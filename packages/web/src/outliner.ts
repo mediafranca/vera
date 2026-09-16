@@ -2723,6 +2723,65 @@ function renderRelationOutline(
   }
 }
 
+/** La metazona de una arista: clasificar acompaña la escritura, no la habilita. */
+function renderRelationTypeControl(
+  host: HTMLElement,
+  relation: CrossingRow,
+  callbacks: OutlinerCallbacks,
+  readOnly: boolean,
+): void {
+  const meta = document.createElement('label');
+  meta.className = 'relation-meta';
+  const caption = document.createElement('span');
+  caption.textContent = 'Tipo';
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', 'tipo de relación');
+  select.disabled = readOnly;
+  select.append(new Option('Sin tipificar', ''));
+  if (relation.term !== null) select.append(new Option(relation.term, relation.term));
+  select.value = relation.term ?? '';
+  meta.append(caption, select);
+  host.append(meta);
+
+  void api.ontology().then((ontology) => {
+    const held = select.value;
+    const names = ontology.relations
+      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
+      .map((one) => one.name);
+    for (const name of names) {
+      if ([...select.options].some((option) => option.value === name)) continue;
+      select.append(new Option(name, name));
+    }
+    select.value = held;
+  }).catch(() => undefined);
+
+  select.addEventListener('change', () => {
+    void (async () => {
+      const term = select.value.trim();
+      const root = [...relation.blocks]
+        .filter((block) => block.parent === null)
+        .sort((a, b) => a.position - b.position)[0];
+      if (relation.fromBlock === null) {
+        const result = await api.submit({
+          kind: 'edit_crossing',
+          crossing: relation.stableId,
+          content: root?.content ?? relation.said,
+          term: term === '' ? undefined : term,
+        });
+        if (result.status === 'applied') callbacks.onReload(null);
+        return;
+      }
+      const result = term === ''
+        ? await api.submit({ kind: 'remove_property', block: relation.connective, propertyKey: names.term })
+        : await api.submit({
+            kind: 'set_property', block: relation.connective,
+            propertyKey: names.term, propertyValue: term,
+          });
+      if (result.status === 'applied') callbacks.onReload(null);
+    })();
+  });
+}
+
 export const PRESENTATION_KEY = 'presentación';
 export const OUTGOING_REFERENCES_PRESENTATION = 'referencias salientes';
 
@@ -5941,6 +6000,7 @@ export function renderOutliner(
       // Lo dicho, que es la relación misma, y debajo la frase desde la que se
       // afirma: una relación sin su frase es una flecha sin sujeto.
       const said = document.createElement('div');
+      renderRelationTypeControl(item, row, callbacks, readOnly);
       renderRelationOutline(
         said, row, callbacks, readOnly,
         (host, content) => renderPreview(host, content, outgoing ? 'followed_reference' : 'followed_backlink'),

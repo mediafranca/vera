@@ -1002,9 +1002,20 @@ contract TheOntologyIsWrittenWhereItCanBeRead {
     declare: (page: core/Page) -> Ontology
 
     @invariant OneQuestionPerPage
-        -- Una página declara las propiedades y otra los objetos. Juntarlas
+        -- Una página declara las propiedades, otra los objetos y otra los tipos
+        -- de relación. Juntarlas
         -- obligaba a leer la mitad que no importaba para encontrar la que sí, y
         -- era el motivo por el que casi nada llegaba a declararse.
+
+    @invariant AnEdgeMayBeWrittenBeforeItIsTyped
+        -- La relación concreta no es su tipo. Tiene identidad, extremos y
+        -- contenido propio aunque el selector siga en «sin tipificar». Elegir
+        -- un tipo después clasifica la arista; nunca habilita su escritura.
+
+    @invariant DomainAndRangeAdviseAndNeverRefuse
+        -- Dominio y rango ordenan el vocabulario ofrecido y hacen visible una
+        -- discrepancia. No impiden crear ni editar una relación: puede estar
+        -- equivocada la arista, pero también puede estar incompleta la ontología.
 
     @invariant ADeclarationIsABlockThatCarriesProperties
         -- Se lee como declaración un bloque con propiedades colgando; la prosa

@@ -30,7 +30,7 @@
  *
  * Ver property-names.ts. Lo que este archivo sabe es qué papel cumple cada una
  * —a dónde apunta, con qué término, en qué sentido—, y cuál es la palabra lo
- * declara la página de ontología. Escribirlas aquí las convertía en una decisión
+ * declara `VERA: Relaciones`. Escribirlas aquí las convertía en una decisión
  * de Vera sobre la lengua de quien escribe.
  */
 
@@ -56,8 +56,8 @@ export interface RelationTerm {
 /*
  * El vocabulario que Vera trae, que es un mínimo y no una verdad.
  *
- * @invariant DefaultsLiveInTheCode: lo que rige es lo que diga la página de
- * ontología cuando la haya; esto es lo que hay mientras no la haya, y está aquí
+ * @invariant DefaultsLiveInTheCode: lo que rige es lo que diga `VERA: Relaciones`
+ * cuando la haya; esto es lo que hay mientras no la haya, y está aquí
  * para que explicar una relación no exija antes construir un vocabulario.
  */
 export const STARTER_RELATIONS: RelationTerm[] = [

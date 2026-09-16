@@ -139,7 +139,8 @@ describe('interacción de D4', () => {
     assert.match(renderer, /path\.attr\('marker-end', 'url\(#d4-relation-arrow\)'\)/);
     assert.match(renderer, /if \(link\.kind === 'crossing' && link\.crossing !== undefined\) \{/);
     assert.match(renderer, /attr\('class', 'd4-branch-hit'\)/);
-    assert.match(renderer, /options\.relations!\.createRelation!\(source\.id, target\.id, content\)/);
+    assert.match(renderer, /options\.relations!\.createRelation!\(source\.id, target\.id, content, term\)/);
+    assert.match(renderer, /attr\('aria-label', 'Tipo de relación'\)/);
     assert.match(renderer, /attr\('aria-label', link\.crossing === undefined/);
   });
 
@@ -152,17 +153,18 @@ describe('interacción de D4', () => {
 
   it('escribe relaciones fuera de la réplica parcial de la página abierta', () => {
     const actions = main.slice(main.indexOf('relations: {'), main.indexOf('refresh: drawGraph'));
-    assert.equal((actions.match(/api\.submitCanonical\(/g) ?? []).length, 3);
+    assert.equal((actions.match(/api\.submitCanonical\(/g) ?? []).length, 4);
     assert.doesNotMatch(actions, /api\.submit\(/);
     assert.match(actions, /kind: 'edit_block'/);
     assert.match(actions, /kind: 'create_block'/);
     assert.match(actions, /kind: 'create_crossing'/);
+    assert.match(actions, /kind: 'edit_crossing'/);
     assert.doesNotMatch(actions, /content: ''/);
   });
 
   it('no intenta crear una conectiva hasta que su primer bloque tiene contenido', () => {
     assert.match(renderer, /attr\('class', 'd4-relation-draft-card'\)/);
-    assert.match(renderer, /createRelation!\(source\.id, target\.id, content\)/);
+    assert.match(renderer, /createRelation!\(source\.id, target\.id, content, term\)/);
     assert.match(renderer, /if \(saving \|\| content === ''\) return/);
     assert.doesNotMatch(renderer, /createRelation\(source\.id, target\.id\) \?\?/);
   });

@@ -252,6 +252,57 @@ export function readObjectDeclarations(blocks: readonly DeclaredBlock[]): Object
 }
 
 /**
+ * Un tipo de arista declarado por el corpus.
+ *
+ * El tipo no es la arista: una relación concreta conserva sus extremos, su
+ * identidad y su contenido aunque todavía no tenga tipo. Esta declaración sólo
+ * ofrece un vocabulario común para nombrarla y leerla desde ambos extremos.
+ */
+export interface RelationDeclaration {
+  block: string;
+  name: string;
+  inverse: string;
+  domain: string[];
+  range: string[];
+  symmetric: boolean | null;
+  transitive: boolean | null;
+  status: string | null;
+  says: string | null;
+  external: string[];
+}
+
+const truth = (said: string | null): boolean | null => {
+  if (said === null) return null;
+  if (/^(sí|si|yes|true)$/i.test(said.trim())) return true;
+  if (/^(no|false)$/i.test(said.trim())) return false;
+  return null;
+};
+
+/** Lee `VERA: Relaciones`: un bloque con propiedades por tipo de arista. */
+export function readRelationDeclarations(blocks: readonly DeclaredBlock[]): RelationDeclaration[] {
+  const said: RelationDeclaration[] = [];
+  for (const block of blocks) {
+    const name = nameIn(block.content);
+    if (name === '') continue;
+    const symmetric = truth(valueOf(block, 'simétrica') ?? valueOf(block, 'simetrica'));
+    const declaredInverse = valueOf(block, 'inversa');
+    said.push({
+      block: block.block,
+      name,
+      inverse: declaredInverse ?? (symmetric === true ? name : name),
+      domain: listOf(valueOf(block, 'dominio')),
+      range: listOf(valueOf(block, 'rango')),
+      symmetric,
+      transitive: truth(valueOf(block, 'transitiva')),
+      status: valueOf(block, 'estado'),
+      says: valueOf(block, 'definición') ?? valueOf(block, 'definicion') ?? valueOf(block, 'qué') ?? valueOf(block, 'nota'),
+      external: listOf(valueOf(block, 'equivalente externo')),
+    });
+  }
+  return said;
+}
+
+/**
  * Qué le falta a una página para ser lo que dice ser.
  *
  * Se calcula y se enseña; no se impide nada. Una memoria que rechaza una página
