@@ -13,7 +13,7 @@ desplegar y contribuir al programa.
 - [Hoja de ruta](https://vera.mediafranca.net/vera-roadmap-de-producto-y-desarrollo/)
 - [Arquitectura](https://vera.mediafranca.net/vera-arquitectura/)
 - [Seguridad](https://vera.mediafranca.net/vera-seguridad/)
-- [Puerta MCP](https://vera.mediafranca.net/vera-puerta-mcp/)
+- [Conexiones](https://vera.mediafranca.net/vera-conexiones/)
 - [Publicación](https://vera.mediafranca.net/vera-publicacion/)
 - [Probar e instalar](https://vera.mediafranca.net/vera-probar-e-instalar/)
 

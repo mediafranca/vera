@@ -320,7 +320,7 @@ describe('conectar una IA es un solo acto', () => {
       kind: 'set_property',
       page,
       propertyKey: 'special-kind',
-      propertyValue: 'mcp',
+      propertyValue: 'connections',
     });
     await submit({
       kind: 'create_block',

@@ -121,7 +121,7 @@ import {
 import { relevantConcepts, type ConceptCandidate } from './ontology-context.ts';
 import { LOCAL_MODEL, LOCAL_MODEL_NAME, promptFor, readAnswer } from './answer.ts';
 import { formalizationOf, mentionsOf } from './mentions.ts';
-import { CLIENT_KEY, MCP_KIND, mcpPage } from './mcp-page.ts';
+import { CLIENT_KEY, CONNECTIONS_KIND, connectionsPage } from './mcp-page.ts';
 import { mcpConnect } from './mcp-connect.ts';
 import {
   confinementOf,
@@ -2839,7 +2839,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
 
-        const door = governing(MCP_KIND);
+        const door = governing(CONNECTIONS_KIND);
         if (door === undefined) {
           send(response, 409, {
             error: 'no hay página que gobierne la puerta MCP, y la conexión vive en ella',
@@ -4398,7 +4398,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        */
       if (path === '/mcp') {
         const seen = clientsSeen(store);
-        const door = mcpPage(graph, SPECIAL_KIND, seen);
+        const door = connectionsPage(graph, SPECIAL_KIND, seen);
         /*
          * Y con qué datos se enchufa una IA a esta instancia.
          *

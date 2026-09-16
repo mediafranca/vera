@@ -50,7 +50,7 @@ import { decorateCodeBlocks } from './code-copy.ts';
 import { is, isTextComposing } from './bindings.ts';
 import { icon, type IconName } from './icons.ts';
 import { when } from './dates.ts';
-import { isMCPPage, renderMCP } from './mcp-page.ts';
+import { isConnectionsPage, renderConnections } from './mcp-page.ts';
 import { isActivityPage, participantActivityPath, renderActivityPage } from './activity-page.ts';
 import { isServicePage, pickBibliography, renderService } from './service-page.ts';
 import { isPublicationPage, renderPageSharing, renderPublicationPage } from './publication-page.ts';
@@ -2735,6 +2735,7 @@ function renderRelationTypeControl(
   const caption = document.createElement('span');
   caption.textContent = 'Tipo';
   const select = document.createElement('select');
+  select.className = 'relation-type-select';
   select.setAttribute('aria-label', 'tipo de relación');
   select.disabled = readOnly;
   select.append(new Option('Sin tipificar', ''));
@@ -4443,9 +4444,9 @@ export function renderOutliner(
    * bloques que declaran, así que los bloques se retiran y la tabla ocupa su
    * sitio. Ver mcp-page.ts.
    */
-  if (isMCPPage(page.properties)) {
+  if (isConnectionsPage(page.properties)) {
     list.hidden = true;
-    void renderMCP(
+    void renderConnections(
       (change) =>
         submitQuietly(change).then((applied) => {
           if (applied) callbacks.onReload(null);
@@ -6295,8 +6296,8 @@ function foldingSection(name: string, label: string, level: 2 | 3): {
  *
  * Desde una referencia, la página del otro extremo no hay que preguntarla: está
  * ahí, es la que se está mirando. Lo que falta es lo único que Vera no puede
- * poner, así que la caja pide eso —la frase— y, delante de dos puntos, el
- * término si se quiere: `profundiza: su rejilla se vuelve generativa`.
+ * poner, así que la caja pide eso —la frase—. La tipología se elige aparte con
+ * el mismo vocabulario gobernado que se ofrece al leer cualquier relación.
  */
 async function explainTowards(
   host: HTMLElement,
@@ -6324,20 +6325,43 @@ async function explainTowards(
   const asking = document.createElement('div');
   asking.className = 'relation-ask';
 
+  const meta = document.createElement('label');
+  meta.className = 'relation-meta relation-ask-type';
+  const caption = document.createElement('span');
+  caption.textContent = 'Tipo';
+  const type = document.createElement('select');
+  type.className = 'relation-type-select';
+  type.setAttribute('aria-label', 'tipo de relación');
+  type.append(new Option('Sin tipificar', ''));
+  if (held?.term != null) type.append(new Option(held.term, held.term));
+  type.value = held?.term ?? '';
+  meta.append(caption, type);
+
+  void api.ontology().then((ontology) => {
+    const chosen = type.value;
+    for (const name of ontology.relations
+      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
+      .map((one) => one.name)) {
+      if ([...type.options].some((option) => option.value === name)) continue;
+      type.append(new Option(name, name));
+    }
+    type.value = chosen;
+  }).catch(() => undefined);
+
   const field = document.createElement('textarea');
   field.className = 'relation-field';
   field.rows = 2;
   field.placeholder = `por qué ${title} tiene que ver con esta página`;
   field.setAttribute('aria-label', field.placeholder);
-  // Lo que ya había, para poder corregirlo en vez de escribirlo otra vez. El
-  // término delante de los dos puntos, como se escribe.
-  field.value = held === undefined ? '' : held.term === null ? held.said : `${held.term}: ${held.said}`;
+  // Lo que ya había, para poder corregirlo en vez de escribirlo otra vez. La
+  // tipología vive en su selector: la caja contiene sólo la voz de la relación.
+  field.value = held?.said ?? '';
 
   const hint = document.createElement('p');
   hint.className = 'relation-hint';
-  hint.textContent = 'Enter guarda · Escape deja las cosas como estaban · un término delante de «:» si quieres';
+  hint.textContent = 'Enter guarda · Escape deja las cosas como estaban';
 
-  asking.append(field, hint);
+  asking.append(meta, field, hint);
   host.append(asking);
 
   const autosize = (): void => {
@@ -6369,7 +6393,7 @@ async function explainTowards(
       return;
     }
 
-    const split = termAndProse(clean);
+    const term = type.value.trim();
 
     /*
      * Si ya había una, se corrige; si no, nace.
@@ -6383,8 +6407,8 @@ async function explainTowards(
         const written = await api.submit({
           kind: 'edit_crossing',
           crossing: held.stableId,
-          content: split.prose,
-          term: split.term ?? undefined,
+          content: clean,
+          term: term === '' ? undefined : term,
         });
         if (written.status === 'rejected') notify(`no se pudo guardar: ${written.reason}`);
         else {
@@ -6396,14 +6420,14 @@ async function explainTowards(
       const written = await api.submit({
         kind: 'edit_block',
         block: held.connective,
-        content: split.prose,
+        content: clean,
       });
       if (written.status === 'rejected') {
         notify(`no se pudo guardar: ${written.reason}`);
         asking.remove();
         return;
       }
-      if (split.term === null) {
+      if (term === '') {
         if (held.term !== null) {
           await api.submit({
             kind: 'remove_property',
@@ -6416,7 +6440,7 @@ async function explainTowards(
           kind: 'set_property',
           block: held.connective,
           propertyKey: names.term,
-          propertyValue: split.term,
+          propertyValue: term,
         });
       }
       notify(`cambiada la relación con ${title}`);
@@ -6441,8 +6465,8 @@ async function explainTowards(
       kind: 'create_crossing',
       fromPage: page.id,
       toPage: target,
-      content: split.prose,
-      term: split.term ?? undefined,
+      content: clean,
+      term: term === '' ? undefined : term,
     });
     if (born.status === 'rejected') {
       notify(`no se pudo explicar: ${born.reason}`);
@@ -6468,7 +6492,18 @@ async function explainTowards(
   });
   // Salir de la caja guarda, como salir de un bloque: nada de lo que se escribe
   // en Vera se pierde por mirar a otro lado.
-  field.addEventListener('blur', () => void save());
+  field.addEventListener('blur', () => {
+    // El selector forma parte del mismo gesto. Darle foco no debe guardar una
+    // relación a medio escribir ni cerrar el editor bajo el puntero.
+    setTimeout(() => {
+      if (!asking.contains(document.activeElement)) void save();
+    });
+  });
+  type.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!asking.contains(document.activeElement)) void save();
+    });
+  });
 }
 
 /**

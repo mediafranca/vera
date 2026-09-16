@@ -183,6 +183,46 @@ flowchart LR
 
 ---
 
+## Vera Desktop y Vera Conecta
+
+El conector pertenece a Desktop. Vera Conecta conserva el contrato y el estado
+mínimo del relay, pero nunca abre la biblioteca ni custodia credenciales de
+VERA. La página [[VERA: Conexiones]] es la superficie humana de este recorrido.
+
+```mermaid
+sequenceDiagram
+    actor D as Dueño de la biblioteca
+    participant UI as VERA: Conexiones
+    participant Desktop as Vera Desktop
+    participant Seguro as Almacén seguro del SO
+    participant Relay as Vera Conecta
+    participant MCP as Puerta MCP local
+    participant G as Grafo soberano
+
+    D->>UI: activa y empareja Vera Conecta
+    UI->>Desktop: solicita emparejamiento
+    Desktop->>Relay: reclama desafío de un solo uso
+    Relay-->>Desktop: id público + secreto de enlace
+    Desktop->>Seguro: cifra y guarda el secreto
+    Desktop->>Relay: abre WebSocket saliente
+    Relay-->>Desktop: solicitud con identidad y alcances
+    Desktop->>MCP: traduce a credencial local revocable
+    MCP->>G: ejecuta bajo la autoridad de VERA
+    G-->>MCP: resultado con procedencia
+    MCP-->>Desktop: respuesta local
+    Desktop-->>Relay: respuesta correlacionada
+    UI-->>D: estado, clientes, alcances y revocación
+
+    Note over Relay,G: El relay no conserva páginas, bloques, prompts ni respuestas
+```
+
+La activación se rechaza si Desktop no dispone de un almacén seguro real. La
+caída de red no abre puertos: el enlace siempre se inicia desde Desktop y se
+reconecta con espera exponencial. Al cerrar Desktop se cancelan el socket, los
+latidos y cualquier reintento.
+
+---
+
 ## 3. Casos de uso, por actor
 
 Las specs declaran 26 `actor` y 40 `surface`. Lo que sigue son los cuatro

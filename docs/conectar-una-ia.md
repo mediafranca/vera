@@ -1,6 +1,6 @@
 # Conectar una IA a Vera
 
-La [Puerta MCP](https://vera.mediafranca.net/vera-puerta-mcp/) presenta esta
+La página [VERA: Conexiones](https://vera.mediafranca.net/vera-conexiones/) presenta esta
 capacidad desde Vera. Aquí permanecen los pasos operativos, credenciales y
 límites necesarios para conectar clientes concretos.
 
@@ -207,7 +207,7 @@ env = { VERA_URL = "http://127.0.0.1:4173", VERA_CLIENT = "codex" }
 
 Ese bloque sólo muestra el dialecto TOML. Para usarlo, añade
 `VERA_TOKEN_FILE = "/ruta/privada/vera-codex.token"` al `env`, o copia el bloque
-completo que genera «VERA: Puerta MCP» después de crear la conexión. No dejes
+completo que genera «VERA: Conexiones» después de crear la conexión. No dejes
 Codex sin credencial.
 
 **Vera tiene que estar corriendo** (`npm run serve`). El proceso de la puerta no
@@ -224,7 +224,7 @@ y la buena no es la obvia.
 de Vera.
 
 Para Codex, pega en `~/.codex/config.toml` el bloque TOML que dicta
-«VERA: Puerta MCP». En esta instancia ya sale preparado para `codex-andrei`: la
+«VERA: Conexiones». En esta instancia ya sale preparado para `codex-andrei`: la
 credencial permanece cifrada en Alexei, se abre al iniciar la puerta y nunca se
 copia a Andrei. `required = true` hace visible un fallo de conexión y
 `default_tools_approval_mode = "auto"` evita una segunda confirmación por cada
@@ -434,7 +434,7 @@ install -m 600 /dev/null ~/.config/vera/claude-desktop.token
 # pegar el secreto dentro
 ```
 
-Para una credencial nueva de Codex, abre [[VERA: Puerta MCP]], crea «Codex en
+Para una credencial nueva de Codex, abre [[VERA: Conexiones]], crea «Codex en
 Andrei», elige los alcances `read` y `write`, y copia el secreto que Vera muestra
 al terminar. El token no se calcula en Andrei ni se obtiene de la URL: Vera lo
 genera aleatoriamente, guarda sólo su digest y nunca puede volver a mostrarlo.

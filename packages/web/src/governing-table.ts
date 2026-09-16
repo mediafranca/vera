@@ -58,7 +58,7 @@ export const GOVERNING_KINDS: {
   { key: 'relations', label: 'Relaciones', mode: 'rectora', what: 'cada tipo de arista y cómo se lee desde ambos extremos' },
   { key: 'embeddings', label: 'Incrustaciones', mode: 'rectora', what: 'qué servidores pueden ejecutar contenido dentro de una página' },
   { key: 'service', label: 'Servicio', mode: 'rectora', what: 'con qué servicio de fuera habla el corpus' },
-  { key: 'mcp', label: 'Puerta MCP', mode: 'rectora', what: 'quién entra, con qué identidad y permiso declarado' },
+  { key: 'connections', label: 'Conexiones', mode: 'rectora', what: 'quién entra, por qué canal, con qué identidad y alcance' },
   { key: 'publication', label: 'Publicación', mode: 'superficie', what: 'administra el sitio guardado en el registro' },
   { key: 'activity', label: 'Actividad', mode: 'derivada', what: 'proyecta operaciones y eliminaciones registradas' },
   { key: 'presentation', label: 'Presentación', mode: 'documentación', what: 'describe el diseño; los ajustes efectivos viven por participante' },

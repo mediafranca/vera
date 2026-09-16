@@ -1,0 +1,74 @@
+-- allium: 3
+-- Scope: el enlace saliente entre Vera Desktop y Vera Conecta.
+
+external entity RelayDeVeraConecta {}
+external entity AlmacenSeguroDelSistema {}
+
+enum EstadoDelEnlace { desactivado | conectando | conectado | esperando | bloqueado }
+
+entity ConexionDeDesktop {
+    relay: RelayDeVeraConecta
+    id_publico: String?
+    estado: EstadoDelEnlace
+    almacenamiento_seguro_disponible: Boolean
+    secreto_guardado: Boolean
+}
+
+contract CustodiaDelEnlace {
+    @invariant ElSecretoNoViveEnElCorpus
+        -- El secreto del enlace nunca se escribe en una página, propiedad,
+        -- archivo de configuración legible, registro ni respuesta del servidor web.
+
+    @invariant SinAlmacenSeguroNoHayActivacion
+        -- Si el sistema operativo no ofrece custodia segura real, Vera explica
+        -- la limitación y se niega a activar el enlace.
+
+    @invariant LaConexionSiempreSaleDeDesktop
+        -- Vera Conecta nunca inicia una conexión hacia la biblioteca ni exige
+        -- abrir un puerto del equipo.
+}
+
+rule EmparejarDesktop {
+    when: PropietarioEmpareja(conexion)
+    requires: conexion.estado = desactivado
+    requires: conexion.almacenamiento_seguro_disponible
+    ensures:
+        conexion.id_publico != null
+        conexion.secreto_guardado
+        conexion.estado = conectando
+}
+
+rule RechazarEmparejamientoInseguro {
+    when: PropietarioEmpareja(conexion)
+    requires: not conexion.almacenamiento_seguro_disponible
+    ensures:
+        conexion.id_publico = null
+        not conexion.secreto_guardado
+        conexion.estado = bloqueado
+}
+
+rule CerrarDesktopDetieneElEnlace {
+    when: DesktopSeCierra(conexion)
+    ensures: conexion.estado = desactivado
+
+    @guidance
+        -- Cierra el WebSocket, detiene latidos y cancela reintentos pendientes.
+}
+
+surface GobiernoDeConexiones {
+    facing owner: DesktopUser
+    context conexion: ConexionDeDesktop
+
+    exposes:
+        conexion.id_publico
+        conexion.estado
+        conexion.almacenamiento_seguro_disponible
+
+    provides:
+        PropietarioEmpareja(conexion) when conexion.estado = desactivado
+
+    contracts:
+        fulfils CustodiaDelEnlace
+}
+
+open question "¿Qué ceremonia permite trasladar una instalación a otro equipo sin exportar el secreto de enlace?"

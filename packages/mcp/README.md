@@ -124,7 +124,7 @@ env = { VERA_URL = "http://127.0.0.1:4173", VERA_CLIENT = "codex", VERA_TOKEN_FI
 ```
 
 **Codex en otro equipo** — no copies el secreto ni el repositorio. Abre
-«VERA: Puerta MCP», elige «otro equipo» y copia el bloque TOML calculado para
+«VERA: Conexiones», elige «otro equipo» y copia el bloque TOML calculado para
 esa conexión. En el despliegue de Alexei, `codex-andrei` arranca la puerta por
 SSH y descifra allí `vera-codex.cred`; el bloque deja la conexión como
 `required = true` y evita aprobaciones MCP redundantes. Comprueba el resultado
@@ -156,7 +156,7 @@ distintos. No añadas `x-vera-client`; Vera deriva la
 identidad del token. La guía completa está en
 [docs/conectar-una-ia.md](../../docs/conectar-una-ia.md).
 
-El token lo genera Vera al crear la conexión en «VERA: Puerta MCP» y se muestra
+El token lo genera Vera al crear la conexión en «VERA: Conexiones» y se muestra
 una sola vez. Para la conexión ya existente «Codex en Andrei» hay una copia
 cifrada en Alexei; no hace falta emitir otra. Si el secreto se pierde, no se
 recupera: se revoca la credencial y se crea una nueva. La instalación pública en

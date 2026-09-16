@@ -6122,15 +6122,56 @@ html[data-working-slow='true']::after {
 }
 
 .relation-meta {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: .55rem;
-  margin: .35rem 0 .45rem;
-  color: var(--muted);
-  font-size: .78rem;
+  gap: .35rem;
+  margin: .18rem 0 .3rem;
+  color: var(--text-dim);
+  font: .68rem/1.35 var(--font-mono);
 }
 
-.relation-meta select,
+.relation-type-select {
+  appearance: none;
+  field-sizing: content;
+  width: auto;
+  max-width: min(28rem, 70vw);
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  padding: 0 1.05rem 0 .1rem;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - .45rem) 55%,
+    calc(100% - .2rem) 55%;
+  background-size: .25rem .25rem, .25rem .25rem;
+  background-repeat: no-repeat;
+}
+
+.relation-type-select:hover {
+  color: var(--text);
+  border-bottom-color: color-mix(in srgb, var(--text-dim) 45%, transparent);
+}
+
+.relation-type-select:focus-visible {
+  outline: 0;
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.relation-type-select:disabled {
+  opacity: 1;
+  cursor: default;
+  background-image: none;
+  padding-right: .1rem;
+}
+
 .d4-relation-type {
   min-width: 10rem;
   max-width: 100%;

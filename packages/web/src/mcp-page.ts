@@ -1,4 +1,4 @@
-// La página de la puerta MCP, leída como tabla.
+// La página rectora de conexiones, leída como panel humano.
 //
 // Una fila por conexión, y dos mitades en cada fila: a la izquierda lo que se
 // decidió —cómo se llama, cómo se declara el cliente, con qué identidad debería
@@ -25,10 +25,10 @@ import {
 import { cellIn, editableCell, observedCell, rowIn, section } from './table.ts';
 import { when } from './dates.ts';
 
-/** ¿Esta página gobierna la puerta MCP? Se responde con lo que la página trae. */
-export function isMCPPage(properties: readonly { key: string; value: string }[]): boolean {
+/** ¿Esta página gobierna las conexiones externas? */
+export function isConnectionsPage(properties: readonly { key: string; value: string }[]): boolean {
   return properties.some(
-    (one) => one.key === 'special-kind' && one.value.trim().toLowerCase() === 'mcp',
+    (one) => one.key === 'special-kind' && one.value.trim().toLowerCase() === 'connections',
   );
 }
 
@@ -447,7 +447,7 @@ function connectPanel(
   settleWhere();
 }
 
-export async function renderMCP(
+export async function renderConnections(
   write: Write,
   notify: (message: string) => void,
   openGuide?: (title: string) => void,
@@ -457,6 +457,16 @@ export async function renderMCP(
 
   const element = document.createElement('div');
   element.className = 'governing-tables';
+
+  const conversational = document.createElement('h2');
+  conversational.textContent = 'Entradas conversacionales';
+  element.append(conversational);
+
+  const conversationalNote = document.createElement('p');
+  conversationalNote.className = 'governing-note';
+  conversationalNote.textContent =
+    'Aquí se gobierna quién puede conversar con la biblioteca, con qué identidad y alcance.';
+  element.append(conversationalNote);
 
   if (door.connect !== undefined) connectPanel(door.connect, element, openGuide);
 
@@ -578,6 +588,53 @@ export async function renderMCP(
   connectForm(element, door.connect ?? null, notify);
   await credentialsSection(element, notify);
   markedSection(element, door, notify);
+
+  const relay = document.createElement('h2');
+  relay.textContent = 'Vera Conecta';
+  const relayNote = document.createElement('p');
+  relayNote.className = 'governing-note';
+  const desktopConecta = (window as unknown as { veraConecta?: {
+    status(): Promise<{ status: string; installationId: string | null; secureStorage: boolean; error?: string }>;
+    pair(url: string): Promise<{ installationId: string }>;
+    forget(): Promise<void>;
+  } }).veraConecta;
+  if (desktopConecta === undefined) {
+    relayNote.textContent = 'El enlace remoto se administra desde Vera Desktop.';
+  } else {
+    const state = await desktopConecta.status();
+    relayNote.textContent = state.secureStorage
+      ? `Estado: ${state.status}${state.installationId === null ? '' : ` · instalación ${state.installationId}`}`
+      : 'Bloqueada: este sistema no ofrece un almacén seguro real para custodiar el secreto.';
+    if (state.secureStorage && state.installationId === null) {
+      const activate = document.createElement('button');
+      activate.type = 'button';
+      activate.className = 'connect-copy';
+      activate.textContent = 'activar Vera Conecta';
+      activate.addEventListener('click', () => {
+        activate.disabled = true;
+        void desktopConecta.pair('https://conecta.mediafranca.net').then(
+          ({ installationId }) => {
+            relayNote.textContent = `Estado: conectando · instalación ${installationId}`;
+            activate.remove();
+          },
+          (error: Error) => {
+            activate.disabled = false;
+            notify(error.message);
+          },
+        );
+      });
+      relayNote.append(document.createElement('br'), activate);
+    }
+  }
+
+  const captures = document.createElement('h2');
+  captures.textContent = 'Capturas';
+  const capturesNote = document.createElement('p');
+  capturesNote.className = 'governing-note';
+  capturesNote.textContent =
+    'Vera Clip y futuras entradas de captura aparecerán aquí con su alcance explícito; ' +
+    'no heredan por omisión los permisos de una conexión conversacional.';
+  element.append(relay, relayNote, captures, capturesNote);
 
   if (declaring.size === 0 && door.undeclared.length === 0) return null;
   return { element, declaring };

@@ -1,10 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
+import { DesktopConecta, type ConectaState, type SecureConectaStore } from './conecta.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../..');
@@ -27,6 +28,7 @@ const objectsRoot = join(dataRoot, 'objects');
 const webRoot = app.isPackaged ? join(process.resourcesPath, 'web') : join(ROOT, 'packages/web/dist');
 const setupPage = join(HERE, 'setup.html');
 const preload = join(HERE, 'preload.cjs');
+const conectaSecretPath = join(dataRoot, 'secrets', 'vera-conecta.bin');
 
 if (app.isPackaged) {
   process.env['VERA_SCHEMA'] = join(process.resourcesPath, 'schema.sql');
@@ -40,6 +42,29 @@ let installDownloadedUpdate: (() => void) | null = null;
 let installOnQuit = false;
 let preparingQuit = false;
 let downloadingUpdate = false;
+let conecta: DesktopConecta | null = null;
+
+const secureConectaStore = (): SecureConectaStore => ({
+  available: () =>
+    safeStorage.isEncryptionAvailable() &&
+    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+  read: () => {
+    if (!existsSync(conectaSecretPath) || !safeStorage.isEncryptionAvailable()) return null;
+    try {
+      return JSON.parse(safeStorage.decryptString(readFileSync(conectaSecretPath))) as ConectaState;
+    } catch {
+      return null;
+    }
+  },
+  write: (state) => {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('no hay almacén seguro disponible');
+    mkdirSync(dirname(conectaSecretPath), { recursive: true });
+    writeFileSync(conectaSecretPath, safeStorage.encryptString(JSON.stringify(state)), { mode: 0o600 });
+  },
+  clear: () => {
+    if (existsSync(conectaSecretPath)) unlinkSync(conectaSecretPath);
+  },
+});
 
 const databaseExists = (): boolean => existsSync(databasePath) && statSync(databasePath).size > 0;
 
@@ -56,10 +81,18 @@ async function startVera(): Promise<void> {
       webRoot,
     });
   }
+  if (conecta === null) {
+    conecta = new DesktopConecta(secureConectaStore(), `http://127.0.0.1:${PORT}`, (status) => {
+      window?.webContents.send('vera-conecta:status', status);
+    });
+    conecta.start();
+  }
   await window?.loadURL(`http://127.0.0.1:${PORT}`);
 }
 
 async function closeVera(): Promise<void> {
+  conecta?.stop();
+  conecta = null;
   const server = running;
   running = null;
   await server?.close();
@@ -184,6 +217,17 @@ ipcMain.handle('vera:initialize', async (_event, rawName: unknown) => {
 });
 
 ipcMain.handle('vera:system-name', () => userInfo().username);
+ipcMain.handle('vera-conecta:status', () => conecta?.status() ?? {
+  status: 'desactivado', installationId: null, secureStorage: false,
+});
+ipcMain.handle('vera-conecta:pair', async (_event, relayUrl: unknown) => {
+  if (typeof relayUrl !== 'string' || !/^https?:\/\//.test(relayUrl)) {
+    throw new Error('La dirección de Vera Conecta no es válida.');
+  }
+  if (conecta === null) throw new Error('Vera todavía no está iniciada.');
+  return conecta.pair(relayUrl);
+});
+ipcMain.handle('vera-conecta:forget', () => conecta?.forget());
 
 app.whenReady().then(() => {
   createWindow();

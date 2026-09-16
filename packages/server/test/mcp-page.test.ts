@@ -15,7 +15,7 @@ import { VeraGraph } from '@vera/core';
 import type { Change } from '@vera/core';
 import type { SeenClient } from '@vera/store/exposures';
 
-import { mcpPage } from '../src/mcp-page.ts';
+import { connectionsPage } from '../src/mcp-page.ts';
 
 const OWNER = 'participant:herbert';
 const COTITO = 'participant:cotito';
@@ -45,7 +45,7 @@ function corpus(
   };
 
   const page = write({ kind: 'create_page', title: 'La puerta', visibility: 'private' });
-  write({ kind: 'set_property', page, propertyKey: SPECIAL, propertyValue: 'mcp' });
+  write({ kind: 'set_property', page, propertyKey: SPECIAL, propertyValue: 'connections' });
   write({ kind: 'set_property', page, propertyKey: 'etapa', propertyValue: 'M1' });
 
   let at = 0;
@@ -80,7 +80,7 @@ describe('la página de la puerta', () => {
       [{ name: 'Claude Code', properties: { cliente: 'claude-code', permiso: 'leer' } }],
       [{ name: 'Esto es prosa y no declara nada', properties: {} }],
     );
-    const door = mcpPage(graph, SPECIAL, []);
+    const door = connectionsPage(graph, SPECIAL, []);
     assert.equal(door?.connections.length, 1);
     assert.equal(door?.connections[0]?.name, 'Claude Code');
     assert.equal(door?.stage, 'M1');
@@ -91,7 +91,7 @@ describe('la página de la puerta', () => {
     // cabecera hablan de lo mismo; una fila que no casara por eso se leería como
     // una conexión que nunca ha leído nada.
     const graph = corpus([{ name: 'Claude Code', properties: { cliente: 'Claude-Code' } }]);
-    const door = mcpPage(graph, SPECIAL, [seenBy('claude-code', OWNER, 100, 3)]);
+    const door = connectionsPage(graph, SPECIAL, [seenBy('claude-code', OWNER, 100, 3)]);
     assert.equal(door?.connections[0]?.seen?.deliveries, 3);
     assert.deepEqual(door?.undeclared, []);
   });
@@ -103,7 +103,7 @@ describe('la página de la puerta', () => {
     const graph = corpus([
       { name: 'Cotito', properties: { cliente: 'openclaw', participante: COTITO } },
     ]);
-    const door = mcpPage(graph, SPECIAL, [seenBy('openclaw', COTITO, 1)]);
+    const door = connectionsPage(graph, SPECIAL, [seenBy('openclaw', COTITO, 1)]);
     assert.equal(door?.connections[0]?.participant, COTITO);
     assert.equal(door?.connections[0]?.participantName, 'Cotito');
     assert.equal(door?.connections[0]?.seen?.name, 'Cotito');
@@ -113,7 +113,7 @@ describe('la página de la puerta', () => {
     // Un cliente que leyó sin credencial un rato y con ella después: lo que hay
     // que ver es cómo está entrando ahora.
     const graph = corpus([{ name: 'Cotito', properties: { cliente: 'openclaw' } }]);
-    const door = mcpPage(graph, SPECIAL, [
+    const door = connectionsPage(graph, SPECIAL, [
       seenBy('openclaw', OWNER, 100),
       seenBy('openclaw', COTITO, 900),
     ]);
@@ -126,7 +126,7 @@ describe('la página de la puerta', () => {
     // @invariant WhatWasReadIsRecorded no sirve de nada si la página sólo enseña
     // lo declarado: lo que hay que mirar primero es justo lo que nadie declaró.
     const graph = corpus([{ name: 'Claude Code', properties: { cliente: 'claude-code' } }]);
-    const door = mcpPage(graph, SPECIAL, [
+    const door = connectionsPage(graph, SPECIAL, [
       seenBy('claude-code', OWNER, 100),
       seenBy('curl/8.14.1', OWNER, 200),
       seenBy(null, OWNER, 300),
@@ -141,6 +141,25 @@ describe('la página de la puerta', () => {
     const graph = VeraGraph.create({ name: 'mind', id: 'graph:2' });
     graph.addParticipant({ id: OWNER, name: 'Herbert', kind: 'human' });
     graph.admit(OWNER);
-    assert.equal(mcpPage(graph, SPECIAL, []), null);
+    assert.equal(connectionsPage(graph, SPECIAL, []), null);
+  });
+
+  it('la antigua puerta MCP ya no compite como segunda fuente de verdad', () => {
+    const graph = corpus([]);
+    const page = graph.pages()[0];
+    assert.ok(page);
+    const changed = graph.submitOperation({
+      originId: 'legacy-kind',
+      participant: OWNER,
+      channel: 'typed_text',
+      change: {
+        kind: 'set_property',
+        page: page.id,
+        propertyKey: SPECIAL,
+        propertyValue: 'mcp',
+      },
+    });
+    assert.equal(changed.status, 'applied');
+    assert.equal(connectionsPage(graph, SPECIAL, []), null);
   });
 });

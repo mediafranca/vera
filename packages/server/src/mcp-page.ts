@@ -1,4 +1,4 @@
-// La puerta MCP, gobernada desde su página.
+// Las conexiones externas, gobernadas desde una sola página.
 //
 // Una sola página y no una por cliente. Zotero es una conexión saliente —Vera
 // sale a buscar, con su secreto, su biblioteca y sus colecciones— y cada
@@ -9,8 +9,8 @@
 // se les permite y qué se llevaron. Cuatro páginas serían cuatro copias de los
 // mismos tres campos.
 //
-//     VERA: la puerta MCP
-//       special-kind:: mcp
+//     VERA: Conexiones
+//       special-kind:: connections
 //       etapa:: M1 — sólo lectura
 //
 //     ## Conexiones
@@ -38,8 +38,8 @@
 import type { VeraGraph } from '@vera/core';
 import type { SeenClient } from '@vera/store/exposures';
 
-/** El valor de `special-kind` que hace de una página la puerta MCP. */
-export const MCP_KIND = 'mcp';
+/** El valor de `special-kind` que hace de una página la rectora de conexiones. */
+export const CONNECTIONS_KIND = 'connections';
 
 /** La clave con que un bloque declara ser una conexión. */
 export const CLIENT_KEY = 'cliente';
@@ -102,14 +102,17 @@ const same = (a: string | null, b: string | null): boolean =>
   a !== null && b !== null && a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** La página de la puerta, si está escrita, con lo declarado y lo observado. */
-export function mcpPage(
+export function connectionsPage(
   graph: VeraGraph,
   specialKey: string,
   raw: readonly SeenClient[],
 ): MCPPage | null {
   const page = graph
     .pages()
-    .find((one) => valueOf(graph.propertiesOf(one.id), specialKey)?.toLowerCase() === MCP_KIND);
+    .find(
+      (one) =>
+        valueOf(graph.propertiesOf(one.id), specialKey)?.toLowerCase() === CONNECTIONS_KIND,
+    );
   if (page === undefined) return null;
 
   /*
