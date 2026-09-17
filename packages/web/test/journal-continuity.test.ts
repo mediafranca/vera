@@ -36,7 +36,7 @@ describe('edición dentro de la bitácora continua', () => {
       main.indexOf('function continueBackwards'),
       main.indexOf('/**\n * Un día anterior', main.indexOf('function continueBackwards')),
     );
-    assert.match(continuation, /api\s*\.page\(day\.id\)/);
+    assert.match(continuation, /api\s*\.readablePage\(day\.id\)/);
     assert.doesNotMatch(continuation, /held\.page/);
   });
 

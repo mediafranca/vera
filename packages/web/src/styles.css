@@ -8196,6 +8196,48 @@ html[data-working-slow='true']::after {
   color: var(--text-dim);
 }
 
+/* Al cambiar de página, la anterior sigue siendo legible mientras llegan la
+ * copia local o el corpus. El aviso ocupa una sola línea y no suplanta el texto
+ * que ya está en la pantalla. */
+.awaiting-next {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  width: fit-content;
+  max-width: calc(100% - 2rem);
+  margin: 0.55rem auto;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 0.2rem 0.8rem color-mix(in srgb, var(--text) 10%, transparent);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.awaiting-next .page-header {
+  display: contents;
+}
+
+.awaiting-next .page-title {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.awaiting-next .page-title::before {
+  content: 'abriendo ';
+}
+
+.awaiting-next .awaiting-elapsed {
+  display: inline;
+  margin: 0;
+}
+
 .awaiting-failed {
   font-family: var(--font-ui);
   font-size: 0.8rem;

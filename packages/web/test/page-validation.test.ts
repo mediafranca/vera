@@ -50,7 +50,7 @@ describe('retained page validation', () => {
     assert.match(main, /readablePage\(kept\.id, signal\)/);
     assert.match(main, /no such page/);
     assert.match(main, /readablePage\(kept\.title, signal\)/);
-    assert.match(main, /validation = canonicalPage\(kept, delivery\.signal\)/);
+    assert.match(main, /validation = navigator\.onLine \? delivered\.validation : null/);
     assert.match(main, /workspace\.activePage !== page\.id/);
     assert.match(main, /forgetPage\(page\.id\)/);
   });
@@ -92,5 +92,17 @@ describe('retained page validation', () => {
     assert.ok(keep >= 0, 'la entrega legible debe quedar retenida');
     assert.ok(enrich >= 0, 'la información derivada debe seguir completándose');
     assert.ok(keep < enrich, 'retener el texto no puede depender del enriquecimiento');
+  });
+
+  it('hace competir la copia local y el corpus sin borrar lo que ya se lee', () => {
+    const opening = main.slice(main.indexOf('async function openPage('), main.indexOf('/** Abrir por título'));
+    assert.match(opening, /const retainedLookup = held\.page\(id\)/);
+    assert.match(opening, /const canonicalLookup = api\.readablePage\(id, delivery\.signal\)/);
+    assert.match(opening, /firstReadable\(retainedLookup, canonicalLookup\)/);
+
+    const waiting = main.slice(main.indexOf('function awaiting('), main.indexOf('/**\n * Decir de dónde'));
+    assert.match(waiting, /querySelector\('\.page-header, \.blocks, \.day-slice'\)/);
+    assert.match(waiting, /if \(!reading\) text\.innerHTML = ''/);
+    assert.match(waiting, /if \(reading\) text\.prepend\(holder\)/);
   });
 });

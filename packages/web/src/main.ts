@@ -47,6 +47,7 @@ import { pageSearchResults } from './search-results.ts';
 import { createPage } from './pages.ts';
 import { changesGraphMeaning } from './invalidation.ts';
 import { sameReadablePage } from './page-validation.ts';
+import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
@@ -690,9 +691,10 @@ const PATIENCE = 300;
  */
 function awaiting(title: string | null, since: number): Counting {
   const text = $('#text');
-  text.innerHTML = '';
   const holder = document.createElement('div');
-  holder.className = 'page awaiting';
+  const reading = text.querySelector('.page-header, .blocks, .day-slice') !== null;
+  holder.className = reading ? 'awaiting awaiting-next' : 'page awaiting';
+  if (!reading) text.innerHTML = '';
   const header = document.createElement('header');
   header.className = 'page-header';
   const heading = document.createElement('h1');
@@ -702,7 +704,8 @@ function awaiting(title: string | null, since: number): Counting {
   elapsed.className = 'awaiting-elapsed';
   header.append(heading, elapsed);
   holder.append(header);
-  text.append(holder);
+  if (reading) text.prepend(holder);
+  else text.append(holder);
   /*
    * Sin nombre para recordar.
    *
@@ -710,7 +713,14 @@ function awaiting(title: string | null, since: number): Counting {
    * las dos juntas haría que Vera prometiera una mediana que no describe a
    * ninguna. Se cuenta —que no puede equivocarse— y no se nombra. Ver waiting.ts.
    */
-  return countInto(elapsed, '', null, { since });
+  const counting = countInto(elapsed, '', null, { since });
+  return {
+    elapsed: counting.elapsed,
+    close(outcome) {
+      counting.close(outcome);
+      if (reading) holder.remove();
+    },
+  };
 }
 
 /**
@@ -908,7 +918,6 @@ async function openPage(
    * Lo que va detrás no es volver a pedir la página: es la pregunta barata de qué
    * ha pasado desde el cursor. Ver `catchUpWithCorpus`.
    */
-  let kept = options.delivered !== undefined || here || isAnybody() ? null : await held.page(id);
   /*
    * Incluso una copia incompleta se conserva hasta que la canónica haya llegado.
    * Antes se soltaba apenas el índice anunciaba otra cantidad de bloques. Si la
@@ -916,19 +925,30 @@ async function openPage(
    * degradación y dejaba una página vacía. La discrepancia sirve para exigir la
    * validación, nunca para borrar antes de recuperar.
    */
-  const retained = kept;
-  if (kept !== null) {
-    if (slow !== null) clearTimeout(slow);
-    fromKept = true;
-    page = kept;
-    if (navigator.onLine) validation = canonicalPage(kept, delivery.signal);
-  }
+  let retained: PageView | null = null;
 
   try {
     if (options.delivered !== undefined) {
       page = options.delivered;
       needsEnrichment = true;
-    } else if (page === undefined) {
+    } else if (!here && !isAnybody()) {
+      const retainedLookup = held.page(id);
+      const canonicalLookup = api.readablePage(id, delivery.signal).catch(async (error) => {
+        if (!(error instanceof Error) || !/no such page/i.test(error.message)) throw error;
+        const remembered = await retainedLookup;
+        if (remembered === null || remembered.title === id) throw error;
+        return api.readablePage(remembered.title, delivery.signal);
+      });
+      const delivered = await firstReadable(retainedLookup, canonicalLookup);
+      page = delivered.page;
+      if (delivered.source === 'retained') {
+        retained = delivered.page;
+        fromKept = true;
+        validation = navigator.onLine ? delivered.validation : null;
+      } else {
+        needsEnrichment = true;
+      }
+    } else {
       page = await api.readablePage(id, delivery.signal);
       needsEnrichment = true;
       // Leerla es lo que hace que se retenga. rule RetainDeliveredPage.
@@ -1359,7 +1379,7 @@ function continueBackwards(from: string, keptScroll: number): void {
     loading = true;
 
     void api
-      .page(day.id)
+      .readablePage(day.id)
       .then((older) => {
         if (run !== journalRun) return;
         const slice = document.createElement('section');
