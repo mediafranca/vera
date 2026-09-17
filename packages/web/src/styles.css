@@ -3503,13 +3503,13 @@ code {
  * antes de sus encabezados. Lo que un título separa no es un párrafo de otro,
  * es un asunto del anterior.
  */
-.body > :first-child:not(:is(h1, h2, h3, h4, h5, h6)),
-.body-text > :first-child:not(:is(h1, h2, h3, h4, h5, h6)) {
+.body > :first-child:not(:is(h1, h2, h3, h4, h5, h6, .table-scroll, img, .mermaid-figure, .executable, .embed)),
+.body-text > :first-child:not(:is(h1, h2, h3, h4, h5, h6, .table-scroll, img, .mermaid-figure, .executable, .embed)) {
   margin-top: 0;
 }
 
-.body > :last-child,
-.body-text > :last-child {
+.body > :last-child:not(:is(.table-scroll, img, .mermaid-figure, .executable, .embed)),
+.body-text > :last-child:not(:is(.table-scroll, img, .mermaid-figure, .executable, .embed)) {
   margin-bottom: 0;
 }
 
@@ -3745,6 +3745,35 @@ pre.copyable-code {
 .mermaid-figure svg {
   max-width: 100%;
   height: auto;
+}
+
+/*
+ * El aire de los objetos también pertenece a la retícula tipográfica.
+ *
+ * Tablas, imágenes, dibujos, diagramas, HTML e incrustaciones tenían seis
+ * márgenes parecidos pero distintos —entre 0,4 y 0,6 em/rem— y el reinicio del
+ * primer y último hijo podía quitarles uno de los dos. El resultado era una
+ * página casi alineada, que es peor que una claramente libre: cada objeto
+ * desplazaba de manera distinta la línea que seguía.
+ *
+ * Una línea de lectura antes y una después, salida de los mismos dos tokens que
+ * gobiernan la prosa. El selector directo evita imponer este aire a una imagen
+ * pequeña que viva dentro de una celda, una lista o una incrustación. El dibujo
+ * es la excepción estructural: su pie vive fuera de la figura, por eso el
+ * margen abraza `.drawn-body` completo y se retiran los márgenes internos.
+ */
+.body > :is(.table-scroll, img, .mermaid-figure, .executable, .embed),
+.body-text > :is(.table-scroll, img, .mermaid-figure, .executable, .embed) {
+  margin-block: calc(var(--text-size, 16px) * var(--line-height));
+}
+
+.body.drawn-body {
+  margin-block: calc(var(--text-size, 16px) * var(--line-height));
+}
+
+.body.drawn-body > .body-text > .drawn,
+.body.drawn-body > .drawn-foot {
+  margin-block: 0;
 }
 
 .mermaid-error {
