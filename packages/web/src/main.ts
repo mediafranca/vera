@@ -47,6 +47,7 @@ import { pageSearchResults } from './search-results.ts';
 import { createPage } from './pages.ts';
 import { changesGraphMeaning } from './invalidation.ts';
 import { sameReadablePage } from './page-validation.ts';
+import { byWeight, changedDays } from './page-index.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
@@ -1766,9 +1767,25 @@ function notice(message: string): void {
  * vacío. Se vuelve a pedir cuando nace una página, o el autocompletado seguiría
  * sin conocerla el resto de la sesión.
  */
-/** Ordena el índice como se usa: lo más enlazado y lo más escrito primero. */
-const byWeight = (all: PageSummary[]): PageSummary[] =>
-  [...all].sort((a, b) => b.linkCount - a.linkCount || b.blockCount - a.blockCount);
+/**
+ * Si el índice retenido nombraba un día con una identidad obsoleta, la llegada
+ * del índice canónico tiene que corregir también la pantalla.
+ *
+ * Actualizar sólo `pages` deja el tramo ya montado apuntando a la copia anterior:
+ * la búsqueda conoce el día verdadero, pero la bitácora continua sigue mostrando
+ * el falso día vacío. No se recompone encima de una mano que esté escribiendo;
+ * pulsar el logo después volverá a abrirla con el índice ya corregido.
+ */
+function reconcileVisibleJournalIndex(before: readonly PageSummary[]): void {
+  if (!changedDays(before, pages, isDay) || openView === null || !isDay(openView.title)) return;
+  const active = document.activeElement;
+  const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
+    (active instanceof HTMLElement && active.isContentEditable);
+  if (writing) return;
+  const canonical = dayPage(openView.title);
+  if (canonical === undefined) return;
+  void openPage(canonical.id, null, { fromUrl: true, replaceRoute: true });
+}
 
 /** Repara el rastro local sólo contra un índice canónico recién recibido. */
 function reconcileTrace(all: readonly PageSummary[]): void {
@@ -1837,9 +1854,11 @@ async function loadPages(): Promise<void> {
     void api
       .pages()
       .then((fresh) => {
+        const before = pages;
         pages = byWeight(fresh);
         reconcileTrace(fresh);
         if (!isAnybody()) void held.keepIndex(fresh);
+        reconcileVisibleJournalIndex(before);
       })
       .catch(() => undefined);
     return;

@@ -31,6 +31,14 @@ describe('edición dentro de la bitácora continua', () => {
     assert.match(continuation, /\.then\(\(older\) => \{\s*if \(run !== journalRun\) return;/);
   });
 
+  it('una identidad obsoleta del índice local se sustituye al llegar la canónica', () => {
+    assert.match(main, /function reconcileVisibleJournalIndex\(before: readonly PageSummary\[\]\)/);
+    assert.match(main, /changedDays\(before, pages, isDay\)/);
+    assert.match(main, /const canonical = dayPage\(openView\.title\)/);
+    assert.match(main, /openPage\(canonical\.id, null, \{ fromUrl: true, replaceRoute: true \}\)/);
+    assert.match(main, /const before = pages;[\s\S]*pages = byWeight\(fresh\);[\s\S]*reconcileVisibleJournalIndex\(before\)/);
+  });
+
   it('cada día anterior se redibuja por su propia identidad sin navegar al día activo', () => {
     assert.match(main, /renderOutliner\(slice, older, callbacksForJournalSlice\(older, slice\)/);
     const local = main.slice(
