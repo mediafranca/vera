@@ -20,6 +20,17 @@ describe('edición dentro de la bitácora continua', () => {
     assert.doesNotMatch(continuation, /if \(here < 0/);
   });
 
+  it('una carga anterior no puede insertar otra vez el mismo día tras un redibujado', () => {
+    const continuation = main.slice(
+      main.indexOf('let journalRun'),
+      main.indexOf('/**\n * Un día anterior', main.indexOf('let journalRun')),
+    );
+    assert.match(continuation, /journalRun \+= 1/);
+    assert.match(continuation, /const run = journalRun/);
+    assert.match(continuation, /if \(run !== journalRun\) return;/);
+    assert.match(continuation, /\.then\(\(older\) => \{\s*if \(run !== journalRun\) return;/);
+  });
+
   it('cada día anterior se redibuja por su propia identidad sin navegar al día activo', () => {
     assert.match(main, /renderOutliner\(slice, older, callbacksForJournalSlice\(older, slice\)/);
     const local = main.slice(

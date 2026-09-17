@@ -1274,6 +1274,17 @@ let journalDepth = 0;
 /** El oyente del desplazamiento en curso, para no apilar uno por redibujado. */
 let journalPull: (() => void) | null = null;
 
+/**
+ * Qué lectura continua sigue vigente.
+ *
+ * Quitar el oyente no cancela una petición que ya salió. Si la página se
+ * redibuja mientras ese día viene del servidor, la lectura vieja y la nueva
+ * pueden recibir la misma respuesta y montar dos veces la misma fecha. Cada
+ * interrupción cambia esta generación; una respuesta anterior puede terminar,
+ * pero ya no puede tocar el documento.
+ */
+let journalRun = 0;
+
 /*
  * Dejar de tirar del hilo del diario.
  *
@@ -1290,15 +1301,18 @@ let journalPull: (() => void) | null = null;
  * reposición en nada.
  */
 function stopJournalPull(): void {
-  if (journalPull === null) return;
-  $('#text').removeEventListener('scroll', journalPull);
-  journalPull = null;
+  journalRun += 1;
+  if (journalPull !== null) {
+    $('#text').removeEventListener('scroll', journalPull);
+    journalPull = null;
+  }
 }
 
 function continueBackwards(from: string, keptScroll: number): void {
   const text = $('#text');
 
   stopJournalPull();
+  const run = journalRun;
 
   // Los días que hay, del más reciente al más antiguo. `YYYY-MM-DD` ordena igual
   // como texto que como fecha, así que no hace falta interpretarlo.
@@ -1333,7 +1347,7 @@ function continueBackwards(from: string, keptScroll: number): void {
   let loading = false;
 
   const pull = (): void => {
-    if (loading || next >= days.length) return;
+    if (run !== journalRun || loading || next >= days.length) return;
     // Mientras queden tramos por reponer se tira sin mirar la distancia al
     // fondo: la vista todavía no está donde debe, así que medirla no diría nada.
     const reponiendo = journalDepth < refill;
@@ -1347,6 +1361,7 @@ function continueBackwards(from: string, keptScroll: number): void {
     void api
       .page(day.id)
       .then((older) => {
+        if (run !== journalRun) return;
         const slice = document.createElement('section');
         slice.className = 'day-slice';
         // Cada tramo se dibuja con el mismo outliner que el día de arriba: se
@@ -1359,12 +1374,14 @@ function continueBackwards(from: string, keptScroll: number): void {
         if (journalDepth >= refill) settle();
       })
       .catch(() => {
+        if (run !== journalRun) return;
         // Sin red se deja de tirar del hilo y lo ya leído se queda: insistir
         // contra un servidor que no está sólo llenaría la consola.
         next = days.length;
         settle();
       })
       .finally(() => {
+        if (run !== journalRun) return;
         loading = false;
         // Encadena: si el tramo recién puesto tampoco llena la pantalla, sigue.
         pull();
