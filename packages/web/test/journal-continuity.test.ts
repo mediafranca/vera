@@ -49,4 +49,17 @@ describe('edición dentro de la bitácora continua', () => {
     assert.match(local, /api\.page\(page\.id\)/);
     assert.doesNotMatch(local, /openPage\(workspace\.activePage/);
   });
+
+  it('monta un día anterior antes de iniciar su composición progresiva', () => {
+    const continuation = main.slice(
+      main.indexOf('function continueBackwards'),
+      main.indexOf('/**\n * Un día anterior', main.indexOf('function continueBackwards')),
+    );
+    const append = continuation.indexOf('text.append(slice)');
+    const render = continuation.indexOf('renderOutliner(slice, older');
+
+    assert.notEqual(append, -1);
+    assert.notEqual(render, -1);
+    assert.ok(append < render, 'el compositor progresivo necesita que su contenedor esté conectado');
+  });
 });

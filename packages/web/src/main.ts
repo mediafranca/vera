@@ -1364,12 +1364,25 @@ function continueBackwards(from: string, keptScroll: number): void {
         if (run !== journalRun) return;
         const slice = document.createElement('section');
         slice.className = 'day-slice';
+        /*
+         * Montarlo antes de componerlo.
+         *
+         * Las páginas grandes se dibujan por lotes y el compositor cancela su
+         * trabajo cuando el contenedor ya no está conectado al documento. Si se
+         * llamaba a `renderOutliner` antes de añadir el tramo, cualquier día que
+         * activara la composición progresiva quedaba detenido en su indicador
+         * inicial: se veían el título y las referencias, pero ningún bloque.
+         *
+         * El tramo ya pertenece a esta generación del diario (se comprobó arriba),
+         * así que puede entrar al DOM antes de empezar a pintarse. De ese modo la
+         * misma regla que aborta una navegación obsoleta deja avanzar al día vivo.
+         */
+        text.append(slice);
         // Cada tramo se dibuja con el mismo outliner que el día de arriba: se
         // edita igual, se pliega igual y habla con las mismas teclas. Un diario
         // que sólo se pudiera leer hacia atrás sería un archivo, no un cuaderno.
-      renderOutliner(slice, older, callbacksForJournalSlice(older, slice), null, null, isReadOnly(),
-        isAnybody() && corpus?.transparentBlockTraceability === true);
-        text.append(slice);
+        renderOutliner(slice, older, callbacksForJournalSlice(older, slice), null, null, isReadOnly(),
+          isAnybody() && corpus?.transparentBlockTraceability === true);
         journalDepth += 1;
         if (journalDepth >= refill) settle();
       })
