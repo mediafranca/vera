@@ -15,6 +15,6 @@ describe('actualizaciones de la PWA', () => {
   it('sólo precarga rutas que el servidor entrega y renueva el caché roto', () => {
     const assets = worker.match(/const ASSETS = \[([\s\S]*?)\];/)?.[1] ?? '';
     assert.doesNotMatch(assets, /['"]\/index\.html['"]/);
-    assert.match(worker, /const SHELL = ['"]vera-shell-v9['"]/);
+    assert.match(worker, /const SHELL = ['"]vera-shell-v10['"]/);
   });
 });

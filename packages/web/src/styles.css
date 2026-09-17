@@ -6131,6 +6131,7 @@ html[data-working-slow='true']::after {
 }
 
 .relation-type-select {
+  -webkit-appearance: none;
   appearance: none;
   field-sizing: content;
   width: auto;

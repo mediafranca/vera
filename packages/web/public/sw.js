@@ -17,6 +17,9 @@
 
 // Subir este número tira el caché anterior entero al activarse. Hace falta
 // cuando lo guardado deja de ser válido, y no sólo cuando cambia esta lista.
+// v10 fuerza a las instalaciones abiertas antes del mecanismo de comparación
+// de huellas a tomar el armazón vigente. Esas versiones no podían descubrir por
+// sí mismas que el selector de relaciones y su editor habían cambiado.
 // v9 retira de la precarga `/index.html`: el servidor entrega el armazón en `/`
 // y esa ruta inexistente hacía abortar `cache.addAll`, dejando activo el worker
 // anterior. La navegación seguirá guardando su respuesta bajo `/index.html`, que
@@ -29,7 +32,7 @@
 // v6 reemplaza también los iconos anteriores por la familia nocturna.
 // v5 tiraba lo guardado por v4, que incluía respuestas de `/ontology` y de las
 // demás lecturas que la regla de abajo dejaba caer en el caché por descuido.
-const SHELL = 'vera-shell-v9';
+const SHELL = 'vera-shell-v10';
 const ASSETS = [
   '/',
   '/manifest.webmanifest',
