@@ -575,6 +575,11 @@ function drawUnstartedDay(date: string): void {
   start.addEventListener('click', () => void startDay(date));
   host.append(start);
 
+  // Que hoy todavía no exista no corta la bitácora. Al comenzar un día nuevo,
+  // el primer tramo que sigue debajo es el día anterior más reciente que sí
+  // tenga escritura.
+  continueBackwards(date, 0);
+
   drawGraph();
 }
 
@@ -1302,7 +1307,10 @@ function continueBackwards(from: string, keptScroll: number): void {
     .sort((a, b) => b.title.localeCompare(a.title));
 
   const here = days.findIndex((candidate) => candidate.title === from);
-  let next = here + 1;
+  // El día de arriba puede ser el «hoy» provisional, que aún no forma parte del
+  // índice. En ese caso se empieza por el primer día real anterior a él. Esto
+  // también evita enseñar por accidente una fecha futura importada.
+  let next = here >= 0 ? here + 1 : days.findIndex((candidate) => candidate.title < from);
 
   // Reponer sólo si se estaba en esta misma página. Llegar de nuevo a un día
   // —desde el mapa, desde un enlace— es empezar a leerlo, no continuar.
@@ -1316,7 +1324,7 @@ function continueBackwards(from: string, keptScroll: number): void {
     text.scrollTop = keptScroll;
   };
 
-  if (here < 0 || next >= days.length) {
+  if (next < 0 || next >= days.length) {
     text.scrollTop = keptScroll;
     return;
   }
