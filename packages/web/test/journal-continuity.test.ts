@@ -31,12 +31,13 @@ describe('edición dentro de la bitácora continua', () => {
     assert.match(continuation, /\.then\(\(older\) => \{\s*if \(run !== journalRun\) return;/);
   });
 
-  it('una identidad obsoleta del índice local se sustituye al llegar la canónica', () => {
-    assert.match(main, /function reconcileVisibleJournalIndex\(before: readonly PageSummary\[\]\)/);
-    assert.match(main, /changedDays\(before, pages, isDay\)/);
-    assert.match(main, /const canonical = dayPage\(openView\.title\)/);
-    assert.match(main, /openPage\(canonical\.id, null, \{ fromUrl: true, replaceRoute: true \}\)/);
-    assert.match(main, /const before = pages;[\s\S]*pages = byWeight\(fresh\);[\s\S]*reconcileVisibleJournalIndex\(before\)/);
+  it('los días anteriores se leen del corpus y nunca de la copia retenida', () => {
+    const continuation = main.slice(
+      main.indexOf('function continueBackwards'),
+      main.indexOf('/**\n * Un día anterior', main.indexOf('function continueBackwards')),
+    );
+    assert.match(continuation, /api\s*\.page\(day\.id\)/);
+    assert.doesNotMatch(continuation, /held\.page/);
   });
 
   it('cada día anterior se redibuja por su propia identidad sin navegar al día activo', () => {
