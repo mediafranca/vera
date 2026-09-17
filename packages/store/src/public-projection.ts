@@ -67,7 +67,13 @@ addEventListener('message', event => {
   else if (event.data.active === true) window.loop?.();
   report();
 });
+// p5 crea el canvas después de que el documento ya terminó de cargar. Observar
+// sólo la raíz no basta: con overflow:hidden su caja puede conservar las seis
+// líneas iniciales aunque el canvas ya desborde. La mutación descubre la
+// inserción y el ResizeObserver del body acompaña cambios posteriores.
 new ResizeObserver(report).observe(document.documentElement);
+new ResizeObserver(report).observe(document.body);
+new MutationObserver(report).observe(document.body, { childList: true, subtree: true });
 const source = decodeURIComponent(location.hash.slice(1));
 const fail = error => { document.body.innerHTML = '<pre></pre>'; document.querySelector('pre').textContent = String(error?.message ?? error) + '\\n\\n' + source; };
 addEventListener('error', event => fail(event.error ?? event.message));

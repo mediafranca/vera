@@ -1875,6 +1875,11 @@ html.presenting body {
   width: 100%;
 }
 
+/* La fuente sigue editable en el outline, pero no forma parte de la lámina. */
+.vera-presentation .executable > details {
+  display: none;
+}
+
 .vera-presentation .body figcaption {
   margin-top: 0.35rem;
   color: color-mix(in srgb, var(--text) 68%, transparent);
