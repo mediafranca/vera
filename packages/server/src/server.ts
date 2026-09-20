@@ -855,6 +855,31 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /** Cada propiedad de este corpus, con qué clase de campo es. */
   const declaredProperties = () => readPropertyDeclarations(declaredIn('properties'));
 
+  /**
+   * Qué se puede contestar a una propiedad en esta página.
+   *
+   * La declaración gobierna el orden y hace ofrecibles incluso palabras que
+   * todavía no se han usado. Lo observado conserva su frecuencia verdadera y
+   * aporta la cola que aún no fue curada. Separar ambas procedencias evita la
+   * vieja trampa de fingir usos para conseguir un selector.
+   */
+  const domainOf = (key: string): { value: string; uses: number; declared?: boolean }[] => {
+    const observed = graph.observedValuesOf(key);
+    const declaration = declaredProperties().find(
+      (one) => titleKey(one.name) === titleKey(key),
+    );
+    if (declaration === undefined || declaration.values.length === 0) return observed;
+
+    const used = new Map(observed.map((one) => [titleKey(one.value), one] as const));
+    const declared = declaration.values.map((value) => ({
+      value,
+      uses: used.get(titleKey(value))?.uses ?? 0,
+      declared: true,
+    }));
+    const named = new Set(declaration.values.map(titleKey));
+    return [...declared, ...observed.filter((one) => !named.has(titleKey(one.value)))];
+  };
+
   /** Cada clase de cosa, con qué propiedades la constituyen. */
   const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
 
@@ -5842,16 +5867,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           originCreatedAt: page.originCreatedAt,
           lastEditedAt: graph.lastEditedAt(page.id),
           properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
-          // Lo que el corpus ya contesta a cada una de estas claves. Es el
-          // vocabulario observado, no uno declarado: mientras no haya ontología
-          // es lo único que hay, y cuando la haya seguirá siendo la evidencia
-          // desde la que se propone. Sólo viajan las claves de esta página.
+          // Lo que puede contestarse a cada una de estas claves. El vocabulario
+          // declarado gobierna el control; lo observado conserva la evidencia
+          // de uso y la cola aún no curada. Sólo viajan las claves de esta página.
           domains: publicAccess
             ? {}
             : Object.fromEntries(
                 [...new Set(graph.propertiesOf(page.id).map((p) => p.key))].map((key) => [
                   key,
-                  graph.observedValuesOf(key),
+                  domainOf(key),
                 ]),
               ),
           blocks: graph

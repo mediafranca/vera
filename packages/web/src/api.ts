@@ -128,13 +128,13 @@ export interface PageView {
    */
   blockProperties?: Record<string, { key: string; value: string }[]>;
   /**
-   * Lo que el corpus ya contesta a cada clave de esta página, por uso.
+   * Lo que puede contestarse a cada clave de esta página.
    *
-   * Es lo que se ofrece en el desplegable. Vocabulario observado y no declarado:
-   * la ontología que lo gobernaría todavía no existe, y hasta que exista lo que
-   * el corpus dice es mejor guía que una lista inventada.
+   * Reúne el vocabulario declarado por la ontología y el observado en el
+   * corpus. `uses` nunca se infla para hacer aparecer una opción: `declared`
+   * distingue una decisión de gobierno de una frecuencia de uso real.
    */
-  domains: Record<string, { value: string; uses: number }[]>;
+  domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
   blocks: BlockView[];
   /** Vista derivada de una página cuyo tipo es `concepto`. */
   concept?: {

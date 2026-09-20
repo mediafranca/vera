@@ -105,6 +105,48 @@ describe('ontología rectora de relaciones', () => {
   });
 });
 
+describe('dominios declarados de propiedades', () => {
+  it('ofrece el vocabulario gobernado antes de que todas sus palabras tengan uso', async () => {
+    const ontology = await write({
+      kind: 'create_page',
+      stableId: 'page:test-properties-governing',
+      title: 'VERA: Propiedades',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: ontology, propertyKey: 'special-kind', propertyValue: 'properties' });
+    const declaration = await write({
+      kind: 'create_block',
+      stableId: 'block:test-epistemic-role-property',
+      page: ontology,
+      parent: null,
+      position: 0,
+      content: 'rol epistémico',
+    });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'campo', propertyValue: 'una de' });
+    await write({
+      kind: 'set_property',
+      block: declaration,
+      propertyKey: 'valores',
+      propertyValue: 'fuente, testimonio, análisis, síntesis, pregunta, afirmación',
+    });
+
+    const page = await write({ kind: 'create_page', title: 'Con un papel', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'rol epistémico', propertyValue: 'análisis' });
+
+    const detail = (await get(`/pages/${encodeURIComponent(page)}`)) as {
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+    };
+    assert.deepEqual(detail.domains['rol epistémico'], [
+      { value: 'fuente', uses: 0, declared: true },
+      { value: 'testimonio', uses: 0, declared: true },
+      { value: 'análisis', uses: 1, declared: true },
+      { value: 'síntesis', uses: 0, declared: true },
+      { value: 'pregunta', uses: 0, declared: true },
+      { value: 'afirmación', uses: 0, declared: true },
+    ]);
+  });
+});
+
 describe('modelos de procesamiento', () => {
   it('ofrece sólo identidades presentables y nunca rutas ni secretos', async () => {
     const result = await get('/processing/models') as {

@@ -1139,10 +1139,10 @@ const CLOSED_QUESTION_SHARE = 0.6;
 /**
  * Si una propiedad se contesta eligiendo o escribiendo.
  *
- * Provisional, y a la vista de que lo es: lo correcto es que la ontología
- * declare el dominio de cada propiedad, y eso todavía no existe en el almacén.
- * Mientras tanto se infiere de lo que el corpus ya dice, que es la misma
- * evidencia desde la que rule ProposePropertyDomainFromUsage lo propondrá.
+ * Una declaración ontológica de dominio cerrado decide de inmediato. Cuando
+ * no existe, se infiere provisionalmente de lo que el corpus ya dice, que es
+ * la misma evidencia desde la que rule ProposePropertyDomainFromUsage puede
+ * proponer que el bibliotecario la gobierne.
  *
  * Lo que decide no es cuántos valores hay sino si unos pocos concentran el uso.
  * Contar valores distintos parece lo natural y se equivoca justo donde importa:
@@ -1156,8 +1156,12 @@ const CLOSED_QUESTION_SHARE = 0.6;
  * bibliotecario tiene que traer. «`bibliography` aparece una vez y `bibliografia`
  * treinta» es una decisión que alguien puede tomar.
  */
-function isChoosable(offered: { value: string; uses: number }[]): boolean {
+function isChoosable(offered: { value: string; uses: number; declared?: boolean }[]): boolean {
   if (offered.length < 2) return false;
+  // Una lista que el corpus gobernó como cerrada no tiene que esperar a que sus
+  // respuestas se usen para volverse elegible. `uses` sigue contando sólo usos
+  // reales; la declaración viaja por separado y por eso no hace falta mentirle.
+  if (offered.some((option) => option.declared === true)) return true;
   const total = offered.reduce((sum, option) => sum + option.uses, 0);
   if (total === 0) return false;
   const head = offered.slice(0, OFFERED_AT_MOST).reduce((sum, option) => sum + option.uses, 0);
