@@ -2926,6 +2926,18 @@ export function needsProgressiveComposition(blocks: readonly BlockView[]): boole
   return sourceLength >= 12_000 || (blocks.length >= 16 && costlyBlocks >= 2);
 }
 
+/**
+ * Dice si el bloque se presenta como código desde su primer renglón.
+ *
+ * No exige la valla de cierre: mientras alguien está escribiendo, Markdown ya
+ * trata una valla abierta como código y el editor no debería esperar al último
+ * renglón para adoptar la tipografía correspondiente.
+ */
+export function isFencedCodeContent(source: string): boolean {
+  const first = source.trimStart().split('\n', 1)[0] ?? '';
+  return /^(?:`{3,}|~{3,})\s*[\w+-]*\s*$/.test(first);
+}
+
 function wireCataloguedMedia(container: HTMLElement, page: PageView): void {
   for (const asset of page.assets) {
     for (const element of container.querySelectorAll<HTMLElement>(
@@ -4718,6 +4730,7 @@ export function renderOutliner(
 
     const body = document.createElement('div');
     body.className = 'body';
+    body.classList.toggle('code-source', isFencedCodeContent(node.block.content));
 
     /*
      * Un bloque con grabación enseña las dos cosas: el audio arriba y su texto
@@ -7104,6 +7117,10 @@ function startEditing(
    */
   editor.value = block.content.trimEnd();
   editor.rows = 1;
+  const syncCodeTypeface = (): void => {
+    body.classList.toggle('code-source', isFencedCodeContent(editor.value));
+  };
+  syncCodeTypeface();
 
   /*
    * El audio sobrevive a la edición de su texto.
@@ -7283,6 +7300,7 @@ function startEditing(
   /** Volver a la vista de lectura, conservando la grabación por el mismo motivo. */
   const render = (content: string): void => {
     body.classList.remove('editing');
+    body.classList.toggle('code-source', isFencedCodeContent(content));
     const heldAudio = body.querySelector('.audio-block');
     body.innerHTML = '';
     if (heldAudio !== null) body.append(heldAudio);
@@ -7813,6 +7831,7 @@ function startEditing(
   editor.addEventListener('compositionend', () => {
     composing = false;
     session.type(editor.value);
+    syncCodeTypeface();
     autosize();
     keepCaretInSight(editor, editor.selectionStart);
     scheduleSave();
@@ -7821,6 +7840,7 @@ function startEditing(
 
   editor.addEventListener('input', (event) => {
     session.type(editor.value);
+    syncCodeTypeface();
     autosize();
     // El campo acaba de crecer o menguar, así que la línea en la que se escribe
     // se movió con él. @invariant WhatIsBeingWrittenStaysInSight.

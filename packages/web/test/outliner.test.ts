@@ -15,6 +15,7 @@ import {
   foldsWhileRevealing,
   foldedState,
   invokeMenuAction,
+  isFencedCodeContent,
   isSpecialPage,
   matchingMovePages,
   needsProgressiveComposition,
@@ -32,6 +33,23 @@ const block = (stableId: string, parent: string | null, position: number, conten
   parent,
   position,
   content,
+});
+
+describe('tipografía del fuente cercado', () => {
+  it('reconoce código y cercados ejecutables desde la valla inicial', () => {
+    for (const source of [
+      '```\nconst answer = 42',
+      '```html\n<main>hola</main>\n```',
+      '```p5js\ncreateCanvas(40, 40)\n```',
+      '```mermaid\ngraph TD\n```',
+      '~~~svg\n<svg></svg>\n~~~',
+    ]) assert.equal(isFencedCodeContent(source), true, source);
+  });
+
+  it('no vuelve monoespaciado un bloque de prosa que sólo contiene un ejemplo', () => {
+    assert.equal(isFencedCodeContent('Una explicación.\n```ts\nconst x = 1\n```'), false);
+    assert.equal(isFencedCodeContent('texto ordinario'), false);
+  });
 });
 
 describe('composición progresiva de páginas', () => {

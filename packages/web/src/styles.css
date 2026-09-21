@@ -3340,6 +3340,19 @@ html.presenting body {
 }
 
 /*
+ * El fuente de un bloque cercado es código también mientras se edita.
+ *
+ * En lectura, `<pre><code>` ya usa la tipografía monoespaciada; los cercados
+ * ejecutables y Mermaid muestran su resultado y conservan el fuente en un
+ * detalle. Al abrir cualquiera de ellos, el textarea revela ese fuente crudo:
+ * esta clase mantiene allí la misma voz tipográfica y cambia en el acto si la
+ * primera valla se escribe o se borra.
+ */
+.body.code-source > .editor {
+  font-family: var(--font-mono);
+}
+
+/*
  * Dónde se está escribiendo, dicho sólo con color.
  *
  * Nada de bordes ni barras, ni siquiera de las que no ocupan sitio. Una línea al
