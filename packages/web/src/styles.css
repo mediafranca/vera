@@ -8813,6 +8813,46 @@ html[data-working-slow='true']::after {
 
 .activity-list a { color: var(--accent); }
 
+.activity-days {
+  display: grid;
+  gap: .55rem;
+}
+
+.activity-day {
+  border-top: 1px solid var(--rule);
+}
+
+.activity-day > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .65rem 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.activity-day > summary > span::first-letter { text-transform: uppercase; }
+
+.activity-day > summary small {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  white-space: nowrap;
+}
+
+.activity-page-created > span:first-child {
+  font-weight: 600;
+}
+
+.activity-by {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: .16em;
+}
+
 .activity-excerpt {
   margin: 0;
   overflow: hidden;
@@ -8837,6 +8877,7 @@ html[data-working-slow='true']::after {
 .activity-list {
   display: grid;
   gap: .7rem;
+  margin: .15rem 0 1rem;
   padding-left: 1.25rem;
 }
 /* La aceptación de una invitación antecede a la aplicación y usa una superficie mínima. */

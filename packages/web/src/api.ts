@@ -517,6 +517,7 @@ export interface ActivityItem {
   at: number;
   by: string;
   participant: string;
+  participantKind: 'human' | 'agent' | null;
   channel: string;
   kind: Change['kind'];
   subjectId: string;

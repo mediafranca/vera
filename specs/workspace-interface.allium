@@ -1168,6 +1168,10 @@ surface VeraWorkspace {
     @guarantee TheCanonicalLogIsTheActivityRegister
         -- VERA: Registro de Actividad makes every canonical creation, edition,
         -- movement and deletion readable without copying it into a second log.
+        -- Living changes are ordered from the newest civil day to the oldest
+        -- and each day can be folded independently. Its heading counts how many
+        -- pages were created there, while every change names and links the human
+        -- or agent who authored it.
         -- Deleted pages remain present there as tombs even though they are no
         -- longer pages in the corpus. Living-page changes and deleted-page tombs
         -- are separate readings: a change names and links to its living page and

@@ -417,12 +417,13 @@ describe('GET /activity', () => {
 
     const mine = (await get(`/activity?participant=${encodeURIComponent(OWNER)}`)) as {
       participant: { id: string; name: string; kind: string } | null;
-      activity: { participant: string; block: string | null }[];
+      activity: { participant: string; participantKind: string | null; block: string | null }[];
       deletedPages: { participant: string }[];
     };
     assert.deepEqual(mine.participant, { id: OWNER, name: 'Dueña', kind: 'human' });
     assert.ok(mine.activity.length > 0);
     assert.ok(mine.activity.every((one) => one.participant === OWNER));
+    assert.ok(mine.activity.every((one) => one.participantKind === 'human'));
     assert.equal(mine.activity[0]?.block, child);
     assert.ok(mine.deletedPages.every((one) => one.participant === OWNER));
   });

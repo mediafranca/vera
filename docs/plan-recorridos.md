@@ -1,5 +1,10 @@
 # Plan: del rastro al argumento
 
+> **Documento histórico.** Conserva la medida y el orden que guiaron la primera
+> implementación. Varios pasos descritos como ausentes ya existen. Para el mapa
+> vigente de conceptos, código y pruebas, ver
+> [Fundamentos epistémicos y recorridos argumentales](fundamentos-epistemicos.md).
+
 Estado al escribirlo: `allium check specs/` limpio (0 errores, 0 avisos, 19 specs),
 387 tests en verde, `packages/web/src/graph/render3d.ts` con cambios sin confirmar.
 
