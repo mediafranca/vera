@@ -86,22 +86,22 @@ function linkedSummary(
 function activityRow(one: Awaited<ReturnType<typeof api.activity>>['activity'][number]): HTMLLIElement {
   const item = document.createElement('li');
   if (one.kind === 'create_page') item.classList.add('activity-page-created');
-  if (one.page !== null) item.append(linkedSummary(one.summary, one.page, one.block));
-  else item.append(one.summary);
+  const author = document.createElement('a');
+  author.className = 'activity-by';
+  author.href = participantActivityPath(one.participant);
+  author.textContent = `${one.participantKind === 'agent' ? 'agente ' : ''}${one.by}`;
+  const action = document.createElement('span');
+  action.className = 'activity-action';
+  action.append(author, ' ');
+  if (one.page !== null) action.append(linkedSummary(one.summary, one.page, one.block));
+  else action.append(one.summary);
+  item.append(action);
   if (one.excerpt !== null) {
     const excerpt = document.createElement('p');
     excerpt.className = 'activity-excerpt';
     excerpt.textContent = one.excerpt;
     item.append(excerpt);
   }
-  const detail = document.createElement('small');
-  detail.append(`${moment(one.at)} · `);
-  const author = document.createElement('a');
-  author.className = 'activity-by';
-  author.href = participantActivityPath(one.participant);
-  author.textContent = `${one.participantKind === 'agent' ? 'agente' : one.participantKind === 'human' ? 'persona' : 'participante'} ${one.by}`;
-  detail.append(author, ` · ${one.channel}`);
-  item.append(detail);
   return item;
 }
 

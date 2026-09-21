@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { groupActivityDays } from '../src/activity-days.ts';
 
 const activity = readFileSync(new URL('../src/activity-page.ts', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 describe('VERA: Registro de Actividad', () => {
   it('agrupa los cambios por día y cuenta las páginas creadas', () => {
@@ -39,7 +40,9 @@ describe('VERA: Registro de Actividad', () => {
     assert.match(activity, /api\.activity\(cursor, participant\)/);
     assert.match(activity, /Contribuciones de \$\{view\.participant\.name\}/);
     assert.match(activity, /participantActivityPath\(one\.participant\)/);
-    assert.match(activity, /one\.participantKind === 'agent' \? 'agente'/);
+    assert.match(activity, /one\.participantKind === 'agent' \? 'agente '/);
+    assert.match(activity, /action\.append\(author, ' '\)/);
+    assert.doesNotMatch(activity, /detail\.append\(`\$\{moment\(one\.at\)\}/);
   });
 
   it('presenta fechas plegables y cuenta sus páginas nuevas', () => {
@@ -47,6 +50,8 @@ describe('VERA: Registro de Actividad', () => {
     assert.match(activity, /details\.open = first/);
     assert.match(activity, /groupActivityDays\(items\)/);
     assert.match(activity, /página creada/);
+    assert.match(styles, /\.activity-day > summary::before/);
+    assert.match(styles, /\.activity-day\[open\] > summary::before/);
   });
 
   it('reserva la restauración para las tumbas sin fabricarles enlace', () => {
