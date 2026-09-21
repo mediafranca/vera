@@ -122,6 +122,51 @@ function renderNode(node: PresentationNode, options: RenderOptions, depth = 0): 
   return host;
 }
 
+type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'video';
+
+/**
+ * El único contenido visual de una lámina, si ésta es espacial y no prosa con
+ * una ilustración intercalada.
+ *
+ * La diferencia evita que una imagen dentro de una explicación convierta toda
+ * la lámina en un lienzo. Sólo una raíz cuyo cuerpo consiste en un medio —con
+ * los envoltorios Markdown inevitables `p` y `a`— abandona la medida de lectura.
+ */
+function spatialMedium(body: HTMLElement): SpatialMedium | null {
+  if (body.children.length !== 1) return null;
+  let only = body.firstElementChild as HTMLElement | null;
+  if (only === null) return null;
+
+  if (only.matches('.executable')) return 'executable';
+  if (only.matches('.drawn')) return 'drawing';
+  if (only.matches('.mermaid-figure')) return 'diagram';
+  if (only.matches('video')) return 'video';
+  if (only.matches('img, svg')) return 'image';
+
+  for (const wrapper of ['P', 'A']) {
+    if (only.tagName !== wrapper || only.children.length !== 1) continue;
+    if ([...only.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '')) {
+      return null;
+    }
+    only = only.firstElementChild as HTMLElement;
+  }
+
+  if (only.matches('img, svg')) return 'image';
+  if (only.matches('video')) return 'video';
+  return null;
+}
+
+/** Marca sólo las láminas cuyo medio debe medir contra el viewport. */
+function classifySpatialSlides(slides: HTMLElement): void {
+  for (const slide of slides.querySelectorAll<HTMLElement>(':scope > section')) {
+    const body = slide.querySelector<HTMLElement>(':scope > .presentation-block > .body');
+    const medium = body === null ? null : spatialMedium(body);
+    slide.classList.toggle('presentation-spatial', medium !== null);
+    if (medium === null) delete slide.dataset['presentationMedium'];
+    else slide.dataset['presentationMedium'] = medium;
+  }
+}
+
 export async function presentPage(
   page: PageView,
   options: RenderOptions,
@@ -178,7 +223,6 @@ export async function presentPage(
   const overview = control('Vista general', 'grid');
   const notesToggle = control('Notas', 'feather');
   notesToggle.setAttribute('aria-pressed', 'false');
-  const fullscreen = control('Pantalla completa', 'maximize');
   const scheme = control('Modo claro', 'sun');
   scheme.className = 'presentation-scheme';
   const showScheme = (): void => {
@@ -205,7 +249,7 @@ export async function presentPage(
   privateNotes.className = 'presentation-private-notes';
   privateNotes.hidden = true;
   privateNotes.setAttribute('aria-label', 'Glosa de la lámina');
-  toolbar.append(previous, next, overview, notesToggle, fullscreen, scheme, refresh, close);
+  toolbar.append(previous, next, overview, notesToggle, scheme, refresh, close);
   overlay.append(stage, privateNotes, toolbar);
   if (governedStyle.warnings.length > 0) {
     const warning = document.createElement('p');
@@ -238,6 +282,7 @@ export async function presentPage(
 
   decorateCodeBlocks(overlay);
   await renderMermaid(overlay);
+  classifySpatialSlides(slides);
 
   const deck = new Reveal(reveal, {
     embedded: true,
@@ -286,7 +331,6 @@ export async function presentPage(
     await deck.destroy();
     overlay.remove();
     document.documentElement.classList.remove('presenting');
-    if (document.fullscreenElement !== null) await document.exitFullscreen().catch(() => undefined);
     history.replaceState(history.state, '', presentationLocation(sourceUrl, block ?? '', false));
     const source = block === null ? null : document.querySelector<HTMLElement>(`[data-block="${CSS.escape(block)}"]`);
     if (source !== null) {
@@ -318,9 +362,6 @@ export async function presentPage(
     notesToggle.setAttribute('aria-pressed', String(!privateNotes.hidden));
     updateNotes();
   });
-  fullscreen.addEventListener('click', () => {
-    void (document.fullscreenElement === null ? overlay.requestFullscreen() : document.exitFullscreen());
-  });
   refresh.addEventListener('click', () => {
     const block = currentBlock();
     void api.page(sourcePage.id, 4_000).then(async (newer) => {
@@ -337,6 +378,9 @@ export async function presentPage(
       heldStyle = governedStyle.css;
       style.textContent = scopedPresentationStylesheet(heldStyle);
       fillSlides();
+      decorateCodeBlocks(overlay);
+      await renderMermaid(overlay);
+      classifySpatialSlides(slides);
       deck.sync();
       if (block !== null) {
         const index = roots.findIndex((root) => root.block.stableId === block);

@@ -610,7 +610,7 @@ function executableBlock(language: string, source: string, options: RenderOption
     : `<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy" title="${title}" srcdoc="${quoteAttribute(escapeHtml([
         '<!doctype html><meta charset="utf-8">',
         `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${scriptPolicy}; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'">`,
-        '<style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--rule:currentColor;--accent:currentColor;--font-body:system-ui,sans-serif;--font-ui:system-ui,sans-serif;--font-mono:ui-monospace,monospace}html,body{margin:0;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}*{box-sizing:border-box}svg{display:block;max-width:100%;height:auto}</style>',
+        '<style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--rule:currentColor;--accent:currentColor;--font-body:system-ui,sans-serif;--font-ui:system-ui,sans-serif;--font-mono:ui-monospace,monospace}html,body{margin:0;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}*{box-sizing:border-box}svg{display:block;max-width:100%;height:auto}html[data-presentation="true"],html[data-presentation="true"] body{width:100%;height:100%;overflow:hidden}html[data-presentation="true"] body>svg{width:100%;height:auto;max-width:none;max-height:100%;object-fit:contain}</style>',
         source,
         bridge,
       ].join('\n')))}"></iframe>`;
@@ -636,6 +636,7 @@ addEventListener('message', event => {
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.presentation = event.data.presentation === true ? 'true' : 'false';
   report();
 });
 new ResizeObserver(report).observe(document.documentElement);

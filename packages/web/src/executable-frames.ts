@@ -34,6 +34,10 @@ function send(frame: HTMLIFrameElement): void {
     // una presentación sólo anima el de la lámina actual; los demás conservan
     // su último cuadro como miniatura sin quemar Safari por detrás.
     active: slide === null || slide.classList.contains('present'),
+    // En presentación el recinto ya ocupa el escenario. El documento interior
+    // recibe esa diferencia para poder escalar canvas y SVG al viewport, en vez
+    // de conservar el tamaño editorial de la página ordinaria.
+    presentation: slide !== null,
   }, '*');
 }
 
