@@ -1,0 +1,183 @@
+-- allium: 3
+-- solid-projection.allium
+
+-- Scope: A bounded, one-way projection from deliberate Vera publications to
+--   Solid storage.
+-- Includes: Public eligibility, stable resource addresses, immutable revision
+--   resources, page and trail representations, idempotent PUT and verification.
+-- Excludes: Solid identity, access grants, remote editing, bidirectional sync,
+--   conflict resolution and adoption of a Pod as Vera's canonical store.
+-- Dependencies: Pages and publications are governed by core.allium; the public
+--   boundary is governed by personal-site-projection.allium.
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract SolidProjection {
+    prepare: (publication: core/Publication, destination: SolidDestination) -> SolidProjectionBatch
+    publish: (batch: SolidProjectionBatch) -> SolidProjectionResult
+    verify: (result: SolidProjectionResult) -> SolidVerification
+
+    @invariant VeraRemainsCanonical
+        -- Publishing to Solid never changes a page, its publication, its trail
+        -- or Vera's operation log. A Pod contains a derived representation.
+
+    @invariant OnlyDeliberatePublicationsCrossTheBoundary
+        -- Public visibility alone is insufficient. A page crosses only through
+        -- an explicit Publication, and every page named by an exported trail is
+        -- itself an explicit public publication in the same site.
+
+    @invariant StableResourcesAndImmutableRevisionsAreDifferent
+        -- The current resource keeps one stable address while every distinct
+        -- byte representation receives a content-addressed revision resource.
+        -- Repeating the same projection produces the same addresses and bytes.
+
+    @invariant ProvenanceTravelsWithTheRepresentation
+        -- Page identity, human-readable canonical URL, revision digest,
+        -- publication time, authorship and declared epistemic role travel when
+        -- present. The projection never upgrades an absent role or attribution.
+
+    @invariant TrailsDoNotOpenPrivateSideDoors
+        -- A trail representation carries only route nodes whose destination is
+        -- published in the same public site. A broken, private or merely visible
+        -- destination makes the trail ineligible rather than partially leaking it.
+
+    @invariant RemoteStateDoesNotFlowBack
+        -- This level never reads a remote resource as an edit, operation,
+        -- authority or newer truth. Verification compares delivered bytes only.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum SolidProjectionStatus { prepared | published | failed }
+enum SolidVerificationStatus { identical | different | unavailable }
+
+------------------------------------------------------------
+-- Entities and Values
+------------------------------------------------------------
+
+value SolidDestination {
+    base_url: String
+}
+
+value SolidResource {
+    stable_url: String
+    revision_url: String
+    media_type: String
+    body: String
+    digest: String
+}
+
+entity SolidProjectionBatch {
+    publication: core/Publication
+    destination: SolidDestination
+    resources: List<SolidResource>
+    status: SolidProjectionStatus
+}
+
+entity SolidProjectionResult {
+    batch: SolidProjectionBatch
+    status: SolidProjectionStatus
+    delivered: List<SolidResource>
+    failure: String?
+}
+
+entity SolidVerification {
+    result: SolidProjectionResult
+    status: SolidVerificationStatus
+    verified_resources: List<SolidResource>
+}
+
+------------------------------------------------------------
+-- Behaviour
+------------------------------------------------------------
+
+rule PrepareSolidProjection {
+    when: PrepareSolidProjection(publication, destination)
+
+    requires: publication.page.visibility = public
+    requires: publication in publications_of(publication.site)
+
+    ensures: SolidProjectionBatch.created(
+        publication: publication,
+        destination: destination,
+        resources: solid_resources(publication, destination),
+        status: prepared
+    )
+}
+
+rule PublishSolidProjection {
+    when: PublishSolidProjection(batch)
+
+    requires: batch.status = prepared
+
+    ensures: SolidProjectionResult.created(
+        batch: batch,
+        status: published,
+        delivered: batch.resources,
+        failure: null
+    )
+}
+
+rule VerifySolidProjection {
+    when: VerifySolidProjection(result)
+
+    requires: result.status = published
+
+    ensures: SolidVerification.created(
+        result: result,
+        status: identical,
+        verified_resources: result.delivered
+    )
+}
+
+------------------------------------------------------------
+-- Surface
+------------------------------------------------------------
+
+surface SolidProjectionOperator {
+    facing operator: core/Participant
+    context publication: core/Publication
+
+    exposes:
+        publication
+        SolidProjectionBatch where publication = publication
+        SolidProjectionResult where batch.publication = publication
+
+    provides:
+        PrepareSolidProjection(publication, destination)
+        PublishSolidProjection(batch)
+            when batch.publication = publication
+        VerifySolidProjection(result)
+            when result.batch.publication = publication
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OneCurrentAndOneRevisionAddressPerResource {
+    for batch in SolidProjectionBatches:
+        batch.resources.all(resource =>
+            resource.stable_url != resource.revision_url and
+            resource.revision_url.contains(resource.digest)
+        )
+}
+
+invariant RepeatedBodiesNameTheSameRevision {
+    for a in SolidResources:
+        for b in SolidResources:
+            a.body = b.body implies a.digest = b.digest and a.revision_url = b.revision_url
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "Which vocabulary should become Vera's durable public RDF vocabulary after this spike: a minimal Vera namespace, schema.org plus PROV-O, or a published shape with both?"
+open question "At level 2, should Solid-OIDC credentials belong to one publication site, one participant, or one Vera installation?"

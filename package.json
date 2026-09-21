@@ -37,6 +37,7 @@
     "owner:credential": "node packages/server/src/issue-owner.ts",
     "owner:enroll-passkey": "node packages/server/src/enroll-owner-passkey.ts",
     "project:public": "node packages/store/src/public-project-cli.ts",
+    "project:solid": "node packages/store/src/solid-project-cli.ts",
     "backup:data": "./scripts/backup-data.sh",
     "dev": "trap 'kill 0' INT TERM EXIT; npm run watch --workspace @vera/web & npm run serve",
     "deploy": "./scripts/deploy.sh",
