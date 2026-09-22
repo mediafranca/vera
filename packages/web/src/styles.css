@@ -1656,7 +1656,7 @@ button { touch-action: manipulation; }
     z-index: 30;
     padding: 0.3rem 0.55rem;
     border-radius: 999px;
-    background: var(--surface);
+    background: var(--bg-raised);
     box-shadow: 0 1px 5px color-mix(in srgb, var(--text) 18%, transparent);
   }
 }
@@ -4184,7 +4184,7 @@ pre.copyable-code {
   font-family: var(--font-ui);
   font-size: 0.75rem;
   color: var(--text-dim);
-  background: var(--surface);
+  background: var(--bg-raised);
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--rule);
   border-radius: 2px;
@@ -6354,7 +6354,7 @@ html[data-working-slow='true']::after {
   max-width: 100%;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
   border-radius: .45rem;
-  background: var(--surface, Canvas);
+  background: var(--bg-raised, Canvas);
   color: inherit;
   padding: .25rem .45rem;
 }
@@ -7678,7 +7678,7 @@ html[data-working-slow='true']::after {
   border: 1px solid var(--rule);
   border-radius: 4px;
   padding: 0 0.65rem;
-  background: var(--surface);
+  background: var(--bg-raised);
   color: var(--text);
   font: 0.82rem var(--font-ui);
 }
@@ -8354,7 +8354,7 @@ html[data-working-slow='true']::after {
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
   box-shadow: 0 0.2rem 0.8rem color-mix(in srgb, var(--text) 10%, transparent);
   font-family: var(--font-ui);
   font-size: 0.78rem;
@@ -8624,7 +8624,7 @@ html[data-working-slow='true']::after {
   padding: 1.5rem;
   overflow-y: auto;
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--bg-raised);
   box-shadow: 0 8px 40px color-mix(in srgb, var(--text) 30%, transparent);
 }
 
@@ -8762,7 +8762,7 @@ html[data-working-slow='true']::after {
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--accent);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--bg-raised);
   color: var(--text);
   font-family: var(--font-text, inherit);
   font-size: 0.86rem;

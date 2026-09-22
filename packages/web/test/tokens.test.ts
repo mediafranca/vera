@@ -1,7 +1,10 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { session } from '../src/tokens.ts';
+import { DEFAULT_TOKENS, session } from '../src/tokens.ts';
+
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -59,5 +62,12 @@ describe('diarios en el mapa', () => {
     assert.equal(session.graphJournals(), true);
     session.setGraphJournals(false);
     assert.equal(session.graphJournals(), false);
+  });
+});
+
+describe('superficies del sistema de diseño', () => {
+  it('cada superficie elevada usa el token gobernado que Vera realmente define', () => {
+    assert.ok(DEFAULT_TOKENS.some((token) => token.name === '--bg-raised'));
+    assert.doesNotMatch(styles, /var\(--surface\b/);
   });
 });
