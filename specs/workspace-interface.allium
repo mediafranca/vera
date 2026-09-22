@@ -1264,6 +1264,13 @@ surface VeraWorkspace {
         -- placed away from what it governs makes a reader learn a mapping that
         -- the layout could have told them.
 
+    @guarantee ThreeDimensionalMapMayOrbitItself
+        -- The three-dimensional map alone offers an optional slow orbit around
+        -- its vertical axis. The choice defaults to still, is remembered, and
+        -- changes neither the centre, distance nor inclination of the view.
+        -- A request to reduce motion always keeps the map still, regardless of
+        -- the remembered choice.
+
     @guarantee PublishedIsAMapFilterNotAnIdentity
         -- A public reading projects its bounded public graph; the authenticated
         -- workspace reads the owner's graph. The map does not ask the reader to

@@ -143,6 +143,7 @@ const LAYOUT_KEY = 'vera.layout';
 const VIEW_KEY = 'vera.graphView';
 const REACH_KEY = 'vera.graphReach';
 const JOURNALS_KEY = 'vera.graphJournals';
+const AUTO_ROTATE_KEY = 'vera.graphAutoRotate';
 
 export type ColourScheme = 'light' | 'dark';
 export type WorkspaceLayout = 'text_only' | 'graph_only' | 'split';
@@ -324,6 +325,11 @@ export const session = {
   /** Los días no pueblan la vecindad; el interruptor sólo permite ver el día en foco. */
   graphJournals: (): boolean => localStorage.getItem(JOURNALS_KEY) === 'true',
   setGraphJournals: (shown: boolean) => localStorage.setItem(JOURNALS_KEY, String(shown)),
+
+  /** La cámara 3D sólo gira sola cuando la persona lo ha pedido. */
+  graphAutoRotate: (): boolean => localStorage.getItem(AUTO_ROTATE_KEY) === 'true',
+  setGraphAutoRotate: (rotating: boolean) =>
+    localStorage.setItem(AUTO_ROTATE_KEY, String(rotating)),
 
   graphView: (): GraphViewMode =>
     (localStorage.getItem(VIEW_KEY) as GraphViewMode | null) ?? 'graph_2d',

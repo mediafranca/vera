@@ -31,6 +31,7 @@ import type { RenderSettings } from "./render";
 import { type Moving, runs, spineForce } from "./spine.ts";
 import { icon } from "../icons.ts";
 import {
+  advanceAutoRotation,
   clampElevation,
   frameAround,
   frameBox,
@@ -1185,6 +1186,35 @@ export function renderGraph3D(
     sortByDepth();
   }
 
+  /*
+   * Una órbita optativa y lenta alrededor de Y. Se mide por tiempo y no por
+   * cuadros, para que una pantalla de 144 Hz no gire más rápido que una de 60.
+   * La preferencia de reducir movimiento manda incluso si quedó encendido el
+   * interruptor en otra sesión.
+   */
+  let autoRotating: number | null = null;
+  if (settings.autoRotate === true && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    let previous: number | null = null;
+    let lastSorted = 0;
+    const rotate = (now: number): void => {
+      if (previous !== null) {
+        // Una pestaña suspendida no recupera de golpe todo el tiempo perdido.
+        orbit = advanceAutoRotation(orbit, Math.min(64, now - previous));
+        heldOrbit = orbit;
+        paint();
+        // Reordenar hermanos SVG es más caro que proyectarlos. A esta velocidad,
+        // dos veces por segundo mantiene correcto el orden sin trabajo inútil.
+        if (now - lastSorted >= 500) {
+          sortByDepth();
+          lastSorted = now;
+        }
+      }
+      previous = now;
+      autoRotating = requestAnimationFrame(rotate);
+    };
+    autoRotating = requestAnimationFrame(rotate);
+  }
+
   // ---------------------------------------------------------------------
   // La mano. Un dedo gira; dos dedos acercan y corren; la rueda acerca.
   //
@@ -1590,6 +1620,7 @@ export function renderGraph3D(
   teardown = (): void => {
     sim.stop();
     if (gliding !== null) cancelAnimationFrame(gliding);
+    if (autoRotating !== null) cancelAnimationFrame(autoRotating);
     document.removeEventListener("constel:zoom", onZoom);
     document.removeEventListener("constel:center", onCentre);
     window.removeEventListener("resize", onResize);

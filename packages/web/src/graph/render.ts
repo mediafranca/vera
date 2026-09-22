@@ -47,6 +47,8 @@ export interface RenderSettings {
   showTitles?: boolean;
   fontSize?: number;
   thread?: ThreadSettings | null;
+  /** Hace orbitar lentamente la cámara 3D alrededor del eje vertical. */
+  autoRotate?: boolean;
 }
 
 // ── Title-mode constants ──

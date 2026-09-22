@@ -8,6 +8,7 @@ const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'u
 const mcp = readFileSync(new URL('../src/mcp-page.ts', import.meta.url), 'utf8');
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
 const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('superficies especiales', () => {
   it('reemplazan las áreas del mapa y ocupan la columna completa', () => {
@@ -56,5 +57,14 @@ describe('superficies especiales', () => {
   it('mantiene legibles los nombres del mapa 3D sin dejar que cubran el vecindario', () => {
     assert.match(graph3d, /const SCREEN_FONT_MIN = 11;/);
     assert.match(graph3d, /const SCREEN_FONT_MAX = 31;/);
+  });
+
+  it('ofrece rotación automática sólo en 3D y la cancela al desmontar', () => {
+    assert.match(html, /id="map-auto-rotate-field" hidden/);
+    assert.match(html, /id="map-auto-rotate"[^>]+role="switch"[^>]+aria-checked="false"/);
+    assert.match(main, /map-auto-rotate-field'\)\.hidden = workspace\.graphView !== 'graph_3d'/);
+    assert.match(main, /prefers-reduced-motion: reduce/);
+    assert.match(graph3d, /settings\.autoRotate === true && !window\.matchMedia\("\(prefers-reduced-motion: reduce\)"\)\.matches/);
+    assert.match(graph3d, /cancelAnimationFrame\(autoRotating\)/);
   });
 });

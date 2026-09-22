@@ -2,10 +2,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 import {
+  AUTO_ROTATION_PERIOD_MS,
   MAX_ELEVATION,
   MIN_DEPTH,
   NEAR,
   basisOf,
+  advanceAutoRotation,
   centreOf,
   clampElevation,
   cornersOf,
@@ -36,6 +38,19 @@ const near = (a: number, b: number, tol = 1e-9): void => {
 };
 
 describe("la base de la cámara", () => {
+  test("la rotación automática sólo cambia el azimut y tarda dos minutos por vuelta", () => {
+    const orbit: Orbit = {
+      centre: { x: 7, y: -2, z: 11 },
+      distance: 350,
+      azimuth: 0.4,
+      elevation: -0.25,
+    };
+    const advanced = advanceAutoRotation(orbit, AUTO_ROTATION_PERIOD_MS / 4);
+    assert.deepEqual(advanced.centre, orbit.centre);
+    assert.equal(advanced.distance, orbit.distance);
+    assert.equal(advanced.elevation, orbit.elevation);
+    near(advanced.azimuth, orbit.azimuth + Math.PI / 2);
+  });
   test("con los dos ángulos en cero mira hacia −Z, con la derecha en +X", () => {
     const { right, up, forward } = basisOf({
       centre: { x: 0, y: 0, z: 0 },

@@ -65,6 +65,19 @@ describe('diarios en el mapa', () => {
   });
 });
 
+describe('rotación automática del mapa 3D', () => {
+  it('nace apagada y el interruptor recuerda exactamente su estado', () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+
+    assert.equal(session.graphAutoRotate(), false);
+    session.setGraphAutoRotate(true);
+    assert.equal(session.graphAutoRotate(), true);
+    session.setGraphAutoRotate(false);
+    assert.equal(session.graphAutoRotate(), false);
+  });
+});
+
 describe('superficies del sistema de diseño', () => {
   it('cada superficie elevada usa el token gobernado que Vera realmente define', () => {
     assert.ok(DEFAULT_TOKENS.some((token) => token.name === '--bg-raised'));

@@ -107,6 +107,8 @@ interface Workspace {
   depth: number;
   /** Si el diario que ocupa el foco puede aparecer en el mapa. */
   graphJournals: boolean;
+  /** Si la cámara de la vista 3D orbita lentamente por sí sola. */
+  graphAutoRotate: boolean;
 }
 
 const workspace: Workspace = {
@@ -120,6 +122,7 @@ const workspace: Workspace = {
   trace: loadTrace(),
   depth: session.reach(),
   graphJournals: session.graphJournals(),
+  graphAutoRotate: session.graphAutoRotate(),
 };
 
 /**
@@ -496,6 +499,7 @@ function applyLayout(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
     button.setAttribute('aria-pressed', String(button.dataset['view'] === workspace.graphView));
   }
+  $('#map-auto-rotate-field').hidden = workspace.graphView !== 'graph_3d';
 
   if (effective !== 'text_only') drawGraph();
   else cleanupGraph3D();
@@ -2460,6 +2464,7 @@ async function drawGraph(completeD4 = false): Promise<void> {
     history: pagesOf(workspace.trace),
     showEdges: true,
     showTitles: true,
+    autoRotate: workspace.graphAutoRotate,
     // El nodo es su nombre. @guarantee GraphNodesAreTheirNames: un círculo al
     // lado no dice nada que el nombre no diga, y gasta el mismo sitio diciendo
     // menos. En 2D los nombres no se traslapan: dos nombres uno encima de otro
@@ -3327,6 +3332,36 @@ function wireTheme(): void {
     void refreshGraph();
   });
   showJournals();
+
+  /*
+   * Girar es una propiedad de la cámara 3D, no de los datos ni de las otras
+   * proyecciones. Por eso el control sólo aparece junto a esa dimensión. La
+   * preferencia se recuerda, pero una petición del sistema de reducir movimiento
+   * tiene precedencia sobre ella.
+   */
+  const autoRotateSwitch = $<HTMLButtonElement>('#map-auto-rotate');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const showAutoRotate = (): void => {
+    const allowed = !reducedMotion.matches;
+    autoRotateSwitch.disabled = !allowed;
+    autoRotateSwitch.setAttribute('aria-checked', String(allowed && workspace.graphAutoRotate));
+    autoRotateSwitch.textContent = allowed
+      ? (workspace.graphAutoRotate ? 'encendida' : 'apagada')
+      : 'movimiento reducido';
+    autoRotateSwitch.title = allowed ? '' : 'Desactivada por la preferencia de reducir movimiento';
+  };
+  autoRotateSwitch.addEventListener('click', () => {
+    if (reducedMotion.matches) return;
+    workspace.graphAutoRotate = !workspace.graphAutoRotate;
+    session.setGraphAutoRotate(workspace.graphAutoRotate);
+    showAutoRotate();
+    applyLayout();
+  });
+  reducedMotion.addEventListener('change', () => {
+    showAutoRotate();
+    applyLayout();
+  });
+  showAutoRotate();
 
   // El switch de la vista, en el orden del espacio que gobierna.
   const SWITCH: Record<string, IconName> = {
