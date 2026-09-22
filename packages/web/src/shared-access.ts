@@ -139,30 +139,40 @@ function pendingPasskeyEnrollment(): PendingPasskeyEnrollment | null {
 export function offerPasskeyEnrollment(): void {
   const pending = pendingPasskeyEnrollment();
   if (pending === null) return;
-  sessionStorage.removeItem('vera-passkey-enrollment');
 
   const dialog = document.createElement('dialog');
   dialog.className = 'passkey-enrollment-dialog';
-  const title = document.createElement('h2'); title.textContent = 'Guarda tu acceso en este dispositivo';
+  const title = document.createElement('h2'); title.textContent = 'Guarda tu acceso sin contraseña';
   const explanation = document.createElement('p');
-  explanation.textContent = 'Tu acceso ya está activo. Para conservarlo si esta sesión vence o se borra, puedes crear una passkey ahora.';
-  const handoff = document.createElement('p');
-  handoff.textContent = 'Al continuar, tu dispositivo abrirá una ventana propia y puede pedirte rostro, huella o PIN. También puede mencionar Apple, Google o Windows. Vera no recibe ninguno de esos datos.';
+  explanation.textContent = 'Tu acceso ya está activo. No tienes que crear nada antes ni buscar una opción en Chrome: pulsa el botón de abajo y Vera le pedirá a tu navegador crear una llave de acceso (passkey) para este sitio.';
+  const steps = document.createElement('ol'); steps.className = 'passkey-steps';
+  for (const said of [
+    'Pulsa “Crear y guardar mi acceso”.',
+    'Chrome abrirá su propia ventana. Elige dónde guardar la llave si te ofrece más de una opción.',
+    'Confirma como te lo pida el dispositivo: con PIN, huella o rostro. Vera no recibe ese dato.',
+  ]) {
+    const step = document.createElement('li'); step.textContent = said; steps.append(step);
+  }
   const consequence = document.createElement('p');
   consequence.textContent = 'Si eliges “Ahora no”, seguirás dentro con esta sesión. Si la pierdes, necesitarás otra invitación.';
   const actions = document.createElement('div'); actions.className = 'dialog-actions';
   const later = document.createElement('button'); later.textContent = 'Ahora no';
-  const create = document.createElement('button'); create.className = 'dialog-primary-action'; create.textContent = 'Guardar mi acceso';
-  later.onclick = () => dialog.close();
+  const create = document.createElement('button'); create.className = 'dialog-primary-action'; create.textContent = 'Crear y guardar mi acceso';
+  actions.append(later, create);
+  later.onclick = () => {
+    sessionStorage.removeItem('vera-passkey-enrollment');
+    dialog.close();
+  };
   create.onclick = () => void (async () => {
     create.disabled = true; later.disabled = true; create.textContent = 'Abriendo tu dispositivo…';
     try {
       const options = await json('/human-auth/registration/options', 'POST', pending);
       const response = await startRegistration({ optionsJSON: options });
       await json('/human-auth/registration/verify', 'POST', { ...pending, response });
+      sessionStorage.removeItem('vera-passkey-enrollment');
       title.textContent = 'Acceso guardado';
       explanation.textContent = 'Podrás volver a entrar usando la passkey de este dispositivo.';
-      handoff.remove(); consequence.remove(); actions.replaceChildren();
+      steps.remove(); consequence.remove(); actions.replaceChildren();
       const done = document.createElement('button'); done.className = 'dialog-primary-action'; done.textContent = 'Continuar';
       done.onclick = () => dialog.close(); actions.append(done);
     } catch (error) {
@@ -172,7 +182,7 @@ export function offerPasskeyEnrollment(): void {
     }
   })();
   dialog.addEventListener('close', () => dialog.remove());
-  dialog.append(title, explanation, handoff, consequence, actions);
+  dialog.append(title, explanation, steps, consequence, actions);
   document.body.append(dialog); dialog.showModal();
 }
 

@@ -3300,6 +3300,8 @@ html.presenting body {
 .passkey-enrollment-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 .passkey-enrollment-dialog h2 { margin: 0 0 1rem; font: 600 clamp(1.3rem, 5vw, 1.8rem)/1.2 var(--font-ui); }
 .passkey-enrollment-dialog p { margin: 0.75rem 0; color: var(--text-dim); line-height: 1.5; }
+.passkey-enrollment-dialog .passkey-steps { margin: 1rem 0; padding-left: 1.35rem; color: var(--text); line-height: 1.5; }
+.passkey-enrollment-dialog .passkey-steps li + li { margin-top: 0.45rem; }
 .passkey-enrollment-dialog p[data-bad='true'] { color: var(--warm); }
 .passkey-enrollment-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1.5rem; }
 .passkey-enrollment-dialog button { padding: 0.7rem 0.9rem; border: 1px solid var(--rule); border-radius: 0.5rem; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }

@@ -1219,10 +1219,13 @@ surface InvitationRedemption {
     @guarantee APasskeyIsProgressiveAndExplained
         -- Once inside, Vera offers to preserve access with a passkey but allows
         -- the person to defer it. Before invoking the operating-system dialog,
-        -- Vera explains that the device may ask for face, fingerprint or PIN,
-        -- may name its credential manager, and shares none of those secrets
-        -- with Vera. Deferring means a lost or expired session requires another
-        -- invitation.
+        -- Vera says that nothing needs to be created beforehand or found in the
+        -- browser settings, names the action that opens the browser's own dialog,
+        -- and explains that the device may ask for face, fingerprint or PIN.
+        -- Vera receives none of those secrets. Reloading before deciding offers
+        -- the same action again; only completing it or explicitly deferring it
+        -- dismisses the offer. Deferring means a lost or expired session requires
+        -- another invitation.
 }
 
 surface HumanSessionBoundary {

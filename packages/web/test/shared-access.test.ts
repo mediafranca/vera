@@ -17,10 +17,27 @@ describe('entrada por invitación', () => {
   });
 
   it('anticipa la ventana propia del sistema y permite postergarla', () => {
-    assert.match(invitation, /rostro, huella o PIN/);
-    assert.match(invitation, /Apple, Google o Windows/);
-    assert.match(invitation, /Vera no recibe ninguno de esos datos/);
+    assert.match(invitation, /No tienes que crear nada antes ni buscar una opción en Chrome/);
+    assert.match(invitation, /Crear y guardar mi acceso/);
+    assert.match(invitation, /Chrome abrirá su propia ventana/);
+    assert.match(invitation, /PIN, huella o rostro/);
+    assert.match(invitation, /Vera no recibe ese dato/);
     assert.match(invitation, /Ahora no/);
     assert.match(invitation, /necesitarás otra invitación/);
+  });
+
+  it('conserva la oferta al recargar hasta completarla o rechazarla explícitamente', () => {
+    const offered = invitation.slice(invitation.indexOf('export function offerPasskeyEnrollment'));
+    const beforeActions = offered.slice(0, offered.indexOf("later.onclick"));
+    assert.doesNotMatch(beforeActions, /removeItem\('vera-passkey-enrollment'\)/);
+    assert.match(offered, /later\.onclick[\s\S]+removeItem\('vera-passkey-enrollment'\)/);
+    assert.match(offered, /registration\/verify[\s\S]+removeItem\('vera-passkey-enrollment'\)/);
+  });
+
+  it('monta ambas acciones dentro del diálogo, no sólo crea sus botones', () => {
+    assert.match(invitation, /actions\.append\(later, create\)/);
+    const mounted = invitation.indexOf('actions.append(later, create)');
+    const shown = invitation.indexOf('dialog.showModal()');
+    assert.ok(mounted >= 0 && mounted < shown);
   });
 });
