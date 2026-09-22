@@ -1913,6 +1913,15 @@ html.presenting body {
 .vera-presentation .presentation-spatial > .presentation-block > .body {
   display: grid;
   place-items: center;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.vera-presentation .presentation-spatial > .presentation-block > .body:hover {
+  background: transparent !important;
 }
 
 .vera-presentation .presentation-spatial > .presentation-block > .body > p:only-child,
@@ -1968,6 +1977,43 @@ html.presenting body {
   height: 100% !important;
   max-width: none !important;
   max-height: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Una tabla que constituye la lámina completa también es espacial: primero usa
+   el escenario entero; sólo si aun así no cabe aparece desplazamiento. */
+.vera-presentation .presentation-spatial[data-presentation-medium="table"] {
+  overflow: auto;
+}
+
+.vera-presentation .presentation-spatial[data-presentation-medium="table"] > .presentation-block > .body {
+  display: block;
+}
+
+.vera-presentation .presentation-spatial .body > .table-scroll,
+.vera-presentation .presentation-spatial .body > table {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  overflow: auto;
+}
+
+.vera-presentation .presentation-spatial .body table {
+  width: 100% !important;
+  max-width: none !important;
+  font-size: clamp(0.9rem, 1.5vw, 1.2rem) !important;
+}
+
+.vera-presentation .presentation-spatial .body table :is(th, td) {
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+.vera-presentation .presentation-spatial .body table :is(th, td):first-child {
+  min-width: clamp(8rem, 12vw, 10rem);
 }
 
 .presentation-toolbar {

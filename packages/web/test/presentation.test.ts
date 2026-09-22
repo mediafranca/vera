@@ -60,6 +60,8 @@ describe('páginas que se pueden presentar', () => {
     assert.match(styles, /height: calc\(100dvh - var\(--presentation-slide-top\) - var\(--presentation-slide-bottom\)\) !important;/);
     assert.match(styles, /\.presentation-spatial \.body :is\(img, video\) \{[\s\S]*?width: auto !important;[\s\S]*?height: auto !important;[\s\S]*?max-width: calc\(100vw[\s\S]*?max-height: calc\(100dvh/);
     assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?height: 100% !important;/);
+    assert.match(styles, /\.presentation-spatial > \.presentation-block > \.body:hover \{\s*background: transparent !important;/);
+    assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?border: 0 !important;[\s\S]*?box-shadow: none !important;/);
   });
 
   it('la presentación ya es el modo maximizado y no ofrece otro fullscreen', () => {
@@ -73,7 +75,12 @@ describe('páginas que se pueden presentar', () => {
     for (const kind of ['executable', 'drawn', 'mermaid-figure']) {
       assert.match(source, new RegExp(`only\\.matches\\('\\.${kind}'\\)`));
     }
+    assert.match(source, /only\.matches\('\.table-scroll, table'\)/);
     assert.match(source, /only\.matches\('img, svg'\)/);
+    assert.match(
+      readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
+      /presentation-medium="table"[\s\S]*?overflow: auto;[\s\S]*?\.body table \{[\s\S]*?font-size: clamp\(0\.9rem, 1\.5vw, 1\.2rem\) !important;[\s\S]*?word-break: normal !important;[\s\S]*?min-width: clamp\(8rem, 12vw, 10rem\);/,
+    );
   });
 
   it('convierte cada bloque raíz en una lámina y conserva dentro sus descendientes', () => {
