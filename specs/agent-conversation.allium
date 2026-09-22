@@ -90,6 +90,12 @@ contract ConversationWithAgent {
         -- Dispatch may retry after a timeout or restart. The durable request id is
         -- the idempotency key: receiving it twice cannot create two conversations,
         -- two replies or two proposals.
+
+    @invariant AHumanReadsOnlyTheirOwnConversation
+        -- A participant invited into a shared space remains a full human
+        -- conversant, but the request list, individual turns and replies visible
+        -- there belong only to that participant. Sharing a page does not merge
+        -- the private conversations held over it.
 }
 
 ------------------------------------------------------------

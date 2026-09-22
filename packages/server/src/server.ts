@@ -1348,6 +1348,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       : new Set(graph.pages().filter((page) => pageBelongsToSharedSpace(graph, publicScopedSpace, page.id))
         .map((page) => page.id));
     const isPublicPage = (page: string): boolean => scopedPageIds.has(page);
+    const creatorOf = (page: string): { participant: string; name: string } | null => {
+      const creation = graph.operations().find((operation) =>
+        operation.subjectId === page && operation.submission.change.kind === 'create_page');
+      if (creation === undefined) return null;
+      const participant = creation.submission.submittedBy;
+      return { participant, name: graph.participant(participant)?.name ?? participant };
+    };
     if (publicAccess && pathSpace !== null) {
       // Retira la cookie de versiones anteriores; ya no gobierna el ámbito.
       response.setHeader('set-cookie', 'vera_public_space=; Path=/; Max-Age=0; SameSite=Lax');
@@ -1367,8 +1374,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       publicScopedSpace !== null && canEditScopedSpace;
     const publicSharedContribution = request.method === 'POST' && path === '/shared-proposals' &&
       publicScopedSpace !== null && canContributeScopedSpace;
+    const publicSharedConversation = publicScopedSpace !== null && scopedParticipant !== null &&
+      scopedGrant !== undefined && (
+        (request.method === 'POST' && path === '/librarian/requests') ||
+        (request.method === 'GET' && path === '/librarian/requests') ||
+        ((request.method === 'GET' || request.method === 'DELETE') &&
+          /^\/librarian\/requests\/[^/]+$/.test(path))
+      );
     if (publicAccess && request.method !== 'GET' && request.method !== 'HEAD' &&
-      !publicReadThroughBody && !publicAdmission && !publicSharedEdit && !publicSharedContribution) {
+      !publicReadThroughBody && !publicAdmission && !publicSharedEdit && !publicSharedContribution &&
+      !publicSharedConversation) {
       send(response, 405, { error: 'anybody sólo puede leer' });
       return;
     }
@@ -1398,6 +1413,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         publicAdmission ||
         publicSharedEdit ||
         publicSharedContribution ||
+        publicSharedConversation ||
         publicSharedPath ||
         (publicScopedSpace !== null && path.startsWith('/p/')) ||
         canonicalPublication !== undefined ||
@@ -1436,6 +1452,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       send(response, 401, { error: who.detail });
       return;
     }
+    const conversationalHuman = publicAccess && publicSharedConversation
+      ? scopedParticipant
+      : who.participant;
 
     // Una credencial de captura es una ranura, no una llave de lectura. Puede
     // depositar exactamente en /captures y no abre ninguna otra superficie.
@@ -1609,7 +1628,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'POST' && path === '/librarian/requests') {
-      if (graph.participant(who.participant)?.kind !== 'human') {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: 'sólo una persona puede solicitar al bibliotecario' });
         return;
       }
@@ -1626,6 +1645,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'la página o el bloque ya no existe' });
         return;
       }
+      if (publicAccess && !isPublicPage(page.id)) {
+        send(response, 404, { error: 'la página o el bloque ya no existe' });
+        return;
+      }
       const blocks = graph.blocksOf(page.id);
       const snapshot = JSON.stringify({
         page: {
@@ -1637,7 +1660,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         blocks: blocks.map((one) => ({ id: one.stableId, parent: one.parent, position: one.position, content: one.content })),
       });
       const created = createLibrarianRequest(store, {
-        askedBy: who.participant,
+        askedBy: conversationalHuman,
         agent: librarianAgent,
         modality: block === undefined ? 'page' : 'block',
         text,
@@ -1657,7 +1680,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 400, { error: 'falta una página válida' });
         return;
       }
-      deliver(librarianRequestsFor(store, pageId, block), {
+      if (publicAccess && !isPublicPage(pageId)) {
+        send(response, 404, { error: 'falta una página válida' });
+        return;
+      }
+      deliver(librarianRequestsFor(
+        store,
+        pageId,
+        block,
+        publicAccess ? (conversationalHuman ?? undefined) : undefined,
+      ), {
         surface: 'GET /librarian/requests', subject: pageId, delivered: [pageId, ...(block ? [block] : [])],
       });
       return;
@@ -1669,16 +1701,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const action = librarianMatch[2] ?? null;
       const current = librarianRequest(store, id);
       if (current === undefined) { send(response, 404, { error: 'la solicitud no existe' }); return; }
+      if (publicAccess && (current.sourcePageId === null || !isPublicPage(current.sourcePageId))) {
+        send(response, 404, { error: 'la solicitud no existe' }); return;
+      }
       if (request.method === 'GET' && action === null) {
-        if (who.participant !== current.askedBy && who.participant !== librarianAgent) {
-          send(response, 403, { error: 'la solicitud pertenece a otra conversación' }); return;
+        if (conversationalHuman !== current.askedBy && who.participant !== librarianAgent) {
+          send(response, publicAccess ? 404 : 403, {
+            error: publicAccess ? 'la solicitud no existe' : 'la solicitud pertenece a otra conversación',
+          }); return;
         }
         deliver(current, { surface: 'GET /librarian/requests/:id', subject: id, delivered: [id] });
         return;
       }
       if (request.method === 'DELETE' && action === null) {
-        if (who.participant !== current.askedBy) {
-          send(response, 403, { error: 'sólo quien hizo la solicitud puede eliminarla' }); return;
+        if (conversationalHuman !== current.askedBy) {
+          send(response, publicAccess ? 404 : 403, {
+            error: publicAccess ? 'la solicitud no existe' : 'sólo quien hizo la solicitud puede eliminarla',
+          }); return;
         }
         removeLibrarianRequest(store, id);
         send(response, 200, { status: 'removed', id });
@@ -1914,7 +1953,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
         if (publicSharedEdit) {
           const touched = pageTouchedBy(input.change, null, (block) => graph.block(block)?.page);
-          if (touched === null || !scopedPageIds.has(touched)) {
+          if (input.change.kind !== 'create_page' && (touched === null || !scopedPageIds.has(touched))) {
             send(response, 403, {
               status: 'rejected',
               reason: 'el permiso de edición sólo alcanza páginas de este espacio compartido',
@@ -2006,9 +2045,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // transacción revierte sola, pero sin este intento la excepción subía
         // hasta el proceso y se llevaba el servidor por delante: una operación
         // que no se puede guardar tiene que devolver un error, no un reinicio.
+        const createsSharedPage = publicSharedEdit && publicScopedSpace !== null &&
+          scopedParticipant !== null && input.change.kind === 'create_page';
+        const sharedPageSavepoint = `shared_page_${outcome.operation.sequence}`;
+        if (createsSharedPage) store.db.exec(`SAVEPOINT ${sharedPageSavepoint}`);
         try {
           recordOperation(store, graph, outcome.operation);
+          if (createsSharedPage) {
+            includeManualPage(store, scopedParticipant, publicScopedSpace, outcome.subjectId);
+            store.db.exec(`RELEASE ${sharedPageSavepoint}`);
+          }
         } catch (error) {
+          if (createsSharedPage) {
+            store.db.exec(`ROLLBACK TO ${sharedPageSavepoint}`);
+            store.db.exec(`RELEASE ${sharedPageSavepoint}`);
+          }
           /*
            * La memoria vuelve a ser la del disco.
            *
@@ -5430,6 +5481,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           access: publicAccess ? 'anybody' : 'owner',
           canEdit: publicAccess ? canEditScopedSpace : true,
           canContribute: publicAccess ? canContributeScopedSpace : false,
+          canAskLibrarian: publicAccess
+            ? publicScopedSpace !== null && scopedParticipant !== null && scopedGrant !== undefined
+            : true,
           canViewOwner: !publicOrigin,
           entryPoint: publicAccess && siteEntry !== null && isPublicPage(siteEntry) ? siteEntry : null,
           transparentBlockTraceability: publicAccess && publicScopedSpace === null
@@ -5742,6 +5796,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             visibility: page.visibility,
             publication: publicationView(page.id),
             createdAt: page.createdAt,
+            createdBy: creatorOf(page.id),
             originCreatedAt: page.originCreatedAt,
             lastEditedAt: graph.lastEditedAt(page.id),
             properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
@@ -5864,6 +5919,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           visibility: page.visibility,
           publication: publicationView(page.id),
           createdAt: page.createdAt,
+          createdBy: creatorOf(page.id),
           originCreatedAt: page.originCreatedAt,
           lastEditedAt: graph.lastEditedAt(page.id),
           properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),

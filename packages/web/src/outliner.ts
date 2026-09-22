@@ -229,6 +229,8 @@ function wireExternalLinks(container: HTMLElement): void {
 
 export interface OutlinerCallbacks {
   onNavigate(title: string): void;
+  /** La sesión es una persona capaz de mantener su conversación privada. */
+  canAskLibrarian?: boolean;
   /** Apariencia compartida con el presentador, para que no invente una segunda
    * preferencia local mientras ocupa toda la pantalla. */
   scheme?(): 'light' | 'dark';
@@ -3757,6 +3759,16 @@ export function renderOutliner(
       ? 'No se recuperó una fecha anterior: ésta es la fecha cierta de entrada a Vera.'
       : 'Recuperada del corpus de origen.',
   );
+  if (page.createdBy !== undefined && page.createdBy !== null) {
+    const key = document.createElement('dt');
+    key.className = 'property-key';
+    key.textContent = 'creada en Vera por';
+    const value = document.createElement('dd');
+    value.className = 'property-value governed';
+    value.textContent = page.createdBy.name;
+    value.title = `Autoría registrada como ${page.createdBy.participant}`;
+    properties.append(key, value);
+  }
   temporal(
     derived.updated,
     page.lastEditedAt,
@@ -4250,6 +4262,11 @@ export function renderOutliner(
     event.stopPropagation();
     if (readOnly) {
       openBlockMenu(more, [[
+        ...(callbacks.canAskLibrarian === true ? [{
+          label: 'Solicitar al bibliotecario',
+          icon: 'message-square',
+          run: () => void askLibrarian(page, null, callbacks),
+        } satisfies MenuAction] : []),
         {
           label: session.frontMatterOpen() ? 'ocultar propiedades' : 'mostrar propiedades',
           run: () => {
@@ -4931,6 +4948,11 @@ export function renderOutliner(
       if (draggedMoved) return;
       if (readOnly) {
         openBlockMenu(bullet, [[
+          ...(callbacks.canAskLibrarian === true ? [{
+            label: 'Solicitar al bibliotecario',
+            icon: 'message-square',
+            run: () => void askLibrarian(page, node.block, callbacks),
+          } satisfies MenuAction] : []),
           {
             label: 'Copiar',
             icon: 'copy',

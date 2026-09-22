@@ -869,7 +869,7 @@ rule AuthorizedParticipantEditsCanonicalPage {
 }
 
 rule AuthorizedParticipantCreatesPageInsideSharedSpace {
-    when: CreatePageInSharedSpace(participant, space, page_origin_id, page_change, channel, evidence?)
+    when: CreatePageInSharedSpace(participant, space, page, page_origin_id, page_change, channel, evidence?)
 
     let grant = AccessGrant{space: space, participant: participant, status: active}
 
@@ -878,11 +878,19 @@ rule AuthorizedParticipantCreatesPageInsideSharedSpace {
     requires: channel != authenticated_voice or evidence != null
 
     ensures: core/ParticipantSubmits(participant, space.graph, page_origin_id, page_change, channel, evidence)
+    ensures: ManualPageInclusion.created(
+        space: space,
+        page: page,
+        added_by: participant,
+        status: active,
+        added_at: now,
+        removed_at: null
+    )
 
     @guidance
-        -- Creating a canonical page does not silently publish it. The owner may
-        -- include it explicitly, or it may enter later by satisfying the space's
-        -- declared criteria.
+        -- Following a missing link while editing a shared space creates one
+        -- canonical page and includes it explicitly in that same space. It does
+        -- not publish the page outside the space or broaden any other grant.
 }
 
 rule OwnerAcceptsSharedProposal {
@@ -1460,7 +1468,7 @@ surface SharedSpaceParticipation {
         EditSharedPage(participant, space, page, origin_id, change, channel, evidence?)
             when participant = space.owner or
                  edit in AccessGrant{space: space, participant: participant, status: active}.permissions
-        CreatePageInSharedSpace(participant, space, page_origin_id, page_change, channel, evidence?)
+        CreatePageInSharedSpace(participant, space, page, page_origin_id, page_change, channel, evidence?)
             when participant = space.owner or
                  edit in AccessGrant{space: space, participant: participant, status: active}.permissions
 

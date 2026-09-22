@@ -117,6 +117,8 @@ export interface PageView {
   /** Nulo cuando esta instancia no tiene un sitio público configurado. */
   publication?: PublicationView | null;
   createdAt: number;
+  /** La mano que sometió `create_page`, derivada del registro inmutable. */
+  createdBy?: { participant: string; name: string } | null;
   originCreatedAt: number | null;
   lastEditedAt: number | null;
   properties: { key: string; value: string }[];
@@ -790,6 +792,8 @@ export interface CorpusHealth {
   canEdit?: boolean;
   /** Una sesión invitada puede proponer sin modificar todavía el corpus. */
   canContribute?: boolean;
+  /** Una persona identificada en el espacio puede conversar aunque sólo lea. */
+  canAskLibrarian?: boolean;
   /** Falso en el origen público: anybody nunca puede elevarse desde allí. */
   canViewOwner?: boolean;
   /** Portada del sitio cuando la lectura ocurre por el origen público. */
