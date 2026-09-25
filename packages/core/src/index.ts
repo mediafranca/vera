@@ -95,7 +95,7 @@ export {
   writeDrawing,
 } from './drawing.ts';
 export type { DrawnSvg, Extents, Nib, Point, Segment, Stroke } from './drawing.ts';
-export type { RenderOptions } from './markdown.ts';
+export type { EmbeddedMapConfig, RenderOptions } from './markdown.ts';
 export { answersIn } from './vocabulary.ts';
 
 export {

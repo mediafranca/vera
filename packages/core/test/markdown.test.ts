@@ -444,6 +444,13 @@ describe('renderMarkdown', () => {
       assert.match(html, /createCanvas\(40, 40\)/);
     });
 
+    it('presta el alto disponible sólo al p5.js que pide windowHeight', () => {
+      const fluid = renderMarkdown('```p5js\ncreateCanvas(windowWidth, windowHeight)\n```');
+      const intrinsic = renderMarkdown('```p5js\ncreateCanvas(400, 400)\n```');
+      assert.match(fluid, /executable-window-height/);
+      assert.ok(!intrinsic.includes('executable-window-height'));
+    });
+
     it('presenta SVG explícito en un recinto aislado y conserva su fuente', () => {
       const source = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>';
       const html = renderMarkdown(`\`\`\`svg\n${source}\n\`\`\``);
@@ -604,6 +611,45 @@ describe('incrustaciones', () => {
     assert.match(html, /referrerpolicy="strict-origin-when-cross-origin"/);
     assert.match(html, /Traer transcripción/);
     assert.match(html, /data-youtube-source="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
+  });
+
+  it('un clip de YouTube conserva la fuente y limita la reproducción', () => {
+    const source = 'https://youtu.be/dQw4w9WgXcQ\ndesde: 01:20\nhasta: 02:05';
+    const html = renderMarkdown(`\`\`\`clip\n${source}\n\`\`\``, allowed);
+    assert.match(html, /embed\/dQw4w9WgXcQ\?start=80&amp;end=125/);
+    assert.match(html, /clip 01:20–02:05/);
+    assert.match(html, /data-youtube-source="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
+    assert.match(html, /fuente clip/);
+  });
+
+  it('un clip incompleto o invertido permanece como fuente inerte', () => {
+    for (const interval of ['desde: 00:40\nhasta: 00:20', 'desde: ahora\nhasta: 00:20']) {
+      const html = renderMarkdown(`\`\`\`clip\nhttps://youtu.be/dQw4w9WgXcQ\n${interval}\n\`\`\``, allowed);
+      assert.ok(!html.includes('<iframe'));
+      assert.match(html, /language-clip/);
+    }
+  });
+
+  it('un mapa declara foco, vista, alcance, rotación y alto mínimo', () => {
+    const source = 'página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: sí\nalto: 720';
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.match(html, /class="embedded-map"/);
+    assert.match(html, /map-frame\.html#/);
+    assert.match(html, /--embedded-height:720px/);
+    assert.match(html, /mapa · VERA · 3D · alcance 2 · rotación sí/);
+    assert.match(html, /fuente mapa/);
+  });
+
+  it('un mapa rechaza alcance, rotación o alto incoherentes', () => {
+    for (const source of [
+      'página: [[VERA]]\nvista: 2D\nalcance: 4\nrotación: no\nalto: 640',
+      'página: [[VERA]]\nvista: 2D\nalcance: 2\nrotación: sí\nalto: 640',
+      'página: [[VERA]]\nvista: D4\nalcance: 2\nrotación: no\nalto: 320',
+    ]) {
+      const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+      assert.ok(!html.includes('<iframe'));
+      assert.match(html, /language-mapa/);
+    }
   });
 
   it('reconoce watch, shorts y no incrusta una URL mezclada con prosa', () => {

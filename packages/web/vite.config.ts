@@ -26,7 +26,18 @@ export default defineConfig({
    * retirar sólo huellas que ya no estén referidas por ningún shell retenido;
    * Vite no dispone de ese conocimiento al compilar.
    */
-  build: { outDir: 'dist', assetsDir: 'build', emptyOutDir: false, target: 'es2023' },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'build',
+    emptyOutDir: false,
+    target: 'es2023',
+    rollupOptions: {
+      input: {
+        main: new URL('./index.html', import.meta.url).pathname,
+        mapFrame: new URL('./map-frame.html', import.meta.url).pathname,
+      },
+    },
+  },
   publicDir: 'public',
   server: {
     // En desarrollo el cliente habla con el servidor local de Vera.

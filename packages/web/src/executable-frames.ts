@@ -99,8 +99,16 @@ addEventListener('message', (event: MessageEvent<unknown>) => {
   const frame = frames().find((one) => one.contentWindow === event.source);
   if (frame === undefined) return;
   const asked = typeof data.height === 'number' && Number.isFinite(data.height) ? data.height : MIN_HEIGHT;
-  frame.style.height = `${Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.ceil(asked)))}px`;
+  const fillsAvailableHeight = frame.closest('.executable-window-height') !== null;
+  const minimum = fillsAvailableHeight ? Math.max(640, window.innerHeight) : MIN_HEIGHT;
+  frame.style.height = `${Math.min(MAX_HEIGHT, Math.max(minimum, Math.ceil(asked)))}px`;
   send(frame);
+});
+
+addEventListener('resize', () => {
+  for (const frame of frames()) {
+    if (frame.closest('.executable-window-height') !== null) send(frame);
+  }
 });
 
 // Los tokens y el esquema viven como atributos de la raíz. Observarlos hace

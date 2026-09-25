@@ -3865,6 +3865,15 @@ async function boot(attempt = 1): Promise<void> {
   }
 }
 
+window.addEventListener('message', (event: MessageEvent<unknown>) => {
+  const data = event.data as { type?: unknown; page?: unknown } | null;
+  if (event.origin !== location.origin || data?.type !== 'vera-embedded-map-open' || typeof data.page !== 'string') return;
+  const belongsToMap = [...document.querySelectorAll<HTMLIFrameElement>('.embedded-map iframe')]
+    .some((frame) => frame.contentWindow === event.source);
+  if (!belongsToMap) return;
+  void openPage(data.page, null, { gesture: 'pressed_on_the_map' });
+});
+
 if (!handlesSharedAccess()) void boot();
 
 /*

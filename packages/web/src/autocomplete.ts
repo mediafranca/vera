@@ -238,6 +238,18 @@ export const COMMANDS: Command[] = [
   { name: 'codigo', hint: 'bloque de código', inserts: '```\n\n```', caret: 4, group: 'formato' },
   { name: 'html', hint: 'HTML ejecutable y aislado', inserts: '```html-live\n\n```', caret: 13 },
   { name: 'iframe', hint: 'Incrustación externa autorizada', inserts: '```iframe\n\n```', caret: 10 },
+  {
+    name: 'clip',
+    hint: 'fragmento de YouTube entre dos tiempos',
+    inserts: '```clip\nhttps://youtu.be/\ndesde: 00:00\nhasta: 00:30\n```',
+    caret: 26,
+  },
+  {
+    name: 'mapa',
+    hint: 'mapa 2D, 3D o D4 centrado en una página',
+    inserts: '```mapa\npágina: [[]]\nvista: 2D\nalcance: 2\nrotación: no\nalto: 640\n```',
+    caret: 20,
+  },
   { name: 'svg', hint: 'SVG aislado para ilustraciones', inserts: '```svg\n<svg viewBox="0 0 800 600" role="img" aria-label="">\n\n</svg>\n```', caret: 67 },
   {
     name: 'p5js',

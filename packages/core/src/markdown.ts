@@ -94,7 +94,18 @@ export function linkedResourceIn(source: string): string | null {
   );
 }
 
-export function embedIn(source: string, hosts: readonly string[] = []): string | null {
+interface EmbedPresentation {
+  className?: string;
+  caption?: string;
+  youtubeSource?: string;
+  source?: { label: string; text: string };
+}
+
+export function embedIn(
+  source: string,
+  hosts: readonly string[] = [],
+  presentation: EmbedPresentation = {},
+): string | null {
   const provider = providerEmbed(source.trim());
   const found = EMBED.exec(provider ?? source);
   if (found === null) return null;
@@ -199,23 +210,25 @@ export function embedIn(source: string, hosts: readonly string[] = []): string |
     // La dirección viaja en el marcado aunque en pantalla se lea sólo quién
     // aloja: impresa, una incrustación es un rectángulo en blanco, y lo único
     // que puede salvarla es decir dónde estaba.
-    `<figure class="embed" data-source="${quoteAttribute(escapeHtml(address))}">` +
+    `<figure class="embed${presentation.className === undefined ? '' : ` ${presentation.className}`}" data-source="${quoteAttribute(escapeHtml(address))}">` +
     `<iframe src="${quoteAttribute(escapeHtml(src))}" height="${height}" loading="lazy" ` +
     `referrerpolicy="${referrerPolicy}" sandbox="allow-scripts allow-forms allow-popups allow-same-origin" ` +
     `title="incrustado desde ${quoteAttribute(escapeHtml(host))}"></iframe>` +
     // Debajo, de dónde viene: un rectángulo que corre programa ajeno sin decir de
     // quién es se parece demasiado a una parte de Vera, y no lo es.
-    `<figcaption>incrustado desde ${escapeHtml(host)}` +
+    `<figcaption>${presentation.caption === undefined ? '' : `${escapeHtml(presentation.caption)} · `}incrustado desde ${escapeHtml(host)}` +
     (host === 'www.youtube-nocookie.com'
-      ? `<button type="button" class="youtube-transcript" data-youtube-source="${quoteAttribute(escapeHtml(source))}">Traer transcripción</button>`
+      ? `<button type="button" class="youtube-transcript" data-youtube-source="${quoteAttribute(escapeHtml(presentation.youtubeSource ?? source))}">Traer transcripción</button>`
       : '') +
     `</figcaption>` +
+    (presentation.source === undefined
+      ? ''
+      : `<details><summary>${escapeHtml(presentation.source.label)}</summary><pre><code>${escapeHtml(presentation.source.text)}</code></pre></details>`) +
     `</figure>`
   );
 }
 
-/** Una URL de YouTube pegada sola se vuelve su reproductor sin cookies. */
-function youtubeEmbed(source: string): string | null {
+function youtubeVideo(source: string): { id: string; source: string } | null {
   if (!/^https:\/\//i.test(source)) return null;
   try {
     const url = new URL(source);
@@ -226,11 +239,16 @@ function youtubeEmbed(source: string): string | null {
       if (url.pathname === '/watch') id = url.searchParams.get('v') ?? '';
       else id = /^\/(?:shorts|embed)\/([^/?]+)/.exec(url.pathname)?.[1] ?? '';
     }
-    if (!/^[\w-]{6,20}$/.test(id)) return null;
-    return `<iframe src="https://www.youtube-nocookie.com/embed/${id}" height="460"></iframe>`;
+    return /^[\w-]{6,20}$/.test(id) ? { id, source } : null;
   } catch {
     return null;
   }
+}
+
+/** Una URL de YouTube pegada sola se vuelve su reproductor sin cookies. */
+function youtubeEmbed(source: string): string | null {
+  const video = youtubeVideo(source);
+  return video === null ? null : `<iframe src="https://www.youtube-nocookie.com/embed/${video.id}" height="460"></iframe>`;
 }
 
 /** Una URL reconocida se proyecta al reproductor oficial de su proveedor. */
@@ -590,9 +608,88 @@ export function inlineMarkdown(source: string, options: RenderOptions = {}): str
 
 const FENCE = /^\s*(`{3,}|~{3,})\s*([\w+-]*)\s*$/;
 
+function namedLines(source: string): Map<string, string> {
+  const lines = new Map<string, string>();
+  for (const raw of source.split(/\r?\n/)) {
+    const found = /^\s*([^:]+):\s*(.*?)\s*$/.exec(raw);
+    if (found === null) continue;
+    lines.set((found[1] ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(), found[2] ?? '');
+  }
+  return lines;
+}
+
+function clipTime(value: string | undefined): number | null {
+  if (value === undefined || !/^\d+(?::[0-5]?\d){0,2}$/.test(value.trim())) return null;
+  const parts = value.trim().split(':').map(Number);
+  if (parts.some((part) => !Number.isFinite(part))) return null;
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+function youtubeClip(source: string, hosts: readonly string[]): string | null {
+  const first = source.split(/\r?\n/).map((line) => line.trim()).find((line) => /^https:\/\//i.test(line));
+  if (first === undefined) return null;
+  const video = youtubeVideo(first);
+  const values = namedLines(source);
+  const start = clipTime(values.get('desde'));
+  const end = clipTime(values.get('hasta'));
+  if (video === null || start === null || end === null || end <= start) return null;
+  const iframe = `<iframe src="https://www.youtube-nocookie.com/embed/${video.id}?start=${start}&end=${end}" height="460"></iframe>`;
+  return embedIn(iframe, hosts, {
+    className: 'embed-clip',
+    caption: `clip ${values.get('desde')}–${values.get('hasta')}`,
+    youtubeSource: first,
+    source: { label: 'fuente clip', text: source },
+  });
+}
+
+export interface EmbeddedMapConfig {
+  page: string;
+  view: '2d' | '3d' | 'd4';
+  reach: 1 | 2 | 3;
+  rotate: boolean;
+  height: number;
+}
+
+export function embeddedMapConfig(source: string): EmbeddedMapConfig | null {
+  const values = namedLines(source);
+  const page = (values.get('pagina') ?? '').replace(/^\[\[|\]\]$/g, '').trim();
+  const view = (values.get('vista') ?? '').trim().toLowerCase();
+  const reach = Number(values.get('alcance'));
+  const rotation = (values.get('rotacion') ?? 'no').trim().toLowerCase();
+  const saidHeight = values.get('alto');
+  const height = saidHeight === undefined || saidHeight.trim() === '' ? 640 : Number(saidHeight);
+  if (page === '' || !['2d', '3d', 'd4'].includes(view)) return null;
+  if (!Number.isInteger(reach) || reach < 1 || reach > 3) return null;
+  if (!Number.isInteger(height) || height < 640 || height > 2400) return null;
+  if (!['si', 'sí', 'no'].includes(rotation)) return null;
+  if (view !== '3d' && rotation !== 'no') return null;
+  return {
+    page,
+    view: view as EmbeddedMapConfig['view'],
+    reach: reach as EmbeddedMapConfig['reach'],
+    rotate: view === '3d' && rotation !== 'no',
+    height,
+  };
+}
+
+function embeddedMap(source: string): string | null {
+  const config = embeddedMapConfig(source);
+  if (config === null) return null;
+  const encoded = encodeURIComponent(JSON.stringify(config));
+  const rotation = config.view === '3d' ? ` · rotación ${config.rotate ? 'sí' : 'no'}` : '';
+  return `<figure class="embedded-map" style="--embedded-height:${config.height}px">` +
+    `<iframe src="/map-frame.html#${encoded}" height="${config.height}" loading="lazy" ` +
+    `sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" ` +
+    `title="mapa de ${quoteAttribute(escapeHtml(config.page))}, vista ${config.view.toUpperCase()}"></iframe>` +
+    `<figcaption>mapa · ${escapeHtml(config.page)} · ${config.view.toUpperCase()} · alcance ${config.reach}${rotation}</figcaption>` +
+    `<details><summary>fuente mapa</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
+}
+
 function executableBlock(language: string, source: string, options: RenderOptions): string | null {
   const kind = language.trim().toLowerCase();
   if (kind === 'iframe') return embedIn(source, options.embedHosts ?? []);
+  if (kind === 'clip') return youtubeClip(source, options.embedHosts ?? []);
+  if (kind === 'mapa' || kind === 'map') return embeddedMap(source);
   if (kind === 'mediawiki') {
     return `<figure class="mediawiki-figure"><div class="mediawiki-body">${renderMediaWiki(source)}</div><details><summary>fuente MediaWiki</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
   }
@@ -616,10 +713,11 @@ function executableBlock(language: string, source: string, options: RenderOption
       ].join('\n')))}"></iframe>`;
 
   const marked = kind === 'p5js' ? frame : frame.replace('<iframe ', '<iframe data-executable-frame ');
+  const heightClass = kind === 'p5js' && /\bwindowHeight\b/.test(source) ? ' executable-window-height' : '';
 
   // La fuente queda siempre al alcance: es la salida segura si el recinto no
   // puede ejecutarla y el camino para inspeccionar exactamente qué se escribió.
-  return `<figure class="executable executable-${kind}">${marked}<details><summary>fuente ${title}</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
+  return `<figure class="executable executable-${kind}${heightClass}">${marked}<details><summary>fuente ${title}</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
 }
 
 /** Puente mínimo del recinto: recibe apariencia y sólo devuelve su talla. */

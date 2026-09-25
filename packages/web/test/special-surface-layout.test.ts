@@ -8,6 +8,8 @@ const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'u
 const mcp = readFileSync(new URL('../src/mcp-page.ts', import.meta.url), 'utf8');
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
 const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
+const embeddedMap = readFileSync(new URL('../src/map-frame.ts', import.meta.url), 'utf8');
+const executableFrames = readFileSync(new URL('../src/executable-frames.ts', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('superficies especiales', () => {
@@ -76,5 +78,20 @@ describe('superficies especiales', () => {
     assert.match(main, /requestedDepth < targetDepth/);
     assert.match(main, /drawGraph\(requestedDepth \+ 1\)/);
     assert.match(main, /preserveDirection: requestedDepth > 1/);
+  });
+
+  it('entrega también los mapas incrustados por alcance y deja rotar la primera entrega', () => {
+    assert.match(embeddedMap, /fetch\('\/pages'\)/);
+    assert.match(embeddedMap, /one\.title\.toLocaleLowerCase\(\) === wanted/);
+    assert.match(embeddedMap, /void draw\(1\)/);
+    assert.match(embeddedMap, /reach < config\.reach/);
+    assert.match(embeddedMap, /requestAnimationFrame\(\(\) => void draw\(reach \+ 1\)\)/);
+    assert.match(embeddedMap, /autoRotate: config\.view === '3d' && config\.rotate/);
+    assert.match(embeddedMap, /preserveDirection: reach > 1/);
+  });
+
+  it('reserva al menos 640 píxeles cuando un p5 pide windowHeight', () => {
+    assert.match(styles, /\.executable-window-height iframe[\s\S]*?height:\s*max\(640px, 100dvh\)/);
+    assert.match(executableFrames, /Math\.max\(640, window\.innerHeight\)/);
   });
 });
