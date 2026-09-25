@@ -90,6 +90,17 @@ describe('superficies especiales', () => {
     assert.match(embeddedMap, /preserveDirection: reach > 1/);
   });
 
+  it('presta a cada mapa incrustado los tokens efectivos sin volver a pedir el grafo', () => {
+    assert.match(executableFrames, /DEFAULT_TOKENS/);
+    assert.match(executableFrames, /vera-embedded-map-appearance/);
+    assert.match(executableFrames, /sendMapAppearance\(frame\)/);
+    assert.match(embeddedMap, /message\?\.type !== APPEARANCE/);
+    assert.match(embeddedMap, /document\.documentElement\.style\.setProperty\(name, value\)/);
+    assert.match(embeddedMap, /if \(shown !== null\) present\(shown\.data, shown\.reach, true\)/);
+    const appearanceHandler = embeddedMap.match(/addEventListener\('message',[\s\S]*?\n  \}\);/)?.[0] ?? '';
+    assert.doesNotMatch(appearanceHandler, /neighbourhood|fetch/);
+  });
+
   it('reserva al menos 640 píxeles cuando un p5 pide windowHeight', () => {
     assert.match(styles, /\.executable-window-height iframe[\s\S]*?height:\s*max\(640px, 100dvh\)/);
     assert.match(executableFrames, /Math\.max\(640, window\.innerHeight\)/);

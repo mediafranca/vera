@@ -207,6 +207,13 @@ contract BlockBehaviourPresentation {
         -- from the map already shown, and 3D rotation starts on what is present
         -- rather than waiting for the final ring.
 
+    @invariant EmbeddedMapsSpeakTheCurrentVisualLanguage
+        -- Every embedded map uses the effective colour, typography, node and edge
+        -- tokens of the Vera page that contains it, in 2D, 3D and D4. A later
+        -- appearance change updates the map already shown without fetching its
+        -- graph again. The page lends resolved values, not its stylesheet or DOM,
+        -- so visual consistency does not erase the frame boundary.
+
     @invariant MarkdownIsTheSafeDefault
         -- A block that does not unambiguously satisfy one specialised form is
         -- standard Markdown. Malformed or merely suggestive source is shown for

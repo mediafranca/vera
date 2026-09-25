@@ -6,6 +6,8 @@ import { renderGraph3D } from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
 import type { GraphData } from './graph/types.ts';
 
+const APPEARANCE = 'vera-embedded-map-appearance';
+
 function configuration(): EmbeddedMapConfig | null {
   try {
     const value = JSON.parse(decodeURIComponent(location.hash.slice(1))) as Partial<EmbeddedMapConfig>;
@@ -49,26 +51,49 @@ if (config === null || root === null || map === null || status === null) {
   const open = (page: string): void => {
     parent.postMessage({ type: 'vera-embedded-map-open', page }, location.origin);
   };
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  let dark = matchMedia('(prefers-color-scheme: dark)').matches;
   let turn = 0;
   const identity = pageIdentity(config.page);
+  let shown: { data: GraphData; reach: number } | null = null;
+
+  const present = (data: GraphData, reach: number, appearanceChange = false): void => {
+    const settings = {
+      dark,
+      showEdges: true,
+      showTitles: true,
+      nodeStyle: 'title' as const,
+      autoRotate: config.view === '3d' && config.rotate,
+      preserveDirection: reach > 1 || appearanceChange,
+    };
+    if (config.view === '3d') renderGraph3D(map, data, open, settings);
+    else if (config.view === 'd4') renderGraphD4(map, data, open, settings);
+    else renderGraph(map, data, open, settings);
+    shown = { data, reach };
+  };
+
+  addEventListener('message', (event: MessageEvent<unknown>) => {
+    const message = event.data as {
+      type?: unknown;
+      appearance?: { scheme?: unknown; tokens?: unknown };
+    } | null;
+    if (event.source !== parent || event.origin !== location.origin || message?.type !== APPEARANCE) return;
+    const tokens = message.appearance?.tokens;
+    if (tokens === null || typeof tokens !== 'object') return;
+    for (const [name, value] of Object.entries(tokens)) {
+      if (/^--[a-z0-9-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value);
+    }
+    dark = message.appearance?.scheme === 'dark';
+    document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    if (shown !== null) present(shown.data, shown.reach, true);
+  });
 
   const draw = async (reach: number): Promise<void> => {
     const current = ++turn;
     try {
       const data = await neighbourhood(await identity, reach);
       if (current !== turn) return;
-      const settings = {
-        dark,
-        showEdges: true,
-        showTitles: true,
-        nodeStyle: 'title' as const,
-        autoRotate: config.view === '3d' && config.rotate,
-        preserveDirection: reach > 1,
-      };
-      if (config.view === '3d') renderGraph3D(map, data, open, settings);
-      else if (config.view === 'd4') renderGraphD4(map, data, open, settings);
-      else renderGraph(map, data, open, settings);
+      present(data, reach);
       status.textContent = reach < config.reach ? `Ampliando a alcance ${reach + 1}…` : '';
       if (reach < config.reach) requestAnimationFrame(() => void draw(reach + 1));
     } catch {

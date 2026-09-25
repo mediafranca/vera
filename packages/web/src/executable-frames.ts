@@ -5,8 +5,10 @@
 // por `sandbox` mantiene esa frontera incluso cuando la fuente ejecuta scripts.
 
 import { icon } from './icons.ts';
+import { DEFAULT_TOKENS } from './tokens.ts';
 
 const MESSAGE = 'vera-executable-frame';
+const MAP_APPEARANCE = 'vera-embedded-map-appearance';
 const MIN_HEIGHT = 24;
 const MAX_HEIGHT = 2400;
 
@@ -18,10 +20,7 @@ function appearance(): { scheme: 'light' | 'dark'; tokens: Record<string, string
   const root = document.documentElement;
   const computed = getComputedStyle(root);
   const tokens: Record<string, string> = {};
-  for (const name of [
-    '--bg', '--bg-raised', '--text', '--text-dim', '--rule', '--accent',
-    '--text-size', '--line-height', '--font-body', '--font-ui', '--font-mono',
-  ]) tokens[name] = computed.getPropertyValue(name).trim();
+  for (const { name } of DEFAULT_TOKENS) tokens[name] = computed.getPropertyValue(name).trim();
   return { scheme: root.dataset['scheme'] === 'dark' ? 'dark' : 'light', tokens };
 }
 
@@ -39,6 +38,24 @@ function send(frame: HTMLIFrameElement): void {
     // de conservar el tamaño editorial de la página ordinaria.
     presentation: slide !== null,
   }, '*');
+}
+
+const wiredMaps = new WeakSet<HTMLIFrameElement>();
+
+function sendMapAppearance(frame: HTMLIFrameElement): void {
+  frame.contentWindow?.postMessage({ type: MAP_APPEARANCE, appearance: appearance() }, location.origin);
+}
+
+function wireEmbeddedMaps(root: ParentNode = document): void {
+  const nested = [...root.querySelectorAll<HTMLIFrameElement>('.embedded-map iframe')];
+  const direct = root instanceof HTMLIFrameElement && root.matches('.embedded-map iframe') ? [root] : [];
+  for (const frame of [...direct, ...nested]) {
+    if (!wiredMaps.has(frame)) {
+      wiredMaps.add(frame);
+      frame.addEventListener('load', () => sendMapAppearance(frame));
+    }
+    sendMapAppearance(frame);
+  }
 }
 
 let maximized: { figure: HTMLElement; frame: HTMLIFrameElement; button: HTMLButtonElement; overlay: HTMLElement } | null = null;
@@ -88,6 +105,7 @@ function wireHtmlControls(root: ParentNode = document): void {
 
 export function syncExecutableFrames(): void {
   wireHtmlControls();
+  wireEmbeddedMaps();
   for (const frame of frames()) send(frame);
 }
 
@@ -124,6 +142,7 @@ new MutationObserver((records) => {
       if (!(node instanceof HTMLElement)) continue;
       if (node.matches('.executable-html-live')) wireHtmlControls(node.parentNode ?? document);
       else wireHtmlControls(node);
+      wireEmbeddedMaps(node.matches('.embedded-map') ? node.parentNode ?? document : node);
     }
   }
 }).observe(document.body, { childList: true, subtree: true });
