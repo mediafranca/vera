@@ -1268,8 +1268,22 @@ surface VeraWorkspace {
         -- The three-dimensional map alone offers an optional slow orbit around
         -- its vertical axis. The choice defaults to still, is remembered, and
         -- changes neither the centre, distance nor inclination of the view.
+        -- Changing that choice acts on the camera already on screen: it neither
+        -- requests the graph again nor replaces the drawing before motion can
+        -- begin. A camera control must not be paid for as a data reload.
         -- A request to reduce motion always keeps the map still, regardless of
         -- the remembered choice.
+
+    @guarantee TheAvailableMapPrecedesItsEnrichment
+        -- A neighbourhood that has arrived is already visible, navigable and
+        -- governed by its camera controls while farther reaches are still being
+        -- prepared. Wider reaches arrive in ascending hops and extend that map;
+        -- they do not hold the nearer map behind the complete request.
+        --
+        -- Enrichment preserves the direction already chosen for the camera and
+        -- any live orbit. New nodes may require a wider frame, but their arrival
+        -- must not turn an active map back into a loading surface or silently
+        -- restart its controls.
 
     @guarantee PublishedIsAMapFilterNotAnIdentity
         -- A public reading projects its bounded public graph; the authenticated

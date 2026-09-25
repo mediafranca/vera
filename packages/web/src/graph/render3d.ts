@@ -122,6 +122,9 @@ let selected: string | null = null;
 /** Lo vivo ahora mismo, para poder desmontarlo. */
 let teardown: (() => void) | null = null;
 
+/** Cambia la órbita del mapa ya montado, sin volver a pedir ni dibujar sus datos. */
+let governAutoRotation: ((enabled: boolean) => void) | null = null;
+
 /**
  * Si lo que gira la rueda es un trackpad y no una rueda de ratón.
  *
@@ -166,6 +169,11 @@ export function selectNode3D(id: string | null): void {
 export function cleanupGraph3D(): void {
   teardown?.();
   teardown = null;
+}
+
+/** Gobierna la cámara 3D presente; si no hay una, la preferencia actuará al montarla. */
+export function setGraph3DAutoRotate(enabled: boolean): void {
+  governAutoRotation?.(enabled);
 }
 
 /**
@@ -293,6 +301,9 @@ export function renderGraph3D(
    * Conservar la vista es conservar un lugar, y un lugar sólo existe mientras
    * exista el reparto de nodos que lo definía.
    */
+  const previousDirection = settings.preserveDirection === true && heldOrbit !== null
+    ? { azimuth: heldOrbit.azimuth, elevation: heldOrbit.elevation }
+    : null;
   const signature = signatureOf(data.nodes.map((n) => n.id));
   if (heldFor !== null && heldFor !== signature) heldOrbit = null;
   heldFor = signature;
@@ -632,8 +643,8 @@ export function renderGraph3D(
   let orbit: Orbit = heldOrbit ?? {
     centre: { x: 0, y: 0, z: 0 },
     distance: 400,
-    azimuth: 0,
-    elevation: 0,
+    azimuth: previousDirection?.azimuth ?? 0,
+    elevation: previousDirection?.elevation ?? 0,
   };
   /** Si alguien ya decidió desde dónde mira. Encuadrar por encima sería quitarle el mapa. */
   let moved = heldOrbit !== null;
@@ -1193,27 +1204,40 @@ export function renderGraph3D(
    * interruptor en otra sesión.
    */
   let autoRotating: number | null = null;
-  if (settings.autoRotate === true && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    let previous: number | null = null;
-    let lastSorted = 0;
-    const rotate = (now: number): void => {
-      if (previous !== null) {
-        // Una pestaña suspendida no recupera de golpe todo el tiempo perdido.
-        orbit = advanceAutoRotation(orbit, Math.min(64, now - previous));
-        heldOrbit = orbit;
-        paint();
-        // Reordenar hermanos SVG es más caro que proyectarlos. A esta velocidad,
-        // dos veces por segundo mantiene correcto el orden sin trabajo inútil.
-        if (now - lastSorted >= 500) {
-          sortByDepth();
-          lastSorted = now;
-        }
+  let rotationEnabled = false;
+  let previousRotationFrame: number | null = null;
+  let lastSorted = 0;
+  const rotate = (now: number): void => {
+    if (!rotationEnabled) return;
+    if (previousRotationFrame !== null) {
+      // Una pestaña suspendida no recupera de golpe todo el tiempo perdido.
+      orbit = advanceAutoRotation(orbit, Math.min(64, now - previousRotationFrame));
+      heldOrbit = orbit;
+      paint();
+      // Reordenar hermanos SVG es más caro que proyectarlos. A esta velocidad,
+      // dos veces por segundo mantiene correcto el orden sin trabajo inútil.
+      if (now - lastSorted >= 500) {
+        sortByDepth();
+        lastSorted = now;
       }
-      previous = now;
-      autoRotating = requestAnimationFrame(rotate);
-    };
+    }
+    previousRotationFrame = now;
     autoRotating = requestAnimationFrame(rotate);
-  }
+  };
+  const setAutoRotation = (enabled: boolean): void => {
+    const allowed = enabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (allowed === rotationEnabled) return;
+    rotationEnabled = allowed;
+    previousRotationFrame = null;
+    if (allowed) {
+      autoRotating = requestAnimationFrame(rotate);
+    } else if (autoRotating !== null) {
+      cancelAnimationFrame(autoRotating);
+      autoRotating = null;
+    }
+  };
+  governAutoRotation = setAutoRotation;
+  setAutoRotation(settings.autoRotate === true);
 
   // ---------------------------------------------------------------------
   // La mano. Un dedo gira; dos dedos acercan y corren; la rueda acerca.
@@ -1620,7 +1644,8 @@ export function renderGraph3D(
   teardown = (): void => {
     sim.stop();
     if (gliding !== null) cancelAnimationFrame(gliding);
-    if (autoRotating !== null) cancelAnimationFrame(autoRotating);
+    setAutoRotation(false);
+    if (governAutoRotation === setAutoRotation) governAutoRotation = null;
     document.removeEventListener("constel:zoom", onZoom);
     document.removeEventListener("constel:center", onCentre);
     window.removeEventListener("resize", onResize);

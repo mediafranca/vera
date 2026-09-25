@@ -49,6 +49,8 @@ export interface RenderSettings {
   thread?: ThreadSettings | null;
   /** Hace orbitar lentamente la cámara 3D alrededor del eje vertical. */
   autoRotate?: boolean;
+  /** Conserva hacia dónde se mira cuando una entrega progresiva amplía el mapa. */
+  preserveDirection?: boolean;
 }
 
 // ── Title-mode constants ──

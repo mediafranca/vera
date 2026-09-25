@@ -59,12 +59,22 @@ describe('superficies especiales', () => {
     assert.match(graph3d, /const SCREEN_FONT_MAX = 31;/);
   });
 
-  it('ofrece rotación automática sólo en 3D y la cancela al desmontar', () => {
+  it('ofrece rotación automática sólo en 3D y gobierna la cámara sin recargar el grafo', () => {
     assert.match(html, /id="map-auto-rotate-field" hidden/);
     assert.match(html, /id="map-auto-rotate"[^>]+role="switch"[^>]+aria-checked="false"/);
     assert.match(main, /map-auto-rotate-field'\)\.hidden = workspace\.graphView !== 'graph_3d'/);
     assert.match(main, /prefers-reduced-motion: reduce/);
-    assert.match(graph3d, /settings\.autoRotate === true && !window\.matchMedia\("\(prefers-reduced-motion: reduce\)"\)\.matches/);
-    assert.match(graph3d, /cancelAnimationFrame\(autoRotating\)/);
+    assert.match(main, /setGraph3DAutoRotate\(workspace\.graphAutoRotate\)/);
+    const toggle = main.match(/autoRotateSwitch\.addEventListener\('click',[\s\S]*?\n  \}\);/)?.[0] ?? '';
+    assert.doesNotMatch(toggle, /applyLayout|drawGraph/);
+    assert.match(graph3d, /governAutoRotation\?\.\(enabled\)/);
+    assert.match(graph3d, /setAutoRotation\(false\)/);
+  });
+
+  it('entrega el mapa por alcances crecientes sin retirar el que ya llegó', () => {
+    assert.match(main, /requestedDepth = Math\.min\(targetDepth, Math\.max\(1, reach\)\)/);
+    assert.match(main, /requestedDepth < targetDepth/);
+    assert.match(main, /drawGraph\(requestedDepth \+ 1\)/);
+    assert.match(main, /preserveDirection: requestedDepth > 1/);
   });
 });

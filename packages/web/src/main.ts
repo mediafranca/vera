@@ -52,7 +52,13 @@ import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
 import { graphOfThread } from './graph/thread.ts';
-import { renderGraph3D, cleanupGraph3D, forgetCamera, selectNode3D } from './graph/render3d.ts';
+import {
+  renderGraph3D,
+  cleanupGraph3D,
+  forgetCamera,
+  selectNode3D,
+  setGraph3DAutoRotate,
+} from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
 import {
@@ -2368,7 +2374,7 @@ async function bringItOver(taking: Behind): Promise<void> {
 let graphTurn = 0;
 let graphDelivery: AbortController | null = null;
 
-async function drawGraph(completeD4 = false): Promise<void> {
+async function drawGraph(reach = 1): Promise<void> {
   if (workspace.activePage === null) return;
   const container = $('#graph');
   const turn = ++graphTurn;
@@ -2383,8 +2389,8 @@ async function drawGraph(completeD4 = false): Promise<void> {
     notice('Esta página no está publicada; el mapa vuelve a mostrar tu espacio.');
   }
   let data;
-  const progressiveD4 = workspace.graphView === 'graph_d4' && workspace.depth > 1;
-  const requestedDepth = progressiveD4 && !completeD4 ? 1 : workspace.depth;
+  const targetDepth = workspace.depth;
+  const requestedDepth = Math.min(targetDepth, Math.max(1, reach));
   try {
     data = await api.graph(
       workspace.activePage,
@@ -2466,6 +2472,7 @@ async function drawGraph(completeD4 = false): Promise<void> {
     showEdges: true,
     showTitles: true,
     autoRotate: workspace.graphAutoRotate,
+    preserveDirection: requestedDepth > 1,
     // El nodo es su nombre. @guarantee GraphNodesAreTheirNames: un círculo al
     // lado no dice nada que el nombre no diga, y gasta el mismo sitio diciendo
     // menos. En 2D los nombres no se traslapan: dos nombres uno encima de otro
@@ -2557,15 +2564,15 @@ async function drawGraph(completeD4 = false): Promise<void> {
   }
 
   /*
-   * D4 llega en dos cortes. El primero ya quedó pintado e interactivo; sólo
-   * entonces se pide el alcance elegido. `requestAnimationFrame` fuerza esa
-   * primera pintura antes de iniciar el trabajo que puede volver a ocupar el
-   * hilo principal. El mapa de grado uno permanece intacto durante la espera y
-   * cualquier navegación aborta la segunda entrega mediante `graphTurn`.
+   * El mapa llega por anillos. El que ya llegó queda pintado e interactivo;
+   * sólo entonces se pide el salto siguiente. `requestAnimationFrame` fuerza
+   * esa pintura antes de iniciar el trabajo que puede volver a ocupar el hilo.
+   * La entrega presente permanece intacta durante la espera y cualquier
+   * navegación aborta la siguiente mediante `graphTurn`.
    */
-  if (progressiveD4 && !completeD4 && turn === graphTurn) {
+  if (requestedDepth < targetDepth && turn === graphTurn) {
     window.requestAnimationFrame(() => {
-      if (turn === graphTurn) void drawGraph(true);
+      if (turn === graphTurn) void drawGraph(requestedDepth + 1);
     });
   }
 }
@@ -3356,11 +3363,11 @@ function wireTheme(): void {
     workspace.graphAutoRotate = !workspace.graphAutoRotate;
     session.setGraphAutoRotate(workspace.graphAutoRotate);
     showAutoRotate();
-    applyLayout();
+    setGraph3DAutoRotate(workspace.graphAutoRotate);
   });
   reducedMotion.addEventListener('change', () => {
     showAutoRotate();
-    applyLayout();
+    setGraph3DAutoRotate(workspace.graphAutoRotate && !reducedMotion.matches);
   });
   showAutoRotate();
 
