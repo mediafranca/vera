@@ -640,11 +640,19 @@ describe('incrustaciones', () => {
     assert.match(html, /fuente mapa/);
   });
 
+  it('eleva un alto positivo menor que el mínimo sin convertir el mapa en código', () => {
+    const source = 'página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: sí\nalto: 320';
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.match(html, /class="embedded-map"/);
+    assert.match(html, /--embedded-height:640px/);
+    assert.match(html, /alto: 320/);
+  });
+
   it('un mapa rechaza alcance, rotación o alto incoherentes', () => {
     for (const source of [
       'página: [[VERA]]\nvista: 2D\nalcance: 4\nrotación: no\nalto: 640',
       'página: [[VERA]]\nvista: 2D\nalcance: 2\nrotación: sí\nalto: 640',
-      'página: [[VERA]]\nvista: D4\nalcance: 2\nrotación: no\nalto: 320',
+      'página: [[VERA]]\nvista: D4\nalcance: 2\nrotación: no\nalto: 0',
     ]) {
       const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
       assert.ok(!html.includes('<iframe'));

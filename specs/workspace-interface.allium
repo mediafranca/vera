@@ -198,8 +198,10 @@ contract BlockBehaviourPresentation {
     @invariant AnEmbeddedMapNamesItsReading
         -- A deliberate `mapa` block preserves its focus page, 2D, 3D or D4 view,
         -- reach and available height. It occupies the whole available width and
-        -- never less than 640 pixels of height. Rotation is a readable choice
-        -- only for 3D; malformed or incomplete configuration remains source.
+        -- never less than 640 pixels of effective height: a positive declared
+        -- height below that floor is raised to 640 rather than turning the map
+        -- back into code. Rotation is a readable choice only for 3D; malformed
+        -- or incomplete configuration remains source.
 
     @invariant EmbeddedMapsImproveWithoutBlocking
         -- The map presents the first available reach immediately and adds later

@@ -650,6 +650,12 @@ export interface EmbeddedMapConfig {
   height: number;
 }
 
+/** A declared height is a preference above Vera's legibility floor. */
+export function embeddedMapHeight(value: number): number | null {
+  if (!Number.isInteger(value) || value <= 0 || value > 2400) return null;
+  return Math.max(640, value);
+}
+
 export function embeddedMapConfig(source: string): EmbeddedMapConfig | null {
   const values = namedLines(source);
   const page = (values.get('pagina') ?? '').replace(/^\[\[|\]\]$/g, '').trim();
@@ -657,10 +663,12 @@ export function embeddedMapConfig(source: string): EmbeddedMapConfig | null {
   const reach = Number(values.get('alcance'));
   const rotation = (values.get('rotacion') ?? 'no').trim().toLowerCase();
   const saidHeight = values.get('alto');
-  const height = saidHeight === undefined || saidHeight.trim() === '' ? 640 : Number(saidHeight);
+  const height = embeddedMapHeight(
+    saidHeight === undefined || saidHeight.trim() === '' ? 640 : Number(saidHeight),
+  );
   if (page === '' || !['2d', '3d', 'd4'].includes(view)) return null;
   if (!Number.isInteger(reach) || reach < 1 || reach > 3) return null;
-  if (!Number.isInteger(height) || height < 640 || height > 2400) return null;
+  if (height === null) return null;
   if (!['si', 'sí', 'no'].includes(rotation)) return null;
   if (view !== '3d' && rotation !== 'no') return null;
   return {

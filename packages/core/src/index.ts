@@ -73,6 +73,7 @@ export type {
  */
 export {
   embedIn,
+  embeddedMapHeight,
   headingAnchor,
   inlineMarkdown,
   renderMarkdown,

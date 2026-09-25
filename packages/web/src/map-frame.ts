@@ -1,6 +1,6 @@
 import './styles.css';
 
-import type { EmbeddedMapConfig } from '@vera/core';
+import { embeddedMapHeight, type EmbeddedMapConfig } from '@vera/core';
 import { renderGraph } from './graph/render.ts';
 import { renderGraph3D } from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
@@ -15,8 +15,9 @@ function configuration(): EmbeddedMapConfig | null {
     if (value.view !== '2d' && value.view !== '3d' && value.view !== 'd4') return null;
     if (value.reach !== 1 && value.reach !== 2 && value.reach !== 3) return null;
     if (typeof value.rotate !== 'boolean') return null;
-    if (!Number.isInteger(value.height) || (value.height ?? 0) < 640 || (value.height ?? 0) > 2400) return null;
-    return value as EmbeddedMapConfig;
+    const height = embeddedMapHeight(Number(value.height));
+    if (height === null) return null;
+    return { ...value, height } as EmbeddedMapConfig;
   } catch {
     return null;
   }
