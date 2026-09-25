@@ -600,6 +600,19 @@ describe('lecturas', () => {
     assert.equal(hits[0]?.field, 'page_title');
   });
 
+  it('resume la búsqueda interactiva en una evidencia por página', async () => {
+    const page = await write({ kind: 'create_page', title: 'Página resumida', visibility: 'private' });
+    await write({ kind: 'create_block', page, parent: null, position: 0, content: 'aguja indexada una' });
+    await write({ kind: 'create_block', page, parent: null, position: 1, content: 'aguja indexada dos' });
+
+    const hits = (await get('/search/pages?q=aguja')) as Array<{
+      page: string; excerpt: string; matches: number;
+    }>;
+    assert.equal(hits.filter((hit) => hit.page === page).length, 1);
+    assert.equal(hits.find((hit) => hit.page === page)?.matches, 2);
+    assert.match(hits.find((hit) => hit.page === page)?.excerpt ?? '', /aguja/);
+  });
+
   it('escribe, entrega y busca una glosa por la vía canónica', async () => {
     const page = await write({ kind: 'create_page', title: 'Glosada', visibility: 'private' });
     const block = await write({ kind: 'create_block', page, parent: null, position: 0, content: 'pasaje' });

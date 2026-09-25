@@ -75,6 +75,7 @@ import {
   setFold,
   setTranscript,
   setSpokenOrigin,
+  searchPageSummaries,
   spokenOriginsOnPage,
   workspaceOf,
   type Store,
@@ -1400,6 +1401,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/pages' ||
         path === '/buscar' ||
         path === '/search' ||
+        path === '/search/pages' ||
         path === '/query' ||
         path === '/p5-frame.html' ||
         path === '/p5.min.js' ||
@@ -6264,6 +6266,31 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           surface: 'GET /search',
           subject: asked,
           delivered: hits.map((hit) => hit.block ?? hit.page),
+        });
+        return;
+      }
+
+      if (path === '/search/pages') {
+        const asked = url.searchParams.get('q') ?? '';
+        let hits;
+        if (asked.trim().length < 3) {
+          const outcome = graph.search({ text: asked, participant: publicAccess ? owner.id : participant });
+          const grouped = new Map<string, typeof outcome.hits[number] & { matches: number }>();
+          for (const hit of outcome.hits) {
+            if (hit.field === 'page_title') continue;
+            const previous = grouped.get(hit.page);
+            if (previous === undefined) grouped.set(hit.page, { ...hit, matches: 1 });
+            else previous.matches += 1;
+          }
+          hits = [...grouped.values()];
+        } else {
+          hits = searchPageSummaries(store, asked);
+        }
+        const visible = publicAccess ? hits.filter((hit) => isPublicPage(hit.page)) : hits;
+        deliver(visible, {
+          surface: 'GET /search/pages',
+          subject: asked,
+          delivered: visible.map((hit) => hit.page),
         });
         return;
       }

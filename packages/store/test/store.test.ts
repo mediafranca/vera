@@ -22,6 +22,7 @@ import {
   savePublication,
   saveParticipant,
   saveSite,
+  searchPageSummaries,
   searchStore,
 } from '../src/store.ts';
 
@@ -299,6 +300,25 @@ describe('persistencia', () => {
     assert.equal(searchStore(store, 'desierto').length, 1);
     assert.equal(searchStore(store, 'inexistente').length, 0);
     assert.equal(searchStore(store, '').length, 0);
+    store.close();
+  });
+
+  it('resume por página las subcadenas de bloques, propiedades y glosas', () => {
+    const { store, write } = freshStore();
+    const page = write({ kind: 'create_page', title: 'Cuaderno', visibility: 'private' });
+    const block = write({
+      kind: 'create_block', page, parent: null, position: 0,
+      content: 'una observación arquitectónica situada',
+    });
+    write({ kind: 'set_property', block, propertyKey: 'tema', propertyValue: 'observación del natural' });
+    write({ kind: 'set_block_gloss', block, content: 'volver a observar el trazo' });
+
+    const hits = searchPageSummaries(store, 'serva');
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0]?.page, page);
+    assert.equal(hits[0]?.matches, 3);
+    assert.equal(hits[0]?.field, 'block_content');
+    assert.match(hits[0]?.excerpt ?? '', /observación/);
     store.close();
   });
 

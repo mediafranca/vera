@@ -23,10 +23,9 @@
 -- guarda de qué día salió un bloque, y el @invariant InscribedContentNamesItsDay
 -- no tiene dónde apoyarse.
 --
--- Falta `properties_fts`. search-index.allium declara `property_value` como campo
--- buscable y su @guarantee OneSearchReachesEverySearchableField exige que una sola
--- búsqueda cubra títulos, contenido y valores de propiedad. Hoy cubre los dos
--- primeros. Ver docs/test-obligations.md.
+-- Los índices `*_search` sirven a la búsqueda interactiva por subcadena; los
+-- `*_fts` anteriores se conservan como índice léxico canónico. Ambos son
+-- derivados y reconstruibles desde las tablas de estado.
 --
 -- Regla que gobierna todo lo demás: `operations` es el registro canónico. Las
 -- tablas de estado son su materialización y los índices derivados son
@@ -403,6 +402,34 @@ CREATE VIRTUAL TABLE IF NOT EXISTS glosses_fts USING fts5 (
     tokenize = 'unicode61 remove_diacritics 2'
 );
 
+CREATE VIRTUAL TABLE IF NOT EXISTS pages_search USING fts5 (
+    title,
+    content = 'pages',
+    content_rowid = 'rowid',
+    tokenize = 'trigram remove_diacritics 1'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS blocks_search USING fts5 (
+    content,
+    content = 'blocks',
+    content_rowid = 'rowid',
+    tokenize = 'trigram remove_diacritics 1'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS property_values_search USING fts5 (
+    value,
+    content = 'property_assignments',
+    content_rowid = 'rowid',
+    tokenize = 'trigram remove_diacritics 1'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS glosses_search USING fts5 (
+    content,
+    content = 'block_glosses',
+    content_rowid = 'rowid',
+    tokenize = 'trigram remove_diacritics 1'
+);
+
 CREATE TRIGGER IF NOT EXISTS blocks_fts_insert AFTER INSERT ON blocks BEGIN
     INSERT INTO blocks_fts (rowid, content) VALUES (new.rowid, new.content);
 END;
@@ -440,6 +467,52 @@ END;
 CREATE TRIGGER IF NOT EXISTS glosses_fts_update AFTER UPDATE OF content ON block_glosses BEGIN
     INSERT INTO glosses_fts (glosses_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
     INSERT INTO glosses_fts (rowid, content) VALUES (new.rowid, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS pages_search_insert AFTER INSERT ON pages BEGIN
+    INSERT INTO pages_search (rowid, title) VALUES (new.rowid, new.title);
+END;
+CREATE TRIGGER IF NOT EXISTS pages_search_delete AFTER DELETE ON pages BEGIN
+    INSERT INTO pages_search (pages_search, rowid, title) VALUES ('delete', old.rowid, old.title);
+END;
+CREATE TRIGGER IF NOT EXISTS pages_search_update AFTER UPDATE OF title ON pages BEGIN
+    INSERT INTO pages_search (pages_search, rowid, title) VALUES ('delete', old.rowid, old.title);
+    INSERT INTO pages_search (rowid, title) VALUES (new.rowid, new.title);
+END;
+
+CREATE TRIGGER IF NOT EXISTS blocks_search_insert AFTER INSERT ON blocks BEGIN
+    INSERT INTO blocks_search (rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS blocks_search_delete AFTER DELETE ON blocks BEGIN
+    INSERT INTO blocks_search (blocks_search, rowid, content) VALUES ('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS blocks_search_update AFTER UPDATE OF content ON blocks BEGIN
+    INSERT INTO blocks_search (blocks_search, rowid, content) VALUES ('delete', old.rowid, old.content);
+    INSERT INTO blocks_search (rowid, content) VALUES (new.rowid, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS property_values_search_insert AFTER INSERT ON property_assignments BEGIN
+    INSERT INTO property_values_search (rowid, value) VALUES (new.rowid, new.value);
+END;
+CREATE TRIGGER IF NOT EXISTS property_values_search_delete AFTER DELETE ON property_assignments BEGIN
+    INSERT INTO property_values_search (property_values_search, rowid, value)
+      VALUES ('delete', old.rowid, old.value);
+END;
+CREATE TRIGGER IF NOT EXISTS property_values_search_update AFTER UPDATE OF value ON property_assignments BEGIN
+    INSERT INTO property_values_search (property_values_search, rowid, value)
+      VALUES ('delete', old.rowid, old.value);
+    INSERT INTO property_values_search (rowid, value) VALUES (new.rowid, new.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS glosses_search_insert AFTER INSERT ON block_glosses BEGIN
+    INSERT INTO glosses_search (rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS glosses_search_delete AFTER DELETE ON block_glosses BEGIN
+    INSERT INTO glosses_search (glosses_search, rowid, content) VALUES ('delete', old.rowid, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS glosses_search_update AFTER UPDATE OF content ON block_glosses BEGIN
+    INSERT INTO glosses_search (glosses_search, rowid, content) VALUES ('delete', old.rowid, old.content);
+    INSERT INTO glosses_search (rowid, content) VALUES (new.rowid, new.content);
 END;
 
 ------------------------------------------------------------

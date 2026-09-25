@@ -2977,7 +2977,7 @@ async function openSearchResults(text: string, push = true): Promise<void> {
 
   let hits: Hit[];
   try {
-    hits = await api.search(query);
+    hits = await api.searchPages(query);
   } catch {
     counting.close('failed');
     status.textContent = `No se pudo completar la búsqueda de “${query}”.`;
@@ -3151,7 +3151,11 @@ function wireSearch(): void {
       const turn = ++searchTurn;
       let hits;
       try {
-        hits = await api.search(text);
+        // Dos letras todavía se resuelven inmediatamente contra los títulos
+        // retenidos. El índice trigram empieza a aportar evidencia interior
+        // desde tres caracteres, sin barrer el corpus por cada tecla.
+        if (text.length < 3) return;
+        hits = await api.searchPages(text);
       } catch {
         return;
       }

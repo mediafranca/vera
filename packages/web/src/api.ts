@@ -288,6 +288,8 @@ export interface Hit {
   field: string;
   excerpt: string;
   rank: number;
+  /** Coincidencias interiores ya agrupadas por el servidor. */
+  matches?: number;
 }
 
 /** Un estado por el que pasó un bloque. */
@@ -1119,6 +1121,9 @@ export const api = {
   specialPages: () => json<{ id: string; title: string; kind: string }[]>('/special-pages'),
 
   search: (text: string) => json<Hit[]>(`/search?q=${encodeURIComponent(text)}`),
+
+  /** Evidencia de búsqueda ya indexada y agrupada por página para la interfaz. */
+  searchPages: (text: string) => json<Hit[]>(`/search/pages?q=${encodeURIComponent(text)}`),
 
   youtubeTranscripts: (url: string) =>
     json<YoutubeTranscriptCatalog>(`/youtube/transcripts?url=${encodeURIComponent(url)}`),
