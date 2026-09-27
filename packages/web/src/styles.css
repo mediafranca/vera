@@ -93,16 +93,20 @@
   background: var(--bg-raised);
   box-shadow: 0 0.45rem 1.4rem color-mix(in srgb, var(--text) 20%, transparent);
   cursor: pointer;
-  animation: librarian-pulse 1.8s ease-in-out infinite;
 }
 
-.librarian-activity .icon { width: 1.25rem; height: 1.25rem; }
+.librarian-activity .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  transform-origin: center;
+  animation: librarian-mark-pulse 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
 .librarian-activity:is(:hover, :focus-visible) {
   color: var(--text);
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.librarian-activity[data-state='waiting'] { animation: none; }
+.librarian-activity[data-state='waiting'] .icon { animation: none; }
 
 .librarian-dialog {
   box-sizing: border-box;
@@ -201,12 +205,21 @@
   font: 1rem/1.55 var(--font-body);
 }
 
-@keyframes librarian-pulse {
-  50% { transform: scale(1.09); box-shadow: 0 0 0 0.45rem color-mix(in srgb, var(--accent) 12%, transparent); }
+@keyframes librarian-mark-pulse {
+  0%, 100% {
+    opacity: 0.78;
+    transform: scale(0.96);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  48% {
+    opacity: 1;
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 0.3rem color-mix(in srgb, var(--accent) 42%, transparent));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .librarian-activity { animation: none; }
+  .librarian-activity .icon { animation: none; }
 }
 
 @font-face {

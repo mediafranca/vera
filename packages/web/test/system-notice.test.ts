@@ -27,6 +27,9 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.match(outliner, /Tiempo transcurrido:/);
     assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
     assert.match(styles, /\.librarian-activity \.icon/);
+    assert.match(styles, /\.librarian-activity \.icon[\s\S]*?animation: librarian-mark-pulse/);
+    assert.match(styles, /@keyframes librarian-mark-pulse/);
+    assert.match(styles, /prefers-reduced-motion[\s\S]*?\.librarian-activity \.icon \{ animation: none; \}/);
   });
 
   it('hace respirar el perímetro completo de los renders pendientes', () => {
