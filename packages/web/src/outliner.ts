@@ -670,9 +670,7 @@ async function askLibrarian(
   block: BlockView | null,
   callbacks: OutlinerCallbacks,
 ): Promise<void> {
-  const instruction = window.prompt(
-    block === null ? `¿Qué quieres pedirle al bibliotecario sobre «${page.title}»?` : '¿Qué quieres pedirle al bibliotecario sobre este bloque?',
-  )?.trim();
+  const instruction = await librarianInstruction(page, block);
   if (!instruction) return;
   try {
     const request = await api.askLibrarian({
@@ -687,6 +685,69 @@ async function askLibrarian(
   } catch {
     toast('no se pudo guardar la solicitud');
   }
+}
+
+/** Pide una instrucción dentro de Vera, con espacio suficiente para pensarla. */
+function librarianInstruction(page: PageView, block: BlockView | null): Promise<string | null> {
+  return new Promise((resolve) => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'librarian-dialog librarian-request-dialog';
+
+    const header = librarianDialogHeader(
+      'Solicitar al bibliotecario',
+      block === null ? `Sobre «${page.title}»` : `Sobre un bloque de «${page.title}»`,
+    );
+    const form = document.createElement('form');
+    form.method = 'dialog';
+
+    const label = document.createElement('label');
+    label.className = 'librarian-dialog-label';
+    label.htmlFor = 'librarian-instruction';
+    label.textContent = '¿Qué quieres que haga?';
+    const field = document.createElement('textarea');
+    field.id = 'librarian-instruction';
+    field.className = 'librarian-dialog-field';
+    field.rows = 6;
+    field.placeholder = block === null
+      ? 'Investiga, organiza, corrige o desarrolla algo de esta página…'
+      : 'Indica qué debería revisar o transformar en este bloque…';
+    field.autocomplete = 'off';
+
+    const hint = document.createElement('p');
+    hint.className = 'librarian-dialog-hint';
+    hint.textContent = 'La solicitud quedará vinculada a este contexto y podrás seguir su avance.';
+
+    const actions = document.createElement('div');
+    actions.className = 'librarian-dialog-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancelar';
+    const send = document.createElement('button');
+    send.type = 'submit';
+    send.className = 'librarian-dialog-primary';
+    send.textContent = 'Enviar solicitud';
+    actions.append(cancel, send);
+    form.append(label, field, hint, actions);
+    dialog.append(header, form);
+    document.body.append(dialog);
+
+    cancel.addEventListener('click', () => dialog.close('cancel'));
+    dialog.addEventListener('cancel', () => { dialog.returnValue = 'cancel'; });
+    form.addEventListener('submit', (event) => {
+      if (field.value.trim() !== '') return;
+      event.preventDefault();
+      field.dataset['invalid'] = 'true';
+      field.focus();
+    });
+    field.addEventListener('input', () => { delete field.dataset['invalid']; });
+    dialog.addEventListener('close', () => {
+      const instruction = dialog.returnValue === 'cancel' ? null : field.value.trim() || null;
+      dialog.remove();
+      resolve(instruction);
+    }, { once: true });
+    dialog.showModal();
+    field.focus();
+  });
 }
 
 function librarianTurn(request: LibrarianRequestView): HTMLElement {
@@ -723,69 +784,123 @@ function librarianTurn(request: LibrarianRequestView): HTMLElement {
   return turn;
 }
 
-const librarianOverlayCorners = ['bottom-right', 'bottom-left', 'top-left', 'top-right'] as const;
-type LibrarianOverlayCorner = typeof librarianOverlayCorners[number];
+function librarianDialogHeader(title: string, context: string): HTMLElement {
+  const header = document.createElement('header');
+  header.className = 'librarian-dialog-header';
+  const mark = document.createElement('span');
+  mark.className = 'librarian-dialog-mark';
+  mark.innerHTML = icon('vera');
+  const words = document.createElement('div');
+  const kicker = document.createElement('span');
+  kicker.className = 'librarian-dialog-kicker';
+  kicker.textContent = 'Vera · bibliotecario';
+  const heading = document.createElement('h2');
+  heading.textContent = title;
+  const scope = document.createElement('p');
+  scope.textContent = context;
+  words.append(kicker, heading, scope);
+  header.append(mark, words);
+  return header;
+}
 
-function rememberedLibrarianCorner(): LibrarianOverlayCorner {
-  const remembered = window.localStorage.getItem('vera:system-overlay-corner');
-  return librarianOverlayCorners.includes(remembered as LibrarianOverlayCorner)
-    ? remembered as LibrarianOverlayCorner
-    : 'bottom-right';
+function librarianRequestState(request: LibrarianRequestView): string {
+  if (request.status === 'working') return 'El bibliotecario está trabajando';
+  if (request.dispatchStatus === 'failed') return 'Solicitud guardada; esperando reconexión';
+  return 'El bibliotecario está recibiendo la solicitud';
+}
+
+let activeLibrarianRequests: LibrarianRequestView[] = [];
+
+function updateLibrarianProgress(dialog: HTMLDialogElement, requests: LibrarianRequestView[]): void {
+  const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (latest === undefined) return;
+  const state = dialog.querySelector<HTMLElement>('.librarian-progress-state');
+  const asked = dialog.querySelector<HTMLElement>('.librarian-progress-request');
+  const elapsed = dialog.querySelector<HTMLElement>('.librarian-progress-elapsed');
+  const more = dialog.querySelector<HTMLElement>('.librarian-progress-more');
+  if (state !== null) state.textContent = librarianRequestState(latest);
+  if (asked !== null) asked.textContent = latest.text;
+  if (elapsed !== null) elapsed.textContent = `Tiempo transcurrido: ${saySeconds(Math.max(0, Date.now() - latest.createdAt))}`;
+  if (more !== null) {
+    const others = requests.length - 1;
+    more.textContent = others === 0 ? '' : `${others} solicitud${others === 1 ? '' : 'es'} más en curso`;
+    more.hidden = others === 0;
+  }
+}
+
+function openLibrarianProgress(requests: LibrarianRequestView[]): void {
+  const already = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
+  if (already !== null) {
+    updateLibrarianProgress(already, requests);
+    if (!already.open) already.showModal();
+    return;
+  }
+  const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (latest === undefined) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'librarian-dialog librarian-progress-dialog';
+  const header = librarianDialogHeader('Solicitud en curso', librarianRequestState(latest));
+  header.querySelector('p')?.classList.add('librarian-progress-state');
+
+  const body = document.createElement('div');
+  body.className = 'librarian-progress-body';
+  const label = document.createElement('span');
+  label.className = 'librarian-dialog-label';
+  label.textContent = 'Solicitud';
+  const asked = document.createElement('blockquote');
+  asked.className = 'librarian-progress-request';
+  const elapsed = document.createElement('p');
+  elapsed.className = 'librarian-progress-elapsed';
+  const more = document.createElement('p');
+  more.className = 'librarian-progress-more';
+  body.append(label, asked, elapsed, more);
+
+  const actions = document.createElement('div');
+  actions.className = 'librarian-dialog-actions';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Seguir leyendo';
+  close.addEventListener('click', () => dialog.close());
+  actions.append(close);
+  dialog.append(header, body, actions);
+  document.body.append(dialog);
+  updateLibrarianProgress(dialog, requests);
+  const clock = window.setInterval(() => updateLibrarianProgress(dialog, activeLibrarianRequests), 1_000);
+  dialog.addEventListener('close', () => {
+    window.clearInterval(clock);
+    dialog.remove();
+  }, { once: true });
+  dialog.showModal();
 }
 
 /**
  * Una solicitud en curso es estado de la interfaz, no contenido de la página.
- * Vive una sola vez sobre el documento y puede apartarse si tapa justo lo que
- * se está leyendo. Las respuestas terminadas sí vuelven a su lugar de origen.
+ * Vive como una sola marca periférica; el detalle vuelve al centro sólo cuando
+ * se lo pide. Las respuestas terminadas sí vuelven a su lugar de origen.
  */
-function showLibrarianOverlay(requests: LibrarianRequestView[]): void {
-  document.querySelector('.librarian-active-overlay')?.remove();
-  if (requests.length === 0) return;
+function showLibrarianActivity(requests: LibrarianRequestView[]): void {
+  activeLibrarianRequests = requests;
+  const current = document.querySelector<HTMLButtonElement>('.librarian-activity');
+  if (requests.length === 0) {
+    current?.remove();
+    const dialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
+    if (dialog?.open) dialog.close();
+    return;
+  }
 
   const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0]!;
-  const overlay = document.createElement('aside');
-  overlay.className = 'librarian-active-overlay';
-  overlay.dataset['corner'] = rememberedLibrarianCorner();
-  overlay.dataset['request'] = latest.id;
-  overlay.setAttribute('role', 'status');
-  overlay.setAttribute('aria-live', 'polite');
-
-  const heading = document.createElement('div');
-  heading.className = 'librarian-overlay-heading';
-  const title = document.createElement('strong');
-  title.textContent = latest.status === 'working'
-    ? 'El bibliotecario está trabajando'
-    : latest.dispatchStatus === 'failed'
-      ? 'Solicitud guardada'
-      : 'El bibliotecario está recibiendo la solicitud';
-  const move = document.createElement('button');
-  move.type = 'button';
-  move.className = 'librarian-overlay-move';
-  move.textContent = 'Reubicar';
-  move.title = 'Mover el aviso a otra esquina';
-  move.setAttribute('aria-label', 'Mover el aviso del bibliotecario a otra esquina');
-  move.addEventListener('click', () => {
-    const at = librarianOverlayCorners.indexOf(overlay.dataset['corner'] as LibrarianOverlayCorner);
-    const corner = librarianOverlayCorners[(at + 1) % librarianOverlayCorners.length]!;
-    overlay.dataset['corner'] = corner;
-    window.localStorage.setItem('vera:system-overlay-corner', corner);
-  });
-  heading.append(title, move);
-
-  const asked = document.createElement('div');
-  asked.className = 'librarian-overlay-request';
-  asked.textContent = latest.text;
-  overlay.append(heading, asked);
-
-  if (requests.length > 1) {
-    const count = document.createElement('div');
-    count.className = 'librarian-overlay-count';
-    count.textContent = `${requests.length - 1} solicitud${requests.length === 2 ? '' : 'es'} más en curso`;
-    overlay.append(count);
-  }
-  const notice = document.querySelector<HTMLElement>('.toast:not([hidden])');
-  if (notice !== null) overlay.append(notice);
-  document.body.append(overlay);
+  const activity = current ?? document.createElement('button');
+  activity.type = 'button';
+  activity.className = 'librarian-activity';
+  activity.innerHTML = icon('vera');
+  activity.dataset['request'] = latest.id;
+  activity.dataset['state'] = latest.dispatchStatus === 'failed' ? 'waiting' : latest.status;
+  activity.title = `${librarianRequestState(latest)} · abrir detalle`;
+  activity.setAttribute('aria-label', activity.title);
+  activity.onclick = () => openLibrarianProgress(requests);
+  if (current === null) document.body.append(activity);
+  const dialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
+  if (dialog !== null) updateLibrarianProgress(dialog, requests);
 }
 
 async function showLibrarianTurns(
@@ -803,7 +918,7 @@ async function showLibrarianTurns(
   // debe convertir una repetición de transporte en dos avisos iguales.
   const unique = [...new Map(requests.map((request) => [request.id, request])).values()];
   const active = unique.filter((request) => request.status === 'queued' || request.status === 'working');
-  showLibrarianOverlay(active);
+  showLibrarianActivity(active);
   // Un pedido sobre un bloque es una transformación delegada: el bibliotecario reemplaza
   // el bloque y la versión anterior queda en el historial. Nunca se monta una
   // conversación al costado del texto que acaba de transformar.
@@ -2965,7 +3080,9 @@ export function renderOutliner(
   readOnly = false,
   transparentBlockTraceability = false,
 ): void {
-  document.querySelector('.librarian-active-overlay')?.remove();
+  document.querySelector('.librarian-activity')?.remove();
+  const librarianDialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
+  if (librarianDialog?.open) librarianDialog.close();
   container.innerHTML = '';
   container.dataset['page'] = page.id;
   container.classList.toggle('read-only', readOnly);

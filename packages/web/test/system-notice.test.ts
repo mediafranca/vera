@@ -18,6 +18,17 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.doesNotMatch(polling, /callbacks\.onReload/);
   });
 
+  it('pide dentro de Vera y reduce el trabajo activo a su marca pulsable', () => {
+    const asking = outliner.slice(outliner.indexOf('async function askLibrarian('), outliner.indexOf('function librarianTurn('));
+    assert.doesNotMatch(asking, /window\.prompt/);
+    assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
+    assert.match(outliner, /activity\.className = 'librarian-activity'/);
+    assert.match(outliner, /activity\.onclick = \(\) => openLibrarianProgress\(requests\)/);
+    assert.match(outliner, /Tiempo transcurrido:/);
+    assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
+    assert.match(styles, /\.librarian-activity \.icon/);
+  });
+
   it('hace respirar el perímetro completo de los renders pendientes', () => {
     const pending = styles.match(/\.block:is\(\.rich-pending, \.rich-native-pending\)[\s\S]*?@media \(prefers-reduced-motion/)?.[0] ?? '';
     assert.match(pending, /border: 2px solid var\(--warm\)/);
