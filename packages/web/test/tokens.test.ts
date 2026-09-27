@@ -2,7 +2,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { DEFAULT_TOKENS, session } from '../src/tokens.ts';
+import { DEFAULT_TOKENS, reachForGraphViewChange, session } from '../src/tokens.ts';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
@@ -33,6 +33,19 @@ describe('vista del mapa publicado', () => {
 
     session.setPublicGraphView('graph_d4');
     assert.equal(session.publicGraphView(), 'graph_d4');
+  });
+});
+
+describe('entrada segura a D4', () => {
+  it('baja a un salto al entrar desde 2D o 3D', () => {
+    assert.equal(reachForGraphViewChange('graph_2d', 'graph_d4', 3), 1);
+    assert.equal(reachForGraphViewChange('graph_3d', 'graph_d4', 2), 1);
+  });
+
+  it('no impide que dentro de D4 se amplíe ni altera las otras transiciones', () => {
+    assert.equal(reachForGraphViewChange('graph_d4', 'graph_d4', 3), 3);
+    assert.equal(reachForGraphViewChange('graph_d4', 'graph_2d', 2), 2);
+    assert.equal(reachForGraphViewChange('graph_2d', 'graph_3d', 3), 3);
   });
 });
 

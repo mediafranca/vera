@@ -80,6 +80,12 @@ describe('superficies especiales', () => {
     assert.match(main, /preserveDirection: requestedDepth > 1/);
   });
 
+  it('entra a D4 con alcance uno antes de dibujarlo', () => {
+    assert.match(main, /reachForGraphViewChange\(workspace\.graphView, view, workspace\.depth\)/);
+    assert.match(main, /setGraphReach\(reach, false\)[\s\S]*?applyLayout\(\)/);
+    assert.match(main, /\[data-view\][\s\S]*?setGraphView\(button\.dataset\['view'\] as GraphViewMode\)/);
+  });
+
   it('entrega también los mapas incrustados por alcance y deja rotar la primera entrega', () => {
     assert.match(embeddedMap, /fetch\('\/pages'\)/);
     assert.match(embeddedMap, /one\.title\.toLocaleLowerCase\(\) === wanted/);

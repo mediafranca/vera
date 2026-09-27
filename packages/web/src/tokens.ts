@@ -150,6 +150,22 @@ export type WorkspaceLayout = 'text_only' | 'graph_only' | 'split';
 export type GraphViewMode = 'graph_2d' | 'graph_3d' | 'graph_d4';
 
 /**
+ * D4 siempre entra por el anillo inmediato.
+ *
+ * Es una frontera de coste y no una preferencia de presentación: una consulta
+ * que era razonable en 2D o 3D puede ser demasiado pesada al componer todas las
+ * columnas y conectivas de D4. Una vez entregado el primer anillo, la persona
+ * conserva el control y puede ampliar el alcance normalmente.
+ */
+export function reachForGraphViewChange(
+  from: GraphViewMode,
+  to: GraphViewMode,
+  reach: number,
+): number {
+  return to === 'graph_d4' && from !== 'graph_d4' ? 1 : reach;
+}
+
+/**
  * Los tokens de este participante.
  *
  * Lo guardado se superpone a los valores por defecto, no los reemplaza. Antes se

@@ -64,6 +64,7 @@ import { journalsInMap } from './graph/journals.ts';
 import {
   applyTokens,
   loadTokens,
+  reachForGraphViewChange,
   saveTokens,
   session,
   syncPresentation,
@@ -509,6 +510,48 @@ function applyLayout(): void {
 
   if (effective !== 'text_only') drawGraph();
   else cleanupGraph3D();
+}
+
+const REACH_MIN = 1;
+const REACH_MAX = 3;
+
+/** El número de saltos y qué flechas quedan por dar. */
+function showGraphReach(): void {
+  const value = document.querySelector<HTMLElement>('#map-reach-value');
+  const less = document.querySelector<HTMLButtonElement>('#map-reach-less');
+  const more = document.querySelector<HTMLButtonElement>('#map-reach-more');
+  if (value === null || less === null || more === null) return;
+  value.textContent = String(workspace.depth);
+  less.disabled = workspace.depth <= REACH_MIN;
+  more.disabled = workspace.depth >= REACH_MAX;
+}
+
+function setGraphReach(reach: number, redraw = true): void {
+  const next = Math.min(REACH_MAX, Math.max(REACH_MIN, reach));
+  if (next === workspace.depth) {
+    showGraphReach();
+    return;
+  }
+  workspace.depth = next;
+  session.setReach(next);
+  showGraphReach();
+  // El alcance cambia qué nodos hay: ni la colocación ni la cámara anterior
+  // describen ya el mismo mapa.
+  forgetPositions();
+  forgetCamera();
+  if (redraw) void refreshGraph();
+}
+
+/** Cambiar de dimensión tiene una sola entrada, incluida la guarda de D4. */
+function setGraphView(view: GraphViewMode): void {
+  const reach = reachForGraphViewChange(workspace.graphView, view, workspace.depth);
+  workspace.graphView = view;
+  // `applyLayout` dibuja una vez con el alcance ya seguro; redibujar aquí haría
+  // dos consultas consecutivas, justamente lo que esta guarda evita.
+  setGraphReach(reach, false);
+  if (isAnybody()) session.setPublicGraphView(view);
+  else session.setGraphView(view);
+  applyLayout();
 }
 
 function setLayout(layout: WorkspaceLayout): void {
@@ -3291,39 +3334,14 @@ function wireTheme(): void {
    * Tres y no cuatro: al cuarto salto el mapa ya no dice «qué hay cerca de aquí»
    * sino «qué hay», y eso no cabe en la mirada.
    */
-  const REACH_MIN = 1;
-  const REACH_MAX = 3;
   const reachLess = $<HTMLButtonElement>('#map-reach-less');
   const reachMore = $<HTMLButtonElement>('#map-reach-more');
-  const reachValue = $('#map-reach-value');
   reachLess.innerHTML = icon('chevron-left');
   reachMore.innerHTML = icon('chevron-right');
 
-  /** El número y qué flechas quedan por dar. */
-  const showReach = (): void => {
-    reachValue.textContent = String(workspace.depth);
-    // Una flecha que no lleva a ninguna parte se apaga en vez de no hacer nada:
-    // que el control diga dónde se acaba es parte de decir dónde se está.
-    reachLess.disabled = workspace.depth <= REACH_MIN;
-    reachMore.disabled = workspace.depth >= REACH_MAX;
-  };
-
-  const stepReach = (by: number): void => {
-    const next = Math.min(REACH_MAX, Math.max(REACH_MIN, workspace.depth + by));
-    if (next === workspace.depth) return;
-    workspace.depth = next;
-    session.setReach(next);
-    showReach();
-    // El alcance cambia qué nodos hay, así que lo colocado deja de valer, y
-    // tampoco tiene sentido volver a la cámara de un grafo que ya no es ese.
-    forgetPositions();
-    forgetCamera();
-    void refreshGraph();
-  };
-
-  reachLess.addEventListener('click', () => stepReach(-1));
-  reachMore.addEventListener('click', () => stepReach(+1));
-  showReach();
+  reachLess.addEventListener('click', () => setGraphReach(workspace.depth - 1));
+  reachMore.addEventListener('click', () => setGraphReach(workspace.depth + 1));
+  showGraphReach();
 
   /*
    * Los diarios no son ruido opcional dentro de una vecindad. El interruptor
@@ -3744,10 +3762,7 @@ async function start(): Promise<void> {
   }
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
     button.addEventListener('click', () => {
-      workspace.graphView = button.dataset['view'] as GraphViewMode;
-      if (isAnybody()) session.setPublicGraphView(workspace.graphView);
-      else session.setGraphView(workspace.graphView);
-      applyLayout();
+      setGraphView(button.dataset['view'] as GraphViewMode);
     });
   }
 
