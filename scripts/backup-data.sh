@@ -65,6 +65,7 @@ export RESTIC_PASSWORD_COMMAND="systemd-creds --user decrypt --name=vera-restic 
 "$restic_binary" -r "$restic_repository" forget \
   --host alexei \
   --tag vera-sqlite \
+  --keep-tag pre-exposure-compaction \
   --keep-daily 7 \
   --keep-weekly 4 \
   --keep-monthly 6 \
