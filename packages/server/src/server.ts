@@ -84,7 +84,7 @@ import { composeBooklet, composePaper, toPdf } from './paper.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
-import { clientsSeen, exposuresOf, recordExposure, whoRead } from '@vera/store/exposures';
+import { clientsSeen, exposuresOf, recordExposure } from '@vera/store/exposures';
 import { parseDocument } from '@vera/importer/document';
 import {
   SCOPES,
@@ -6543,25 +6543,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        * El registro de exposición, para poder mirarlo.
        *
        * Un registro que no se puede leer no vigila nada. Dos preguntas: qué se
-       * ha llevado alguien —`?participant=`— y quién se ha llevado esto
-       * —`?subject=`—, que es la que uno se hace al encontrar una página que no
-       * debería haber salido de casa.
+       * ha llevado alguien —`?participant=`— y cuánto contexto recibió. Las
+       * identidades de cada bloque no se duplican aquí: esa materialización
+       * crecía mucho más rápido que el corpus que pretendía vigilar.
        *
        * Mirar el registro no se anota a sí mismo: haría crecer el registro cada
        * vez que se abre y el registro dejaría de ser sobre el corpus.
        */
       if (path === '/exposures') {
-        const subject = url.searchParams.get('subject');
         const who = url.searchParams.get('participant');
         const most = Number(url.searchParams.get('most') ?? '100');
-        const found =
-          subject !== null
-            ? whoRead(store, subject, most)
-            : exposuresOf(store, {
-                participant: who ?? undefined,
-                since: Number(url.searchParams.get('since') ?? '0'),
-                most,
-              });
+        const found = exposuresOf(store, {
+          participant: who ?? undefined,
+          since: Number(url.searchParams.get('since') ?? '0'),
+          most,
+        });
         send(response, 200, {
           count: found.length,
           exposures: found.map((one) => ({

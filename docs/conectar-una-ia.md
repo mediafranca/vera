@@ -469,8 +469,10 @@ obedecerla. Ver [`confined-writing.allium`](../specs/confined-writing.allium).
 2. **Desde Vera**, la página de la puerta muestra la conexión con su última
    lectura y cuánta memoria se llevó. Lo que sale en «Sin declarar» es alguien
    que entró sin `VERA_CLIENT`.
-3. **El detalle completo** está en el registro de exposición: `GET /exposures`, y
-   al revés —quién ha leído esto— en `GET /exposures?subject=page:1234`.
+3. **El registro compacto** está en `GET /exposures`: muestra quién leyó, desde
+   qué cliente y superficie, cuántos elementos de contexto recibió y cuánto
+   pesó la respuesta. Se filtra por participante y período; no duplica cada
+   bloque leído.
 
 ---
 

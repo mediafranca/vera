@@ -795,10 +795,11 @@ CREATE TABLE IF NOT EXISTS service_secrets (
 -- directo— quedaría fuera del registro y el registro sería decorativo. Aquí lo
 -- hereda toda puerta.
 --
--- Se anota lo entregado y no lo consultado: una búsqueda que devolvió doce
--- extractos expuso doce cosas, y el registro tiene que poder nombrarlas. El
--- texto completo de la respuesta no se guarda: copiarlo siempre dejaría una
--- segunda copia del corpus dentro del registro que existía para vigilarlo.
+-- Se mide lo entregado sin duplicar el corpus: una búsqueda que devolvió doce
+-- extractos registra doce identidades distintas, no doce filas auxiliares. El
+-- texto completo y las direcciones individuales no se guardan; hacerlo dejaría
+-- una segunda estructura del corpus dentro del registro que existe para vigilar
+-- la puerta.
 --
 -- Ver specs/mcp-server.allium, contrato WhatWasReadIsRecorded.
 CREATE TABLE IF NOT EXISTS exposures (
@@ -819,23 +820,13 @@ CREATE TABLE IF NOT EXISTS exposures (
     -- Cuánto viajó, en caracteres. Un número tosco a propósito: sirve para ver
     -- de un vistazo cuánta memoria salió por ahí, no para facturar.
     volume          INTEGER NOT NULL,
+    -- Cuántas identidades estables distintas viajaron en esta respuesta.
+    delivered_count INTEGER NOT NULL DEFAULT 0,
     at              INTEGER NOT NULL
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS exposures_by_participant ON exposures (participant_id, at);
 CREATE INDEX IF NOT EXISTS exposures_by_time ON exposures (at);
-
--- Y qué se entregó exactamente en esa llamada: las direcciones estables de las
--- páginas y los bloques que viajaron. Una tabla aparte porque una sola búsqueda
--- expone muchas cosas, y porque preguntar «quién ha leído esta página» tiene que
--- ser una consulta y no una lectura de todo el registro.
-CREATE TABLE IF NOT EXISTS exposed_subjects (
-    exposure_id  TEXT NOT NULL REFERENCES exposures (id) ON DELETE CASCADE,
-    subject_id   TEXT NOT NULL,
-    PRIMARY KEY (exposure_id, subject_id)
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS exposed_by_subject ON exposed_subjects (subject_id);
 
 
 -- ---------------------------------------------------------------------------

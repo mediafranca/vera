@@ -190,25 +190,27 @@ contract AGrantIsNarrowerThanAScope {
         -- lo escribió.
 }
 
--- Lo que salió de casa queda anotado.
+-- Que algo salió de casa queda anotado y medido.
 --
 -- El registro de operaciones cuenta lo que se escribió, y eso bastaba mientras
 -- todo el que entraba escribía. Una inteligencia artificial hace algo que el log
 -- no ve: recibe. Se lleva páginas, extractos y contexto sin modificar una coma, y
 -- de eso hoy no queda rastro.
 --
--- Sin este registro no se puede contestar la única pregunta que importa cuando
--- alguien pregunta qué sabe un proveedor: qué memoria salió, hacia qué cliente,
--- bajo qué concesión y cuándo. Es la contrapartida de la auditoría de escritura,
--- y sin ella la frontera es una promesa.
+-- Este registro no duplica el corpus para poder reconstruir cada bloque que vio
+-- cada lector. Conserva el hecho observable y las magnitudes que permiten al
+-- bibliotecario vigilar la puerta: quién leyó, desde qué cliente, por qué
+-- superficie, qué pidió, cuánto contexto recibió y cuándo. La procedencia exacta
+-- de las escrituras vive en el registro de operaciones; la lectura se gobierna
+-- con una señal compacta que puede agregarse sin crecer con cada bloque servido.
 contract WhatWasReadIsRecorded {
     record: (call: Call) -> Exposure
 
-    @invariant ItRecordsWhatWasDeliveredAndNotWhatWasAsked
-        -- Se anotan las páginas y los bloques que efectivamente viajaron, no la
-        -- mera lista de lo solicitado. La llamada conserva la consulta exacta,
-        -- pero la exposición nombra lo que realmente salió: una búsqueda que
-        -- devolvió doce extractos expuso doce cosas, aunque hubiera pedido cien.
+    @invariant ItMeasuresWhatWasDeliveredWithoutDuplicatingTheCorpus
+        -- La llamada conserva la consulta exacta y cuenta cuántas identidades
+        -- distintas entregó, pero no vuelve a guardar una fila por página o
+        -- bloque. Una búsqueda que devolvió doce extractos mide doce entregas;
+        -- no crea doce copias estructurales dentro del registro de acceso.
 
     @invariant EveryCallLeavesItsTrace
         -- Hora, participante, credencial, cliente declarado, versión del
@@ -235,9 +237,11 @@ contract WhatWasReadIsRecorded {
         -- sensible y crearía una segunda memoria dentro del registro de acceso.
 
     @invariant TheOwnerCanReadTheirOwnExposure
-        -- Quien es dueño del grafo puede mirar y filtrar por conexión,
-        -- participante, proyecto, recurso y período. Un registro que sólo el
-        -- programa consulta no es transparencia.
+        -- Quien es dueño del grafo puede mirar y resumir por conexión,
+        -- participante, superficie y período. El bibliotecario puede convertir
+        -- esas magnitudes en un informe legible sobre quién lee, escribe y
+        -- consume más contexto. Un registro que sólo el programa consulta no es
+        -- transparencia.
 }
 
 -- Una escritura se puede repetir sin repetirse.
@@ -360,8 +364,9 @@ value UpstreamOrigin {
 -- Y lo que esa llamada entregó de verdad.
 value Exposure {
     call: Call
-    -- Las direcciones estables de lo que viajó. No la consulta: lo entregado.
-    delivered: List<String>
+    -- Cuántas identidades estables distintas viajaron. La consulta está en la
+    -- llamada; las identidades no se duplican aquí una por una.
+    delivered_count: Integer
     -- Las operaciones que resultaron, cuando la llamada escribió.
     wrote: List<String>
 }

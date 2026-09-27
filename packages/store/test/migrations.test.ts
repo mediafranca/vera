@@ -236,6 +236,58 @@ describe('migraciones', () => {
     );
   });
 
+  it('compacta exposiciones sin perder sus filas ni conservar el índice microscópico', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE graphs (id TEXT PRIMARY KEY, name TEXT NOT NULL) STRICT;
+      CREATE TABLE participants (id TEXT PRIMARY KEY, name TEXT NOT NULL) STRICT;
+      CREATE TABLE access_tokens (id TEXT PRIMARY KEY) STRICT;
+      CREATE TABLE exposures (
+        id TEXT PRIMARY KEY,
+        graph_id TEXT NOT NULL REFERENCES graphs (id),
+        participant_id TEXT NOT NULL REFERENCES participants (id),
+        credential_id TEXT REFERENCES access_tokens (id),
+        client TEXT,
+        surface TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        volume INTEGER NOT NULL,
+        at INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE exposed_subjects (
+        exposure_id TEXT NOT NULL REFERENCES exposures (id) ON DELETE CASCADE,
+        subject_id TEXT NOT NULL,
+        PRIMARY KEY (exposure_id, subject_id)
+      ) STRICT;
+      INSERT INTO graphs VALUES ('graph:1', 'mind');
+      INSERT INTO participants VALUES ('participant:herbert', 'Herbert');
+      INSERT INTO exposures VALUES (
+        'exposure:1', 'graph:1', 'participant:herbert', NULL, 'web',
+        'GET /search', 'v', 'served', 100, 1
+      );
+      INSERT INTO exposed_subjects VALUES ('exposure:1', 'page:1');
+      INSERT INTO exposed_subjects VALUES ('exposure:1', 'block:1');
+      PRAGMA user_version = 20;
+    `);
+
+    migrate(db, false);
+
+    assert.equal(count(db, 'exposures'), 1);
+    assert.equal(
+      (db.prepare('SELECT delivered_count FROM exposures').get() as { delivered_count: number })
+        .delivered_count,
+      0,
+    );
+    assert.equal(
+      (db.prepare(
+        "SELECT count(*) AS n FROM sqlite_schema WHERE name = 'exposed_subjects'",
+      ).get() as { n: number }).n,
+      0,
+    );
+    assert.equal(version(db), SCHEMA_VERSION);
+    db.close();
+  });
+
   it('añade la portada a un sitio de la versión anterior sin perderlo', () => {
     const db = new DatabaseSync(':memory:');
     db.exec(`

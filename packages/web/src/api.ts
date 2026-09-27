@@ -1523,6 +1523,7 @@ export interface SeenClient {
   name: string;
   deliveries: number;
   volume: number;
+  deliveredCount: number;
   firstAt: number;
   lastAt: number;
 }

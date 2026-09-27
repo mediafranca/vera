@@ -770,6 +770,30 @@ const addInteractiveSearchIndexes: Migration = {
   },
 };
 
+/**
+ * 21 — exposiciones compactas.
+ *
+ * El registro anterior repetía una fila por cada página o bloque entregado. Una
+ * búsqueda interactiva podía convertir una sola tecla en decenas de miles de
+ * filas y la auditoría terminaba pesando mucho más que la memoria que vigilaba.
+ * Conservamos una magnitud por llamada y retiramos el índice microscópico.
+ */
+const compactExposureLog: Migration = {
+  version: 21,
+  name: 'exposiciones compactas',
+  apply(db) {
+    const present = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = 'exposures'",
+    ).get() as { present: number } | undefined;
+    if (present === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(exposures)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'delivered_count')) {
+      db.exec('ALTER TABLE exposures ADD COLUMN delivered_count INTEGER NOT NULL DEFAULT 0');
+    }
+    db.exec('DROP TABLE IF EXISTS exposed_subjects');
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -791,6 +815,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addDendriticGraphView,
   addTransparentBlockTraceability,
   addInteractiveSearchIndexes,
+  compactExposureLog,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

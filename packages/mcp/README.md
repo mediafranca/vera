@@ -229,7 +229,8 @@ vez de disimular la ausencia.
 
 ## Lo que queda anotado
 
-Cada lectura escribe una fila en el registro de exposición de VERA: quién,
-con qué credencial, qué cliente dijo ser, qué se entregó y cuánto medía. Se
-mira en `GET /exposures`, y al revés —quién ha leído esto— en
-`GET /exposures?subject=page:1234`.
+Cada lectura escribe una fila compacta en el registro de exposición de VERA:
+quién, con qué credencial, qué cliente dijo ser, por qué superficie entró,
+cuántos elementos de contexto recibió y cuánto medía la respuesta. Se mira en
+`GET /exposures` y se filtra por participante y período. Las identidades de cada
+bloque no se duplican dentro del registro.
