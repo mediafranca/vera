@@ -4562,9 +4562,9 @@ body:has(.embedded-map-frame) {
   position: fixed;
   right: 1rem;
   top: calc(3.4rem + env(safe-area-inset-top));
-  width: 30rem;
+  width: 42rem;
   max-width: calc(100vw - 2rem);
-  max-height: 78vh;
+  max-height: 84vh;
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
@@ -4692,7 +4692,8 @@ body.settings-open #text {
 .settings-tabs {
   display: flex;
   gap: 0.2rem;
-  padding: 0.5rem 0.9rem 0;
+  padding: 0.55rem 1rem 0;
+  border-bottom: 1px solid var(--rule);
 }
 
 .settings-tab {
@@ -4709,26 +4710,63 @@ body.settings-open #text {
   border-color: var(--rule);
   border-bottom-color: transparent;
   background: var(--bg);
+  margin-bottom: -1px;
 }
 
 .settings-body {
-  padding: 0.9rem;
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.settings-destinations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+  margin-bottom: 1.15rem;
 }
 
 .settings-destination {
   display: grid;
-  width: calc(100% - 1.8rem);
-  margin: .75rem .9rem .15rem;
-  padding: .7rem .8rem;
+  align-content: start;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.15rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: .75rem .85rem;
   text-align: left;
   color: var(--text);
-  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
   border: 1px solid var(--rule);
-  border-radius: .45rem;
+  border-radius: 4px;
   cursor: pointer;
+  font: inherit;
 }
-.settings-destination:hover { border-color: var(--accent); }
-.settings-destination span { margin-top: .2rem; color: var(--text-dim); font-size: .76rem; }
+.settings-destination:hover,
+.settings-destination:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+}
+.settings-destination strong { font-size: .86rem; font-weight: 600; }
+.settings-destination span { margin-top: .22rem; color: var(--text-dim); font-size: .74rem; line-height: 1.35; }
+.settings-destination:disabled { cursor: default; opacity: .55; }
+.settings-destination:disabled:hover { border-color: var(--rule); background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
+
+.settings-corpus-summary {
+  margin: 0 0 .65rem;
+  color: var(--text-dim);
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-government-list { margin-bottom: 0; }
+
+.settings-backup {
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.settings-backup h3 { margin-top: 0; }
 
 .sharing-administration { width: min(76rem, 100%); margin: 0 auto; padding: 1.5rem 2rem 4rem; box-sizing: border-box; }
 .sharing-administration .special-page-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
@@ -4737,6 +4775,7 @@ body.settings-open #text {
 .sharing-administration-body { width: 100%; }
 
 @media (max-width: 640px) {
+  .settings-destinations { grid-template-columns: 1fr; }
   .sharing-administration { padding: 1rem .8rem 3rem; }
 }
 

@@ -357,6 +357,7 @@ let showingKept = false;
 function drawMemory(host: HTMLElement): void {
   const status = document.createElement('div');
   status.id = 'status';
+  status.className = 'settings-corpus-summary';
   status.textContent =
     corpus === null
       ? 'todavía sin datos del grafo'
@@ -400,34 +401,28 @@ function drawMemory(host: HTMLElement): void {
   // acabarían diciendo dos cosas.
   const KNOWN = GOVERNING_KINDS;
 
-  const heading = document.createElement('h3');
-  heading.className = 'settings-group';
-  heading.textContent = 'Gobierno de Vera';
-  host.append(heading);
-
-  const explanation = document.createElement('p');
-  explanation.className = 'settings-note';
-  explanation.textContent = 'Distingue lo que rige el software de las superficies, proyecciones y documentos que sólo lo explican.';
-  host.append(explanation);
-
   const special = document.createElement('div');
   special.id = 'special-pages';
+  special.className = 'settings-destinations settings-government-list';
   host.append(special);
 
   void api.specialPages().then((found) => {
     const row = (label: string, what: string): HTMLButtonElement => {
       const item = document.createElement('button');
       item.type = 'button';
-      item.className = 'index-item';
-      const name = document.createElement('span');
+      item.className = 'settings-destination settings-government-destination';
+      const name = document.createElement('strong');
       name.textContent = label;
       const said = document.createElement('span');
-      said.className = 'count';
       said.textContent = what;
       item.append(name, said);
       special.append(item);
       return item;
     };
+
+    /** El espacio reservado importa en la dirección y en el corpus, no en cada botón. */
+    const visibleTitle = (title: string): string =>
+      title.replace(/^VERA\s*:\s*/i, '').trim();
 
     // Por el orden en que se leen, no por el orden en que el corpus las
     // devuelva: el vocabulario antes que lo que se declara con él, y las
@@ -437,9 +432,11 @@ function drawMemory(host: HTMLElement): void {
       return at === -1 ? KNOWN.length : at;
     };
 
-    const declared = [...found].sort(
+    const declared = found
+      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication')
+      .sort(
       (a, b) => rank(a.kind) - rank(b.kind) || a.title.localeCompare(b.title, 'es'),
-    );
+      );
 
     for (const page of declared) {
       // Varias de una misma clase es normal y no un conflicto: un corpus puede
@@ -447,8 +444,8 @@ function drawMemory(host: HTMLElement): void {
       // título, que es lo que la distingue de la otra.
       const known = KNOWN.find((one) => one.key === page.kind);
       const item = row(
-        page.title,
-        known === undefined ? `clase no reconocida · ${page.kind}` : `${known.mode} · ${known.what}`,
+        visibleTitle(page.title),
+        known === undefined ? `Clase de sistema no reconocida: ${page.kind}` : known.what,
       );
       item.addEventListener('click', () => {
         closeSettings();
@@ -469,10 +466,10 @@ function drawMemory(host: HTMLElement): void {
      * escribirlo estaría pidiendo una decisión que nadie tomó.
      */
     for (const kind of KNOWN) {
-      if (kind.key === 'service') continue;
+      if (kind.key === 'service' || kind.key === 'activity' || kind.key === 'publication') continue;
       if (found.some((page) => page.kind === kind.key)) continue;
-      const item = row(`${kind.label} — sin definir`, `${kind.mode} · ${kind.what}`);
-      item.title = `Todavía no hay una página especial de ${kind.label.toLowerCase()}. Su modo previsto es ${kind.mode}.`;
+      const item = row(kind.label, `Sin definir · ${kind.what}`);
+      item.title = `Todavía no hay una página del sistema para ${kind.label.toLowerCase()}.`;
       item.disabled = true;
     }
   });
@@ -1789,6 +1786,17 @@ async function openFilesAdministration(push = false): Promise<void> {
   $('#vera-root').classList.add('special-surface');
   closeSettings();
   await renderFilesAdministration($('#text'));
+}
+
+/** Abre la proyección canónica de actividad, descubierta por su clase y no por su título. */
+async function openActivityAdministration(): Promise<void> {
+  const activity = (await api.specialPages()).find((page) => page.kind === 'activity');
+  if (activity === undefined) {
+    notice('esta instancia todavía no tiene un registro de actividad');
+    return;
+  }
+  closeSettings();
+  await openPage(activity.id, null, { gesture: 'opened_directly' });
 }
 
 /**
@@ -3446,6 +3454,7 @@ function wireTheme(): void {
       onClose: closeSettings,
       onOpenFiles: () => void openFilesAdministration(true),
       onOpenSharing: () => void openSharingAdministration(true),
+      onOpenActivity: () => void openActivityAdministration(),
     });
     document.body.classList.add('settings-open');
     // Recordar la sección entre aperturas: se vuelve a la misma que se dejó.
@@ -3454,7 +3463,7 @@ function wireTheme(): void {
         (tab as HTMLElement).hidden = true;
       }
       tab.addEventListener('click', () => {
-        section = (['memoria', 'archivos', 'teclado', 'apariencia'] as Section[])[at] ?? 'memoria';
+        section = (['memoria', 'teclado', 'apariencia'] as Section[])[at] ?? 'memoria';
       });
     });
   };

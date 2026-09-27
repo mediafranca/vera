@@ -35,8 +35,9 @@ describe('superficies especiales', () => {
   });
 
   it('distingue gobierno efectivo, superficies, proyecciones y documentación', () => {
-    assert.match(main, /Gobierno de Vera/);
-    assert.match(main, /conocida.*known\.mode/s);
+    assert.match(settings, /Gobierno de Vera/);
+    assert.match(main, /known === undefined[\s\S]*known\.what/);
+    assert.doesNotMatch(main, /known\.mode/);
     assert.match(governing, /'rectora' \| 'superficie' \| 'derivada' \| 'documentación'/);
     assert.match(governing, /key: 'activity'.*mode: 'derivada'/);
     assert.match(governing, /key: 'presentation'.*mode: 'documentación'/);
