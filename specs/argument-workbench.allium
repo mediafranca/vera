@@ -1,0 +1,115 @@
+-- allium: 3
+-- argument-workbench.allium
+
+-- Scope: La mesa de trabajo donde una persona reúne páginas y bloques ya
+--   existentes, los dispone, los anota en contexto y escoge un recorrido antes
+--   de escribir un argumento
+-- Includes: Material canónico referido sin copiarlo, anotación y función
+--   locales a la mesa, disposición todavía no argumental, secuencia como
+--   esqueleto y edición de la fuente desde su ventana en la mesa
+-- Excludes:
+--   - La gramática y persistencia del recorrido terminado (ver trail.allium)
+--   - La captura desde el navegador antes de que el material entre al corpus
+--   - El vocabulario definitivo de funciones retóricas, todavía por decidir
+--   - La apariencia concreta, el tamaño y el gesto de cada control
+-- Dependencies: Page, Block, Graph y Participant los gobierna core.allium; el
+--   argumento como recorrido y sus conectivas, trail.allium
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Lo que se dispone en la mesa
+------------------------------------------------------------
+
+-- Una colocación no es una tercera clase de contenido. Es la presencia
+-- contextual de una página o un bloque que ya existe en el corpus. Puede decir
+-- para qué se trajo y qué observa aquí quien compone, sin escribir esa función
+-- sobre la fuente como si valiera en todos sus usos futuros.
+value WorkbenchSource {
+    page: core/Page?
+    block: core/Block?
+}
+
+entity ArgumentWorkbench {
+    graph: core/Graph
+    held_by: core/Participant
+    placements: WorkbenchPlacement with workbench = this
+}
+
+entity WorkbenchPlacement {
+    workbench: ArgumentWorkbench
+    source: WorkbenchSource
+    position: Integer
+    contextual_note: String?
+    contextual_role: String?
+    sequence_ordinal: Integer?
+}
+
+------------------------------------------------------------
+-- Contrato de composición
+------------------------------------------------------------
+
+contract WorkbenchComposition {
+    collect_page: (workbench: ArgumentWorkbench, page: core/Page) -> WorkbenchPlacement
+    collect_block: (workbench: ArgumentWorkbench, block: core/Block) -> WorkbenchPlacement
+    arrange: (placement: WorkbenchPlacement, position: Integer) -> WorkbenchPlacement
+    annotate: (placement: WorkbenchPlacement, note: String?, role: String?) -> WorkbenchPlacement
+    choose_sequence: (workbench: ArgumentWorkbench, placements: List<WorkbenchPlacement>) -> List<WorkbenchPlacement>
+    edit_source: (participant: core/Participant, placement: WorkbenchPlacement, content: String) -> core/Change
+
+    @invariant TheWorkbenchRefersAndDoesNotCopy
+        -- Lo reunido sigue siendo la misma página o el mismo bloque del corpus.
+        -- La mesa no crea una copia, una ficha intermedia ni una versión privada
+        -- que después haya que reconciliar con el original.
+
+    @invariant ContextBelongsToThePlacement
+        -- La nota y la función describen para qué sirve esta fuente en esta mesa.
+        -- No se escriben como metadatos globales de la página o del bloque: una
+        -- misma perla puede ser premisa aquí, objeción allá y ejemplo después.
+
+    @invariant CollectionDoesNotAssertAnOrder
+        -- Añadir material sólo lo deja disponible. La posición espacial puede
+        -- cambiar cuanto haga falta sin afirmar todavía que una cosa se sigue de
+        -- otra ni insertar el material en un recorrido argumental.
+
+    @invariant OrderingMakesASkeletonAndNotYetAnArgument
+        -- Escoger una secuencia produce el esqueleto caminante: un recorrido
+        -- propuesto por las fuentes. Todavía no finge tener la voz, las
+        -- conectivas ni la responsabilidad retórica de un argumento escrito.
+
+    @invariant AuthoredVoiceMakesTheArgument
+        -- El argumento aparece cuando alguien da carne al esqueleto: escribe las
+        -- transiciones, decide qué mostrar y en qué orden, y responde por ese
+        -- movimiento ante otros. Vera puede ayudar a ver el material, pero no
+        -- confunde ordenarlo con haber sostenido ya una posición.
+
+    @invariant APlacedSourceRemainsAlive
+        -- Editar una fuente desde la mesa edita su identidad canónica mediante
+        -- la vía ordinaria de operaciones y deja la misma historia que editarla
+        -- desde su página. La mesa no guarda una corrección paralela.
+
+    @invariant AWindowShowsThatItsContentComesFromElsewhere
+        -- Una fuente abierta en la mesa se distingue sobriamente del texto
+        -- propio de la mesa. El límite visual dice que se está mirando y quizá
+        -- editando otro lugar; no convierte la fuente en una tarjeta ajena ni en
+        -- una miniaplicación con otro editor.
+}
+
+invariant EveryPlacementNamesOneCanonicalSource {
+    for placement in WorkbenchPlacements:
+        (placement.source.page != null and placement.source.block = null) or
+        (placement.source.page = null and placement.source.block != null)
+}
+
+------------------------------------------------------------
+-- Preguntas que la conversación todavía no ha decidido
+------------------------------------------------------------
+
+open question "¿La mesa existe desde el comienzo como un objeto durable e independiente, o es desde el comienzo una vista de una página de tipo argumento todavía en preparación?"
+open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
+open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"
+open question "Cuando se coloca un bloque, ¿la ventana muestra sólo ese bloque, su subárbol completo o una profundidad elegida en cada colocación?"
+open question "¿Cómo se avisa y reconcilia que otra persona o agente cambió la fuente mientras estaba abierta y editándose desde la mesa?"
+open question "¿Qué gesto convierte la secuencia escogida en el recorrido de trail.allium, y qué ocurre después con el material reunido que no entró en esa secuencia?"
+open question "¿Vera Clip siempre deposita primero una captura canónica en la bitácora y luego ofrece referirla desde la mesa activa, o la elección de mesa ocurre antes de entregar la captura?"
+open question "¿La historia debe conservar las disposiciones descartadas de la mesa, o basta con la secuencia finalmente escogida y la procedencia de sus fuentes?"

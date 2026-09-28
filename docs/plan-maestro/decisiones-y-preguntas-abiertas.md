@@ -179,6 +179,30 @@ si no hay `dist/`). Es una decisión pequeña pero afecta la confianza de
 cualquier agente nuevo que clone el repositorio y corra `npm test` como primer
 paso.
 
+### E-9. Las referencias de bloque no son transclusiones vivas y pueden quedar obsoletas
+
+La sintaxis `((block:id))` se presenta hoy como un enlace con un extracto
+resuelto, no como una ventana editable al bloque canónico. Además, la lista
+`blockRefs` llega con la lectura de la página y puede quedar antigua cuando una
+edición local añade o cambia una referencia: el redibujo desde la réplica local
+conserva el contenido nuevo y el enriquecimiento anterior, por lo que la cita
+puede tardar en renderizarse o quedar sin resolver hasta una recarga canónica.
+
+**Evidencia (2026-09-28):** una carga fresca resolvió 21 referencias en unos
+170 ms y no dejó citas colgantes reales. Esto hace improbable que SQLite o la
+resolución del servidor sean el cuello principal; el defecto está en la
+reconciliación y validación del estado derivado en el cliente. La validación de
+una página retenida tampoco compara `blockRefs`, de modo que puede aceptar como
+vigente una lectura cuyo contenido coincide pero cuyo enriquecimiento no.
+
+**Camino acordado:** primero corregir la actualización inmediata y la invalidez
+del enriquecimiento; luego especificar una transclusión visualmente distinguible
+que edite el bloque fuente mediante la vía ordinaria de operaciones. Antes de
+construirla hay que decidir profundidad del subárbol, edición concurrente,
+permisos y reconciliación. Estas decisiones viven desde ahora en
+`argument-workbench.allium`; la transclusión será una capacidad compartida con
+la mesa de trabajo, no un parche visual aislado.
+
 ## Preguntas ya declaradas en specs, citadas aquí por ser bloqueantes de la fase 1
 
 Estas ya existen como `open question` en su spec de origen. Se listan porque
