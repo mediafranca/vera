@@ -63,6 +63,11 @@ describe('despliegue del front matter', () => {
     assert.equal(session.frontMatterOpen(), false);
     assert.equal(storage.getItem('vera.frontMatterOpen'), 'false');
   });
+
+  it('parte las direcciones largas sin añadir desplazamiento horizontal', () => {
+    assert.match(styles, /\.property-external\s*\{[^}]*white-space:\s*pre-wrap[^}]*overflow-wrap:\s*anywhere[^}]*word-break:\s*break-word/s);
+    assert.match(styles, /\.property-value:has\(\.property-external\)\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0/s);
+  });
 });
 
 describe('diarios en el mapa', () => {

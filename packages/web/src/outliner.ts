@@ -750,40 +750,6 @@ function librarianInstruction(page: PageView, block: BlockView | null): Promise<
   });
 }
 
-function librarianTurn(request: LibrarianRequestView): HTMLElement {
-  const turn = document.createElement('aside');
-  turn.className = `librarian-turn librarian-${request.status}`;
-  turn.dataset['request'] = request.id;
-  const asked = document.createElement('div');
-  asked.className = 'librarian-request';
-  asked.textContent = request.text;
-  const state = document.createElement('div');
-  state.className = 'librarian-state';
-  state.textContent = request.status === 'answered'
-    ? 'El bibliotecario respondió'
-    : request.status === 'working'
-      ? 'El bibliotecario está trabajando'
-      : request.dispatchStatus === 'failed'
-        ? 'guardado; esperando reconexión'
-        : 'en cola para el bibliotecario';
-  turn.append(asked, state);
-  if (request.reply !== null) {
-    const reply = document.createElement('div');
-    reply.className = 'librarian-reply';
-    reply.innerHTML = renderMarkdown(request.reply.text);
-    decorateCodeBlocks(reply);
-    turn.append(reply);
-    if (request.reply.proposal !== null) {
-      const count = request.reply.proposal.changes.length;
-      const proposal = document.createElement('div');
-      proposal.className = 'librarian-proposal';
-      proposal.textContent = `${count} cambio${count === 1 ? '' : 's'} propuesto${count === 1 ? '' : 's'} · todavía no aplicado`;
-      turn.append(proposal);
-    }
-  }
-  return turn;
-}
-
 function librarianDialogHeader(title: string, context: string): HTMLElement {
   const header = document.createElement('header');
   header.className = 'librarian-dialog-header';
@@ -919,14 +885,10 @@ async function showLibrarianTurns(
   const unique = [...new Map(requests.map((request) => [request.id, request])).values()];
   const active = unique.filter((request) => request.status === 'queued' || request.status === 'working');
   showLibrarianActivity(active);
-  // Un pedido sobre un bloque es una transformación delegada: el bibliotecario reemplaza
-  // el bloque y la versión anterior queda en el historial. Nunca se monta una
-  // conversación al costado del texto que acaba de transformar.
-  for (const request of unique.filter((request) =>
-    request.sourceBlockId === null && request.status !== 'queued' && request.status !== 'working').reverse()) {
-    const turn = librarianTurn(request);
-    container.querySelector('.page-header')?.after(turn);
-  }
+  // Las respuestas terminadas son contenido del grafo: sobre un bloque lo
+  // reemplazan y sobre una página nacen como un bloque ordinario. La solicitud
+  // auxiliar permanece en el registro, pero no vuelve a montarse como una copia
+  // de sólo lectura al costado del contenido editable.
   if (active.length > 0) window.setTimeout(() => {
     if (container.isConnected && container.dataset['page'] === page.id) {
       void showLibrarianTurns(container, page, callbacks);

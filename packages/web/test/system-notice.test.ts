@@ -19,7 +19,7 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
   });
 
   it('pide dentro de Vera y reduce el trabajo activo a su marca pulsable', () => {
-    const asking = outliner.slice(outliner.indexOf('async function askLibrarian('), outliner.indexOf('function librarianTurn('));
+    const asking = outliner.slice(outliner.indexOf('async function askLibrarian('), outliner.indexOf('function librarianDialogHeader('));
     assert.doesNotMatch(asking, /window\.prompt/);
     assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
     assert.match(outliner, /activity\.className = 'librarian-activity'/);
@@ -30,6 +30,13 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.match(styles, /\.librarian-activity \.icon[\s\S]*?animation: librarian-mark-pulse/);
     assert.match(styles, /@keyframes librarian-mark-pulse/);
     assert.match(styles, /prefers-reduced-motion[\s\S]*?\.librarian-activity \.icon \{ animation: none; \}/);
+  });
+
+  it('deja las respuestas terminadas como bloques editables y no monta una copia auxiliar', () => {
+    assert.doesNotMatch(outliner, /function librarianTurn\(/);
+    assert.doesNotMatch(outliner, /className = 'librarian-reply'/);
+    assert.doesNotMatch(styles, /\.librarian-turn\b|\.librarian-reply\b/);
+    assert.match(outliner, /Las respuestas terminadas son contenido del grafo/);
   });
 
   it('hace respirar el perímetro completo de los renders pendientes', () => {

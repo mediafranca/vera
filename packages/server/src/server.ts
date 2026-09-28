@@ -1784,6 +1784,40 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 201, answered);
           return;
         }
+        /*
+         * Una respuesta sobre una página es escritura, no una tarjeta auxiliar.
+         *
+         * El bloque lleva una identidad derivada de la solicitud y una operación
+         * idempotente propia. Así un reintento puede terminar de cerrar la solicitud
+         * sin duplicar el texto, y el historial conserva mano y canal como en toda
+         * escritura del bibliotecario.
+         */
+        if (current.sourcePageId === null) {
+          send(response, 409, { error: 'la solicitud no conserva la página donde debe escribirse la respuesta' });
+          return;
+        }
+        const replyBlock = `block:librarian-reply:${current.id.slice('agent-request:'.length)}`;
+        const roots = graph.blocksOf(current.sourcePageId).filter((block) => block.parent === null);
+        const outcome = graph.submitOperation({
+          originId: `librarian:${current.id}:page-reply`,
+          participant: who.participant,
+          channel: 'agent_generation',
+          change: {
+            kind: 'create_block',
+            stableId: replyBlock,
+            page: current.sourcePageId,
+            parent: null,
+            position: roots.length,
+            content: text,
+          },
+        });
+        if (outcome.status === 'rejected') {
+          send(response, 422, { error: outcome.reason }); return;
+        }
+        if (outcome.status === 'applied') {
+          const failure = persist(outcome.operation);
+          if (failure !== null) { send(response, 500, { error: failure }); return; }
+        }
         const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
         send(response, 201, answered);

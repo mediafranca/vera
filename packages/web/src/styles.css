@@ -55,28 +55,6 @@
   font-display: swap;
 }
 
-.librarian-turn {
-  margin: 0.45rem 0 0.65rem 2.1rem;
-  padding: 0.7rem 0.85rem;
-  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 0 0.45rem 0.45rem 0;
-  background: color-mix(in srgb, var(--bg-raised) 90%, var(--accent));
-  color: var(--text);
-  font-size: 0.92rem;
-}
-
-.page-header + .librarian-turn { margin-left: 0; }
-.librarian-request { font-style: italic; }
-.librarian-state,
-.librarian-proposal {
-  margin-top: 0.3rem;
-  color: var(--text-dim);
-  font-size: 0.8rem;
-}
-.librarian-reply { margin-top: 0.55rem; }
-.librarian-reply > :first-child { margin-top: 0; }
-.librarian-reply > :last-child { margin-bottom: 0; }
-
 .librarian-activity {
   position: fixed;
   z-index: 120;
@@ -2282,6 +2260,21 @@ html.presenting body {
   outline: none;
 }
 
+/* Una URL larga sigue siendo texto del front matter, no una razón para que la
+   página entera gane un segundo eje. `pre-wrap` conserva cualquier separación
+   deliberada y `anywhere` permite partir también una dirección sin espacios. */
+.property-value:has(.property-external) {
+  width: 100%;
+  min-width: 0;
+}
+
+.property-external {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .property-choose {
   display: inline-flex;
   align-items: center;
@@ -3837,8 +3830,7 @@ pre.copyable-code {
   position: relative;
 }
 
-.body pre.copyable-code,
-.librarian-reply pre.copyable-code {
+.body pre.copyable-code {
   padding-top: 2.15rem;
 }
 
