@@ -92,7 +92,20 @@ contract WorkbenchComposition {
         -- `argumento` no es otro grado de preparación ni un nombre anticipado
         -- para la mesa. Es el estado final del flujo: una pieza articulada por la
         -- que alguien responde y que puede presentarse a otros. Llegar a él hace
-        -- explícita la condición de publicable; no publica por sí solo.
+        -- explícita la condición de publicable; no publica por sí solo. Final
+        -- nombra su suficiencia presente, no una clausura irreversible.
+
+    @invariant MaturityCanMoveBackward
+        -- La persona puede volver desde cualquier grado a uno anterior, incluso
+        -- desde `argumento`. Nueva evidencia, una objeción o un contexto distinto
+        -- pueden reabrir lo que antes bastaba. Vera no exige una justificación ni
+        -- protege la escala como si avanzar fuera acumular puntos.
+
+    @invariant RevisionDoesNotEraseFormerMaturity
+        -- Retroceder cambia el estado actual y la historia conserva los estados
+        -- que la preparación ya había alcanzado, quién los declaró y cuándo. El
+        -- rigor consiste en poder reconstruir la revisión, no en fingir que la
+        -- conclusión nunca fue puesta a prueba ni que sigue intacta para siempre.
 
     @invariant PublishableDoesNotMeanPublished
         -- Terminar habilita el gesto de publicación, pero no cambia visibilidad,
@@ -161,7 +174,6 @@ invariant EveryPlacementNamesOneCanonicalSource {
 ------------------------------------------------------------
 
 open question "¿Cuál es el nombre canónico del tipo de página: Mesa de trabajo, Preparación argumental, Borrador argumental u otro que no confunda la actividad con el producto terminado?"
-open question "¿La maduración permite volver libremente a cualquier grado anterior, o retroceder debe pedir una razón o conservar visible que la preparación ya había alcanzado un grado posterior?"
 open question "¿`argumento` llega después de Probatio y Traditio actúa sobre un argumento ya terminado, o Traditio es el último grado de preparación antes de que la página se vuelva argumento publicable?"
 open question "Al terminar, ¿la página de preparación cambia de tipo y se vuelve argumento, o produce una página-argumento distinta y permanece como memoria del proceso?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
