@@ -1,9 +1,9 @@
 -- allium: 3
 -- argument-workbench.allium
 
--- Scope: La mesa de trabajo donde una persona reúne páginas y bloques ya
---   existentes, los dispone, los anota en contexto y escoge un recorrido antes
---   de escribir un argumento
+-- Scope: La página de preparación argumental donde una persona reúne páginas y
+--   bloques ya existentes, los dispone, los anota en contexto y escoge un
+--   recorrido antes de escribir un argumento
 -- Includes: Material canónico referido sin copiarlo, anotación y función
 --   locales a la mesa, disposición todavía no argumental, secuencia como
 --   esqueleto y edición de la fuente desde su ventana en la mesa
@@ -21,6 +21,14 @@ use "./core.allium" as core
 -- Lo que se dispone en la mesa
 ------------------------------------------------------------
 
+-- Los nueve momentos que el ciclo escolástico de Vera hace visibles. Nombrarlos
+-- aquí no decide todavía si el selector declara la operación presente o un
+-- grado de madurez acumulado; esa diferencia queda abierta al final.
+enum ScholasticMoment {
+    collectio | lectio | excerptio | ordinatio | collatio |
+    disputatio | compositio | probatio | traditio
+}
+
 -- Una colocación no es una tercera clase de contenido. Es la presencia
 -- contextual de una página o un bloque que ya existe en el corpus. Puede decir
 -- para qué se trajo y qué observa aquí quien compone, sin escribir esa función
@@ -31,8 +39,9 @@ value WorkbenchSource {
 }
 
 entity ArgumentWorkbench {
-    graph: core/Graph
+    page: core/Page
     held_by: core/Participant
+    phase: ScholasticMoment
     placements: WorkbenchPlacement with workbench = this
 }
 
@@ -50,12 +59,27 @@ entity WorkbenchPlacement {
 ------------------------------------------------------------
 
 contract WorkbenchComposition {
+    choose_phase: (workbench: ArgumentWorkbench, phase: ScholasticMoment) -> ArgumentWorkbench
+    find_pages: (workbench: ArgumentWorkbench, query: String) -> List<core/Page>
+    inspect_blocks: (workbench: ArgumentWorkbench, page: core/Page) -> List<core/Block>
     collect_page: (workbench: ArgumentWorkbench, page: core/Page) -> WorkbenchPlacement
     collect_block: (workbench: ArgumentWorkbench, block: core/Block) -> WorkbenchPlacement
     arrange: (placement: WorkbenchPlacement, position: Integer) -> WorkbenchPlacement
     annotate: (placement: WorkbenchPlacement, note: String?, role: String?) -> WorkbenchPlacement
     choose_sequence: (workbench: ArgumentWorkbench, placements: List<WorkbenchPlacement>) -> List<WorkbenchPlacement>
     edit_source: (participant: core/Participant, placement: WorkbenchPlacement, content: String) -> core/Change
+
+    @invariant TheWorkbenchIsAPageButNotAnArgument
+        -- La preparación tiene página, título, enlace e historia propios, pero
+        -- pertenece a un tipo distinto de `argumento`. Poder volver a ella no
+        -- obliga a presentar como posición terminada el material que todavía se
+        -- está reuniendo, ordenando o contrastando.
+
+    @invariant ThePhaseIsDeclaredAtTheTop
+        -- La cabecera hace visible el momento escolástico declarado y permite
+        -- cambiarlo directamente. El estado no se esconde en un menú de sistema:
+        -- explicita qué clase de trabajo cree estar haciendo la persona y puede
+        -- orientar las acciones que la mesa ofrece sin ejecutarlas por ella.
 
     @invariant TheWorkbenchRefersAndDoesNotCopy
         -- Lo reunido sigue siendo la misma página o el mismo bloque del corpus.
@@ -93,6 +117,19 @@ contract WorkbenchComposition {
         -- propio de la mesa. El límite visual dice que se está mirando y quizá
         -- editando otro lugar; no convierte la fuente en una tarjeta ajena ni en
         -- una miniaplicación con otro editor.
+
+    @invariant PageCompletionRevealsTheOutlineBeforeCollecting
+        -- Buscar por nombre completa páginas del corpus y permite inspeccionar
+        -- su estructura antes de añadir nada. La página se reconoce como una
+        -- unidad y sus bloques como líneas ordenadas, próximas a la lectura que
+        -- D4 hace de una página; elegir no exige abandonar la mesa ni abrir una
+        -- cadena de diálogos.
+
+    @invariant OneGestureCanChooseThePageOrPreciseBlocks
+        -- Desde la misma aparición se puede tomar la página completa o recorrer
+        -- sus líneas y seleccionar uno o varios bloques. Puntero, foco y tacto
+        -- hacen visible qué línea se escogerá; el gesto no depende sólo de hover
+        -- ni obliga a copiar identificadores.
 }
 
 invariant EveryPlacementNamesOneCanonicalSource {
@@ -105,7 +142,9 @@ invariant EveryPlacementNamesOneCanonicalSource {
 -- Preguntas que la conversación todavía no ha decidido
 ------------------------------------------------------------
 
-open question "¿La mesa existe desde el comienzo como un objeto durable e independiente, o es desde el comienzo una vista de una página de tipo argumento todavía en preparación?"
+open question "¿Cuál es el nombre canónico del tipo de página: Mesa de trabajo, Preparación argumental, Borrador argumental u otro que no confunda la actividad con el producto terminado?"
+open question "¿El selector declara el momento escolástico en que la persona trabaja ahora, que puede avanzar y volver, o el grado de madurez máximo alcanzado por la preparación?"
+open question "Al terminar, ¿la página de preparación cambia de tipo y se vuelve argumento, o produce una página-argumento distinta y permanece como memoria del proceso?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
 open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"
 open question "Cuando se coloca un bloque, ¿la ventana muestra sólo ese bloque, su subárbol completo o una profundidad elegida en cada colocación?"
