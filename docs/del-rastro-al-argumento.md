@@ -19,7 +19,7 @@ aporte de Vera, no una taxonomía ornamental.
 
 ## Una lectura de *The Space of Design*
 
-En [*The Space of Design*](https://www.dubberly.com/articles/the-space-of-design.html),
+En [*The Space of Design*](https://doi.org/10.1145/1836216.1836236),
 Hugh Dubberly cruza dos escalas. Una distingue **forma o gramática**,
 **significado o definición** y **contexto o necesidad**: cómo, qué y por qué.
 La otra distingue **objeto**, **sistema** y **ecología**. Su diagrama
@@ -109,3 +109,10 @@ La interacción debe preservar una gradación reconocible:
 Las especificaciones Allium obligan el comportamiento observable de este
 recorrido. Este texto conserva otra cosa: la razón por la que vale la pena
 construirlo.
+
+## Referencia
+
+Dubberly, Hugh. «The space of design». *Interactions* 17, n.º 5 (2010):
+74. [https://doi.org/10.1145/1836216.1836236](https://doi.org/10.1145/1836216.1836236).
+En la biblioteca Zotero de Herbert: ítem `YY8GBPKV`, clave de cita
+`Dubberly2010a`, adjunto PDF `XN7VEAAI`.
