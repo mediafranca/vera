@@ -1,9 +1,15 @@
 # Fundamentos epistémicos y recorridos argumentales
 
-Esta guía es la entrada para quien necesite entender o continuar el trabajo que
+Esta guía operativa es la entrada para quien necesite entender o continuar el trabajo que
 une procedencia, rol epistémico y recorrido argumental en Vera. Describe el
 estado verificable del programa al 21 de septiembre de 2026; las
 especificaciones citadas siguen mandando sobre el comportamiento.
+
+El sentido filosófico de ese trabajo —lectura transversal, acto escolástico,
+exteriorización y extensión cognitiva— se desarrolla por separado en
+[`Del rastro al argumento`](del-rastro-al-argumento.md). Esa pieza no es un
+manual ni una segunda especificación: expone por qué estas interacciones
+importan y qué posición toma Vera entre las *tools for thought*.
 
 ## La distinción central
 
@@ -15,8 +21,11 @@ Vera conserva tres preguntas distintas. Mezclarlas vuelve impreciso el corpus:
    página completa: fuente, testimonio, análisis, síntesis, pregunta o
    afirmación. No certifica que sus frases sean verdaderas.
 3. **¿Cómo se llegó a sostener algo?** Un recorrido conserva paradas,
-   conectivas, citas y procedencia. Al promoverlo nace una página argumento;
-   las páginas citadas conservan su propia clase y su propio rol.
+   conectivas, citas y procedencia. La implementación actual promueve el rastro
+   directamente a una página argumento; el fundamento revisado exige que nazca
+   primero una preparación argumental. La consolidación está registrada como
+   deuda E-10. En ambos casos, las páginas citadas conservan su propia clase y
+   su propio rol.
 
 Una fuente puede intervenir en muchos argumentos sin convertirse en argumento.
 Una síntesis puede citar testimonios y análisis sin apropiarse de su autoría. El

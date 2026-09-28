@@ -502,7 +502,9 @@ entity Trail {
 -- como descripción del comportamiento legado hasta consolidar conjuntamente
 -- trail.allium, workspace-interface.allium y argument-workbench.allium. No debe
 -- tomarse como fundamento para nuevas superficies. Ver
--- ATraceSeedsPreparationAndNotAnArgument en argument-workbench.allium.
+-- ATraceSeedsPreparationAndNotAnArgument y TheArrangedTraceEntersWhole en
+-- argument-workbench.allium: se conserva el tramo completo, ya podado y
+-- ordenado en el mapa, pero cambia la clase y la madurez de la página que nace.
 --
 -- Promover el rastro a argumento (comportamiento legado pendiente de migración).
 --

@@ -179,6 +179,13 @@ contract WorkbenchComposition {
         -- recorrido, seleccionado o capturado fuentes aporta contexto para el
         -- trabajo, pero sólo la persona declara en qué estado de maduración se
         -- encuentra la preparación.
+
+    @invariant TheArrangedTraceEntersWhole
+        -- Al promover un tramo entra completo y en el orden visible que ya tiene
+        -- en el breadcrumb. La persona pudo quitar y arrastrar pasos allí antes
+        -- del gesto; Vera no abre una segunda selección ni le pide repetir esa
+        -- composición. Dentro de la preparación todo sigue siendo podable y
+        -- reordenable.
 }
 
 invariant EveryPlacementNamesOneCanonicalSource {
@@ -193,7 +200,6 @@ invariant EveryPlacementNamesOneCanonicalSource {
 
 open question "¿Cuál es el nombre canónico del tipo de página: Mesa de trabajo, Preparación argumental, Borrador argumental u otro que no confunda la actividad con el producto terminado?"
 open question "¿La escala visible usará los sustantivos de estado Contexto, Estructura, Composición, Validación y Argumento, u otra reducción igualmente compacta del ciclo escolástico?"
-open question "Al crear una preparación desde el breadcrumb, ¿se coloca de inmediato todo el tramo elegido para podarlo después, o se escogen sus perlas antes de crear la página?"
 open question "¿`argumento` llega después de Probatio y Traditio actúa sobre un argumento ya terminado, o Traditio es el último grado de preparación antes de que la página se vuelva argumento publicable?"
 open question "Al terminar, ¿la página de preparación cambia de tipo y se vuelve argumento, o produce una página-argumento distinta y permanece como memoria del proceso?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
