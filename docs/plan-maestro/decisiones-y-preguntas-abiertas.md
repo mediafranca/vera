@@ -203,6 +203,22 @@ permisos y reconciliación. Estas decisiones viven desde ahora en
 `argument-workbench.allium`; la transclusión será una capacidad compartida con
 la mesa de trabajo, no un parche visual aislado.
 
+### E-10. La promoción del breadcrumb todavía crea directamente un argumento
+
+`trail.allium`, `workspace-interface.allium` y la implementación vigente
+conservan el modelo anterior: promover un tramo del breadcrumb crea de inmediato
+una página `tipo:: argumento`. La exploración conceptual del 2026-09-28 decidió
+otra frontera: el tramo sólo reúne material y debe sembrar una página de
+preparación argumental, cuyo estado de madurez declara la persona y cuyo término
+publicable es `Argumento`.
+
+**Deuda deliberada:** no se reescribe todavía el flujo legado. Primero se
+cerrarán el nombre canónico de la página, la escala compacta de maduración y el
+gesto con que se seleccionan las perlas del tramo. Después se consolidarán las
+tres specs y la implementación como una sola migración, conservando dos
+propiedades del diseño anterior: el gesto pequeño desde el mapa y la creación
+atómica de una página completamente sembrada.
+
 ## Preguntas ya declaradas en specs, citadas aquí por ser bloqueantes de la fase 1
 
 Estas ya existen como `open question` en su spec de origen. Se listan porque

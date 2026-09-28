@@ -496,7 +496,15 @@ entity Trail {
 -- de Bush entero y no hace falta ningún mecanismo para tenerlo: sale de que leer
 -- deje huella y de que la huella se pueda guardar.
 
--- Promover el rastro a argumento.
+-- DEUDA DE CONSOLIDACIÓN (2026-09-28): la conversación sobre preparación
+-- argumental decidió que este gesto debe crear una página de preparación
+-- sembrada con el tramo, no un `argumento` publicable. La regla se conserva aquí
+-- como descripción del comportamiento legado hasta consolidar conjuntamente
+-- trail.allium, workspace-interface.allium y argument-workbench.allium. No debe
+-- tomarse como fundamento para nuevas superficies. Ver
+-- ATraceSeedsPreparationAndNotAnArgument en argument-workbench.allium.
+--
+-- Promover el rastro a argumento (comportamiento legado pendiente de migración).
 --
 -- El mapa ya lleva el rastro: dónde ha estado un participante, acumulado solo, sin
 -- que nadie lo componga, y desde ahí podado y reordenado a mano si a alguien le
@@ -1154,6 +1162,11 @@ surface TrailOnTheMap {
         -- cuando alguien lo enfoque.
 
     @guarantee PromotionArrivesAsAnArgumentAndNotAsAQueue
+        -- DEUDA DE CONSOLIDACIÓN: esta garantía describe la llegada atómica del
+        -- flujo legado, pero su destino `argumento` fue superado por la página de
+        -- preparación. Al consolidar se conservará la atomicidad y cambiará la
+        -- entidad que nace; no se aceptará una preparación parcialmente sembrada.
+        --
         -- Promover un breadcrumb confirma en orden la página, `tipo=argumento`,
         -- sus paradas y sus testimonios antes de abrirla. La vista nunca se
         -- adelanta a esa secuencia mostrando una página nacida sin tipo o un
