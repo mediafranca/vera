@@ -21,9 +21,10 @@ use "./core.allium" as core
 -- Lo que se dispone en la mesa
 ------------------------------------------------------------
 
--- Los nueve momentos que el ciclo escolástico de Vera hace visibles. Nombrarlos
--- aquí no decide todavía si el selector declara la operación presente o un
--- grado de madurez acumulado; esa diferencia queda abierta al final.
+-- Los nueve grados de preparación que el ciclo escolástico de Vera hace
+-- visibles. En esta superficie forman un flujo de maduración declarado por la
+-- persona. El ciclo general del estudio puede volver a empezar con nueva
+-- evidencia; eso no autoriza a Vera a mover por sí sola esta preparación.
 enum ScholasticMoment {
     collectio | lectio | excerptio | ordinatio | collatio |
     disputatio | compositio | probatio | traditio
@@ -60,6 +61,7 @@ entity WorkbenchPlacement {
 
 contract WorkbenchComposition {
     choose_phase: (workbench: ArgumentWorkbench, phase: ScholasticMoment) -> ArgumentWorkbench
+    finish_argument: (workbench: ArgumentWorkbench) -> core/Page
     find_pages: (workbench: ArgumentWorkbench, query: String) -> List<core/Page>
     inspect_blocks: (workbench: ArgumentWorkbench, page: core/Page) -> List<core/Block>
     collect_page: (workbench: ArgumentWorkbench, page: core/Page) -> WorkbenchPlacement
@@ -76,10 +78,26 @@ contract WorkbenchComposition {
         -- está reuniendo, ordenando o contrastando.
 
     @invariant ThePhaseIsDeclaredAtTheTop
-        -- La cabecera hace visible el momento escolástico declarado y permite
-        -- cambiarlo directamente. El estado no se esconde en un menú de sistema:
-        -- explicita qué clase de trabajo cree estar haciendo la persona y puede
+        -- La cabecera hace visible el grado de madurez escolástica declarado y
+        -- permite actualizarlo directamente. El estado no se esconde en un menú
+        -- de sistema: explicita hasta dónde llevó la persona el trabajo y puede
         -- orientar las acciones que la mesa ofrece sin ejecutarlas por ella.
+
+    @invariant MaturityIsAnExplicitHumanDeclaration
+        -- Vera no deduce madurez por cantidad de fuentes, extensión, tiempo ni
+        -- actividad de agentes. La persona adelanta el estado paso a paso cuando
+        -- reconoce que la preparación alcanzó el grado siguiente.
+
+    @invariant ArgumentIsTheTerminalPublishableState
+        -- `argumento` no es otro grado de preparación ni un nombre anticipado
+        -- para la mesa. Es el estado final del flujo: una pieza articulada por la
+        -- que alguien responde y que puede presentarse a otros. Llegar a él hace
+        -- explícita la condición de publicable; no publica por sí solo.
+
+    @invariant PublishableDoesNotMeanPublished
+        -- Terminar habilita el gesto de publicación, pero no cambia visibilidad,
+        -- dirección pública ni destinatarios. La decisión de exponer el argumento
+        -- sigue siendo un acto separado y explícito.
 
     @invariant TheWorkbenchRefersAndDoesNotCopy
         -- Lo reunido sigue siendo la misma página o el mismo bloque del corpus.
@@ -143,7 +161,8 @@ invariant EveryPlacementNamesOneCanonicalSource {
 ------------------------------------------------------------
 
 open question "¿Cuál es el nombre canónico del tipo de página: Mesa de trabajo, Preparación argumental, Borrador argumental u otro que no confunda la actividad con el producto terminado?"
-open question "¿El selector declara el momento escolástico en que la persona trabaja ahora, que puede avanzar y volver, o el grado de madurez máximo alcanzado por la preparación?"
+open question "¿La maduración permite volver libremente a cualquier grado anterior, o retroceder debe pedir una razón o conservar visible que la preparación ya había alcanzado un grado posterior?"
+open question "¿`argumento` llega después de Probatio y Traditio actúa sobre un argumento ya terminado, o Traditio es el último grado de preparación antes de que la página se vuelva argumento publicable?"
 open question "Al terminar, ¿la página de preparación cambia de tipo y se vuelve argumento, o produce una página-argumento distinta y permanece como memoria del proceso?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
 open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"
