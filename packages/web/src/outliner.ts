@@ -12,6 +12,7 @@
 // que pueda divergir del grafo.
 
 import {
+  ARGUMENT_MATURITY_KEY,
   DEFAULT_PROPERTY_NAMES,
   SPECIAL_KIND,
   answersIn,
@@ -24,6 +25,7 @@ import {
   uniqueAnchors,
   type RenderOptions,
 } from '@vera/core';
+import { renderArgumentWorkbenchBand } from './argument-workbench-page.ts';
 import {
   api,
   type BlockView,
@@ -4483,6 +4485,24 @@ export function renderOutliner(
   header.append(more);
 
   container.append(header);
+
+  const workbench = renderArgumentWorkbenchBand(
+    page,
+    corpusNames().kind,
+    readOnly,
+    async (phase) => submitAndReload(
+      phase === null
+        ? { kind: 'remove_property', page: page.id, propertyKey: ARGUMENT_MATURITY_KEY }
+        : {
+            kind: 'set_property',
+            page: page.id,
+            propertyKey: ARGUMENT_MATURITY_KEY,
+            propertyValue: phase,
+          },
+      callbacks,
+    ),
+  );
+  if (workbench !== null) header.after(workbench);
 
   /*
    * Si esta página gobierna una conexión, su panel va aquí: debajo de lo que la

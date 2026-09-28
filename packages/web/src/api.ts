@@ -584,6 +584,13 @@ export type SubmitResult =
   | { status: 'duplicate'; sequence: number; subjectId: string }
   | { status: 'rejected'; reason: string };
 
+export type SubmitBatchResult =
+  | {
+      status: 'applied' | 'duplicate';
+      operations: { sequence: number; subjectId: string }[];
+    }
+  | { status: 'rejected'; reason: string };
+
 export type SubmissionActivity =
   /**
    * Aplicado en casa, todavía sin viajar.
@@ -1286,6 +1293,68 @@ export const api = {
     channel: 'typed_text' | 'drawn' | 'walked' = 'typed_text',
   ): Promise<SubmitResult> {
     return this.send(named(change), channel, originId());
+  },
+
+  /**
+   * Confirma una estructura dependiente como un solo hecho canónico.
+   *
+   * Crear una página y luego poblarla con escrituras separadas permitiría que
+   * un corte dejara una mitad visible. El lote se prueba entero en el servidor
+   * y sólo entonces se incorpora; los canales paralelos conservan qué vino del
+   * rastro y qué fue una declaración ordinaria.
+   */
+  async submitCanonicalBatch(
+    entries: readonly {
+      change: Change;
+      channel?: 'typed_text' | 'drawn' | 'walked';
+    }[],
+  ): Promise<SubmitBatchResult> {
+    if (entries.length === 0) return { status: 'rejected', reason: 'el lote está vacío' };
+    if (proposeInsteadOfWriting) {
+      return { status: 'rejected', reason: 'una propuesta compartida todavía no admite lotes atómicos' };
+    }
+    const origin = originId();
+    const startedAt = performance.now();
+    reportSubmission({ phase: 'sending', originId: origin, startedAt });
+    let response: Response;
+    try {
+      response = await fetch('/operations/batch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          originId: origin,
+          changes: entries.map((entry) => named(entry.change)),
+          channels: entries.map((entry) => entry.channel ?? 'typed_text'),
+        }),
+      });
+    } catch (error) {
+      reportSubmission({ phase: 'offline', originId: origin, durationMs: performance.now() - startedAt });
+      throw error;
+    }
+    const body = await response.json() as SubmitBatchResult | { error?: string; detail?: string };
+    if ('status' in body) {
+      const durationMs = performance.now() - startedAt;
+      if (body.status === 'rejected') {
+        reportSubmission({ phase: 'rejected', originId: origin, durationMs, reason: body.reason });
+      } else {
+        reportSubmission({
+          phase: 'synchronised',
+          originId: origin,
+          durationMs,
+          sequence: body.operations.at(-1)?.sequence ?? 0,
+        });
+      }
+      return body;
+    }
+    const why = body.error ?? `el servidor contestó ${response.status}`;
+    const reason = body.detail === undefined ? why : `${why}: ${body.detail}`;
+    reportSubmission({
+      phase: 'rejected',
+      originId: origin,
+      durationMs: performance.now() - startedAt,
+      reason,
+    });
+    return { status: 'rejected', reason };
   },
 
   /**

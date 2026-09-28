@@ -8216,6 +8216,84 @@ html[data-working-slow='true']::after {
 
 
 /* ---------------------------------------------------------------------------
+ * La mesa de trabajo argumental
+ *
+ * Una sola regla, no una tarjeta: la cabecera declara que se está preparando
+ * una posición sin encerrar el texto corriente en otro contenedor.
+ * ------------------------------------------------------------------------- */
+
+.argument-workbench-band {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin: 0.4rem 0 1.2rem;
+  padding: 0.7rem 0 0.75rem calc(var(--rail, 1.4rem) + var(--rail-gap, 0.2rem));
+  border-top: 1px solid var(--rule);
+}
+
+.argument-workbench-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.argument-workbench-what,
+.argument-workbench-maturity > span:first-child {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.argument-workbench-explanation {
+  font-size: 0.84rem;
+  color: var(--text-dim);
+}
+
+.argument-workbench-maturity {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: none;
+}
+
+.argument-workbench-maturity select {
+  max-width: 12rem;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 0.1rem 1.2rem 0.15rem 0;
+  color: var(--text);
+  background-color: transparent;
+  font: inherit;
+}
+
+.argument-workbench-maturity select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.argument-workbench-phase {
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .argument-workbench-band,
+  .argument-workbench-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .argument-workbench-band {
+    gap: 0.75rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * El recorrido
  *
  * Una página cuyo orden alguien declaró que era un argumento. Lo que se le añade

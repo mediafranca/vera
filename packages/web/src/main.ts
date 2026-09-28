@@ -8,6 +8,7 @@ import './executable-frames.ts';
 
 import {
   api,
+  mint,
   onSubmissionActivity,
   type CorpusHealth,
   type Hit,
@@ -89,7 +90,7 @@ import {
   blocksFor,
   fillTraceCrossings,
   provisionalTitle,
-  seedTrail,
+  seedArgumentPreparation,
 } from './promote.ts';
 import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
@@ -2702,13 +2703,13 @@ function drawTrail(): void {
     pill.textContent = page?.title ?? id;
     pill.addEventListener('click', () => void openPage(id));
     /*
-     * Y desde cualquier parada, guardar el tramo que va de ahí hasta aquí.
+     * Y desde cualquier parada, sembrar con el tramo que va de ahí hasta aquí.
      *
      * Con el botón secundario y no con uno propio: el rastro es para volver, y
      * un botón por paso al lado de cada nombre convertiría la fila en una
-     * botonera. Quien quiera promover lo hace pulsando donde quiere empezar.
+     * botonera. Quien quiera llevarlo a una mesa pulsa donde quiere empezar.
      */
-    pill.title = `volver a ${page?.title ?? id} · con el botón derecho, guardar el recorrido desde aquí`;
+    pill.title = `volver a ${page?.title ?? id} · con el botón derecho, abrir una mesa desde aquí`;
     pill.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       void promoteTrace(index);
@@ -2731,7 +2732,7 @@ function drawTrail(): void {
   }
 
   /*
-   * Guardar lo andado.
+   * Llevar lo andado a una mesa de trabajo.
    *
    * Uno solo y al final de la fila: el gesto corriente sobre el rastro es
    * volver, y promover es el que se hace de vez en cuando. Guarda el rastro
@@ -2746,8 +2747,8 @@ function drawTrail(): void {
     // botón con texto ahí dentro compite con ellos por lo mismo que uno viene a
     // leer. Lo que dice la palabra va en el título, donde no estorba.
     keep.innerHTML = icon('steps-1');
-    keep.title = 'guardar como recorrido: lo andado se convierte en una página con sus paradas y sus huecos';
-    keep.setAttribute('aria-label', 'guardar como recorrido');
+    keep.title = 'abrir una mesa de trabajo con todo lo andado';
+    keep.setAttribute('aria-label', 'crear una preparación argumental');
     keep.addEventListener('click', () => void promoteTrace(null));
     trail.append(keep);
   }
@@ -2830,11 +2831,10 @@ async function exportTraceBooklet(): Promise<void> {
 }
 
 /**
- * Convierte lo andado en un recorrido, desde una parada o desde el principio.
+ * Siembra una preparación argumental, desde una parada o desde el principio.
  *
- * Guardar un tramo no vacía el rastro ni lo marca: se sigue andando y se sigue
- * acumulando, y el mismo tramo se puede guardar dos veces si a alguien le da por
- * contar dos cosas distintas con el mismo paseo.
+ * Sembrar un tramo no vacía el rastro ni lo marca: se sigue andando y se sigue
+ * acumulando, y el mismo tramo puede alimentar dos preparaciones distintas.
  * @invariant TheTraceItselfIsNotConsumed.
  */
 async function promoteTrace(from: number | null): Promise<void> {
@@ -2869,82 +2869,75 @@ async function promoteTrace(from: number | null): Promise<void> {
     pages.some((one) => one.title.trim().toLowerCase() === name.trim().toLowerCase()),
   );
 
-  const seed = seedTrail(trace, { title });
-  // Promover es una sola secuencia dependiente: la página debe existir en el
-  // corpus antes de declararla argumento, y la declaración antes de abrirla.
-  // La cola local sirve para la mano corriente; aquí permitiría que `openPage`
-  // llegara antes que el tipo y restituyera una página ordinaria o incompleta.
-  const born = await api.submitConfirmed(seed.page as never);
-  if (born.status !== 'applied') {
-    notice(`No se pudo crear el recorrido: ${born.status === 'rejected' ? born.reason : 'error'}.`);
-    return;
-  }
-  const page = born.subjectId;
-
-  const write = async (
-    change: unknown,
-    channel: 'typed_text' | 'walked' = 'typed_text',
-  ) => api.submitConfirmed(change as never, channel);
-
-  for (const change of seed.properties(page)) {
-    const written = await write(change);
-    if (written.status === 'rejected') {
-      notice(`El recorrido nació, pero no pudo declararse argumento: ${written.reason}.`);
-      return;
-    }
-  }
-
+  const seed = seedArgumentPreparation(trace, { title });
+  const page = mint('page');
+  const entries: {
+    change: Parameters<typeof api.submitCanonicalBatch>[0][number]['change'];
+    channel?: 'typed_text' | 'walked';
+  }[] = [
+    {
+      change: {
+        kind: 'create_page',
+        stableId: page,
+        title: seed.page.title,
+        visibility: seed.page.visibility,
+      },
+    },
+    ...seed.properties(page).map((change) => ({ change })),
+  ];
   let position = 0;
   for (const one of blocksFor(trace, titleOf)) {
     position += 1;
-    const block = await write({
-      kind: 'create_block',
-      page,
-      parent: null,
-      position,
-      content: one.content,
+    const block = mint('block');
+    entries.push({
+      change: {
+        kind: 'create_block',
+        stableId: block,
+        page,
+        parent: null,
+        position,
+        content: one.content,
+      },
     });
-    if (block.status === 'rejected') {
-      notice(`El recorrido quedó incompleto: ${block.reason}.`);
-      return;
-    }
-    // La promoción se confirma de punta a punta antes de abrirse. El testimonio
-    // entra por `walked`: no lo tecleó nadie, ocurrió al andar.
-    if (block.status === 'applied' && one.testimony !== null) {
-      const testimony = await write(
-        {
+    if (one.testimony !== null) {
+      entries.push({
+        change: {
           kind: 'set_property',
-          block: block.subjectId,
+          block,
           propertyKey: TESTIMONY_KEY,
           propertyValue: one.testimony,
         },
-        'walked',
-      );
-      if (testimony.status === 'rejected') {
-        notice(`El recorrido quedó sin uno de sus testimonios: ${testimony.reason}.`);
-        return;
-      }
+        channel: 'walked',
+      });
       if (one.crossing != null) {
         for (const [propertyKey, propertyValue] of [
           ['conectiva', one.crossing.id],
           ['revisión de conectiva', one.crossing.revision],
         ] as const) {
-          const cited = await write(
-            { kind: 'set_property', block: block.subjectId, propertyKey, propertyValue },
-            'walked',
-          );
-          if (cited.status === 'rejected') {
-            notice(`El recorrido quedó sin citar una conectiva: ${cited.reason}.`);
-            return;
-          }
+          entries.push({
+            change: { kind: 'set_property', block, propertyKey, propertyValue },
+            channel: 'walked',
+          });
         }
       }
     }
   }
 
+  let born;
+  try {
+    born = await api.submitCanonicalBatch(entries);
+  } catch {
+    notice('No se pudo crear la preparación: sin conexión con el servidor.');
+    return;
+  }
+  if (born.status === 'rejected') {
+    notice(`No se pudo crear la preparación: ${born.reason}.`);
+    return;
+  }
+
   await loadPages();
   await openPage(page, null, { gesture: 'opened_directly' });
-  notice('Guardado. Falta lo que hay entre una parada y la siguiente: eso es el argumento.');
+  notice('Mesa de trabajo creada. La fase queda abierta para que tú la declares.');
 }
 
 async function refreshGraph(): Promise<void> {

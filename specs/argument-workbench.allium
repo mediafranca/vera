@@ -21,13 +21,13 @@ use "./core.allium" as core
 -- Lo que se dispone en la mesa
 ------------------------------------------------------------
 
--- Los nueve grados de preparación que el ciclo escolástico de Vera hace
--- visibles. En esta superficie forman un flujo de maduración declarado por la
--- persona. El ciclo general del estudio puede volver a empezar con nueva
--- evidencia; eso no autoriza a Vera a mover por sí sola esta preparación.
-enum ScholasticMoment {
-    collectio | lectio | excerptio | ordinatio | collatio |
-    disputatio | compositio | probatio | traditio
+-- Una escala compacta de estados de la obra, inspirada por el ciclo escolástico
+-- sin convertir sus nueve operaciones en nueve casillas obligatorias. El estado
+-- es opcional porque la procedencia del material no puede declararlo por la
+-- persona. `argumento` queda fuera: es el producto publicable, no otra fase de
+-- la preparación.
+enum PreparationMaturity {
+    context | structure | composition | validation
 }
 
 -- Una colocación no es una tercera clase de contenido. Es la presencia
@@ -42,7 +42,7 @@ value WorkbenchSource {
 entity ArgumentWorkbench {
     page: core/Page
     held_by: core/Participant
-    phase: ScholasticMoment
+    phase: PreparationMaturity?
     placements: WorkbenchPlacement with workbench = this
 }
 
@@ -60,7 +60,7 @@ entity WorkbenchPlacement {
 ------------------------------------------------------------
 
 contract WorkbenchComposition {
-    choose_phase: (workbench: ArgumentWorkbench, phase: ScholasticMoment) -> ArgumentWorkbench
+    choose_phase: (workbench: ArgumentWorkbench, phase: PreparationMaturity?) -> ArgumentWorkbench
     finish_argument: (workbench: ArgumentWorkbench) -> core/Page
     find_pages: (workbench: ArgumentWorkbench, query: String) -> List<core/Page>
     inspect_blocks: (workbench: ArgumentWorkbench, page: core/Page) -> List<core/Block>
@@ -73,15 +73,23 @@ contract WorkbenchComposition {
 
     @invariant TheWorkbenchIsAPageButNotAnArgument
         -- La preparación tiene página, título, enlace e historia propios, pero
-        -- pertenece a un tipo distinto de `argumento`. Poder volver a ella no
-        -- obliga a presentar como posición terminada el material que todavía se
-        -- está reuniendo, ordenando o contrastando.
+        -- pertenece al tipo canónico `preparación argumental`, distinto de
+        -- `argumento`. «Mesa de trabajo» nombra la superficie donde se manipula,
+        -- no un segundo tipo. Poder volver a ella no obliga a presentar como
+        -- posición terminada el material todavía reunido, ordenado o contrastado.
 
     @invariant ThePhaseIsDeclaredAtTheTop
         -- La cabecera hace visible el grado de madurez escolástica declarado y
         -- permite actualizarlo directamente. El estado no se esconde en un menú
         -- de sistema: explicita hasta dónde llevó la persona el trabajo y puede
         -- orientar las acciones que la mesa ofrece sin ejecutarlas por ella.
+
+    @invariant PreparationUsesACompactStateScale
+        -- La mesa ofrece Contexto, Estructura, Composición y Validación como
+        -- estados de madurez de la obra. Los verbos nombran acciones; estos
+        -- sustantivos dicen dónde está el trabajo. La reducción no elimina las
+        -- operaciones del ciclo escolástico: evita volverlas una aduana fina y
+        -- lineal que la persona deba completar casilla por casilla.
 
     @invariant MaturityIsAnExplicitHumanDeclaration
         -- Vera no deduce madurez por cantidad de fuentes, extensión, tiempo ni
@@ -198,9 +206,7 @@ invariant EveryPlacementNamesOneCanonicalSource {
 -- Preguntas que la conversación todavía no ha decidido
 ------------------------------------------------------------
 
-open question "¿Cuál es el nombre canónico del tipo de página: Mesa de trabajo, Preparación argumental, Borrador argumental u otro que no confunda la actividad con el producto terminado?"
-open question "¿La escala visible usará los sustantivos de estado Contexto, Estructura, Composición, Validación y Argumento, u otra reducción igualmente compacta del ciclo escolástico?"
-open question "¿`argumento` llega después de Probatio y Traditio actúa sobre un argumento ya terminado, o Traditio es el último grado de preparación antes de que la página se vuelva argumento publicable?"
+open question "¿Cómo se explican Collectio, Lectio, Excerptio, Ordinatio, Collatio, Disputatio, Compositio, Probatio y Traditio dentro de los cuatro estados compactos sin fingir una correspondencia uno a uno?"
 open question "Al terminar, ¿la página de preparación cambia de tipo y se vuelve argumento, o produce una página-argumento distinta y permanece como memoria del proceso?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
 open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"

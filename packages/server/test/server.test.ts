@@ -311,6 +311,38 @@ describe('POST /operations/batch', () => {
     ]);
   });
 
+  it('conserva el canal propio de cada cambio del lote', async () => {
+    const result = await postBatch({
+      originId: 'batch:channels',
+      participant: OWNER,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-channels', title: 'Canales del lote', visibility: 'private' },
+        { kind: 'set_property', page: 'page:batch-channels', propertyKey: 'tipo', propertyValue: 'preparación argumental' },
+        { kind: 'create_block', stableId: 'block:batch-walked', page: 'page:batch-channels', parent: null, position: 0, content: '[[Amereida]]' },
+        { kind: 'set_property', block: 'block:batch-walked', propertyKey: 'cruzado', propertyValue: 'se llegó desde el mapa' },
+      ],
+      channels: ['typed_text', 'typed_text', 'typed_text', 'walked'],
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.json));
+    const activity = await get('/activity') as { activity: { subjectId: string; channel: string }[] };
+    const testimony = activity.activity.find((one) => one.subjectId === 'block:batch-walked');
+    assert.equal(testimony?.channel, 'walked');
+  });
+
+  it('rechaza canales desalineados sin aplicar el lote', async () => {
+    const result = await postBatch({
+      originId: 'batch:bad-channels',
+      participant: OWNER,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-bad-channels', title: 'No debe nacer por canales', visibility: 'private' },
+      ],
+      channels: [],
+    });
+    assert.equal(result.status, 400);
+    const pages = await get('/pages') as { id: string }[];
+    assert.equal(pages.some((page) => page.id === 'page:batch-bad-channels'), false);
+  });
+
   it('no aplica el prefijo cuando un cambio posterior falla', async () => {
     const result = await postBatch({
       originId: 'batch:rejected',

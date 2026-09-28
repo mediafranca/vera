@@ -120,6 +120,15 @@ export type { Crossing, CrossingSense, RelationTerm } from './relations.ts';
 export type { QuerySource, QueryUnreadable, QueryView } from './query-source.ts';
 
 export {
+  ARGUMENT_MATURITY_KEY,
+  ARGUMENT_PREPARATION_KIND,
+  ARGUMENT_PREPARATION_PHASES,
+  argumentPreparationPhase,
+  isArgumentPreparation,
+} from './argument-workbench.ts';
+export type { ArgumentPreparationPhase } from './argument-workbench.ts';
+
+export {
   suggestTitles,
   calendarDay,
   excerpt,

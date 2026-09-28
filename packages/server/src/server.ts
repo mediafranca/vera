@@ -315,6 +315,8 @@ interface SubmitBatchBody {
   originId?: unknown;
   participant?: unknown;
   changes?: unknown;
+  /** Canal paralelo a cada cambio. Ausente conserva el lote antiguo: todo tecleado. */
+  channels?: unknown;
 }
 
 const MAX_BATCH_CHANGES = 1_000;
@@ -1859,9 +1861,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
+        if (
+          body.channels !== undefined
+          && (!Array.isArray(body.channels) || body.channels.length !== body.changes.length)
+        ) {
+          send(response, 400, { error: 'channels, if given, must match changes length' });
+          return;
+        }
 
         const inputs = body.changes.map((change, at) =>
-          readOperation({ originId: `${body.originId}:${at}`, participant: body.participant, change }));
+          readOperation({
+            originId: `${body.originId}:${at}`,
+            participant: body.participant,
+            change,
+            ...(Array.isArray(body.channels) ? { channel: body.channels[at] } : {}),
+          }));
         const malformed = inputs.find((input) => 'error' in input);
         if (malformed !== undefined && 'error' in malformed) {
           send(response, 400, malformed);
@@ -1872,7 +1886,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           graph.operations().find((operation) => operation.originId === input.originId));
         if (existing.every((operation) => operation !== undefined)) {
           const same = existing.every((operation, at) =>
-            JSON.stringify(operation?.submission.change) === JSON.stringify(submissions[at]?.change));
+            JSON.stringify(operation?.submission.change) === JSON.stringify(submissions[at]?.change)
+            && operation?.submission.channel === submissions[at]?.channel);
           if (!same) {
             send(response, 409, { status: 'rejected', reason: 'ese origen de lote ya nombra otros cambios' });
             return;
