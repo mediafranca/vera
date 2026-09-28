@@ -15,6 +15,7 @@ import {
   foldsWhileRevealing,
   foldedState,
   invokeMenuAction,
+  initialFoldingOpen,
   isFencedCodeContent,
   isSpecialPage,
   matchingMovePages,
@@ -194,6 +195,19 @@ describe('extractos de referencias', () => {
 
   it('conserva una frase que explica el contexto de la referencia', () => {
     assert.equal(referenceExcerptAddsContext('William Wong', 'Conversé con [[William Wong]]'), true);
+  });
+});
+
+describe('plegado inicial del pie', () => {
+  it('abre las secciones ordinarias y deja las referencias recogidas', () => {
+    assert.equal(initialFoldingOpen('rel:Afirma sobre otras'), true);
+    assert.equal(initialFoldingOpen('referencias:page:una'), false);
+    assert.equal(initialFoldingOpen('referencias:page:otra'), false);
+  });
+
+  it('recuerda el gesto de la persona por encima del valor inicial', () => {
+    assert.equal(initialFoldingOpen('referencias:page:una', true), true);
+    assert.equal(initialFoldingOpen('otra', false), false);
   });
 });
 

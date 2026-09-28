@@ -6218,7 +6218,7 @@ export function renderOutliner(
 
     if (both.length + names.length + named.length > 0) {
       const whole = foldingSection(
-        'referencias',
+        `referencias:${page.id}`,
         `Referencias (${both.length + names.length + named.length})`,
         2,
       );
@@ -6386,7 +6386,19 @@ export function renderOutliner(
  * se abriría sola en cuanto alguien escribiera una letra. No baja al corpus: qué
  * tiene uno plegado es del taller, como lo es dónde está el divisor.
  */
-const shutBelow = new Set<string>();
+const foldBelow = new Map<string, boolean>();
+
+/**
+ * El pie acompaña la lectura sin anticiparse a ella.
+ *
+ * Las referencias pueden ser muy numerosas y describen el vecindario de la
+ * página, no su cuerpo. Por eso el conjunto exterior nace plegado. Las demás
+ * secciones conservan el comportamiento anterior, abiertas, y cualquier gesto
+ * posterior se recuerda durante la sesión en `foldBelow`.
+ */
+export function initialFoldingOpen(name: string, remembered?: boolean): boolean {
+  return remembered ?? !name.startsWith('referencias:');
+}
 
 /**
  * Una sección del pie que se pliega.
@@ -6401,10 +6413,9 @@ function foldingSection(name: string, label: string, level: 2 | 3): {
 } {
   const section = document.createElement('details');
   section.className = 'folding';
-  section.open = !shutBelow.has(name);
+  section.open = initialFoldingOpen(name, foldBelow.get(name));
   section.addEventListener('toggle', () => {
-    if (section.open) shutBelow.delete(name);
-    else shutBelow.add(name);
+    foldBelow.set(name, section.open);
   });
 
   const head = document.createElement('summary');

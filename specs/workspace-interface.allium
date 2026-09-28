@@ -530,6 +530,14 @@ contract ProgressivePageReading {
         -- each connective in full in the outgoing-reference area, so the same
         -- apparatus is not presented twice. Explicitly focusing it reveals its
         -- canonical blocks for inspection and editing.
+
+    @invariant ReferencesBeginBelowTheFold
+        -- The derived references area begins collapsed whenever a page is first
+        -- presented. Links and backlinks can be numerous and describe the page's
+        -- neighbourhood rather than its authored body, so they do not displace
+        -- the text before the reader asks for them. Opening or closing the area
+        -- remains a single reversible gesture and is preserved while that
+        -- workspace session redraws or changes pages.
 }
 
 contract InstallableWebApplication {
