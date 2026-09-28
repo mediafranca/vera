@@ -12,7 +12,6 @@
 // que pueda divergir del grafo.
 
 import {
-  ARGUMENT_MATURITY_KEY,
   DEFAULT_PROPERTY_NAMES,
   SPECIAL_KIND,
   answersIn,
@@ -23,6 +22,10 @@ import {
   suggestTitles,
   titleKey,
   uniqueAnchors,
+  isArgumentPreparation,
+  isTrail,
+  argumentMaturityChanges,
+  type ArgumentMaturity,
   type RenderOptions,
 } from '@vera/core';
 import { renderArgumentWorkbenchBand } from './argument-workbench-page.ts';
@@ -1320,6 +1323,37 @@ async function submitAndReload(
   const applied = await submitQuietly(change);
   if (applied) callbacks.onReload(null, reloadOptionsFor(change));
   return applied;
+}
+
+/**
+ * Cambia la madurez sin partir la identidad de la obra.
+ *
+ * El estado terminal vive en `tipo:: argumento`; reabrir vuelve a
+ * `tipo:: preparación argumental`. Tipo y madurez preparatoria cambian en un
+ * solo lote, para que ninguna lectura alcance a ver una mitad contradictoria.
+ */
+async function submitArgumentMaturity(
+  page: PageView,
+  kindKey: string,
+  maturity: ArgumentMaturity | null,
+  callbacks: OutlinerCallbacks,
+): Promise<boolean> {
+  const entries: Parameters<typeof api.submitCanonicalBatch>[0] =
+    argumentMaturityChanges(page.id, page.properties, maturity, kindKey)
+      .map((change) => ({ change }));
+  let result;
+  try {
+    result = await api.submitCanonicalBatch(entries);
+  } catch {
+    toast('sin conexión con el servidor');
+    return false;
+  }
+  if (result.status === 'rejected') {
+    toast(`rechazado: ${result.reason}`);
+    return false;
+  }
+  callbacks.onReload(null);
+  return true;
 }
 
 /**
@@ -3083,6 +3117,7 @@ export function renderOutliner(
   };
   const folded = new Set(page.folded);
   const special = isSpecialPage(page.properties);
+  const preparation = isArgumentPreparation(page.properties, corpusNames().kind);
   // @invariant SpokenContentNamesItsRecording: un bloque hablado lo dice.
   const spoken = new Map((page.spokenOrigins ?? []).map((o) => [o.block, o.recording]));
   // Lo hablado que tiene lugar en esta página, por el bloque que se lo guarda.
@@ -4394,7 +4429,7 @@ export function renderOutliner(
         icon: 'corner-up-right',
         run: () => void callbacks.onUndo?.('rehacer'),
       },
-      {
+      ...(preparation ? [] : [{
         /*
          * Declarar que el orden de esta página es un argumento, o retirarlo.
          *
@@ -4428,7 +4463,7 @@ export function renderOutliner(
             if (applied) callbacks.onReload(null);
           });
         },
-      },
+      } satisfies MenuAction]),
       {
         label: 'Espacios compartidos de esta página',
         icon: 'affiliate',
@@ -4490,17 +4525,7 @@ export function renderOutliner(
     page,
     corpusNames().kind,
     readOnly,
-    async (phase) => submitAndReload(
-      phase === null
-        ? { kind: 'remove_property', page: page.id, propertyKey: ARGUMENT_MATURITY_KEY }
-        : {
-            kind: 'set_property',
-            page: page.id,
-            propertyKey: ARGUMENT_MATURITY_KEY,
-            propertyValue: phase,
-          },
-      callbacks,
-    ),
+    async (phase) => submitArgumentMaturity(page, corpusNames().kind, phase, callbacks),
   );
   if (workbench !== null) header.after(workbench);
 
@@ -4536,8 +4561,11 @@ export function renderOutliner(
    * que el texto tiene que seguir siendo el texto. Ver trail-page.ts.
    */
   const trail = page.trail ?? null;
-  const marks: Map<string, TrailMark> = trail === null ? new Map() : trailMarks(trail);
-  if (trail !== null) {
+  const finalArgument = isTrail(page.properties, corpusNames());
+  const marks: Map<string, TrailMark> = trail === null || !finalArgument
+    ? new Map()
+    : trailMarks(trail);
+  if (trail !== null && finalArgument) {
     container.classList.add('is-trail');
     header.after(renderTrailBand(trail));
   }

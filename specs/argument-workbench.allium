@@ -24,8 +24,8 @@ use "./core.allium" as core
 -- Una escala compacta de estados de la obra, inspirada por el ciclo escolástico
 -- sin convertir sus nueve operaciones en nueve casillas obligatorias. El estado
 -- es opcional porque la procedencia del material no puede declararlo por la
--- persona. `argumento` queda fuera: es el producto publicable, no otra fase de
--- la preparación.
+-- persona. `argumento` queda fuera de esta enum: es el tipo publicable que
+-- alcanza la misma página, no otra fase preparatoria.
 enum PreparationMaturity {
     context | structure | composition | validation
 }
@@ -71,12 +71,14 @@ contract WorkbenchComposition {
     choose_sequence: (workbench: ArgumentWorkbench, placements: List<WorkbenchPlacement>) -> List<WorkbenchPlacement>
     edit_source: (participant: core/Participant, placement: WorkbenchPlacement, content: String) -> core/Change
 
-    @invariant TheWorkbenchIsAPageButNotAnArgument
+    @invariant TheWorkbenchIsTheSamePageThatCanBecomeAnArgument
         -- La preparación tiene página, título, enlace e historia propios, pero
         -- pertenece al tipo canónico `preparación argumental`, distinto de
-        -- `argumento`. «Mesa de trabajo» nombra la superficie donde se manipula,
-        -- no un segundo tipo. Poder volver a ella no obliga a presentar como
-        -- posición terminada el material todavía reunido, ordenado o contrastado.
+        -- `argumento`. Al terminar no se crea otra página: esa misma identidad
+        -- cambia a `argumento`, conservando título, bloques, colocaciones e
+        -- historia. Reabrirla devuelve esa misma página a preparación.
+        -- «Mesa de trabajo» nombra la superficie donde se manipula, no un
+        -- segundo objeto que después haya que reconciliar.
 
     @invariant ThePhaseIsDeclaredAtTheTop
         -- La cabecera hace visible el grado de madurez escolástica declarado y
@@ -102,6 +104,12 @@ contract WorkbenchComposition {
         -- que alguien responde y que puede presentarse a otros. Llegar a él hace
         -- explícita la condición de publicable; no publica por sí solo. Final
         -- nombra su suficiencia presente, no una clausura irreversible.
+
+    @invariant FinishingAndReopeningAreAtomic
+        -- Tipo y madurez cambian como un solo hecho. Al terminar, `tipo` pasa a
+        -- `argumento` y deja de sostener un grado preparatorio paralelo; al
+        -- reabrir, `tipo` vuelve a `preparación argumental` y el grado escogido
+        -- vuelve a ser visible. Ninguna lectura observa una mitad contradictoria.
 
     @invariant MaturityCanMoveBackward
         -- La persona puede volver desde cualquier grado a uno anterior, incluso
@@ -194,6 +202,19 @@ contract WorkbenchComposition {
         -- del gesto; Vera no abre una segunda selección ni le pide repetir esa
         -- composición. Dentro de la preparación todo sigue siendo podable y
         -- reordenable.
+
+    @invariant PreparationAndArgumentKeepTheSameMapTrace
+        -- Mientras es preparación y cuando llega a argumento, enfocar la página
+        -- proyecta todas sus perlas en el mapa y cose el trazo en su orden
+        -- vigente. La preparación no pierde el dibujo que venía del breadcrumb;
+        -- cambiar madurez tampoco crea otro recorrido ni otra geometría.
+
+    @invariant ABlockPearlTouchesItsCanonicalPage
+        -- Una perla puede referir una página completa o un bloque preciso. En el
+        -- mapa, el bloque hace aparecer la página canónica que lo contiene y
+        -- conserva además su identidad fina para volver a él. Esto es una
+        -- proyección de la disposición abierta, no una nueva arista global para
+        -- cada referencia de bloque del corpus.
 }
 
 invariant EveryPlacementNamesOneCanonicalSource {
@@ -207,7 +228,6 @@ invariant EveryPlacementNamesOneCanonicalSource {
 ------------------------------------------------------------
 
 open question "¿Cómo se explican Collectio, Lectio, Excerptio, Ordinatio, Collatio, Disputatio, Compositio, Probatio y Traditio dentro de los cuatro estados compactos sin fingir una correspondencia uno a uno?"
-open question "Al terminar, ¿la página de preparación cambia de tipo y se vuelve argumento, o produce una página-argumento distinta y permanece como memoria del proceso?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
 open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"
 open question "Cuando se coloca un bloque, ¿la ventana muestra sólo ese bloque, su subárbol completo o una profundidad elegida en cada colocación?"

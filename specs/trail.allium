@@ -1175,10 +1175,11 @@ surface TrailOnTheMap {
         -- argumento al que todavía le faltan nodos en el registro canónico.
 
     @guarantee RefocusingRestoresTheWholeThread
-        -- Volver a enfocar la página del argumento vuelve a derivar su ruta de
-        -- los bloques vigentes y enciende de una vez el hilo que conecta todas
-        -- sus paradas. No depende del breadcrumb local que lo originó ni de que
-        -- aquella sesión siga abierta.
+        -- Volver a enfocar la página vuelve a derivar su ruta de los bloques
+        -- vigentes y enciende de una vez el hilo que conecta todas sus paradas,
+        -- tanto durante `preparación argumental` como al llegar a `argumento`.
+        -- No depende del breadcrumb local que lo originó ni de que aquella
+        -- sesión siga abierta; la madurez cambia, la disposición no se pierde.
 
     @guarantee TheWholeShapeAtOnce
         -- El mapa del recorrido muestra exclusivamente sus paradas: no incluye la
@@ -1646,7 +1647,11 @@ open question "El testimonio de un cruce y su cara derivada pueden discrepar —
 
 open question "Una conectiva puede acabar valiendo por sí sola, y entonces querría ser una página del corpus y no un fragmento dentro de un argumento. ¿Hay un gesto para promover una conectiva a página —dejando en su sitio un nodo que la cite— o eso es simplemente escribir la página y reescribir la conectiva, como cualquier otra cosa que se escribe dos veces?"
 
-open question "El rastro guarda páginas y un nodo afinado nombra un bloque, pero las referencias de bloque no se derivan como aristas en ningún sitio. ¿Debe graph-navigation derivarlas igual que deriva los enlaces —lo que haría de cada `((ref))` del corpus una arista y no sólo las de los recorridos— o hay una razón para que citar un bloque no acerque dos páginas en el mapa?"
+-- Resuelta el 2026-09-28 para recorridos y preparaciones: `((ref))` conserva el
+-- bloque preciso y, al enfocar esa obra, incorpora su página canónica al hilo.
+-- No se deriva una arista global para cada cita de bloque: la pertenencia es una
+-- proyección situada de la disposición abierta. La pregunta más amplia sobre el
+-- destino fino de las relaciones sigue separada abajo.
 
 open question "Un recorrido que se anda deja rastro, y de ese rastro puede salir otro recorrido. ¿Debe el segundo saber que viene del primero —citándolo como un nodo más, o como una procedencia aparte— o es más honesto que un recorrido no sepa de dónde salió, como no lo sabe ningún otro texto?"
 

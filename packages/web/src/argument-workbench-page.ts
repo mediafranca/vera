@@ -4,27 +4,31 @@
 // y deja debajo los bloques ordinarios, que siguen siendo la materia editable.
 
 import {
+  ARGUMENT_KIND,
   ARGUMENT_PREPARATION_PHASES,
-  argumentPreparationPhase,
-  isArgumentPreparation,
-  type ArgumentPreparationPhase,
+  argumentMaturity,
+  isArgumentWork,
+  type ArgumentMaturity,
 } from '@vera/core';
 import type { PageView } from './api.ts';
 
-const LABELS: Record<ArgumentPreparationPhase, string> = {
+const LABELS: Record<ArgumentMaturity, string> = {
   contexto: 'Contexto',
   estructura: 'Estructura',
   composición: 'Composición',
   validación: 'Validación',
+  argumento: 'Argumento',
 };
 
 export function renderArgumentWorkbenchBand(
   page: PageView,
   kindKey: string,
   readOnly: boolean,
-  choose: (phase: ArgumentPreparationPhase | null) => Promise<boolean>,
+  choose: (phase: ArgumentMaturity | null) => Promise<boolean>,
 ): HTMLElement | null {
-  if (!isArgumentPreparation(page.properties, kindKey)) return null;
+  if (!isArgumentWork(page.properties, kindKey)) return null;
+  const current = argumentMaturity(page.properties, kindKey);
+  const finished = current === ARGUMENT_KIND;
 
   const band = document.createElement('section');
   band.className = 'argument-workbench-band';
@@ -34,18 +38,18 @@ export function renderArgumentWorkbenchBand(
   heading.className = 'argument-workbench-heading';
   const what = document.createElement('span');
   what.className = 'argument-workbench-what';
-  what.textContent = 'Mesa de trabajo';
+  what.textContent = finished ? 'Argumento' : 'Mesa de trabajo';
   const explanation = document.createElement('span');
   explanation.className = 'argument-workbench-explanation';
-  explanation.textContent = 'La materia aún puede reunirse, podarse y reordenarse.';
+  explanation.textContent = finished
+    ? 'Estado publicable; puede reabrirse si algo vuelve a ponerse en cuestión.'
+    : 'La materia aún puede reunirse, podarse y reordenarse.';
   heading.append(what, explanation);
 
   const maturity = document.createElement('label');
   maturity.className = 'argument-workbench-maturity';
   const label = document.createElement('span');
   label.textContent = 'Madurez';
-  const current = argumentPreparationPhase(page.properties);
-
   if (readOnly) {
     const value = document.createElement('span');
     value.className = 'argument-workbench-phase';
@@ -64,10 +68,14 @@ export function renderArgumentWorkbenchBand(
       option.textContent = LABELS[phase];
       select.append(option);
     }
+    const publishable = document.createElement('option');
+    publishable.value = ARGUMENT_KIND;
+    publishable.textContent = LABELS[ARGUMENT_KIND];
+    select.append(publishable);
     select.value = current ?? '';
     select.addEventListener('change', () => {
       const before = current ?? '';
-      const next = select.value === '' ? null : select.value as ArgumentPreparationPhase;
+      const next = select.value === '' ? null : select.value as ArgumentMaturity;
       select.disabled = true;
       void choose(next).then((saved) => {
         if (!saved) {

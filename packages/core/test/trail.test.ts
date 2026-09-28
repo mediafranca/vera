@@ -95,6 +95,23 @@ describe('leer una página como ruta', () => {
     );
   });
 
+  it('una referencia de bloque conserva el bloque preciso y toca su página en el mapa', () => {
+    const trail = readTrail({
+      ...reading([block('Parte de ((block:source)) y llega a [[Dos]]')], { pages: PAGES }),
+      resolveBlock: (id) => id === 'block:source'
+        ? { page: 'page:1', title: 'Uno' }
+        : null,
+    });
+    assert.deepEqual(trail.route.map((one) => ({
+      title: one.title,
+      page: one.page,
+      targetBlock: one.targetBlock ?? null,
+    })), [
+      { title: 'Uno', page: 'page:1', targetBlock: 'block:source' },
+      { title: 'Dos', page: 'page:2', targetBlock: null },
+    ]);
+  });
+
   it('la conectiva es lo que se lee entre una parada y la siguiente', () => {
     const trail = readTrail(
       reading([block('[[Uno]] no se sostiene sin [[Dos]]')], { pages: PAGES }),

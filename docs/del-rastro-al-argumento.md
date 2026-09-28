@@ -63,8 +63,9 @@ rebaja la exigencia: hace auditable la revisión.
 
 ## La mesa como instrumento de paso
 
-La página de preparación —aún sin nombre canónico— es la superficie donde ese
-cambio de estatuto puede practicarse. No introduce otra clase de contenido:
+La **preparación argumental** es la página donde ese cambio de estatuto puede
+practicarse; **Mesa de trabajo** es el nombre de su superficie. No introduce
+otra clase de contenido:
 refiere páginas y bloques canónicos. Lo nuevo es su **colocación**. Una misma
 fuente puede ser antecedente aquí, objeción allá y ejemplo en otro trabajo,
 porque su función pertenece a la composición situada y no a la fuente para
@@ -76,6 +77,14 @@ como se ve. Pedir una segunda selección negaría el trabajo ya hecho en el mapa
 Dentro de la preparación, las perlas siguen siendo podables y reordenables. La
 selección directa desde el corpus y Vera Clip deben desembocar en la misma
 superficie, sin crear ontologías paralelas según el lugar de captura.
+
+La maduración no bifurca la obra. La preparación llega a `argumento` cambiando
+el estado de **esa misma página**: conserva identidad, fuentes, bloques,
+disposición e historia. Si nueva evidencia obliga a reabrirla, vuelve a un grado
+preparatorio sin producir una copia retrospectiva. El mapa expresa esa
+continuidad: antes y después de ser publicable, al enfocar la página se ven las
+perlas que toca y el trazo que propone entre ellas. Mostrar el trazo durante la
+preparación no certifica una tesis; hace manipulable su forma todavía revisable.
 
 ## IA y extensión cognitiva
 

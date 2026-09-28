@@ -13,7 +13,7 @@ import { hostname, userInfo } from 'node:os';
 import {
   TESTIMONY_KEY,
   VeraGraph,
-  isTrail,
+  isArgumentWork,
   readTrail,
   type Trail,
   answersIn,
@@ -1022,7 +1022,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
    * página y el papel del que sale un PDF.
    */
   /**
-   * La página leída como recorrido, si dice serlo.
+   * La página leída como recorrido si prepara o ya sostiene un argumento.
    *
    * Nada de esto se guarda: los nodos son las referencias que el texto lleva, las
    * conectivas son lo que queda del texto al quitarlas y los cruces son los pares
@@ -1034,7 +1034,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   const trailOf = (pageId: string): Trail | null => {
     if (isSpecialPage(pageId)) return null;
     const names = propertyNames();
-    if (!isTrail(graph.propertiesOf(pageId), names)) return null;
+    if (!isArgumentWork(graph.propertiesOf(pageId), names.kind)) return null;
     const intent = graph
       .propertiesOf(pageId)
       .find((one) => one.key.trim().toLowerCase() === 'propósito');
@@ -1061,6 +1061,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             ?.value ?? null,
       })),
       resolve: (title) => graph.pageTitled(title)?.id ?? null,
+      resolveBlock: (id) => {
+        const block = graph.block(id);
+        if (block === undefined) return null;
+        const page = graph.page(block.page);
+        return page === undefined ? null : { page: page.id, title: page.title };
+      },
       /*
        * Sin contar los enlaces que salen del propio recorrido. Un recorrido
        * enlaza a todas sus paradas —es lo que lo hace encontrable desde cada
@@ -6417,6 +6423,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 return new Set(distances.keys());
               })()
             : new Set(allowed);
+          // Una preparación/argumento puede llevar perlas de bloque. Esas citas
+          // no son aristas globales, pero al enfocar la obra su página canónica
+          // sí pertenece al hilo y tiene que estar disponible para dibujarlo.
+          for (const stop of trailOf(centred.id)?.route ?? []) {
+            if (stop.page !== null && allowed.has(stop.page)) shown.add(stop.page);
+          }
           const links: { source: string; target: string }[] = [];
           for (const source of shown) {
             for (const target of neighbours.get(source) ?? []) {
@@ -6442,14 +6454,29 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
+        const centred = graph.page(centre) ?? graph.pageTitled(centre);
+        const focusedTrail = centred === undefined ? null : trailOf(centred.id);
         const hood = graph.neighbourhood({ centre, depth, participant });
+        const heldPages = new Set(hood.nodes.map((node) => node.page));
+        const threadPages = new Set(
+          (focusedTrail?.route ?? []).flatMap((stop) => stop.page === null ? [] : [stop.page]),
+        );
+        const extraThreadNodes = [...threadPages]
+          .filter((page) => !heldPages.has(page))
+          .map((page) => ({
+            page,
+            distance: 1,
+            degree: 0,
+            blockCount: graph.blocksOf(page).length,
+          }));
+        const mappedNodes = [...hood.nodes, ...extraThreadNodes];
         // El vecindario entrega títulos y aristas de páginas que nadie pidió por
         // su nombre: pedir profundidad 4 desde una página es llevarse el mapa.
         note(
           'GET /graph/:centre',
           `${centre} · profundidad ${depth}`,
           0,
-          hood.nodes.map((node) => node.page),
+          mappedNodes.map((node) => node.page),
         );
         /*
          * El mapa no es una descarga encubierta de 145 páginas.
@@ -6506,9 +6533,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const neededBlocks = new Set(
           referenceLinks.flatMap((link) => link.block === null ? [] : [link.block]),
         );
+        for (const stop of focusedTrail?.route ?? []) {
+          if (stop.targetBlock !== undefined) neededBlocks.add(stop.targetBlock);
+        }
         // La forma que ya consumen renderGraph, renderGraph3D y D4.
         send(response, 200, {
-          nodes: hood.nodes.map((node) => ({
+          nodes: mappedNodes.map((node) => ({
             id: node.page,
             name: graph.page(node.page)?.title ?? node.page,
             central: node.distance === 0,

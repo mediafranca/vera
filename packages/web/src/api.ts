@@ -107,10 +107,11 @@ export interface PageView {
   id: string;
   title: string;
   /**
-   * La página leída como recorrido, cuando dice que su orden es un argumento.
+   * La página leída como recorrido durante su preparación o como argumento.
    *
    * Viaja con la página porque leer un recorrido es leer su página. Nulo en las
-   * demás, que son casi todas. Ver packages/core/src/trail.ts.
+   * demás, que son casi todas. Su presencia hace visible la disposición en el
+   * mapa; no declara por sí sola que la obra ya sea publicable.
    */
   trail?: Trail | null;
   visibility: 'private' | 'public';

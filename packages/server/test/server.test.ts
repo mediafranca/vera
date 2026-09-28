@@ -761,6 +761,51 @@ describe('lecturas', () => {
     }
   });
 
+  it('mantiene el hilo de una preparación e incorpora la página de una perla de bloque', async () => {
+    const source = await write({
+      kind: 'create_page', title: 'Fuente precisa', visibility: 'private',
+    });
+    const sourceBlock = await write({
+      kind: 'create_block', page: source, parent: null, position: 0,
+      content: 'La perla precisa.',
+    });
+    const workbench = await write({
+      kind: 'create_page', title: 'Preparación cartografiable', visibility: 'private',
+    });
+    await write({
+      kind: 'set_property', page: workbench, propertyKey: 'tipo',
+      propertyValue: 'preparación argumental',
+    });
+    await write({
+      kind: 'create_block', page: workbench, parent: null, position: 0,
+      content: `Primero ((${sourceBlock}))`,
+    });
+
+    const detail = await get(`/pages/${encodeURIComponent(workbench)}`) as {
+      trail: { route: {
+        ordinal: number; block: string; title: string;
+        page: string | null; targetBlock?: string;
+      }[] } | null;
+    };
+    assert.notEqual(detail.trail, null);
+    const route = detail.trail?.route ?? [];
+    assert.deepEqual(route, [{
+      ordinal: 1,
+      block: route[0]?.block,
+      title: 'Fuente precisa',
+      page: source,
+      targetBlock: sourceBlock,
+    }]);
+
+    const data = await get(`/graph/${encodeURIComponent(workbench)}?depth=0`) as {
+      nodes: { id: string; lines: { block: string }[] }[];
+    };
+    assert.ok(data.nodes.some((node) => node.id === source));
+    assert.ok(data.nodes.find((node) => node.id === source)?.lines.some(
+      (line) => line.block === sourceBlock,
+    ));
+  });
+
   it('entrega el log desde una secuencia', async () => {
     const all = (await get('/ops?since=0')) as { sequence: number }[];
     assert.ok(all.length > 0);
