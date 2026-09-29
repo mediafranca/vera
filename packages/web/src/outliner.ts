@@ -96,6 +96,8 @@ import { type NavigationGesture } from './trace.ts';
 import { openMediaDetails } from './media-dialog.ts';
 import { holdViewport, restoreViewport } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
+import { executeTextStructure, looksLikeProcess, readProcessBlock, writeProcessBlock } from './process-block.ts';
+import { mint } from './api.ts';
 import { session } from './tokens.ts';
 import {
   resolveArrow,
@@ -2673,6 +2675,25 @@ let pickedPage: string | null = null;
 /** Retira el oyente de teclado del dibujo anterior. */
 let dropPickedKeys: (() => void) | null = null;
 
+interface ProcessUiState {
+  open: boolean;
+  phase: 'idle' | 'running' | 'proposed' | 'failed' | 'accepted';
+  attempt: number;
+  result: Awaited<ReturnType<typeof executeTextStructure>> | null;
+  error: string | null;
+}
+
+/** La propuesta es deliberadamente transitoria: sólo aceptar escribe el grafo. */
+const processUi = new Map<string, ProcessUiState>();
+
+function processState(block: string): ProcessUiState {
+  const found = processUi.get(block);
+  if (found !== undefined) return found;
+  const born: ProcessUiState = { open: false, phase: 'idle', attempt: 0, result: null, error: null };
+  processUi.set(block, born);
+  return born;
+}
+
 /** Deshace la seleccion. Lo llama todo lo que empieza a escribir. */
 export function clearPicked(): void {
   picked.clear();
@@ -4654,6 +4675,150 @@ export function renderOutliner(
     });
   }
 
+  const renderProcess = (host: HTMLElement, node: Node): void => {
+    const invocation = readProcessBlock(node.block.content);
+    if (invocation === null) return;
+    const state = processState(node.block.stableId);
+    const invocationProperties = page.blockProperties?.[node.block.stableId] ?? [];
+    const acceptedOutput = invocationProperties.find((property) =>
+      property.key.trim().toLowerCase() === 'salida del proceso',
+    )?.value ?? null;
+    if (state.phase === 'idle' && acceptedOutput !== null) state.phase = 'accepted';
+    const input = page.blocks.find((candidate) => candidate.stableId === invocation.input);
+    host.className = 'process-block';
+    host.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'process-header';
+    const identity = document.createElement('div');
+    identity.className = 'process-identity';
+    identity.innerHTML = `<span class="process-mark" aria-hidden="true">λ</span><span><small>/proceso · Vera</small><strong>Estructurar texto</strong></span>`;
+    const inputLabel = document.createElement('span');
+    inputLabel.className = 'process-input';
+    inputLabel.textContent = input === undefined
+      ? 'entrada no disponible'
+      : `entrada «${input.content.trim().replace(/\s+/g, ' ').slice(0, 42)}»`;
+    const status = document.createElement('span');
+    status.className = `process-status process-${state.phase}`;
+    status.textContent = state.phase === 'idle' ? `Sin ejecutar · v${invocation.version}`
+      : state.phase === 'running' ? 'Ejecutando…'
+      : state.phase === 'proposed' ? `Propuesta lista · ${Math.round(state.result?.durationMs ?? 0)} ms`
+      : state.phase === 'accepted' ? `Salida aceptada${acceptedOutput === null ? '' : ` · ${acceptedOutput}`}`
+      : state.error ?? 'Falló';
+    const run = document.createElement('button');
+    run.type = 'button';
+    run.className = 'process-run';
+    run.textContent = state.phase === 'accepted' ? 'Ejecutar de nuevo' : state.phase === 'failed' ? 'Reintentar' : '▶ Ejecutar';
+    run.disabled = input === undefined || state.phase === 'running';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'process-toggle';
+    toggle.innerHTML = icon('chevron-down');
+    toggle.classList.toggle('open', state.open);
+    toggle.setAttribute('aria-label', state.open ? 'plegar mesa de proceso' : 'abrir mesa de proceso');
+    toggle.setAttribute('aria-expanded', String(state.open));
+    header.append(identity, inputLabel, status, run, toggle);
+    host.append(header);
+
+    const redraw = (): void => renderProcess(host, node);
+    toggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      state.open = !state.open;
+      redraw();
+    });
+
+    const execute = (): void => {
+      if (input === undefined || state.phase === 'running') return;
+      state.open = true;
+      state.phase = 'running';
+      state.result = null;
+      state.error = null;
+      state.attempt += 1;
+      redraw();
+      void executeTextStructure(input.content).then((result) => {
+        state.result = result;
+        state.phase = 'proposed';
+        redraw();
+      }).catch((problem: unknown) => {
+        state.phase = 'failed';
+        state.error = problem instanceof Error ? problem.message : 'el proceso falló';
+        redraw();
+      });
+    };
+    run.addEventListener('click', (event) => { event.stopPropagation(); execute(); });
+
+    if (state.open) {
+      const table = document.createElement('div');
+      table.className = 'process-table';
+      const stages = [
+        ['1 · Entrada', input?.content ?? 'Bloque no disponible'],
+        ['2 · Estructurar', state.phase === 'idle' ? 'Espera la ejecución.' : state.phase === 'running' ? 'Leyendo texto en un Worker confinado…' : 'Líneas, oraciones, palabras y medidas.'],
+        ['3 · Proponer', state.result?.content ?? (state.phase === 'failed' ? state.error ?? 'Falló' : 'Todavía no hay salida.')],
+      ] as const;
+      for (const [title, content] of stages) {
+        const station = document.createElement('section');
+        station.className = 'process-station';
+        const heading = document.createElement('h4');
+        heading.textContent = title;
+        const said = document.createElement('div');
+        said.className = 'process-station-content';
+        said.textContent = content.length > 260 ? `${content.slice(0, 260)}…` : content;
+        station.append(heading, said);
+        table.append(station);
+      }
+      host.append(table);
+    }
+
+    if (state.phase === 'proposed' && state.result !== null) {
+      const proposal = document.createElement('div');
+      proposal.className = 'process-proposal';
+      const label = document.createElement('small');
+      label.textContent = `PROPUESTA PROVISIONAL · ejecución ${state.attempt}`;
+      const preview = document.createElement('pre');
+      preview.textContent = state.result.content.replace(/^```json\n|\n```$/g, '');
+      const actions = document.createElement('div');
+      actions.className = 'process-proposal-actions';
+      const accept = document.createElement('button');
+      accept.type = 'button';
+      accept.className = 'process-accept';
+      accept.textContent = 'Aceptar';
+      const regenerate = document.createElement('button');
+      regenerate.type = 'button';
+      regenerate.textContent = '↻ Regenerar';
+      actions.append(accept, regenerate);
+      proposal.append(label, preview, actions);
+      host.append(proposal);
+      regenerate.addEventListener('click', (event) => { event.stopPropagation(); execute(); });
+      accept.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const output = mint('block');
+        accept.disabled = true;
+        void api.submitCanonicalBatch([
+          { change: { kind: 'create_block', stableId: output, page: page.id, parent: node.block.parent, position: node.block.position + 1, content: state.result?.content ?? '' } },
+          { change: { kind: 'set_property', block: output, propertyKey: 'proceso', propertyValue: invocation.definition } },
+          { change: { kind: 'set_property', block: output, propertyKey: 'versión del proceso', propertyValue: String(invocation.version) } },
+          { change: { kind: 'set_property', block: output, propertyKey: 'entrada del proceso', propertyValue: `((${invocation.input}))` } },
+          { change: { kind: 'set_property', block: output, propertyKey: 'revisión de entrada', propertyValue: state.result?.inputRevision ?? '' } },
+          { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'salida del proceso', propertyValue: `((${output}))` } },
+          { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'última ejecución', propertyValue: String(state.attempt) } },
+          { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'duración del proceso', propertyValue: `${Math.round(state.result?.durationMs ?? 0)} ms` } },
+        ]).then((result) => {
+          if (result.status === 'rejected') {
+            accept.disabled = false;
+            toast(`no se pudo aceptar: ${result.reason}`);
+            return;
+          }
+          state.phase = 'accepted';
+          state.result = null;
+          callbacks.onReload(null);
+        }).catch(() => {
+          accept.disabled = false;
+          toast('no se pudo aceptar: sin conexión con el servidor');
+        });
+      });
+    }
+  };
+
   /**
    * Dibuja un bloque. `ordinal` es su número cuando su padre dice que sus hijos
    * van numerados, y nulo cuando van con viñeta — que es casi siempre.
@@ -4955,8 +5120,13 @@ export function renderOutliner(
 
       const text = document.createElement('div');
       text.className = 'body-text';
-      text.innerHTML = renderMarkdown(task === null ? node.block.content : task.said, options);
-      decorateCodeBlocks(text);
+      if (task === null && looksLikeProcess(node.block.content)) {
+        row.classList.add('process-row');
+        renderProcess(text, node);
+      } else {
+        text.innerHTML = renderMarkdown(task === null ? node.block.content : task.said, options);
+        decorateCodeBlocks(text);
+      }
       markMissingImages(text);
       body.append(text);
       markNativeRichPending(row, text);
@@ -5295,7 +5465,7 @@ export function renderOutliner(
       if (target.tagName === 'A') return;
       // Pulsar el reproductor o sus botones no abre el editor; pulsar el texto
       // sí, que es lo que se espera de un texto.
-      if (target.closest('.audio-block') !== null) return;
+      if (target.closest('.audio-block, .process-block') !== null) return;
       if (readOnly) return;
 
       /*
@@ -5352,7 +5522,15 @@ export function renderOutliner(
      * Enfocado responde a las cuatro flechas y a Enter, y a nada más: escribir
      * una letra encima no escribe nada. @invariant TheCursorRestsOnItAndWritesNothing.
      */
-    if (looksLikeDrawing(node.block.content)) {
+    if (looksLikeProcess(node.block.content)) {
+      body.classList.add('process-body');
+      body.addEventListener('keydown', (event) => {
+        if (event.target !== body || event.key !== 'Enter' || readOnly) return;
+        event.preventDefault();
+        const process = body.querySelector<HTMLButtonElement>('.process-run');
+        process?.click();
+      });
+    } else if (looksLikeDrawing(node.block.content)) {
       // Un dibujo enfocado no abre editor, así que sin esto no se vería que lo
       // está. La hoja le pone su señal. Ver `.drawn-body`.
       body.classList.add('drawn-body');
@@ -5788,7 +5966,7 @@ export function renderOutliner(
      * `drawingKeys`— y enseña el lápiz por donde se entra al lienzo.
      * @invariant TouchingADrawingIsNotEditingIt.
      */
-    if (looksLikeDrawing(node.block.content)) {
+    if (looksLikeDrawing(node.block.content) || looksLikeProcess(node.block.content)) {
       body.focus();
       return;
     }
@@ -7769,6 +7947,27 @@ function startEditing(
     if (acts === 'dibujar') {
       const written = editor.value.replace(/\/dibujo\s*$/, '').trimEnd();
       void drawInto(block.stableId, context.page, written, callbacks, toast);
+      return;
+    }
+
+    if (acts === 'proceso') {
+      const input = context.near.previousVisible;
+      if (input === null) {
+        toast('un proceso necesita un bloque de entrada inmediatamente anterior');
+        editor.focus();
+        return;
+      }
+      void api.submit({
+        kind: 'edit_block',
+        block: block.stableId,
+        content: writeProcessBlock(input.block),
+      }).then((result) => {
+        if (result.status === 'rejected') {
+          toast(`no se pudo crear el proceso: ${result.reason}`);
+          return;
+        }
+        callbacks.onReload(null);
+      }).catch(() => toast('no se pudo crear el proceso: sin conexión con el servidor'));
       return;
     }
 

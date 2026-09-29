@@ -48,6 +48,7 @@ contract ExecutableProcess {
 
 contract ProcessResultLifecycle {
     accept: (proposal: ProcessResultProposal, participant: core/Participant) -> core/Block
+    regenerate: (proposal: ProcessResultProposal, participant: core/Participant) -> ProcessRun
 
     @invariant TheProposalBeginsUnderTheProcess
         -- Mientras se revisa, el resultado se presenta como hijo del bloque de
@@ -66,13 +67,27 @@ contract ProcessResultLifecycle {
     @invariant RejectionChangesNoCorpusContent
         -- Descartar una propuesta deja el bloque de proceso y sus entradas donde
         -- estaban; no crea un hermano vacío ni una operación a medias.
+
+    @invariant OnlyOneProposalIsVisible
+        -- Una ejecución ofrece una sola respuesta. Regenerar retira la propuesta
+        -- provisional visible y pide otra; los intentos anteriores sobreviven en
+        -- la procedencia, no como una galería de alternativas en la página.
+
+    @invariant AcceptedOutputsAreNeverReplacedByRerunning
+        -- Volver a ejecutar abre una propuesta provisional nueva. Cualquier
+        -- salida aceptada permanece como el bloque ordinario que ya llegó a ser.
+
+    @invariant TheAcceptedRunLeavesATrace
+        -- El bloque de proceso recuerda su última salida aceptada, versión,
+        -- entrada y duración. Recargar la página no lo devuelve falsamente al
+        -- estado «sin ejecutar» ni exige inspeccionar el bloque producido.
 }
 
 ------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
 
-enum ProcessRunStatus { running | proposed | accepted | rejected | failed | stale }
+enum ProcessRunStatus { running | proposed | accepted | rejected | superseded | failed | stale }
 
 ------------------------------------------------------------
 -- Entities
@@ -116,13 +131,14 @@ entity ProcessRun {
         running -> failed
         proposed -> accepted
         proposed -> rejected
+        proposed -> superseded
         proposed -> stale
-        terminal: accepted, rejected, failed, stale
+        terminal: accepted, rejected, superseded, failed, stale
     }
 }
 
--- La salida revisable. Que se presente como hija no decide todavía si antes de
--- aceptarla persiste como bloque canónico o como proyección transitoria.
+-- La salida revisable es una proyección transitoria presentada como hija. Sólo
+-- al aceptar se vuelve un bloque canónico con identidad e historia propias.
 entity ProcessResultProposal {
     run: ProcessRun
     content: String
@@ -188,6 +204,26 @@ rule RejectingAProposalWritesNothing {
         proposal.run.finished_at = now
 }
 
+rule RegeneratingReplacesOnlyThePendingProposal {
+    when: RegenerateProcessResult(participant, proposal)
+
+    requires: proposal.run.status = proposed
+
+    ensures:
+        proposal.run.status = superseded
+        proposal.run.finished_at = now
+        let next = ProcessRun.created(
+            invocation: proposal.run.invocation,
+            definition_version: proposal.run.invocation.definition.version,
+            requested_by: participant,
+            status: running,
+            started_at: now,
+            finished_at: null,
+            explanation: null
+        )
+        ProcessResultLifecycle.regenerate(proposal, participant) = next
+}
+
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
@@ -207,6 +243,12 @@ surface ProcessBlockExecution {
         fulfils ExecutableProcess
         fulfils ProcessResultLifecycle
 
+    provides:
+        RunProcess
+        AcceptProcessResult
+        RejectProcessResult
+        RegenerateProcessResult
+
     @guarantee PortsAreNamed
         -- Un proceso con varias fuentes no finge ser una cadena lineal. PICTOS
         -- puede nombrar por separado imagen, semántica y árbol visual.
@@ -214,16 +256,27 @@ surface ProcessBlockExecution {
     @guarantee TheBoundaryIsVisible
         -- Antes de aceptar, la indentación mantiene la salida dentro del proceso;
         -- después, el resultado aparece en el outline ordinario como hermano.
+
+    @guarantee TheProcessRemainsABlock
+        -- `/proceso` cambia el régimen del bloque, no lo saca del outline. La
+        -- viñeta, el asa, el plegado, el menú, los hijos, el movimiento y las
+        -- referencias siguen siendo los de cualquier bloque de Vera.
+
+    @guarantee TheTableOpensInThePageFlow
+        -- La mesa despliega las estaciones debajo de su cabecera, en la página;
+        -- no abre una ventana ni obliga a abandonar el contexto de escritura.
+
+    @guarantee TheRestingActionIsExecute
+        -- Cerrado y sin ejecución, el único gesto con peso es Ejecutar. Abrir la
+        -- mesa y las acciones específicas aparecen como controles secundarios.
 }
 
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
 
-open question "Al reejecutar un proceso cuya salida anterior ya fue aceptada, ¿la nueva propuesta reemplaza aquel bloque, crea otro hermano o se ofrece como nueva revisión del mismo bloque?"
-
-open question "Antes de aceptarse, ¿la propuesta hija es ya un bloque canónico con identidad e historia, o una proyección transitoria que sólo se vuelve bloque al aceptar?"
-
 open question "¿Puede un proceso consumir directamente la propuesta aún no aceptada de otro proceso, o sólo bloques ya incorporados al corpus?"
 
 open question "¿Qué tipos de salida además de texto y SVG autocontenido debe reconocer el primer corte?"
+
+open question "¿Cómo se representa de forma general el alcance de una regeneración parcial —hoja, rama o raíz— sin imponer a todos los procesos la estructura particular de PICTOS?"

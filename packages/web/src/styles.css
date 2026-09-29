@@ -7182,6 +7182,84 @@ html[data-working-slow='true']::after {
   height: 1.1rem;
 }
 
+/* Un proceso conserva la línea del outline y despliega su mesa dentro del flujo. */
+.process-body {
+  min-width: 0;
+  outline: none;
+}
+
+.process-block {
+  border-block: 1px solid var(--rule);
+  color: var(--text);
+  font-family: var(--font-ui);
+  margin-block: .2rem .55rem;
+}
+
+.process-header {
+  align-items: center;
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: minmax(11rem, 1.4fr) minmax(9rem, 1fr) auto auto auto;
+  min-height: 3rem;
+  padding: .45rem .55rem;
+}
+
+.process-identity {
+  align-items: center;
+  display: flex;
+  gap: .6rem;
+  min-width: 0;
+}
+
+.process-identity > span:last-child { display: grid; }
+.process-identity small { color: var(--text-dim); font-size: .68rem; letter-spacing: .04em; }
+.process-identity strong { font-family: var(--font-body); font-size: .95rem; font-weight: 600; }
+.process-mark { color: var(--accent); font: 1.2rem var(--font-body); }
+.process-input, .process-status { color: var(--text-dim); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-running { color: var(--accent); }
+
+.process-run, .process-toggle, .process-proposal button {
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: inherit;
+  cursor: pointer;
+  min-height: 2rem;
+  padding: .3rem .65rem;
+}
+
+.process-run:disabled { cursor: default; opacity: .45; }
+.process-toggle { align-items: center; display: inline-flex; justify-content: center; padding-inline: .45rem; }
+.process-toggle.open svg { transform: rotate(180deg); }
+
+.process-table {
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.process-station { min-height: 9rem; padding: .8rem; }
+.process-station + .process-station { border-left: 1px solid var(--rule); }
+.process-station h4 { font-size: .72rem; letter-spacing: .08em; margin: 0 0 .8rem; text-transform: uppercase; }
+.process-station-content { font-family: var(--font-body); font-size: .88rem; line-height: 1.45; white-space: pre-wrap; }
+
+.process-proposal {
+  border-left: 1px dashed var(--accent);
+  margin: .9rem 0 .9rem 1.1rem;
+  padding: .15rem 0 .15rem 1rem;
+}
+.process-proposal small { color: var(--accent); font-size: .67rem; font-weight: 650; letter-spacing: .1em; }
+.process-proposal pre { font-size: .75rem; margin: .65rem 0; max-height: 14rem; overflow: auto; white-space: pre-wrap; }
+.process-proposal-actions { display: flex; gap: .5rem; }
+.process-proposal .process-accept { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+@media (max-width: 760px) {
+  .process-header { grid-template-columns: 1fr auto auto; }
+  .process-input { grid-column: 1 / -1; grid-row: 2; }
+  .process-status { display: none; }
+  .process-table { grid-template-columns: 1fr; }
+  .process-station + .process-station { border-left: 0; border-top: 1px solid var(--rule); }
+}
+
 .drawn-edit .icon-edit-filled {
   fill: currentColor;
   stroke: none;

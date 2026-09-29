@@ -218,6 +218,7 @@ export interface Command {
     | 'adjuntar'
     | 'zotero'
     | 'dibujar'
+    | 'proceso'
     | 'formato';
   /** Se oculta de la portada del menú, pero sigue disponible por su nombre. */
   group?: 'formato';
@@ -284,6 +285,7 @@ export const COMMANDS: Command[] = [
    * hacer, aunque lo que haga no sea escribir. Ver specs/hand-drawing.allium.
    */
   { name: 'dibujo', hint: 'dibujar a mano, a pantalla completa', inserts: '', caret: 0, acts: 'dibujar' },
+  { name: 'proceso', hint: 'convertir este bloque en un proceso ejecutable', inserts: '', caret: 0, acts: 'proceso' },
   // Importar no escribe aquí: crea una página aparte y lleva a ella. Está en
   // esta lista porque es donde uno va a buscar «qué puedo hacer desde el
   // teclado», y no porque deje texto en el bloque.
