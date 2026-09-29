@@ -3,8 +3,10 @@
 
 -- Scope: Bloques que invocan transformaciones registradas sobre entradas
 --   canónicas y producen resultados revisables dentro de una página de Vera.
--- Includes: definición e invocación separadas, entradas por puerto, ejecución
---   confinada, propuesta hija, aceptación como bloque hermano y procedencia.
+-- Includes: definición e invocación separadas, una transformación por bloque,
+--   cadenas explícitas mediante salidas aceptadas, entradas por puerto,
+--   ejecución confinada, propuesta hija, aceptación como bloque hermano y
+--   procedencia.
 -- Excludes:
 --   - El algoritmo particular de cada transformador.
 --   - El diseño definitivo del selector o del editor de procesos.
@@ -55,6 +57,17 @@ contract ExecutableProcess {
     @invariant FailureLeavesNoResult
         -- Una entrada incompatible, una salida ilegible, una interrupción o un
         -- plazo agotado explican el fallo y no crean ni mueven bloques.
+
+    @invariant OneInvocationPerformsOneTransformation
+        -- Un bloque de proceso no oculta un pipeline de estaciones. Recibe una
+        -- o varias entradas, realiza una sola transformación nombrable y ofrece
+        -- una sola salida. Una secuencia se expresa encadenando bloques.
+
+    @invariant ChangedInputsDoNotRewriteDownstreamHistory
+        -- Cada ejecución aguas abajo conserva la revisión exacta que consumió.
+        -- Si una salida anterior cambia, la traza existente sigue siendo cierta
+        -- para aquella revisión pero no se presenta como actual ni se reejecuta
+        -- silenciosamente.
 }
 
 contract ProcessResultLifecycle {
@@ -97,6 +110,11 @@ contract ProcessResultLifecycle {
         -- El bloque de proceso recuerda su última salida aceptada, versión,
         -- entrada y duración. Recargar la página no lo devuelve falsamente al
         -- estado «sin ejecutar» ni exige inspeccionar el bloque producido.
+
+    @invariant AcceptedOutputsCanBecomeInputs
+        -- Una salida aceptada ya es un bloque canónico y puede ocupar un puerto
+        -- del proceso siguiente. La referencia enlaza su identidad y la revisión
+        -- consumida; la propuesta hija todavía no alimenta la cadena.
 }
 
 ------------------------------------------------------------
@@ -277,8 +295,9 @@ surface ProcessBlockExecution {
         RegenerateProcessResult(writer, proposal)
 
     @guarantee PortsAreNamed
-        -- Un proceso con varias fuentes no finge ser una cadena lineal. PICTOS
-        -- puede nombrar por separado imagen, semántica y árbol visual.
+        -- Un proceso con varias fuentes no finge que todas cumplen el mismo
+        -- papel. Cada entrada conserva un nombre aunque una cadena simple use
+        -- sólo la salida aceptada del paso anterior.
 
     @guarantee TheBoundaryIsVisible
         -- Antes de aceptar, la indentación mantiene la salida dentro del proceso;
@@ -289,14 +308,20 @@ surface ProcessBlockExecution {
         -- viñeta, el asa, el plegado, el menú, los hijos, el movimiento y las
         -- referencias siguen siendo los de cualquier bloque de Vera.
 
-    @guarantee TheTableOpensInThePageFlow
-        -- La mesa despliega las estaciones debajo de su cabecera, en la página;
-        -- no abre una ventana ni obliga a abandonar el contexto de escritura.
+    @guarantee TheProcessOpensInThePageFlow
+        -- El bloque despliega su entrada, la transformación y su propuesta en
+        -- la página; no inventa estaciones internas ni obliga a abandonar el
+        -- contexto de escritura.
 
     @guarantee IntermediateResultsAreTangibleWithoutCode
-        -- Cuando la definición ofrece estructura intermedia, la mesa la vuelve
-        -- editable mediante nombres, selectores y campos del dominio. Ver JSON
-        -- puede servir para inspeccionar, pero no es requisito para intervenir.
+        -- Una salida JSON aceptada es un bloque ordinario. La interfaz puede
+        -- volverla editable mediante nombres, selectores, campos o un árbol del
+        -- dominio; ver o escribir JSON crudo no es requisito para intervenir.
+
+    @guarantee PictosIsAChainOfThreeProcesses
+        -- PICTOS encadena Comprender (texto a JSON semántico), Componer (JSON
+        -- semántico a JSON de árbol visual) y Producir (árbol visual a SVG
+        -- autocontenido). Ninguno contiene a los otros como estaciones.
 
     @guarantee TheRestingActionIsExecute
         -- Cerrado y sin ejecución, el único gesto con peso es Ejecutar. Abrir la
@@ -307,10 +332,8 @@ surface ProcessBlockExecution {
 -- Open Questions
 ------------------------------------------------------------
 
-open question "¿Puede un proceso consumir directamente la propuesta aún no aceptada de otro proceso, o sólo bloques ya incorporados al corpus?"
-
 open question "¿Qué tipos de salida además de texto y SVG autocontenido debe reconocer el primer corte?"
 
-open question "¿Cómo se representa de forma general el alcance de una regeneración parcial —hoja, rama o raíz— sin imponer a todos los procesos la estructura particular de PICTOS?"
+open question "Cuando cambia una entrada ya usada, ¿cómo debe señalar Vera que las ejecuciones aguas abajo están desactualizadas y desde qué punto ofrece volver a correr la cadena?"
 
 open question "¿Cómo generalizar la solicitud persistente al bibliotecario para que `/proceso` conserve solicitud, reclamo y propuesta antes de aceptar, sin imponer que Cotito sea el ejecutor de todo proceso?"
