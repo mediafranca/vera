@@ -1,0 +1,229 @@
+-- allium: 3
+-- executable-process-blocks.allium
+
+-- Scope: Bloques que invocan transformaciones registradas sobre entradas
+--   canónicas y producen resultados revisables dentro de una página de Vera.
+-- Includes: definición e invocación separadas, entradas por puerto, ejecución
+--   confinada, propuesta hija, aceptación como bloque hermano y procedencia.
+-- Excludes:
+--   - El algoritmo particular de cada transformador.
+--   - El diseño definitivo del selector o del editor de procesos.
+--   - La correspondencia semántico–geométrica de PICTOS, que sigue siendo un
+--     problema de investigación del proceso y no una obligación general de Vera.
+-- Dependencies: Page, Block y Participant los gobierna core.allium; las formas
+--   interpretativas existentes permanecen en processing-forms.allium.
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract ExecutableProcess {
+    execute: (invocation: ProcessInvocation, participant: core/Participant) -> ProcessRun
+
+    @invariant ADefinitionAndAnInvocationAreDifferentThings
+        -- La definición versionada dice qué entradas acepta y qué resultado
+        -- produce. El bloque de la página sólo la invoca y enlaza entradas: no
+        -- repite el programa ni obtiene por ello autoridad para escribir.
+
+    @invariant InputsNameExactRevisions
+        -- Cada puerto apunta a un bloque y a la revisión leída. Editar la
+        -- entrada mientras el proceso corre no permite presentar la salida como
+        -- si describiera silenciosamente el texto nuevo.
+
+    @invariant ProgramsDoNotWriteTheGraph
+        -- El transformador recibe valores y devuelve valores. No recibe una
+        -- credencial, el objeto grafo ni una puerta lateral para crear, mover o
+        -- editar bloques. Sólo Vera puede incorporar el resultado.
+
+    @invariant ExecutionIsFinite
+        -- Toda ejecución tiene un plazo y puede terminarse. Un transformador
+        -- defectuoso no sacrifica la disponibilidad del cuaderno ni del equipo.
+
+    @invariant FailureLeavesNoResult
+        -- Una entrada incompatible, una salida ilegible, una interrupción o un
+        -- plazo agotado explican el fallo y no crean ni mueven bloques.
+}
+
+contract ProcessResultLifecycle {
+    accept: (proposal: ProcessResultProposal, participant: core/Participant) -> core/Block
+
+    @invariant TheProposalBeginsUnderTheProcess
+        -- Mientras se revisa, el resultado se presenta como hijo del bloque de
+        -- proceso. Su subordinación visual dice que todavía es una salida
+        -- propuesta y no una parte ordinaria de la página.
+
+    @invariant AcceptanceMakesAnOrdinarySibling
+        -- Aceptar retira la propuesta del recinto del proceso y materializa su
+        -- contenido como hermano del bloque de proceso en la misma página. Desde
+        -- entonces se edita, mueve y enlaza como cualquier bloque.
+
+    @invariant AcceptancePreservesProvenance
+        -- El bloque aceptado recuerda la definición y versión ejecutadas, los
+        -- bloques y revisiones de entrada, la ejecución y quién la solicitó.
+
+    @invariant RejectionChangesNoCorpusContent
+        -- Descartar una propuesta deja el bloque de proceso y sus entradas donde
+        -- estaban; no crea un hermano vacío ni una operación a medias.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum ProcessRunStatus { running | proposed | accepted | rejected | failed | stale }
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+-- Una capacidad reutilizable y versionada. Puede tener uno o varios puertos.
+entity ProcessDefinition {
+    page: core/Page
+    name: String
+    purpose: String
+    version: Integer
+    enabled: Boolean
+    output_kind: String
+}
+
+-- Un puerto enlaza una entrada canónica con la revisión efectivamente leída.
+value ProcessInput {
+    port: String
+    block: core/Block
+    revision: String
+}
+
+-- El bloque visible que elige una definición y conecta sus entradas.
+entity ProcessInvocation {
+    block: core/Block
+    definition: ProcessDefinition
+    inputs: List<ProcessInput>
+}
+
+entity ProcessRun {
+    invocation: ProcessInvocation
+    definition_version: Integer
+    requested_by: core/Participant
+    status: ProcessRunStatus
+    started_at: Timestamp
+    finished_at: Timestamp?
+    explanation: String?
+
+    transitions status {
+        running -> proposed
+        running -> failed
+        proposed -> accepted
+        proposed -> rejected
+        proposed -> stale
+        terminal: accepted, rejected, failed, stale
+    }
+}
+
+-- La salida revisable. Que se presente como hija no decide todavía si antes de
+-- aceptarla persiste como bloque canónico o como proyección transitoria.
+entity ProcessResultProposal {
+    run: ProcessRun
+    content: String
+    output_kind: String
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule ParticipantRunsAProcessBlock {
+    when: RunProcess(participant, invocation)
+
+    requires: invocation.definition.enabled = true
+    requires: invocation.inputs.count > 0
+
+    ensures:
+        let run = ProcessRun.created(
+            invocation: invocation,
+            definition_version: invocation.definition.version,
+            requested_by: participant,
+            status: running,
+            started_at: now,
+            finished_at: null,
+            explanation: null
+        )
+        ExecutableProcess.execute(invocation, participant) = run
+}
+
+rule AValidResultBecomesAChildProposal {
+    when: ProcessFinished(run, content, output_kind)
+
+    requires: run.status = running
+    requires: output_kind = run.invocation.definition.output_kind
+
+    ensures:
+        run.status = proposed
+        run.finished_at = now
+        ProcessResultProposal.created(
+            run: run,
+            content: content,
+            output_kind: output_kind
+        )
+}
+
+rule AcceptingAProposalCreatesTheSibling {
+    when: AcceptProcessResult(participant, proposal)
+
+    requires: proposal.run.status = proposed
+
+    ensures:
+        proposal.run.status = accepted
+        exists ProcessResultLifecycle.accept(proposal, participant)
+}
+
+rule RejectingAProposalWritesNothing {
+    when: RejectProcessResult(participant, proposal)
+
+    requires: proposal.run.status = proposed
+
+    ensures:
+        proposal.run.status = rejected
+        proposal.run.finished_at = now
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface ProcessBlockExecution {
+    facing writer: core/Participant
+    context invocation: ProcessInvocation
+
+    exposes:
+        invocation.definition.name
+        invocation.definition.purpose
+        invocation.inputs
+        ProcessRun
+        ProcessResultProposal
+
+    contracts:
+        fulfils ExecutableProcess
+        fulfils ProcessResultLifecycle
+
+    @guarantee PortsAreNamed
+        -- Un proceso con varias fuentes no finge ser una cadena lineal. PICTOS
+        -- puede nombrar por separado imagen, semántica y árbol visual.
+
+    @guarantee TheBoundaryIsVisible
+        -- Antes de aceptar, la indentación mantiene la salida dentro del proceso;
+        -- después, el resultado aparece en el outline ordinario como hermano.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "Al reejecutar un proceso cuya salida anterior ya fue aceptada, ¿la nueva propuesta reemplaza aquel bloque, crea otro hermano o se ofrece como nueva revisión del mismo bloque?"
+
+open question "Antes de aceptarse, ¿la propuesta hija es ya un bloque canónico con identidad e historia, o una proyección transitoria que sólo se vuelve bloque al aceptar?"
+
+open question "¿Puede un proceso consumir directamente la propuesta aún no aceptada de otro proceso, o sólo bloques ya incorporados al corpus?"
+
+open question "¿Qué tipos de salida además de texto y SVG autocontenido debe reconocer el primer corte?"
