@@ -9,6 +9,11 @@ export interface ProcessResult {
   durationMs: number;
   inputRevision: string;
   executor?: string;
+  requestId?: string;
+  processVersion?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  model?: string;
   stages?: readonly [string, string][];
   meaning?: PictosMeaning;
   pictos?: PictosPlan;
@@ -52,6 +57,8 @@ export interface ProcessPresentation {
 
 export function processPresentation(definition: string): ProcessPresentation {
   switch (definition) {
+    case 'pictos.net/comprender': return { family: 'PICTOS.net', name: 'Comprender', inputKind: 'Texto', outputKind: 'NLU nativa JSON', executor: 'pictos.net' };
+    case 'pictos.net/componer': return { family: 'PICTOS.net', name: 'Componer', inputKind: 'NLU nativa JSON', outputKind: 'Composición nativa JSON', executor: 'pictos.net' };
     case 'pictos/comprender': return { family: 'PICTOS', name: 'Comprender', inputKind: 'Texto', outputKind: 'JSON semántico', executor: 'participant:local-model' };
     case 'pictos/componer': return { family: 'PICTOS', name: 'Componer', inputKind: 'JSON semántico', outputKind: 'Árbol visual JSON', executor: 'participant:local-model' };
     case 'pictos/producir': return { family: 'PICTOS', name: 'Producir', inputKind: 'Árbol visual JSON', outputKind: 'SVG autocontenido', executor: 'vera/svg-composer' };
@@ -136,6 +143,12 @@ interface PictosAnswer {
   content?: string;
   plan?: PictosPlan;
   meaning?: PictosMeaning;
+  executor?: string;
+  requestId?: string;
+  processVersion?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  model?: string;
 }
 
 async function executePictosStep(
@@ -219,10 +232,40 @@ export async function composePictos(plan: PictosPlan, previous: ProcessResult): 
 }
 
 export function executeProcess(invocation: ProcessInvocationSource, text: string): Promise<ProcessResult> {
+  if (invocation.definition === 'pictos.net/comprender') return executePictosNetStep('understand', text);
+  if (invocation.definition === 'pictos.net/componer') return executePictosNetStep('arrange', text);
   if (invocation.definition === 'pictos/comprender') return executePictosStep('understand', text);
   if (invocation.definition === 'pictos/componer') return executePictosStep('arrange', text);
   if (invocation.definition === 'pictos/producir') return executePictosStep('produce', text);
   if (invocation.definition === 'pictos/frase-visual') return executePictos(text);
   if (invocation.definition === 'vera/estructura-textual') return executeTextStructure(text);
   return Promise.reject(new Error(`proceso no registrado: ${invocation.definition}`));
+}
+
+async function executePictosNetStep(
+  endpoint: 'understand' | 'arrange',
+  text: string,
+): Promise<ProcessResult> {
+  const started = performance.now();
+  const inputRevision = hexadecimal(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  const response = await fetch(`/processes/pictos-net/${endpoint}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: text }),
+  });
+  const said = await response.json().catch(() => ({})) as PictosAnswer;
+  if (!response.ok || typeof said.content !== 'string') {
+    throw new Error(said.error ?? 'PICTOS no devolvió una salida legible');
+  }
+  return {
+    content: said.content,
+    durationMs: Math.max(0, performance.now() - started),
+    inputRevision,
+    executor: said.executor ?? 'pictos.net',
+    ...(said.requestId === undefined ? {} : { requestId: said.requestId }),
+    ...(said.processVersion === undefined ? {} : { processVersion: said.processVersion }),
+    ...(said.schemaId === undefined ? {} : { schemaId: said.schemaId }),
+    ...(said.schemaVersion === undefined ? {} : { schemaVersion: said.schemaVersion }),
+    ...(said.model === undefined ? {} : { model: said.model }),
+  };
 }

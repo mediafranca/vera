@@ -50,7 +50,9 @@ describe('prioridades de interfaz posteriores al móvil', () => {
 
   it('devuelve un bloque de proceso a su propia fuente desde el menú de la viñeta', () => {
     assert.match(outliner, /readProcessBlock\(node\.block\.content\) === null/);
-    assert.match(outliner, /label: 'Editar código',[\s\S]*?run: \(\) => openEditor\(node, body\)/);
+    assert.match(outliner, /label: 'Editar código',[\s\S]*?run: \(\) => openProcessSourceEditor\(node\)/);
+    assert.match(outliner, /className = 'process-source-dialog'/);
+    assert.match(outliner, /readProcessBlock\(editor\.value\) === null/);
   });
 
   it('aplica la trazabilidad pública al cambiar el switch, sin un segundo gesto oculto', () => {

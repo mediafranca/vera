@@ -7195,6 +7195,35 @@ html[data-working-slow='true']::after {
   margin-block: .2rem .55rem;
 }
 
+.process-source-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  border: 1px solid var(--rule);
+  border-radius: .65rem;
+  background: var(--bg);
+  color: var(--text);
+  padding: 1.15rem;
+  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / .2);
+}
+.process-source-dialog::backdrop { background: rgb(0 0 0 / .45); }
+.process-source-dialog h2 { margin: 0 0 .35rem; font: 600 1.25rem/1.2 var(--font-ui); }
+.process-source-dialog p { margin: .35rem 0 .9rem; color: var(--text-dim); }
+.process-source-dialog textarea {
+  display: block;
+  width: 100%;
+  min-height: 11rem;
+  resize: vertical;
+  border: 1px solid var(--rule);
+  border-radius: .4rem;
+  padding: .8rem;
+  background: var(--paper, var(--bg));
+  color: var(--text);
+  font: .92rem/1.5 var(--font-mono, ui-monospace, monospace);
+}
+.process-source-dialog textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.process-source-dialog textarea[aria-invalid='true'] { border-color: var(--warm); }
+.process-source-dialog .process-source-feedback { min-height: 1.25rem; color: var(--warm); }
+.process-source-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; }
+
 .process-header {
   align-items: center;
   display: grid;

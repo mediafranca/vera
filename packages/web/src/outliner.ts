@@ -4938,6 +4938,11 @@ export function renderOutliner(
           { change: { kind: 'set_property', block: output, propertyKey: 'entrada del proceso', propertyValue: `((${invocation.input}))` } },
           { change: { kind: 'set_property', block: output, propertyKey: 'revisión de entrada', propertyValue: state.result?.inputRevision ?? '' } },
           { change: { kind: 'set_property', block: output, propertyKey: 'ejecutor del proceso', propertyValue: state.result?.executor ?? presentation.executor } },
+          ...(state.result?.requestId === undefined ? [] : [{ change: { kind: 'set_property' as const, block: output, propertyKey: 'solicitud del proceso', propertyValue: state.result.requestId } }]),
+          ...(state.result?.processVersion === undefined ? [] : [{ change: { kind: 'set_property' as const, block: output, propertyKey: 'versión del ejecutor', propertyValue: state.result.processVersion } }]),
+          ...(state.result?.schemaId === undefined ? [] : [{ change: { kind: 'set_property' as const, block: output, propertyKey: 'schema de salida', propertyValue: state.result.schemaId } }]),
+          ...(state.result?.schemaVersion === undefined ? [] : [{ change: { kind: 'set_property' as const, block: output, propertyKey: 'versión del schema', propertyValue: state.result.schemaVersion } }]),
+          ...(state.result?.model === undefined ? [] : [{ change: { kind: 'set_property' as const, block: output, propertyKey: 'modelo ejecutor', propertyValue: state.result.model } }]),
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'salida del proceso', propertyValue: `((${output}))` } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'última ejecución', propertyValue: String(state.attempt) } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'duración del proceso', propertyValue: `${Math.round(state.result?.durationMs ?? 0)} ms` } },
@@ -5424,7 +5429,7 @@ export function renderOutliner(
           ...(readProcessBlock(node.block.content) === null ? [] : [{
             label: 'Editar código',
             icon: 'edit-2',
-            run: () => openEditor(node, body),
+            run: () => openProcessSourceEditor(node),
           } satisfies MenuAction]),
           {
             label: glosses[node.block.stableId]?.content ? 'Editar glosa' : 'Agregar glosa',
@@ -6129,6 +6134,70 @@ export function renderOutliner(
       },
       placement,
     );
+  }
+
+  /**
+   * La fuente de una invocación es corta, portable y merece verse completa.
+   * Se edita aparte porque el bloque transformado reserva su cuerpo para estado,
+   * Play y propuesta; el editor común lo excluye deliberadamente.
+   */
+  function openProcessSourceEditor(node: Node): void {
+    if (readProcessBlock(node.block.content) === null) return;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'process-source-dialog';
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    const title = document.createElement('h2');
+    title.textContent = 'Código del proceso';
+    const explain = document.createElement('p');
+    explain.textContent = 'Esta invocación elige una definición versionada y conecta su bloque de entrada.';
+    const editor = document.createElement('textarea');
+    editor.value = node.block.content;
+    editor.spellcheck = false;
+    editor.setAttribute('aria-label', 'código del proceso');
+    const feedback = document.createElement('p');
+    feedback.className = 'process-source-feedback';
+    feedback.setAttribute('role', 'status');
+    const actions = document.createElement('div');
+    actions.className = 'dialog-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancelar';
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.className = 'primary';
+    save.textContent = 'Guardar';
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (readProcessBlock(editor.value) === null) {
+        feedback.textContent = 'La fuente necesita definición, versión y una entrada ((bloque)).';
+        editor.setAttribute('aria-invalid', 'true');
+        return;
+      }
+      editor.removeAttribute('aria-invalid');
+      save.disabled = true;
+      void submitQuietly({
+        kind: 'edit_block',
+        block: node.block.stableId,
+        content: editor.value,
+      }).then((applied) => {
+        if (!applied) {
+          save.disabled = false;
+          return;
+        }
+        dialog.close();
+        callbacks.onReload(null);
+      });
+    });
+    dialog.addEventListener('close', () => dialog.remove());
+    actions.append(cancel, save);
+    form.append(title, explain, editor, feedback, actions);
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    editor.focus();
+    editor.setSelectionRange(0, editor.value.length);
   }
 
   /*

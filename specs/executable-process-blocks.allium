@@ -310,9 +310,21 @@ surface ProcessBlockExecution {
 
     @guarantee TheBulletMenuOpensTheInvocationSource
         -- El menú de la viñeta ofrece «Editar código». La acción devuelve ese
-        -- mismo bloque a su fuente declarativa para cambiar definición, versión
-        -- o entradas. No abre otra página ni confunde esa invocación con el
-        -- programa reusable que la ejecuta.
+        -- mismo bloque a su fuente declarativa completa dentro de un editor
+        -- modal para cambiar definición, versión o entradas. Guardar edita ese
+        -- bloque canónico; cancelar no escribe. No abre otra página ni confunde
+        -- esa invocación con el programa reusable que la ejecuta.
+
+    @guarantee ProcessAppearanceRequiresAnInvocation
+        -- La marca lambda, el estado y Play sólo aparecen cuando el contenido
+        -- del bloque es una invocación `/proceso` válida. Una traza histórica o
+        -- un texto que describe una ejecución no se disfraza de control vivo.
+
+    @guarantee ExternalProcessesRunThroughTheServer
+        -- Una definición remota se ejecuta servidor a servidor. La credencial
+        -- permanece fuera del navegador; Vera entrega valores de dominio,
+        -- conserva el JSON nativo devuelto y nombra al servicio remoto como
+        -- ejecutor. Un fallo remoto deja una explicación y ningún resultado.
 
     @guarantee TheProcessOpensInThePageFlow
         -- El bloque despliega su entrada, la transformación y su propuesta en

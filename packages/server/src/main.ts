@@ -99,6 +99,11 @@ const librarianHookToken = setting('VERA_LIBRARIAN_HOOK_TOKEN') ?? (
 const librarianHook = librarianHookUrl !== undefined && librarianHookToken !== undefined
   ? { url: librarianHookUrl, token: librarianHookToken }
   : undefined;
+const pictosApiBase = setting('PICTOS_API_BASE');
+const pictosApiKey = setting('PICTOS_API_KEY');
+const pictosApi = pictosApiBase !== undefined && pictosApiKey !== undefined
+  ? { baseUrl: pictosApiBase, key: pictosApiKey }
+  : undefined;
 
 const { vera } = listen({
   port,
@@ -121,6 +126,7 @@ const { vera } = listen({
   ...(publicPreviewUrl === undefined ? {} : { publicPreviewUrl }),
   ...(publicMcpOrigin === undefined ? {} : { publicMcpOrigin }),
   ...(librarianHook === undefined ? {} : { librarianHook }),
+  ...(pictosApi === undefined ? {} : { pictosApi }),
   ...(declaredOwner === undefined ? {} : { owner: declaredOwner }),
 });
 

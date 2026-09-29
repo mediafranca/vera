@@ -131,6 +131,7 @@ import {
   validatePictosMeaning,
   validatePictosPlan,
 } from './pictos-process.ts';
+import { runPictosApi } from './pictos-api.ts';
 import { formalizationOf, mentionsOf } from './mentions.ts';
 import { CLIENT_KEY, CONNECTIONS_KIND, connectionsPage } from './mcp-page.ts';
 import { mcpConnect } from './mcp-connect.ts';
@@ -280,6 +281,8 @@ export interface ServerOptions {
    */
   port?: number;
   librarianHook?: { url: string; token: string };
+  /** API externa de PICTOS; la credencial sólo existe en este proceso servidor. */
+  pictosApi?: { baseUrl: string; key: string };
   /**
    * Por dónde se alcanza esta Vera desde otro equipo, si alguien lo declaró.
    *
@@ -4387,6 +4390,33 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const made = composePictos(plan);
         send(response, 200, { content: made.content, plan: made.plan, svg: made.svg });
       });
+      return;
+    }
+
+    /*
+     * Definiciones remotas de la v2. Conservan el contrato nativo de PICTOS y
+     * no exponen la credencial al cliente. Si la instancia no está emparejada,
+     * el bloque falla de forma legible y no produce una propuesta falsa.
+     */
+    if (
+      request.method === 'POST' &&
+      (path === '/processes/pictos-net/understand' || path === '/processes/pictos-net/arrange')
+    ) {
+      if (options.pictosApi === undefined) {
+        send(response, 503, { error: 'esta Vera no está conectada a PICTOS' });
+        return;
+      }
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(128 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const input = typeof body['input'] === 'string' ? body['input'] : '';
+      if (input.trim() === '') {
+        send(response, 422, { error: 'el proceso remoto necesita una entrada' });
+        return;
+      }
+      const phase = path.endsWith('/understand') ? 'comprender' : 'componer';
+      const made = await runPictosApi(options.pictosApi, phase, input);
+      send(response, 'error' in made ? 503 : 200, made);
       return;
     }
 

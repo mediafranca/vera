@@ -35,4 +35,12 @@ describe('/proceso', () => {
     assert.equal(processPresentation('pictos/componer').outputKind, 'Árbol visual JSON');
     assert.equal(processPresentation('pictos/producir').outputKind, 'SVG autocontenido');
   });
+
+  it('distingue las definiciones remotas de PICTOS del experimento local', () => {
+    assert.deepEqual(processPresentation('pictos.net/comprender'), {
+      family: 'PICTOS.net', name: 'Comprender', inputKind: 'Texto',
+      outputKind: 'NLU nativa JSON', executor: 'pictos.net',
+    });
+    assert.equal(processPresentation('pictos.net/componer').outputKind, 'Composición nativa JSON');
+  });
 });
