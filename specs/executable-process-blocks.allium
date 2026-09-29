@@ -41,6 +41,17 @@ contract ExecutableProcess {
         -- Toda ejecución tiene un plazo y puede terminarse. Un transformador
         -- defectuoso no sacrifica la disponibilidad del cuaderno ni del equipo.
 
+    @invariant RequesterCoordinatorExecutorAndAcceptorRemainDistinct
+        -- Pulsar Ejecutar formula la solicitud; coordinarla, transformarla y
+        -- aceptar su resultado son actos diferentes. Cotito sólo aparece como
+        -- coordinador cuando realmente reclamó la solicitud, y la salida
+        -- conserva el nombre del modelo, transformador o servicio que la produjo.
+
+    @invariant AcceptanceDoesNotRewriteAuthorship
+        -- Aceptar incorpora una propuesta al texto: no convierte a quien acepta
+        -- en autor del contenido generado ni atribuye a Cotito lo que hizo otro
+        -- ejecutor. La procedencia conserva ambos actos.
+
     @invariant FailureLeavesNoResult
         -- Una entrada incompatible, una salida ilegible, una interrupción o un
         -- plazo agotado explican el fallo y no crean ni mueven bloques.
@@ -73,6 +84,11 @@ contract ProcessResultLifecycle {
         -- provisional visible y pide otra; los intentos anteriores sobreviven en
         -- la procedencia, no como una galería de alternativas en la página.
 
+    @invariant HumanAdjustmentIsNotRegeneration
+        -- Corregir una etiqueta, un rol o una decisión de composición modifica
+        -- la propuesta visible y la vuelve a validar sin consultar otra vez al
+        -- oráculo. Regenerar, en cambio, solicita una posibilidad nueva.
+
     @invariant AcceptedOutputsAreNeverReplacedByRerunning
         -- Volver a ejecutar abre una propuesta provisional nueva. Cualquier
         -- salida aceptada permanece como el bloque ordinario que ya llegó a ser.
@@ -101,6 +117,7 @@ entity ProcessDefinition {
     version: Integer
     enabled: Boolean
     output_kind: String
+    executor: String
 }
 
 -- Un puerto enlaza una entrada canónica con la revisión efectivamente leída.
@@ -121,6 +138,9 @@ entity ProcessRun {
     invocation: ProcessInvocation
     definition_version: Integer
     requested_by: core/Participant
+    coordinated_by: core/Participant?
+    executed_by: String
+    accepted_by: core/Participant?
     status: ProcessRunStatus
     started_at: Timestamp
     finished_at: Timestamp?
@@ -160,6 +180,9 @@ rule ParticipantRunsAProcessBlock {
             invocation: invocation,
             definition_version: invocation.definition.version,
             requested_by: participant,
+            coordinated_by: null,
+            executed_by: invocation.definition.executor,
+            accepted_by: null,
             status: running,
             started_at: now,
             finished_at: null,
@@ -191,6 +214,7 @@ rule AcceptingAProposalCreatesTheSibling {
 
     ensures:
         proposal.run.status = accepted
+        proposal.run.accepted_by = participant
         exists ProcessResultLifecycle.accept(proposal, participant)
 }
 
@@ -216,6 +240,9 @@ rule RegeneratingReplacesOnlyThePendingProposal {
             invocation: proposal.run.invocation,
             definition_version: proposal.run.invocation.definition.version,
             requested_by: participant,
+            coordinated_by: null,
+            executed_by: proposal.run.invocation.definition.executor,
+            accepted_by: null,
             status: running,
             started_at: now,
             finished_at: null,
@@ -244,10 +271,10 @@ surface ProcessBlockExecution {
         fulfils ProcessResultLifecycle
 
     provides:
-        RunProcess
-        AcceptProcessResult
-        RejectProcessResult
-        RegenerateProcessResult
+        RunProcess(writer, invocation)
+        AcceptProcessResult(writer, proposal)
+        RejectProcessResult(writer, proposal)
+        RegenerateProcessResult(writer, proposal)
 
     @guarantee PortsAreNamed
         -- Un proceso con varias fuentes no finge ser una cadena lineal. PICTOS
@@ -266,6 +293,11 @@ surface ProcessBlockExecution {
         -- La mesa despliega las estaciones debajo de su cabecera, en la página;
         -- no abre una ventana ni obliga a abandonar el contexto de escritura.
 
+    @guarantee IntermediateResultsAreTangibleWithoutCode
+        -- Cuando la definición ofrece estructura intermedia, la mesa la vuelve
+        -- editable mediante nombres, selectores y campos del dominio. Ver JSON
+        -- puede servir para inspeccionar, pero no es requisito para intervenir.
+
     @guarantee TheRestingActionIsExecute
         -- Cerrado y sin ejecución, el único gesto con peso es Ejecutar. Abrir la
         -- mesa y las acciones específicas aparecen como controles secundarios.
@@ -280,3 +312,5 @@ open question "¿Puede un proceso consumir directamente la propuesta aún no ace
 open question "¿Qué tipos de salida además de texto y SVG autocontenido debe reconocer el primer corte?"
 
 open question "¿Cómo se representa de forma general el alcance de una regeneración parcial —hoja, rama o raíz— sin imponer a todos los procesos la estructura particular de PICTOS?"
+
+open question "¿Cómo generalizar la solicitud persistente al bibliotecario para que `/proceso` conserve solicitud, reclamo y propuesta antes de aceptar, sin imponer que Cotito sea el ejecutor de todo proceso?"

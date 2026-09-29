@@ -122,6 +122,7 @@ import {
 } from './model.ts';
 import { relevantConcepts, type ConceptCandidate } from './ontology-context.ts';
 import { LOCAL_MODEL, LOCAL_MODEL_NAME, promptFor, readAnswer } from './answer.ts';
+import { composePictos, generatePictos, validatePictosPlan } from './pictos-process.ts';
 import { formalizationOf, mentionsOf } from './mentions.ts';
 import { CLIENT_KEY, CONNECTIONS_KIND, connectionsPage } from './mcp-page.ts';
 import { mcpConnect } from './mcp-connect.ts';
@@ -3977,6 +3978,98 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // credenciales remotas no atraviesan esta frontera.
     if (request.method === 'GET' && path === '/processing/models') {
       send(response, 200, { models: await processingModels() });
+      return;
+    }
+
+    /*
+     * Primer proceso generativo visible: el modelo propone sólo un plan
+     * pictográfico acotado. El servidor valida el vocabulario y compone el SVG;
+     * ningún texto del modelo se ejecuta ni escribe por sí mismo en el grafo.
+     */
+    if (request.method === 'POST' && path === '/processes/pictos/generate') {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      let refused = false;
+      request.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 16 * 1024) refused = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => {
+        if (refused) {
+          send(response, 413, { error: 'la entrada del proceso es demasiado grande' });
+          return;
+        }
+        let body: { input?: unknown; model?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const input = typeof body.input === 'string' ? body.input.trim() : '';
+        const model = typeof body.model === 'string' && body.model !== '' ? body.model : undefined;
+        if (input === '') {
+          send(response, 422, { error: 'una frase vacía no puede volverse pictograma' });
+          return;
+        }
+        if (input.length > 1_200) {
+          send(response, 422, { error: 'el ejemplo admite frases de hasta 1.200 caracteres' });
+          return;
+        }
+        void generatePictos(input, { ...(model === undefined ? {} : { model }) }).then((made) => {
+          if ('error' in made) {
+            send(response, 503, made);
+            return;
+          }
+          send(response, 200, {
+            content: made.content,
+            plan: made.plan,
+            svg: made.svg,
+          });
+        }).catch((error: unknown) => {
+          send(response, 500, {
+            error: error instanceof Error ? error.message : 'el proceso generativo falló',
+          });
+        });
+      });
+      return;
+    }
+
+    /*
+     * La persona puede corregir la lectura propuesta sin escribir JSON ni
+     * volver a invocar al modelo. Se valida el mismo contrato y Vera recompone
+     * el SVG; el navegador nunca entrega código ejecutable como plan.
+     */
+    if (request.method === 'POST' && path === '/processes/pictos/compose') {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      let refused = false;
+      request.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 16 * 1024) refused = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => {
+        if (refused) {
+          send(response, 413, { error: 'el plan pictográfico es demasiado grande' });
+          return;
+        }
+        let body: { plan?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const plan = validatePictosPlan(body.plan);
+        if (plan === null) {
+          send(response, 422, { error: 'el ajuste no forma un plan pictográfico válido' });
+          return;
+        }
+        const made = composePictos(plan);
+        send(response, 200, { content: made.content, plan: made.plan, svg: made.svg });
+      });
       return;
     }
 

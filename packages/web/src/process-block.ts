@@ -8,12 +8,33 @@ export interface ProcessResult {
   content: string;
   durationMs: number;
   inputRevision: string;
+  stages?: readonly [string, string][];
+  pictos?: PictosPlan;
 }
+
+export interface PictosElement {
+  role: 'agent' | 'action' | 'patient' | 'context';
+  label: string;
+  symbol: string;
+}
+
+export interface PictosPlan {
+  title: string;
+  speechAct: 'directive' | 'statement' | 'question' | 'expression';
+  elements: PictosElement[];
+  composition: string;
+  description: string;
+}
+
+export const PICTOS_SYMBOLS = [
+  'person', 'hand', 'bed', 'toothbrush', 'tooth', 'cup', 'water', 'food',
+  'home', 'book', 'heart', 'arrow', 'place', 'object',
+] as const;
 
 const OPEN = '```proceso';
 
-export function writeProcessBlock(input: string): string {
-  return `${OPEN}\ndefinición: vera/estructura-textual\nversión: 1\nentrada: ((${input}))\n\`\`\``;
+export function writeProcessBlock(input: string, definition = 'vera/estructura-textual'): string {
+  return `${OPEN}\ndefinición: ${definition}\nversión: 1\nentrada: ((${input}))\n\`\`\``;
 }
 
 export function readProcessBlock(content: string): ProcessInvocationSource | null {
@@ -83,3 +104,69 @@ export async function executeTextStructure(text: string, timeoutMs = 2_000): Pro
   }
 }
 
+interface PictosAnswer {
+  error?: string;
+  content?: string;
+  plan?: PictosPlan;
+}
+
+function pictosStages(plan: PictosPlan): readonly [string, string][] {
+  const roles = plan.elements
+    .map((element) => `${element.role} · ${element.label} · ${element.symbol}`)
+    .join('\n');
+  return [
+    ['2 · Comprender', `${plan.speechAct}\n${roles}`],
+    ['3 · Componer', plan.composition],
+    ['4 · Producir', plan.description],
+  ];
+}
+
+/**
+ * Pide una posibilidad y nada más: el servidor valida el plan del modelo y es
+ * quien compone el SVG seguro. Regenerar llama de nuevo a esta misma frontera.
+ */
+export async function executePictos(text: string): Promise<ProcessResult> {
+  const started = performance.now();
+  const inputRevision = hexadecimal(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  const response = await fetch('/processes/pictos/generate', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: text }),
+  });
+  const said = await response.json().catch(() => ({})) as PictosAnswer;
+  if (!response.ok || typeof said.content !== 'string' || said.plan === undefined) {
+    throw new Error(said.error ?? 'PICTOS no devolvió una propuesta legible');
+  }
+  return {
+    content: said.content,
+    durationMs: Math.max(0, performance.now() - started),
+    inputRevision,
+    stages: pictosStages(said.plan),
+    pictos: said.plan,
+  };
+}
+
+/** Recompone una lectura corregida por la persona sin volver a preguntar al modelo. */
+export async function composePictos(plan: PictosPlan, previous: ProcessResult): Promise<ProcessResult> {
+  const response = await fetch('/processes/pictos/compose', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ plan }),
+  });
+  const said = await response.json().catch(() => ({})) as PictosAnswer;
+  if (!response.ok || typeof said.content !== 'string' || said.plan === undefined) {
+    throw new Error(said.error ?? 'PICTOS no pudo recomponer el ajuste');
+  }
+  return {
+    ...previous,
+    content: said.content,
+    stages: pictosStages(said.plan),
+    pictos: said.plan,
+  };
+}
+
+export function executeProcess(invocation: ProcessInvocationSource, text: string): Promise<ProcessResult> {
+  if (invocation.definition === 'pictos/frase-visual') return executePictos(text);
+  if (invocation.definition === 'vera/estructura-textual') return executeTextStructure(text);
+  return Promise.reject(new Error(`proceso no registrado: ${invocation.definition}`));
+}

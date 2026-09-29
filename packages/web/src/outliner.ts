@@ -96,7 +96,10 @@ import { type NavigationGesture } from './trace.ts';
 import { openMediaDetails } from './media-dialog.ts';
 import { holdViewport, restoreViewport } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
-import { executeTextStructure, looksLikeProcess, readProcessBlock, writeProcessBlock } from './process-block.ts';
+import {
+  composePictos, executeProcess, looksLikeProcess, PICTOS_SYMBOLS,
+  readProcessBlock, writeProcessBlock, type PictosPlan,
+} from './process-block.ts';
 import { mint } from './api.ts';
 import { session } from './tokens.ts';
 import {
@@ -2679,7 +2682,7 @@ interface ProcessUiState {
   open: boolean;
   phase: 'idle' | 'running' | 'proposed' | 'failed' | 'accepted';
   attempt: number;
-  result: Awaited<ReturnType<typeof executeTextStructure>> | null;
+  result: Awaited<ReturnType<typeof executeProcess>> | null;
   error: string | null;
 }
 
@@ -4692,7 +4695,8 @@ export function renderOutliner(
     header.className = 'process-header';
     const identity = document.createElement('div');
     identity.className = 'process-identity';
-    identity.innerHTML = `<span class="process-mark" aria-hidden="true">λ</span><span><small>/proceso · Vera</small><strong>Estructurar texto</strong></span>`;
+    const pictos = invocation.definition === 'pictos/frase-visual';
+    identity.innerHTML = `<span class="process-mark" aria-hidden="true">λ</span><span><small>/proceso · ${pictos ? 'PICTOS' : 'Vera'}</small><strong>${pictos ? 'Generar frase visual' : 'Estructurar texto'}</strong></span>`;
     const inputLabel = document.createElement('span');
     inputLabel.className = 'process-input';
     inputLabel.textContent = input === undefined
@@ -4735,7 +4739,7 @@ export function renderOutliner(
       state.error = null;
       state.attempt += 1;
       redraw();
-      void executeTextStructure(input.content).then((result) => {
+      void executeProcess(invocation, input.content).then((result) => {
         state.result = result;
         state.phase = 'proposed';
         redraw();
@@ -4750,21 +4754,146 @@ export function renderOutliner(
     if (state.open) {
       const table = document.createElement('div');
       table.className = 'process-table';
-      const stages = [
-        ['1 · Entrada', input?.content ?? 'Bloque no disponible'],
-        ['2 · Estructurar', state.phase === 'idle' ? 'Espera la ejecución.' : state.phase === 'running' ? 'Leyendo texto en un Worker confinado…' : 'Líneas, oraciones, palabras y medidas.'],
-        ['3 · Proponer', state.result?.content ?? (state.phase === 'failed' ? state.error ?? 'Falló' : 'Todavía no hay salida.')],
-      ] as const;
-      for (const [title, content] of stages) {
-        const station = document.createElement('section');
-        station.className = 'process-station';
+      const waiting = state.phase === 'idle' ? 'Espera la ejecución.'
+        : state.phase === 'running' ? (pictos ? 'El modelo está proponiendo una lectura visual…' : 'Leyendo texto en un Worker confinado…')
+        : state.phase === 'failed' ? state.error ?? 'Falló' : 'Todavía no hay salida.';
+      const station = (title: string): { root: HTMLElement; body: HTMLElement } => {
+        const root = document.createElement('section');
+        root.className = 'process-station';
         const heading = document.createElement('h4');
         heading.textContent = title;
-        const said = document.createElement('div');
-        said.className = 'process-station-content';
-        said.textContent = content.length > 260 ? `${content.slice(0, 260)}…` : content;
-        station.append(heading, said);
-        table.append(station);
+        const body = document.createElement('div');
+        body.className = 'process-station-content';
+        root.append(heading, body);
+        table.append(root);
+        return { root, body };
+      };
+      const entry = station('1 · Entrada');
+      entry.body.textContent = input?.content ?? 'Bloque no disponible';
+      if (input !== undefined) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'process-edit-input';
+        edit.textContent = 'Editar bloque de entrada';
+        edit.addEventListener('click', (event) => {
+          event.stopPropagation();
+          callbacks.onReload({ block: input.stableId, at: input.content.length });
+        });
+        entry.body.append(edit);
+      }
+
+      const plan = state.result?.pictos;
+      if (pictos && state.phase === 'proposed' && plan !== undefined && state.result !== null) {
+        const adjust = (next: PictosPlan, control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void => {
+          for (const editor of table.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')) {
+            editor.disabled = true;
+          }
+          const previous = state.result;
+          if (previous === null) return;
+          void composePictos(next, previous).then((result) => {
+            state.result = result;
+            redraw();
+          }).catch((problem: unknown) => {
+            for (const editor of table.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')) {
+              editor.disabled = false;
+            }
+            control.disabled = false;
+            toast(problem instanceof Error ? problem.message : 'no se pudo recomponer');
+          });
+        };
+        const clone = (): PictosPlan => structuredClone(plan);
+
+        const understand = station('2 · Comprender');
+        const act = document.createElement('select');
+        act.setAttribute('aria-label', 'acto de habla');
+        for (const value of ['directive', 'statement', 'question', 'expression'] as const) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          option.selected = plan.speechAct === value;
+          act.append(option);
+        }
+        act.addEventListener('change', () => {
+          const next = clone();
+          next.speechAct = act.value as PictosPlan['speechAct'];
+          adjust(next, act);
+        });
+        understand.body.append(act);
+        plan.elements.forEach((element, index) => {
+          const row = document.createElement('label');
+          row.className = 'process-role-editor';
+          const role = document.createElement('span');
+          role.textContent = element.role;
+          const label = document.createElement('input');
+          label.value = element.label;
+          label.setAttribute('aria-label', `nombre de ${element.role}`);
+          label.addEventListener('change', () => {
+            const next = clone();
+            const target = next.elements[index];
+            if (target === undefined) return;
+            target.label = label.value;
+            adjust(next, label);
+          });
+          const symbol = document.createElement('select');
+          symbol.setAttribute('aria-label', `símbolo de ${element.role}`);
+          for (const value of PICTOS_SYMBOLS) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            option.selected = element.symbol === value;
+            symbol.append(option);
+          }
+          symbol.addEventListener('change', () => {
+            const next = clone();
+            const target = next.elements[index];
+            if (target === undefined) return;
+            target.symbol = symbol.value;
+            adjust(next, symbol);
+          });
+          row.append(role, label, symbol);
+          understand.body.append(row);
+        });
+
+        const compose = station('3 · Componer');
+        const composition = document.createElement('textarea');
+        composition.value = plan.composition;
+        composition.rows = 3;
+        composition.setAttribute('aria-label', 'decisión de composición');
+        composition.addEventListener('change', () => {
+          const next = clone();
+          next.composition = composition.value;
+          adjust(next, composition);
+        });
+        compose.body.append(composition);
+
+        const produce = station('4 · Producir');
+        const title = document.createElement('input');
+        title.value = plan.title;
+        title.setAttribute('aria-label', 'título de la frase visual');
+        const description = document.createElement('textarea');
+        description.value = plan.description;
+        description.rows = 4;
+        description.setAttribute('aria-label', 'descripción accesible');
+        title.addEventListener('change', () => {
+          const next = clone();
+          next.title = title.value;
+          adjust(next, title);
+        });
+        description.addEventListener('change', () => {
+          const next = clone();
+          next.description = description.value;
+          adjust(next, description);
+        });
+        produce.body.append(title, description);
+      } else {
+        const stages: readonly [string, string][] = state.result?.stages ?? [
+          ['2 · Estructurar', state.phase === 'proposed' ? 'Líneas, oraciones, palabras y medidas.' : waiting],
+          ['3 · Proponer', state.phase === 'proposed' ? 'La salida está lista para revisión.' : waiting],
+        ];
+        for (const [title, content] of stages) {
+          const made = station(title);
+          made.body.textContent = content.length > 260 ? `${content.slice(0, 260)}…` : content;
+        }
       }
       host.append(table);
     }
@@ -4774,8 +4903,10 @@ export function renderOutliner(
       proposal.className = 'process-proposal';
       const label = document.createElement('small');
       label.textContent = `PROPUESTA PROVISIONAL · ejecución ${state.attempt}`;
-      const preview = document.createElement('pre');
-      preview.textContent = state.result.content.replace(/^```json\n|\n```$/g, '');
+      const preview = document.createElement('div');
+      preview.className = 'process-proposal-preview';
+      preview.innerHTML = renderMarkdown(state.result.content, options);
+      decorateCodeBlocks(preview);
       const actions = document.createElement('div');
       actions.className = 'process-proposal-actions';
       const accept = document.createElement('button');
@@ -4799,6 +4930,7 @@ export function renderOutliner(
           { change: { kind: 'set_property', block: output, propertyKey: 'versión del proceso', propertyValue: String(invocation.version) } },
           { change: { kind: 'set_property', block: output, propertyKey: 'entrada del proceso', propertyValue: `((${invocation.input}))` } },
           { change: { kind: 'set_property', block: output, propertyKey: 'revisión de entrada', propertyValue: state.result?.inputRevision ?? '' } },
+          { change: { kind: 'set_property', block: output, propertyKey: 'ejecutor del proceso', propertyValue: pictos ? 'participant:local-model' : 'vera/worker' } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'salida del proceso', propertyValue: `((${output}))` } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'última ejecución', propertyValue: String(state.attempt) } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'duración del proceso', propertyValue: `${Math.round(state.result?.durationMs ?? 0)} ms` } },

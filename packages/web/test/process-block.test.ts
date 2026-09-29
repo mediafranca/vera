@@ -15,4 +15,10 @@ describe('/proceso', () => {
     assert.equal(readProcessBlock('```proceso\ndefinición: vera/estructura-textual\n```'), null);
     assert.equal(looksLikeProcess('texto corriente'), false);
   });
+
+  it('puede invocar una definición generativa sin guardar su programa en la página', () => {
+    assert.deepEqual(readProcessBlock(writeProcessBlock('block:frase', 'pictos/frase-visual')), {
+      definition: 'pictos/frase-visual', version: 1, input: 'block:frase',
+    });
+  });
 });
