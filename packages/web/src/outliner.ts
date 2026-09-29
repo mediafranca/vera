@@ -4696,7 +4696,7 @@ export function renderOutliner(
     const identity = document.createElement('div');
     identity.className = 'process-identity';
     const pictos = invocation.definition === 'pictos/frase-visual';
-    identity.innerHTML = `<span class="process-mark" aria-hidden="true">λ</span><span><small>/proceso · ${pictos ? 'PICTOS' : 'Vera'}</small><strong>${pictos ? 'Generar frase visual' : 'Estructurar texto'}</strong></span>`;
+    identity.innerHTML = `<span class="process-mark" aria-hidden="true">${icon('steps-1')}</span><span><small>/proceso · ${pictos ? 'PICTOS' : 'Vera'}</small><strong>${pictos ? 'Generar frase visual' : 'Estructurar texto'}</strong></span>`;
     const inputLabel = document.createElement('span');
     inputLabel.className = 'process-input';
     inputLabel.textContent = input === undefined

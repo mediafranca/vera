@@ -710,12 +710,22 @@ function executableBlock(language: string, source: string, options: RenderOption
   const scriptPolicy = kind === 'svg'
     ? "'sha256-wgyR5BYfyYZZKEzfArrxKC8eIKqOy4/9tjvjaLir9iA='"
     : "'unsafe-inline'";
+  const svgViewBox = kind === 'svg'
+    ? /<svg\b[^>]*\bviewBox\s*=\s*["']\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)\s*["']/i.exec(source)
+    : null;
+  const svgWidth = Number(svgViewBox?.[1]);
+  const svgHeight = Number(svgViewBox?.[2]);
+  const intrinsicSize = Number.isFinite(svgWidth) && svgWidth > 0 && Number.isFinite(svgHeight) && svgHeight > 0
+    ? ` style="aspect-ratio:${svgWidth} / ${svgHeight};height:auto"`
+    : '';
+  const frameScrolling = kind === 'svg' ? ' scrolling="no"' : '';
+  const svgOverflow = kind === 'svg' ? 'html,body{overflow:hidden}body>svg{width:100%}' : '';
   const frame = kind === 'p5js'
     ? `<iframe data-executable-frame sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy" title="${title}" src="/p5-frame.html#${encodeURIComponent(source)}"></iframe>`
-    : `<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy" title="${title}" srcdoc="${quoteAttribute(escapeHtml([
+    : `<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" loading="lazy"${frameScrolling}${intrinsicSize} title="${title}" srcdoc="${quoteAttribute(escapeHtml([
         '<!doctype html><meta charset="utf-8">',
         `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${scriptPolicy}; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'">`,
-        '<style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--rule:currentColor;--accent:currentColor;--font-body:system-ui,sans-serif;--font-ui:system-ui,sans-serif;--font-mono:ui-monospace,monospace}html,body{margin:0;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}*{box-sizing:border-box}svg{display:block;max-width:100%;height:auto}html[data-presentation="true"],html[data-presentation="true"] body{width:100%;height:100%;overflow:hidden}html[data-presentation="true"] body>svg{width:100%;height:auto;max-width:none;max-height:100%;object-fit:contain}</style>',
+        `<style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--rule:currentColor;--accent:currentColor;--font-body:system-ui,sans-serif;--font-ui:system-ui,sans-serif;--font-mono:ui-monospace,monospace}html,body{margin:0;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}*{box-sizing:border-box}svg{display:block;max-width:100%;height:auto}${svgOverflow}html[data-presentation="true"],html[data-presentation="true"] body{width:100%;height:100%;overflow:hidden}html[data-presentation="true"] body>svg{width:100%;height:auto;max-width:none;max-height:100%;object-fit:contain}</style>`,
         source,
         bridge,
       ].join('\n')))}"></iframe>`;

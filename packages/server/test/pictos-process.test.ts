@@ -32,6 +32,9 @@ describe('proceso generativo PICTOS', () => {
     assert.match(svg, /<title id="title">Hacer la cama<\/title>/);
     assert.match(svg, /data-role="agent"/);
     assert.match(svg, /data-role="patient"/);
+    assert.match(svg, /svg\{color:#181715\}/);
+    assert.match(svg, /prefers-color-scheme:dark/);
+    assert.match(svg, /svg\{color:#f3efe6\}/);
     assert.doesNotMatch(svg, /<script|onload=/);
   });
 

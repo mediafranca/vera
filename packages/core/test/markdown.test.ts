@@ -429,6 +429,7 @@ describe('renderMarkdown', () => {
       assert.match(live, /<iframe [^>]*sandbox="allow-scripts"/);
       assert.match(live, /srcdoc=/);
       assert.ok(!live.includes('allow-same-origin'));
+      assert.ok(!live.includes('scrolling="no"'));
       assert.match(live, /fuente HTML/);
 
       assert.ok(!renderMarkdown('<button>histórico</button>').includes('<iframe'));
@@ -462,6 +463,14 @@ describe('renderMarkdown', () => {
       assert.ok(!html.includes("script-src 'unsafe-inline'"));
       assert.match(html, /fuente ilustración SVG/);
       assert.match(html, /&lt;svg viewBox=/);
+      assert.match(html, /scrolling="no"/);
+      assert.match(html, /aspect-ratio:10 \/ 10;height:auto/);
+      assert.match(html, /html,body\{overflow:hidden\}body&gt;svg\{width:100%\}/);
+    });
+
+    it('respeta la proporción rectangular declarada por el SVG', () => {
+      const html = renderMarkdown('```svg\n<svg viewBox="0 0 510 240"></svg>\n```');
+      assert.match(html, /aspect-ratio:510 \/ 240;height:auto/);
     });
 
     it('el SVG pegado fuera de su bloque explícito permanece inerte', () => {

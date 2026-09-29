@@ -159,7 +159,7 @@ export function pictosSvg(plan: PictosPlan): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 240" role="img" aria-labelledby="title description">` +
     `<title id="title">${escapeXml(plan.title)}</title>` +
     `<desc id="description">${escapeXml(plan.description)}</desc>` +
-    '<style>.card{fill:none;stroke:var(--rule,currentColor);stroke-width:1}.symbol{fill:none;stroke:currentColor;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.role{fill:var(--accent,currentColor);font:600 10px system-ui;text-transform:uppercase}.label{fill:currentColor;font:13px system-ui}</style>' +
+    '<style>svg{color:#181715}.card{fill:none;stroke:currentColor;stroke-opacity:.32;stroke-width:1}.symbol{fill:none;stroke:currentColor;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.role{fill:#78385f;font:600 10px system-ui;text-transform:uppercase}.label{fill:currentColor;font:13px system-ui}@media(prefers-color-scheme:dark){svg{color:#f3efe6}.role{fill:#d79bc1}}</style>' +
     groups + '</svg>';
 }
 

@@ -7214,7 +7214,8 @@ html[data-working-slow='true']::after {
 .process-identity > span:last-child { display: grid; }
 .process-identity small { color: var(--text-dim); font-size: .68rem; letter-spacing: .04em; }
 .process-identity strong { font-family: var(--font-body); font-size: .95rem; font-weight: 600; }
-.process-mark { color: var(--accent); font: 1.2rem var(--font-body); }
+.process-mark { align-items: center; color: var(--accent); display: inline-flex; }
+.process-mark svg { height: 1.2rem; width: 1.2rem; }
 .process-input, .process-status { color: var(--text-dim); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .process-running { color: var(--accent); }
 
