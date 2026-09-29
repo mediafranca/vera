@@ -774,7 +774,7 @@ export async function renderFilesAdministration(host: HTMLElement): Promise<void
   host.append(head);
   const intro = document.createElement('p');
   intro.className = 'settings-note';
-  intro.textContent = 'Los archivos guardados en Vera. La columna «Enlazado desde» muestra dónde se usa cada uno; sólo los huérfanos se pueden eliminar.';
+  intro.textContent = 'Los archivos guardados en Vera. Puedes renombrarlos, reemplazarlos o eliminarlos; Vera mantiene juntas sus referencias en las páginas.';
   const search = document.createElement('input');
   search.type = 'search';
   search.className = 'media-search';
@@ -823,11 +823,13 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
     image.src = file.url;
     image.alt = file.alternativeText ?? '';
     image.loading = 'lazy';
+    image.addEventListener('click', () => openMediaDetails(file));
     preview.append(image);
   } else if (file.mediaType.startsWith('audio/')) {
     const audio = document.createElement('audio');
     audio.src = file.url;
     audio.controls = true;
+    audio.addEventListener('dblclick', () => openMediaDetails(file));
     preview.append(audio);
   } else {
     const button = document.createElement('button');
@@ -911,11 +913,15 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
   remove.type = 'button';
   remove.className = 'media-delete';
   remove.textContent = 'Eliminar';
-  remove.disabled = file.usages.length > 0;
-  remove.title = remove.disabled ? 'Primero quita los enlaces desde los bloques indicados' : 'Eliminar este archivo huérfano';
+  remove.title = file.usages.length > 0
+    ? `Eliminar el archivo y retirarlo de ${file.usages.length} ${file.usages.length === 1 ? 'bloque' : 'bloques'}`
+    : 'Eliminar este archivo';
   remove.addEventListener('click', async () => {
     const named = file.originalName ?? file.path;
-    if (!window.confirm(`¿Eliminar definitivamente «${named}»?`)) return;
+    const scope = file.usages.length === 0
+      ? 'No está incrustado en ninguna página.'
+      : `También desaparecerá de ${file.usages.length} ${file.usages.length === 1 ? 'bloque' : 'bloques'}.`;
+    if (!window.confirm(`¿Eliminar definitivamente «${named}»?\n\n${scope}`)) return;
     remove.disabled = true;
     const result = await api.deleteMedia(file.hash);
     if ('error' in result) {

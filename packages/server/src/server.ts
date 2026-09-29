@@ -6,6 +6,7 @@
 // pasar por ahí.
 
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
@@ -54,7 +55,6 @@ import {
   loadGraph,
   discardAudio,
   describeMedia,
-  deleteOrphanMedia,
   listedMedia,
   mediaByHash,
   mediaReferences,
@@ -405,6 +405,55 @@ const EXCERPT = 140;
 function excerpt(content: string): string {
   const flat = content.replace(/\s+/g, ' ').trim();
   return flat.length <= EXCERPT ? flat : `${flat.slice(0, EXCERPT).trimEnd()}…`;
+}
+
+const regexEscape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** La grafía portable que escriben los bloques, sin perder el nombre humano. */
+function portableMediaPath(fileName: string): { path: string; name: string } | null {
+  const clean = fileName.trim().replace(/^.*[\\/]/, '').replace(/[^\p{L}\p{N}._ -]/gu, '_');
+  if (clean === '' || clean === '.' || clean === '..') return null;
+  return { path: `../assets/${clean}`, name: clean };
+}
+
+function mediaFamily(mediaType: string): 'image' | 'audio' | 'pdf' | null {
+  if (mediaType.startsWith('image/')) return 'image';
+  if (mediaType.startsWith('audio/')) return 'audio';
+  if (mediaType === 'application/pdf') return 'pdf';
+  return null;
+}
+
+/** Reescribe las dos grafías que Vera reconoce para una ruta con blancos. */
+function renameMediaPaths(content: string, paths: readonly string[], next: string): string {
+  let rewritten = content;
+  const destination = next.replace(/ /g, '%20');
+  for (const path of paths) {
+    rewritten = rewritten.split(path).join(destination);
+    rewritten = rewritten.split(path.replace(/ /g, '%20')).join(destination);
+  }
+  return rewritten;
+}
+
+/**
+ * Retira una incrustación, no sólo sus bytes.
+ *
+ * Primero quita las formas Markdown y HTML completas; al final limpia cualquier
+ * referencia desnuda que haya quedado. Así borrar desde el catálogo no deja un
+ * `![texto]()` roto en el bloque ni un enlace que apunta a ninguna parte.
+ */
+function removeMediaPaths(content: string, paths: readonly string[]): string {
+  let rewritten = content;
+  for (const path of paths) {
+    for (const spelling of new Set([path, path.replace(/ /g, '%20')])) {
+      const target = regexEscape(spelling);
+      rewritten = rewritten
+        .replace(new RegExp(`!?\\[[^\\]]*\\]\\(\\s*<?${target}>?(?:\\s+["'][^"']*["'])?\\s*\\)`, 'g'), '')
+        .replace(new RegExp(`<(?:img|source)\\b[^>]*(?:src|href)=["']${target}["'][^>]*>`, 'gi'), '')
+        .replace(new RegExp(`<(?:audio|video|iframe|a)\\b[^>]*(?:src|href)=["']${target}["'][^>]*>[\\s\\S]*?<\\/(?:audio|video|iframe|a)>`, 'gi'), '')
+        .split(spelling).join('');
+    }
+  }
+  return rewritten.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Valida la forma del cuerpo antes de dejarlo entrar al dominio. */
@@ -1531,6 +1580,78 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         'content-length': Buffer.byteLength(body),
       });
       response.end(body);
+    };
+
+    /**
+     * Cambia referencias de archivos y texto del grafo en una sola transacción.
+     *
+     * Renombrar y eliminar pueden tocar varios bloques. Se ensayan contra una
+     * réplica y sólo después se persisten junto con el catálogo: o cambian ambos
+     * lados, o no cambia ninguno.
+     */
+    const commitMediaChange = (
+      permission: 'write' | 'discard',
+      changes: readonly { block: string; content: string }[],
+      mutateCatalogue: () => void,
+    ): { ok: true; operations: number } | { ok: false; status: number; error: string } => {
+      const credential = who.credential === null ? null : credentialById(store, who.credential);
+      if (who.credential !== null && credential === null) {
+        return { ok: false, status: 401, error: 'la credencial ya no está disponible' };
+      }
+      if (credential !== null) {
+        const refusal = scopeRefusal(credential, permission === 'discard' ? 'remove_block' : 'edit_block');
+        if (refusal !== null) return { ok: false, status: 403, error: refusal };
+      }
+
+      const trial = graph.replayFromLog();
+      const applied: Operation[] = [];
+      const channel: ContributionChannel =
+        trial.participant(who.participant)?.kind === 'agent' ? 'agent_generation' : 'typed_text';
+      const fence = credential === null ? null : confinementOf(store, credential.id);
+      const origin = `media:${randomUUID()}`;
+      for (const [at, change] of changes.entries()) {
+        const proposal: Change = { kind: 'edit_block', block: change.block, content: change.content };
+        if (fence !== null) {
+          const refusal = fenceRefusal(
+            store,
+            fence,
+            who.participant,
+            proposal,
+            (block) => trial.block(block)?.page ?? null,
+          );
+          if (refusal !== null) return { ok: false, status: refusal.status, error: refusal.error };
+        }
+        const outcome = trial.submitOperation({
+          originId: `${origin}:${at}`,
+          participant: who.participant,
+          channel,
+          change: proposal,
+        });
+        if (outcome.status !== 'applied') {
+          return {
+            ok: false,
+            status: 422,
+            error: outcome.status === 'duplicate' ? 'la edición ya existe' : outcome.reason,
+          };
+        }
+        applied.push(outcome.operation);
+      }
+
+      store.db.exec('BEGIN');
+      try {
+        for (const operation of applied) recordOperation(store, trial, operation);
+        mutateCatalogue();
+        store.db.exec('COMMIT');
+        if (applied.length > 0) graph = trial;
+        return { ok: true, operations: applied.length };
+      } catch (error) {
+        store.db.exec('ROLLBACK');
+        return {
+          ok: false,
+          status: 500,
+          error: error instanceof Error ? error.message : 'no se pudo cambiar el archivo',
+        };
+      }
     };
 
     const librarianAgent = 'participant:cotito' as ParticipantId;
@@ -3623,6 +3744,126 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'POST' && /^\/media\/[^/]+\/rename$/.test(path)) {
+      const hash = path.split('/')[2] ?? '';
+      if (!HASH.test(hash)) return send(response, 400, { error: 'hash inválido' });
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: { name?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          return send(response, 400, { error: 'nombre inválido' });
+        }
+        if (typeof body.name !== 'string') return send(response, 400, { error: 'falta el nombre' });
+        const wanted = portableMediaPath(body.name);
+        if (wanted === null) return send(response, 400, { error: 'el nombre está vacío o no es válido' });
+        const held = media.filter((entry) => entry.hash === hash);
+        if (held.length === 0) return send(response, 404, { error: 'no existe ese archivo' });
+        if (held.some((entry) => entry.path.startsWith('recording/'))) {
+          return send(response, 409, { error: 'las grabaciones se nombran desde su bloque de voz' });
+        }
+        const occupied = media.find((entry) => entry.path === wanted.path && entry.hash !== hash);
+        if (occupied !== undefined) return send(response, 409, { error: 'ya existe un archivo con ese nombre' });
+
+        const paths = held.map((entry) => entry.path);
+        const changes = graph.pages().flatMap((page) =>
+          graph.blocksOf(page.id).flatMap((block) => {
+            const content = renameMediaPaths(block.content, paths, wanted.path);
+            return content === block.content ? [] : [{ block: block.stableId, content }];
+          }));
+        const committed = commitMediaChange('write', changes, () => {
+          store.db.prepare('DELETE FROM media_references WHERE graph_id = ? AND hash = ?').run(store.graphId, hash);
+          store.db.prepare('INSERT INTO media_references (graph_id, path, hash) VALUES (?, ?, ?)')
+            .run(store.graphId, wanted.path, hash);
+          store.db.prepare('UPDATE media SET original_name = ? WHERE hash = ?').run(wanted.name, hash);
+        });
+        if (!committed.ok) return send(response, committed.status, { error: committed.error });
+
+        const first = held[0];
+        for (let at = media.length - 1; at >= 0; at -= 1) if (media[at]?.hash === hash) media.splice(at, 1);
+        if (first !== undefined) media.push({ ...first, path: wanted.path });
+        const result = listedMedia(store).find((entry) => entry.hash === hash);
+        send(response, 200, result === undefined ? { error: 'no se pudo releer el archivo' } : { ...result, url: `/media/${hash}` });
+      });
+      return;
+    }
+
+    if (request.method === 'PUT' && /^\/media\/[^/]+$/.test(path)) {
+      const hash = path.slice('/media/'.length);
+      if (!HASH.test(hash)) return send(response, 400, { error: 'hash inválido' });
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let tooLarge = false;
+      request.on('data', (chunk: Buffer) => {
+        size += chunk.byteLength;
+        if (size > 50 * 1024 * 1024) tooLarge = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => {
+        if (tooLarge) return send(response, 413, { error: 'el archivo supera los 50 MB' });
+        if (objectsRoot === null) return send(response, 500, { error: 'esta instancia no tiene almacén de objetos' });
+        const previous = mediaByHash(store, hash);
+        const held = media.filter((entry) => entry.hash === hash);
+        if (previous === null || held.length === 0) return send(response, 404, { error: 'no existe ese archivo' });
+        if (held.some((entry) => entry.path.startsWith('recording/'))) {
+          return send(response, 409, { error: 'el audio de una grabación se administra desde su bloque de voz' });
+        }
+        const bytes = Buffer.concat(chunks);
+        if (bytes.byteLength === 0) return send(response, 400, { error: 'no llegó ningún archivo' });
+        const declared = String(request.headers['content-type'] ?? '').split(';')[0] ?? '';
+        const incomingName = decodeURIComponent(String(request.headers['x-filename'] ?? previous.originalName ?? 'archivo'));
+        const mediaType = sniffMediaType(bytes) ?? (declared && declared !== 'application/octet-stream' ? declared : mediaTypeFor(incomingName));
+        if (mediaFamily(mediaType) === null) return send(response, 415, { error: 'Vera admite imágenes, audios y PDF' });
+        if (mediaFamily(mediaType) !== mediaFamily(previous.mediaType)) {
+          return send(response, 409, { error: 'el reemplazo debe conservar el tipo general del archivo' });
+        }
+
+        const stored = putObject(objectsRoot, bytes);
+        let deleteOldObject = false;
+        const committed = commitMediaChange('write', [], () => {
+          for (const entry of held) {
+            recordMedia(store, {
+              path: entry.path,
+              hash: stored.hash,
+              mediaType,
+              byteSize: stored.byteSize,
+              at: Date.now(),
+              originalName: previous.originalName ?? entry.path.split('/').pop() ?? 'archivo',
+            });
+          }
+          describeMedia(store, stored.hash, {
+            description: previous.description,
+            alternativeText: previous.alternativeText,
+          });
+          const remaining = store.db.prepare('SELECT 1 FROM media_references WHERE hash = ? LIMIT 1').get(hash);
+          const recording = store.db.prepare('SELECT 1 FROM recordings WHERE audio_hash = ? LIMIT 1').get(hash);
+          if (hash !== stored.hash && remaining === undefined && recording === undefined) {
+            store.db.prepare('DELETE FROM media WHERE hash = ?').run(hash);
+            deleteOldObject = true;
+          }
+        });
+        if (!committed.ok) return send(response, committed.status, { error: committed.error });
+        if (deleteOldObject) {
+          const old = objectPath(objectsRoot, hash);
+          if (existsSync(old)) unlinkSync(old);
+        }
+        for (const entry of media) {
+          if (entry.hash !== hash) continue;
+          entry.hash = stored.hash;
+          entry.mediaType = mediaType;
+          entry.description = previous.description;
+          entry.alternativeText = previous.alternativeText;
+        }
+        const result = listedMedia(store).find((entry) => entry.hash === stored.hash);
+        send(response, 200, result === undefined
+          ? { error: 'no se pudo releer el reemplazo' }
+          : { ...result, url: `/media/${stored.hash}`, replaced: hash });
+      });
+      return;
+    }
+
     if (request.method === 'PATCH' && path.startsWith('/media/')) {
       const hash = path.slice('/media/'.length);
       const chunks: Buffer[] = [];
@@ -3657,21 +3898,36 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (request.method === 'DELETE' && path.startsWith('/media/')) {
       const hash = path.slice('/media/'.length);
       if (!HASH.test(hash)) return send(response, 400, { error: 'hash inválido' });
-      const usages = listedMedia(store).find((entry) => entry.hash === hash)?.usages;
-      if (usages === undefined) return send(response, 404, { error: 'no existe ese archivo' });
-      if (usages.length > 0) {
-        return send(response, 409, { error: 'el archivo todavía está enlazado desde bloques', usages });
+      const held = media.filter((entry) => entry.hash === hash);
+      if (held.length === 0) return send(response, 404, { error: 'no existe ese archivo' });
+      if (held.some((entry) => entry.path.startsWith('recording/'))) {
+        return send(response, 409, { error: 'el audio de una grabación se elimina desde su bloque de voz' });
       }
-      const removed = deleteOrphanMedia(store, hash);
-      if (!removed.deleted) return send(response, 409, { error: 'el archivo todavía pertenece a una grabación' });
-      if (removed.deleteObject && objectsRoot !== null) {
+      const paths = held.map((entry) => entry.path);
+      const changes = graph.pages().flatMap((page) =>
+        graph.blocksOf(page.id).flatMap((block) => {
+          const content = removeMediaPaths(block.content, paths);
+          return content === block.content ? [] : [{ block: block.stableId, content }];
+        }));
+      let deleteObject = false;
+      const committed = commitMediaChange('discard', changes, () => {
+        store.db.prepare('DELETE FROM media_references WHERE graph_id = ? AND hash = ?').run(store.graphId, hash);
+        const remaining = store.db.prepare('SELECT 1 FROM media_references WHERE hash = ? LIMIT 1').get(hash);
+        const recording = store.db.prepare('SELECT 1 FROM recordings WHERE audio_hash = ? LIMIT 1').get(hash);
+        if (remaining === undefined && recording === undefined) {
+          store.db.prepare('DELETE FROM media WHERE hash = ?').run(hash);
+          deleteObject = true;
+        }
+      });
+      if (!committed.ok) return send(response, committed.status, { error: committed.error });
+      if (deleteObject && objectsRoot !== null) {
         const file = objectPath(objectsRoot, hash);
         if (existsSync(file)) unlinkSync(file);
       }
       for (let at = media.length - 1; at >= 0; at -= 1) {
         if (media[at]?.hash === hash) media.splice(at, 1);
       }
-      send(response, 200, { deleted: true });
+      send(response, 200, { deleted: true, detached: changes.length });
       return;
     }
 

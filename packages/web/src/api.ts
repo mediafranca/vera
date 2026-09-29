@@ -1222,9 +1222,40 @@ export const api = {
 
   media: () => json<CatalogAsset[]>('/media'),
 
-  deleteMedia: async (hash: string): Promise<{ deleted: true } | { error: string }> => {
+  deleteMedia: async (hash: string): Promise<{ deleted: true; detached: number } | { error: string }> => {
     const response = await fetch(`/media/${encodeURIComponent(hash)}`, { method: 'DELETE' });
-    return await response.json() as { deleted: true } | { error: string };
+    return await response.json() as { deleted: true; detached: number } | { error: string };
+  },
+
+  renameMedia: async (hash: string, name: string): Promise<CatalogAsset | { error: string }> => {
+    try {
+      const response = await fetch(`/media/${encodeURIComponent(hash)}/rename`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const body = (await response.json()) as CatalogAsset & { error?: string };
+      return response.ok ? body : { error: body.error ?? `error ${response.status}` };
+    } catch {
+      return { error: 'sin conexión con el servidor' };
+    }
+  },
+
+  replaceMedia: async (hash: string, file: File): Promise<(CatalogAsset & { replaced: string }) | { error: string }> => {
+    try {
+      const response = await fetch(`/media/${encodeURIComponent(hash)}`, {
+        method: 'PUT',
+        headers: {
+          'content-type': file.type || 'application/octet-stream',
+          'x-filename': encodeURIComponent(file.name || 'archivo'),
+        },
+        body: await file.arrayBuffer(),
+      });
+      const body = (await response.json()) as CatalogAsset & { replaced: string; error?: string };
+      return response.ok ? body : { error: body.error ?? `error ${response.status}` };
+    } catch {
+      return { error: 'sin conexión con el servidor' };
+    }
   },
 
   describeMedia: async (
