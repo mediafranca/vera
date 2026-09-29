@@ -122,7 +122,15 @@ import {
 } from './model.ts';
 import { relevantConcepts, type ConceptCandidate } from './ontology-context.ts';
 import { LOCAL_MODEL, LOCAL_MODEL_NAME, promptFor, readAnswer } from './answer.ts';
-import { composePictos, generatePictos, validatePictosPlan } from './pictos-process.ts';
+import {
+  arrangePictos,
+  composePictos,
+  generatePictos,
+  jsonFromProcessBlock,
+  understandPictos,
+  validatePictosMeaning,
+  validatePictosPlan,
+} from './pictos-process.ts';
 import { formalizationOf, mentionsOf } from './mentions.ts';
 import { CLIENT_KEY, CONNECTIONS_KIND, connectionsPage } from './mcp-page.ts';
 import { mcpConnect } from './mcp-connect.ts';
@@ -3978,6 +3986,59 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // credenciales remotas no atraviesan esta frontera.
     if (request.method === 'GET' && path === '/processing/models') {
       send(response, 200, { models: await processingModels() });
+      return;
+    }
+
+    /*
+     * PICTOS se deja ver como tres transformaciones encadenables. Cada una
+     * recibe el bloque aceptado anterior; ninguna es una estación escondida de
+     * la siguiente.
+     */
+    if (request.method === 'POST' && path === '/processes/pictos/understand') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(16 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const input = typeof body['input'] === 'string' ? body['input'].trim() : '';
+      const model = typeof body['model'] === 'string' ? body['model'] : undefined;
+      if (input === '' || input.length > 1_200) {
+        send(response, 422, { error: 'Comprender necesita una frase de hasta 1.200 caracteres' });
+        return;
+      }
+      const made = await understandPictos(input, { ...(model === undefined ? {} : { model }) });
+      send(response, 'error' in made ? 503 : 200, made);
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/processes/pictos/arrange') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(16 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const meaning = validatePictosMeaning(jsonFromProcessBlock(
+        typeof body['input'] === 'string' ? body['input'] : '',
+      ));
+      const model = typeof body['model'] === 'string' ? body['model'] : undefined;
+      if (meaning === null) {
+        send(response, 422, { error: 'Componer necesita la salida JSON aceptada de Comprender' });
+        return;
+      }
+      const made = await arrangePictos(meaning, { ...(model === undefined ? {} : { model }) });
+      send(response, 'error' in made ? 503 : 200, made);
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/processes/pictos/produce') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(16 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const plan = validatePictosPlan(jsonFromProcessBlock(
+        typeof body['input'] === 'string' ? body['input'] : '',
+      ));
+      if (plan === null) {
+        send(response, 422, { error: 'Producir necesita la salida JSON aceptada de Componer' });
+        return;
+      }
+      const made = composePictos(plan);
+      send(response, 200, { content: made.content, plan: made.plan, svg: made.svg });
       return;
     }
 

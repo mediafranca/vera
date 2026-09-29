@@ -2,7 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  composePictos, pictosPrompt, pictosSvg, readPictosPlan, validatePictosPlan,
+  composePictos,
+  jsonFromProcessBlock,
+  jsonProcessContent,
+  pictosComposePrompt,
+  pictosPrompt,
+  pictosSvg,
+  pictosUnderstandPrompt,
+  readPictosPlan,
+  validatePictosMeaning,
+  validatePictosPlan,
 } from '../src/pictos-process.ts';
 
 describe('proceso generativo PICTOS', () => {
@@ -49,5 +58,29 @@ describe('proceso generativo PICTOS', () => {
     const prompt = pictosPrompt('Haz la cama');
     assert.match(prompt, /elige una lectura visual clara, no expliques alternativas/);
     assert.match(prompt, /person, hand, bed/);
+  });
+
+  it('separa la comprensión semántica del árbol visual', () => {
+    const meaning = {
+      title: 'Hacer la cama',
+      speechAct: 'directive' as const,
+      concepts: [
+        { role: 'agent' as const, label: 'persona' },
+        { role: 'action' as const, label: 'hacer' },
+        { role: 'patient' as const, label: 'cama' },
+      ],
+      explanation: 'Una directiva para preparar el lugar de descanso.',
+    };
+    assert.deepEqual(validatePictosMeaning(meaning), meaning);
+    assert.match(pictosUnderstandPrompt('Haz la cama'), /No incluyas símbolos, composición, SVG/);
+    assert.match(pictosComposePrompt(meaning), /Incluye sólo los roles recibidos/);
+  });
+
+  it('una salida JSON aceptada puede alimentar literalmente el proceso siguiente', () => {
+    const value = { title: 'Algo', speechAct: 'statement', concepts: [
+      { role: 'action', label: 'estar' }, { role: 'patient', label: 'algo' },
+    ], explanation: 'Una afirmación.' };
+    assert.deepEqual(jsonFromProcessBlock(jsonProcessContent(value)), value);
+    assert.equal(jsonFromProcessBlock('no es json'), null);
   });
 });

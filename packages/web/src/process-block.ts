@@ -8,8 +8,17 @@ export interface ProcessResult {
   content: string;
   durationMs: number;
   inputRevision: string;
+  executor?: string;
   stages?: readonly [string, string][];
+  meaning?: PictosMeaning;
   pictos?: PictosPlan;
+}
+
+export interface PictosMeaning {
+  title: string;
+  speechAct: 'directive' | 'statement' | 'question' | 'expression';
+  concepts: { role: PictosElement['role']; label: string }[];
+  explanation: string;
 }
 
 export interface PictosElement {
@@ -33,17 +42,22 @@ export const PICTOS_SYMBOLS = [
 
 const OPEN = '```proceso';
 
-const DEFINITION_PAGES: Readonly<Record<string, string>> = {
-  'vera/estructura-textual': 'Proceso — Vera · Estructurar texto',
-  'pictos/frase-visual': 'Proceso — PICTOS · Generar frase visual',
-  'pictos/comprender': 'Proceso — PICTOS · Comprender',
-  'pictos/componer': 'Proceso — PICTOS · Componer',
-  'pictos/producir': 'Proceso — PICTOS · Producir',
-};
+export interface ProcessPresentation {
+  family: string;
+  name: string;
+  inputKind: string;
+  outputKind: string;
+  executor: string;
+}
 
-/** La invocación conoce la página canónica de la definición, no copia su programa. */
-export function processDefinitionPage(definition: string): string {
-  return DEFINITION_PAGES[definition] ?? `Proceso — ${definition}`;
+export function processPresentation(definition: string): ProcessPresentation {
+  switch (definition) {
+    case 'pictos/comprender': return { family: 'PICTOS', name: 'Comprender', inputKind: 'Texto', outputKind: 'JSON semántico', executor: 'participant:local-model' };
+    case 'pictos/componer': return { family: 'PICTOS', name: 'Componer', inputKind: 'JSON semántico', outputKind: 'Árbol visual JSON', executor: 'participant:local-model' };
+    case 'pictos/producir': return { family: 'PICTOS', name: 'Producir', inputKind: 'Árbol visual JSON', outputKind: 'SVG autocontenido', executor: 'vera/svg-composer' };
+    case 'pictos/frase-visual': return { family: 'PICTOS', name: 'Generar frase visual', inputKind: 'Texto', outputKind: 'SVG autocontenido', executor: 'participant:local-model' };
+    default: return { family: 'Vera', name: 'Estructurar texto', inputKind: 'Texto', outputKind: 'JSON', executor: 'vera/worker' };
+  }
 }
 
 export function writeProcessBlock(input: string, definition = 'vera/estructura-textual'): string {
@@ -121,6 +135,32 @@ interface PictosAnswer {
   error?: string;
   content?: string;
   plan?: PictosPlan;
+  meaning?: PictosMeaning;
+}
+
+async function executePictosStep(
+  endpoint: 'understand' | 'arrange' | 'produce',
+  text: string,
+): Promise<ProcessResult> {
+  const started = performance.now();
+  const inputRevision = hexadecimal(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  const response = await fetch(`/processes/pictos/${endpoint}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input: text }),
+  });
+  const said = await response.json().catch(() => ({})) as PictosAnswer;
+  if (!response.ok || typeof said.content !== 'string') {
+    throw new Error(said.error ?? 'PICTOS no devolvió una salida legible');
+  }
+  return {
+    content: said.content,
+    durationMs: Math.max(0, performance.now() - started),
+    inputRevision,
+    executor: endpoint === 'produce' ? 'vera/svg-composer' : 'participant:local-model',
+    ...(said.meaning === undefined ? {} : { meaning: said.meaning }),
+    ...(said.plan === undefined ? {} : { pictos: said.plan }),
+  };
 }
 
 function pictosStages(plan: PictosPlan): readonly [string, string][] {
@@ -179,6 +219,9 @@ export async function composePictos(plan: PictosPlan, previous: ProcessResult): 
 }
 
 export function executeProcess(invocation: ProcessInvocationSource, text: string): Promise<ProcessResult> {
+  if (invocation.definition === 'pictos/comprender') return executePictosStep('understand', text);
+  if (invocation.definition === 'pictos/componer') return executePictosStep('arrange', text);
+  if (invocation.definition === 'pictos/producir') return executePictosStep('produce', text);
   if (invocation.definition === 'pictos/frase-visual') return executePictos(text);
   if (invocation.definition === 'vera/estructura-textual') return executeTextStructure(text);
   return Promise.reject(new Error(`proceso no registrado: ${invocation.definition}`));

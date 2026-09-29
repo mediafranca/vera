@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   looksLikeProcess,
-  processDefinitionPage,
+  processPresentation,
   readProcessBlock,
   writeProcessBlock,
 } from '../src/process-block.ts';
@@ -27,8 +27,12 @@ describe('/proceso', () => {
     });
   });
 
-  it('lleva Editar código a la definición reusable y no a la invocación', () => {
-    assert.equal(processDefinitionPage('pictos/comprender'), 'Proceso — PICTOS · Comprender');
-    assert.equal(processDefinitionPage('taller/resumir'), 'Proceso — taller/resumir');
+  it('nombra cada transformación PICTOS como un proceso independiente', () => {
+    assert.deepEqual(processPresentation('pictos/comprender'), {
+      family: 'PICTOS', name: 'Comprender', inputKind: 'Texto',
+      outputKind: 'JSON semántico', executor: 'participant:local-model',
+    });
+    assert.equal(processPresentation('pictos/componer').outputKind, 'Árbol visual JSON');
+    assert.equal(processPresentation('pictos/producir').outputKind, 'SVG autocontenido');
   });
 });

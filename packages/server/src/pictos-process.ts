@@ -14,6 +14,18 @@ export interface PictosElement {
   symbol: PictosSymbol;
 }
 
+export interface PictosConcept {
+  role: PictosRole;
+  label: string;
+}
+
+export interface PictosMeaning {
+  title: string;
+  speechAct: 'directive' | 'statement' | 'question' | 'expression';
+  concepts: PictosConcept[];
+  explanation: string;
+}
+
 export interface PictosPlan {
   title: string;
   speechAct: 'directive' | 'statement' | 'question' | 'expression';
@@ -47,6 +59,42 @@ export function validatePictosPlan(value: unknown): PictosPlan | null {
   }
 }
 
+export function validatePictosMeaning(value: unknown): PictosMeaning | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const title = cleanText(raw['title'], 80);
+  const explanation = cleanText(raw['explanation'], 240);
+  const speechAct = raw['speechAct'];
+  if (
+    title === null || explanation === null ||
+    !['directive', 'statement', 'question', 'expression'].includes(String(speechAct)) ||
+    !Array.isArray(raw['concepts'])
+  ) return null;
+  const concepts: PictosConcept[] = [];
+  const seen = new Set<PictosRole>();
+  for (const item of raw['concepts'].slice(0, 4)) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return null;
+    const concept = item as Record<string, unknown>;
+    const role = concept['role'] as PictosRole;
+    const label = cleanText(concept['label'], 40);
+    if (!roles.has(role) || label === null || seen.has(role)) return null;
+    seen.add(role);
+    concepts.push({ role, label });
+  }
+  if (concepts.length < 2 || !seen.has('action')) return null;
+  const order: Record<PictosRole, number> = { agent: 0, action: 1, patient: 2, context: 3 };
+  concepts.sort((left, right) => order[left.role] - order[right.role]);
+  return { title, speechAct: speechAct as PictosMeaning['speechAct'], concepts, explanation };
+}
+
+export function jsonFromProcessBlock(text: string): unknown {
+  const fenced = /^```json\s*\n([\s\S]*?)\n```/m.exec(text)?.[1] ?? text;
+  try { return JSON.parse(fenced); } catch { return null; }
+}
+
+export const jsonProcessContent = (value: unknown): string =>
+  `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
+
 const roles = new Set<PictosRole>(['agent', 'action', 'patient', 'context']);
 const symbols = new Set<string>(PICTOS_SYMBOLS);
 
@@ -77,7 +125,7 @@ export function lastJsonObject(text: string): Record<string, unknown> | null {
           const parsed = JSON.parse(text.slice(start, at + 1)) as unknown;
           if (
             parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) &&
-            'elements' in (parsed as Record<string, unknown>)
+            ['elements', 'concepts', 'symbols'].some((key) => key in (parsed as Record<string, unknown>))
           ) {
             return parsed as Record<string, unknown>;
           }
@@ -173,6 +221,74 @@ export function pictosPrompt(utterance: string): string {
     `No incluyas SVG, Markdown ni texto fuera del JSON. Contesta enteramente en el idioma de la frase.\n\n` +
     `Ejemplo para «Haz la cama»: {"title":"Hacer la cama","speechAct":"directive","elements":[{"role":"agent","label":"persona","symbol":"person"},{"role":"action","label":"hacer","symbol":"hand"},{"role":"patient","label":"cama","symbol":"bed"}],"composition":"La persona actúa sobre la cama","description":"Una persona hace una cama"}\n\n` +
     `Frase: ${utterance}`;
+}
+
+export function pictosUnderstandPrompt(utterance: string): string {
+  return `Comprende una frase para una representación pictográfica. Elige una sola lectura semántica clara.\n\n` +
+    `Devuelve exclusivamente JSON: {"title":"título breve","speechAct":"directive|statement|question|expression","concepts":[{"role":"agent|action|patient|context","label":"concepto breve"}],"explanation":"explicación semántica breve"}.\n` +
+    `Usa entre 2 y 4 conceptos, incluye siempre action, no repitas roles y ordénalos agent, action, patient, context. No incluyas símbolos, composición, SVG ni texto fuera del JSON.\n\nFrase: ${utterance}`;
+}
+
+export function pictosComposePrompt(meaning: PictosMeaning): string {
+  return `Convierte esta lectura semántica en un árbol visual PICTOS. Elige una sola composición clara.\n\n` +
+    `Devuelve exclusivamente JSON: {"symbols":{"agent":"símbolo","action":"símbolo","patient":"símbolo","context":"símbolo"},"composition":"decisión espacial breve","description":"descripción accesible completa"}.\n` +
+    `Incluye sólo los roles recibidos. Símbolos permitidos: ${PICTOS_SYMBOLS.join(', ')}. No repitas roles o nombres, no incluyas SVG, Markdown ni texto fuera del JSON.\n\nLectura semántica: ${JSON.stringify(meaning)}`;
+}
+
+function readArrangement(text: string, meaning: PictosMeaning): PictosPlan | null {
+  const raw = lastJsonObject(text);
+  if (raw === null || raw['symbols'] === null || typeof raw['symbols'] !== 'object' || Array.isArray(raw['symbols'])) return null;
+  const composition = cleanText(raw['composition'], 180);
+  const description = cleanText(raw['description'], 240);
+  if (composition === null || description === null) return null;
+  const choices = raw['symbols'] as Record<string, unknown>;
+  const fallback: Record<PictosRole, PictosSymbol> = {
+    agent: 'person', action: 'hand', patient: 'object', context: 'place',
+  };
+  return {
+    title: meaning.title,
+    speechAct: meaning.speechAct,
+    elements: meaning.concepts.map((concept) => ({
+      ...concept,
+      symbol: symbols.has(String(choices[concept.role]))
+        ? choices[concept.role] as PictosSymbol
+        : fallback[concept.role],
+    })),
+    composition,
+    description,
+  };
+}
+
+export async function understandPictos(
+  utterance: string,
+  options: Pick<AskOptions, 'model'> = {},
+): Promise<{ meaning: PictosMeaning; content: string } | { error: string }> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const answered = await ask(pictosUnderstandPrompt(utterance), {
+      ...options, maxTokens: 220, timeoutMs: 60_000, temperature: 0.82,
+      seed: Math.floor(Math.random() * 2_147_483_647),
+    });
+    if ('error' in answered) return { error: answered.error };
+    const meaning = validatePictosMeaning(lastJsonObject(answered.text));
+    if (meaning !== null) return { meaning, content: jsonProcessContent(meaning) };
+  }
+  return { error: 'el modelo no devolvió una lectura semántica legible en dos intentos' };
+}
+
+export async function arrangePictos(
+  meaning: PictosMeaning,
+  options: Pick<AskOptions, 'model'> = {},
+): Promise<{ plan: PictosPlan; content: string } | { error: string }> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const answered = await ask(pictosComposePrompt(meaning), {
+      ...options, maxTokens: 260, timeoutMs: 60_000, temperature: 0.82,
+      seed: Math.floor(Math.random() * 2_147_483_647),
+    });
+    if ('error' in answered) return { error: answered.error };
+    const plan = readArrangement(answered.text, meaning);
+    if (plan !== null) return { plan, content: jsonProcessContent(plan) };
+  }
+  return { error: 'el modelo no devolvió un árbol visual coherente con la lectura semántica' };
 }
 
 export async function generatePictos(

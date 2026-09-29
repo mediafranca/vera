@@ -98,7 +98,7 @@ import { holdViewport, restoreViewport } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
 import {
   composePictos, executeProcess, looksLikeProcess, PICTOS_SYMBOLS,
-  processDefinitionPage, readProcessBlock, writeProcessBlock, type PictosPlan,
+  processPresentation, readProcessBlock, writeProcessBlock, type PictosPlan,
 } from './process-block.ts';
 import { mint } from './api.ts';
 import { session } from './tokens.ts';
@@ -4695,8 +4695,10 @@ export function renderOutliner(
     header.className = 'process-header';
     const identity = document.createElement('div');
     identity.className = 'process-identity';
+    const presentation = processPresentation(invocation.definition);
     const pictos = invocation.definition === 'pictos/frase-visual';
-    identity.innerHTML = `<span class="process-mark" aria-hidden="true">${icon('steps-1')}</span><span><small>/proceso · ${pictos ? 'PICTOS' : 'Vera'}</small><strong>${pictos ? 'Generar frase visual' : 'Estructurar texto'}</strong></span>`;
+    const pictosStep = invocation.definition.startsWith('pictos/') && !pictos;
+    identity.innerHTML = `<span class="process-mark" aria-hidden="true">λ</span><span><small>/proceso · ${presentation.family}</small><strong>${presentation.name}</strong></span>`;
     const inputLabel = document.createElement('span');
     inputLabel.className = 'process-input';
     inputLabel.textContent = input === undefined
@@ -4755,7 +4757,7 @@ export function renderOutliner(
       const table = document.createElement('div');
       table.className = 'process-table';
       const waiting = state.phase === 'idle' ? 'Espera la ejecución.'
-        : state.phase === 'running' ? (pictos ? 'El modelo está proponiendo una lectura visual…' : 'Leyendo texto en un Worker confinado…')
+        : state.phase === 'running' ? (presentation.executor === 'participant:local-model' ? 'El modelo está proponiendo una posibilidad…' : 'Vera está transformando la entrada…')
         : state.phase === 'failed' ? state.error ?? 'Falló' : 'Todavía no hay salida.';
       const station = (title: string): { root: HTMLElement; body: HTMLElement } => {
         const root = document.createElement('section');
@@ -4885,6 +4887,11 @@ export function renderOutliner(
           adjust(next, description);
         });
         produce.body.append(title, description);
+      } else if (pictosStep) {
+        const transform = station(`2 · ${presentation.name}`);
+        transform.body.textContent = state.phase === 'proposed'
+          ? `${presentation.inputKind} → ${presentation.outputKind}. La salida propuesta está lista para revisar.`
+          : `${presentation.inputKind} → ${presentation.outputKind}. ${waiting}`;
       } else {
         const stages: readonly [string, string][] = state.result?.stages ?? [
           ['2 · Estructurar', state.phase === 'proposed' ? 'Líneas, oraciones, palabras y medidas.' : waiting],
@@ -4930,7 +4937,7 @@ export function renderOutliner(
           { change: { kind: 'set_property', block: output, propertyKey: 'versión del proceso', propertyValue: String(invocation.version) } },
           { change: { kind: 'set_property', block: output, propertyKey: 'entrada del proceso', propertyValue: `((${invocation.input}))` } },
           { change: { kind: 'set_property', block: output, propertyKey: 'revisión de entrada', propertyValue: state.result?.inputRevision ?? '' } },
-          { change: { kind: 'set_property', block: output, propertyKey: 'ejecutor del proceso', propertyValue: pictos ? 'participant:local-model' : 'vera/worker' } },
+          { change: { kind: 'set_property', block: output, propertyKey: 'ejecutor del proceso', propertyValue: state.result?.executor ?? presentation.executor } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'salida del proceso', propertyValue: `((${output}))` } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'última ejecución', propertyValue: String(state.attempt) } },
           { change: { kind: 'set_property', block: node.block.stableId, propertyKey: 'duración del proceso', propertyValue: `${Math.round(state.result?.durationMs ?? 0)} ms` } },
@@ -5417,10 +5424,7 @@ export function renderOutliner(
           ...(readProcessBlock(node.block.content) === null ? [] : [{
             label: 'Editar código',
             icon: 'edit-2',
-            run: () => {
-              const process = readProcessBlock(node.block.content);
-              if (process !== null) callbacks.onNavigate(processDefinitionPage(process.definition));
-            },
+            run: () => openEditor(node, body),
           } satisfies MenuAction]),
           {
             label: glosses[node.block.stableId]?.content ? 'Editar glosa' : 'Agregar glosa',

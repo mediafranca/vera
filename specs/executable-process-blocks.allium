@@ -308,10 +308,11 @@ surface ProcessBlockExecution {
         -- viñeta, el asa, el plegado, el menú, los hijos, el movimiento y las
         -- referencias siguen siendo los de cualquier bloque de Vera.
 
-    @guarantee TheBulletMenuOpensTheDefinitionCode
-        -- El menú de la viñeta ofrece «Editar código». La acción abre la
-        -- definición versionada que la invocación usa; no convierte la fuente
-        -- del bloque, su entrada ni su salida en un programa escondido.
+    @guarantee TheBulletMenuOpensTheInvocationSource
+        -- El menú de la viñeta ofrece «Editar código». La acción devuelve ese
+        -- mismo bloque a su fuente declarativa para cambiar definición, versión
+        -- o entradas. No abre otra página ni confunde esa invocación con el
+        -- programa reusable que la ejecuta.
 
     @guarantee TheProcessOpensInThePageFlow
         -- El bloque despliega su entrada, la transformación y su propuesta en
