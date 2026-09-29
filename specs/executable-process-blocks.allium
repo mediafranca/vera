@@ -324,10 +324,15 @@ surface ProcessBlockExecution {
         -- volverla editable mediante nombres, selectores, campos o un árbol del
         -- dominio; ver o escribir JSON crudo no es requisito para intervenir.
 
-    @guarantee PictosIsAChainOfThreeProcesses
-        -- PICTOS encadena Comprender (texto a JSON semántico), Componer (JSON
-        -- semántico a JSON de árbol visual) y Producir (árbol visual a SVG
-        -- autocontenido). Ninguno contiene a los otros como estaciones.
+    @guarantee ThePictosExperimentUsesThreeProcessBlocks
+        -- La exploración de PICTOS en Vera encadena Comprender (texto a JSON
+        -- semántico), Componer (JSON semántico a JSON de árbol visual) y
+        -- Producir como tres bloques independientes. Esto no describe el
+        -- PICTOS actual: allí Producir genera primero un bitmap porque alcanza
+        -- mejor calidad visual, y la reconstrucción posterior de ese bitmap
+        -- como SVG estructurado sigue siendo su debilidad. Generar un SVG
+        -- semántica y gráficamente coherente desde el origen es una hipótesis
+        -- para una versión posterior, no una capacidad ya conseguida.
 
     @guarantee TheRestingActionIsExecute
         -- Cerrado y sin ejecución, el único gesto con peso es Ejecutar. Abrir la
