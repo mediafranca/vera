@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { looksLikeProcess, readProcessBlock, writeProcessBlock } from '../src/process-block.ts';
+import {
+  looksLikeProcess,
+  processDefinitionPage,
+  readProcessBlock,
+  writeProcessBlock,
+} from '../src/process-block.ts';
 
 describe('/proceso', () => {
   it('conserva definición, versión y entrada referida en su fuente portable', () => {
@@ -20,5 +25,10 @@ describe('/proceso', () => {
     assert.deepEqual(readProcessBlock(writeProcessBlock('block:frase', 'pictos/frase-visual')), {
       definition: 'pictos/frase-visual', version: 1, input: 'block:frase',
     });
+  });
+
+  it('lleva Editar código a la definición reusable y no a la invocación', () => {
+    assert.equal(processDefinitionPage('pictos/comprender'), 'Proceso — PICTOS · Comprender');
+    assert.equal(processDefinitionPage('taller/resumir'), 'Proceso — taller/resumir');
   });
 });

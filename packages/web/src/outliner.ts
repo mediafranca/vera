@@ -98,7 +98,7 @@ import { holdViewport, restoreViewport } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
 import {
   composePictos, executeProcess, looksLikeProcess, PICTOS_SYMBOLS,
-  readProcessBlock, writeProcessBlock, type PictosPlan,
+  processDefinitionPage, readProcessBlock, writeProcessBlock, type PictosPlan,
 } from './process-block.ts';
 import { mint } from './api.ts';
 import { session } from './tokens.ts';
@@ -5414,6 +5414,14 @@ export function renderOutliner(
        */
       openBlockMenu(bullet, [
         [
+          ...(readProcessBlock(node.block.content) === null ? [] : [{
+            label: 'Editar código',
+            icon: 'edit-2',
+            run: () => {
+              const process = readProcessBlock(node.block.content);
+              if (process !== null) callbacks.onNavigate(processDefinitionPage(process.definition));
+            },
+          } satisfies MenuAction]),
           {
             label: glosses[node.block.stableId]?.content ? 'Editar glosa' : 'Agregar glosa',
             icon: 'message-square',

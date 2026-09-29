@@ -33,6 +33,19 @@ export const PICTOS_SYMBOLS = [
 
 const OPEN = '```proceso';
 
+const DEFINITION_PAGES: Readonly<Record<string, string>> = {
+  'vera/estructura-textual': 'Proceso — Vera · Estructurar texto',
+  'pictos/frase-visual': 'Proceso — PICTOS · Generar frase visual',
+  'pictos/comprender': 'Proceso — PICTOS · Comprender',
+  'pictos/componer': 'Proceso — PICTOS · Componer',
+  'pictos/producir': 'Proceso — PICTOS · Producir',
+};
+
+/** La invocación conoce la página canónica de la definición, no copia su programa. */
+export function processDefinitionPage(definition: string): string {
+  return DEFINITION_PAGES[definition] ?? `Proceso — ${definition}`;
+}
+
 export function writeProcessBlock(input: string, definition = 'vera/estructura-textual'): string {
   return `${OPEN}\ndefinición: ${definition}\nversión: 1\nentrada: ((${input}))\n\`\`\``;
 }
