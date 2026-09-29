@@ -98,7 +98,7 @@ import { holdViewport, restoreViewport } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
 import {
   composePictos, executeProcess, looksLikeProcess, PICTOS_SYMBOLS,
-  processPresentation, readProcessBlock, writeProcessBlock, type PictosPlan,
+  presentationOf, readProcessBlock, writeProcessBlock, type PictosPlan,
 } from './process-block.ts';
 import { mint } from './api.ts';
 import { session } from './tokens.ts';
@@ -4695,7 +4695,7 @@ export function renderOutliner(
     header.className = 'process-header';
     const identity = document.createElement('div');
     identity.className = 'process-identity';
-    const presentation = processPresentation(invocation.definition);
+    const presentation = presentationOf(invocation);
     const pictos = invocation.definition === 'pictos/frase-visual';
     const pictosStep = invocation.definition.startsWith('pictos/') && !pictos;
     identity.innerHTML = `<span class="process-mark" aria-hidden="true">λ</span><span><small>/proceso · ${presentation.family}</small><strong>${presentation.name}</strong></span>`;
@@ -6150,7 +6150,7 @@ export function renderOutliner(
     const title = document.createElement('h2');
     title.textContent = 'Código del proceso';
     const explain = document.createElement('p');
-    explain.textContent = 'Esta invocación elige una definición versionada y conecta su bloque de entrada.';
+    explain.textContent = 'Aquí vive la declaración completa: identidad, entrada, presentación, solicitud y lectura de la respuesta. Las credenciales permanecen en la conexión gobernada.';
     const editor = document.createElement('textarea');
     editor.value = node.block.content;
     editor.spellcheck = false;

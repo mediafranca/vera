@@ -104,6 +104,9 @@ const pictosApiKey = setting('PICTOS_API_KEY');
 const pictosApi = pictosApiBase !== undefined && pictosApiKey !== undefined
   ? { baseUrl: pictosApiBase, key: pictosApiKey }
   : undefined;
+const processConnections = pictosApi === undefined
+  ? undefined
+  : { 'pictos-next': pictosApi };
 
 const { vera } = listen({
   port,
@@ -126,7 +129,7 @@ const { vera } = listen({
   ...(publicPreviewUrl === undefined ? {} : { publicPreviewUrl }),
   ...(publicMcpOrigin === undefined ? {} : { publicMcpOrigin }),
   ...(librarianHook === undefined ? {} : { librarianHook }),
-  ...(pictosApi === undefined ? {} : { pictosApi }),
+  ...(processConnections === undefined ? {} : { processConnections }),
   ...(declaredOwner === undefined ? {} : { owner: declaredOwner }),
 });
 

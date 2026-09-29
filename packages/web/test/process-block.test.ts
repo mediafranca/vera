@@ -4,6 +4,7 @@ import {
   looksLikeProcess,
   processPresentation,
   readProcessBlock,
+  writeHttpProcessBlock,
   writeProcessBlock,
 } from '../src/process-block.ts';
 
@@ -36,11 +37,29 @@ describe('/proceso', () => {
     assert.equal(processPresentation('pictos/producir').outputKind, 'SVG autocontenido');
   });
 
-  it('distingue las definiciones remotas de PICTOS del experimento local', () => {
-    assert.deepEqual(processPresentation('pictos.net/comprender'), {
-      family: 'PICTOS.net', name: 'Comprender', inputKind: 'Texto',
-      outputKind: 'NLU nativa JSON', executor: 'pictos.net',
+  it('guarda el proceso HTTP completo dentro de la fuente editable', () => {
+    const source = writeHttpProcessBlock('block:nlu', {
+      definition: 'pictos.net/componer', version: 1,
+      presentation: {
+        family: 'PICTOS.net', name: 'Componer', inputKind: 'NLU nativa JSON',
+        outputKind: 'Composición nativa JSON', executor: 'pictos.net',
+      },
+      request: {
+        kind: 'json-http', connection: 'pictos-next', path: '/api/v1/componer', method: 'POST',
+        body: { nlu: '$entrada.json', config: { domainContext: 'hogar' } },
+      },
+      response: {
+        content: '$.output', executor: '$.executor', requestId: '$.request_id',
+        processVersion: '$.process.version', schemaId: '$.schema.id',
+        schemaVersion: '$.schema.version', model: '$.model.actual',
+      },
     });
-    assert.equal(processPresentation('pictos.net/componer').outputKind, 'Composición nativa JSON');
+    const parsed = readProcessBlock(source);
+    assert.equal(parsed?.presentation?.name, 'Componer');
+    assert.equal(parsed?.request?.path, '/api/v1/componer');
+    assert.deepEqual(parsed?.request?.body, {
+      nlu: '$entrada.json', config: { domainContext: 'hogar' },
+    });
+    assert.equal(parsed?.response?.requestId, '$.request_id');
   });
 });

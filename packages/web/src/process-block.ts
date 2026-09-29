@@ -2,6 +2,27 @@ export interface ProcessInvocationSource {
   definition: string;
   version: number;
   input: string;
+  presentation?: ProcessPresentation;
+  request?: HttpJsonRequest;
+  response?: ProcessResponseMapping;
+}
+
+export interface HttpJsonRequest {
+  kind: 'json-http';
+  connection: string;
+  path: string;
+  method: 'POST';
+  body: unknown;
+}
+
+export interface ProcessResponseMapping {
+  content: string;
+  executor?: string;
+  requestId?: string;
+  processVersion?: string;
+  schemaId?: string;
+  schemaVersion?: string;
+  model?: string;
 }
 
 export interface ProcessResult {
@@ -57,8 +78,6 @@ export interface ProcessPresentation {
 
 export function processPresentation(definition: string): ProcessPresentation {
   switch (definition) {
-    case 'pictos.net/comprender': return { family: 'PICTOS.net', name: 'Comprender', inputKind: 'Texto', outputKind: 'NLU nativa JSON', executor: 'pictos.net' };
-    case 'pictos.net/componer': return { family: 'PICTOS.net', name: 'Componer', inputKind: 'NLU nativa JSON', outputKind: 'Composición nativa JSON', executor: 'pictos.net' };
     case 'pictos/comprender': return { family: 'PICTOS', name: 'Comprender', inputKind: 'Texto', outputKind: 'JSON semántico', executor: 'participant:local-model' };
     case 'pictos/componer': return { family: 'PICTOS', name: 'Componer', inputKind: 'JSON semántico', outputKind: 'Árbol visual JSON', executor: 'participant:local-model' };
     case 'pictos/producir': return { family: 'PICTOS', name: 'Producir', inputKind: 'Árbol visual JSON', outputKind: 'SVG autocontenido', executor: 'vera/svg-composer' };
@@ -67,13 +86,97 @@ export function processPresentation(definition: string): ProcessPresentation {
   }
 }
 
+export function presentationOf(invocation: ProcessInvocationSource): ProcessPresentation {
+  return invocation.presentation ?? processPresentation(invocation.definition);
+}
+
 export function writeProcessBlock(input: string, definition = 'vera/estructura-textual'): string {
   return `${OPEN}\ndefinición: ${definition}\nversión: 1\nentrada: ((${input}))\n\`\`\``;
+}
+
+export function writeHttpProcessBlock(
+  input: string,
+  source: Omit<ProcessInvocationSource, 'input'> & {
+    presentation: ProcessPresentation;
+    request: HttpJsonRequest;
+    response: ProcessResponseMapping;
+  },
+): string {
+  return `${OPEN}\n${JSON.stringify({
+    'definición': source.definition,
+    'nombre': source.presentation.name,
+    'familia': source.presentation.family,
+    'versión': source.version,
+    'entrada': `((${input}))`,
+    'tipo_entrada': source.presentation.inputKind,
+    'tipo_salida': source.presentation.outputKind,
+    'ejecutor': source.presentation.executor,
+    'solicitud': {
+      'tipo': source.request.kind,
+      'conexión': source.request.connection,
+      'ruta': source.request.path,
+      'método': source.request.method,
+      'cuerpo': source.request.body,
+    },
+    'respuesta': source.response,
+  }, null, 2)}\n\`\`\``;
+}
+
+const object = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+
+function readJsonProcess(lines: string[]): ProcessInvocationSource | null {
+  let parsed: Record<string, unknown>;
+  try { parsed = object(JSON.parse(lines.slice(1, -1).join('\n'))) ?? {}; }
+  catch { return null; }
+  const definition = parsed['definición'];
+  const version = parsed['versión'];
+  const input = /^\(\(([^)]+)\)\)$/.exec(String(parsed['entrada'] ?? ''))?.[1]?.trim() ?? '';
+  const request = object(parsed['solicitud']);
+  const response = object(parsed['respuesta']);
+  if (
+    typeof definition !== 'string' || definition.trim() === '' ||
+    !Number.isInteger(version) || Number(version) < 1 || input === '' ||
+    typeof parsed['nombre'] !== 'string' || typeof parsed['familia'] !== 'string' ||
+    typeof parsed['tipo_entrada'] !== 'string' || typeof parsed['tipo_salida'] !== 'string' ||
+    typeof parsed['ejecutor'] !== 'string' || request === null || response === null ||
+    request['tipo'] !== 'json-http' || typeof request['conexión'] !== 'string' ||
+    typeof request['ruta'] !== 'string' || !String(request['ruta']).startsWith('/') ||
+    request['método'] !== 'POST' || request['cuerpo'] === undefined ||
+    typeof response['content'] !== 'string'
+  ) return null;
+  const mapped: ProcessResponseMapping = { content: response['content'] };
+  for (const [sourceKey, targetKey] of [
+    ['executor', 'executor'], ['requestId', 'requestId'], ['processVersion', 'processVersion'],
+    ['schemaId', 'schemaId'], ['schemaVersion', 'schemaVersion'], ['model', 'model'],
+  ] as const) {
+    const value = response[sourceKey];
+    if (value !== undefined) {
+      if (typeof value !== 'string') return null;
+      mapped[targetKey] = value;
+    }
+  }
+  return {
+    definition: definition.trim(), version: Number(version), input,
+    presentation: {
+      name: parsed['nombre'], family: parsed['familia'],
+      inputKind: parsed['tipo_entrada'], outputKind: parsed['tipo_salida'],
+      executor: parsed['ejecutor'],
+    },
+    request: {
+      kind: 'json-http', connection: request['conexión'], path: request['ruta'],
+      method: 'POST', body: request['cuerpo'],
+    },
+    response: mapped,
+  };
 }
 
 export function readProcessBlock(content: string): ProcessInvocationSource | null {
   const lines = content.trim().split(/\r?\n/);
   if (lines[0]?.trim().toLowerCase() !== OPEN || lines.at(-1)?.trim() !== '```') return null;
+  if (lines[1]?.trim().startsWith('{')) return readJsonProcess(lines);
   const fields = new Map<string, string>();
   for (const line of lines.slice(1, -1)) {
     const split = line.indexOf(':');
@@ -232,8 +335,9 @@ export async function composePictos(plan: PictosPlan, previous: ProcessResult): 
 }
 
 export function executeProcess(invocation: ProcessInvocationSource, text: string): Promise<ProcessResult> {
-  if (invocation.definition === 'pictos.net/comprender') return executePictosNetStep('understand', text);
-  if (invocation.definition === 'pictos.net/componer') return executePictosNetStep('arrange', text);
+  if (invocation.request !== undefined && invocation.response !== undefined) {
+    return executeHttpJsonProcess(invocation.request, invocation.response, text);
+  }
   if (invocation.definition === 'pictos/comprender') return executePictosStep('understand', text);
   if (invocation.definition === 'pictos/componer') return executePictosStep('arrange', text);
   if (invocation.definition === 'pictos/producir') return executePictosStep('produce', text);
@@ -242,30 +346,69 @@ export function executeProcess(invocation: ProcessInvocationSource, text: string
   return Promise.reject(new Error(`proceso no registrado: ${invocation.definition}`));
 }
 
-async function executePictosNetStep(
-  endpoint: 'understand' | 'arrange',
+function inputJson(text: string): unknown {
+  const raw = /^```json\s*\n([\s\S]*?)\n```/m.exec(text)?.[1] ?? text;
+  try { return JSON.parse(raw); }
+  catch { throw new Error('la solicitud necesita una entrada JSON válida'); }
+}
+
+function fillInputTemplate(value: unknown, text: string): unknown {
+  if (value === '$entrada.texto') return text;
+  if (value === '$entrada.json') return inputJson(text);
+  if (Array.isArray(value)) return value.map((item) => fillInputTemplate(item, text));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fillInputTemplate(item, text)]));
+  }
+  return value;
+}
+
+function valueAt(value: unknown, path: string): unknown {
+  if (path === '$') return value;
+  if (!path.startsWith('$.')) return undefined;
+  let current = value;
+  for (const part of path.slice(2).split('.')) {
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+const contentFrom = (value: unknown): string => typeof value === 'string'
+  ? value
+  : `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
+
+async function executeHttpJsonProcess(
+  request: HttpJsonRequest,
+  mapping: ProcessResponseMapping,
   text: string,
 ): Promise<ProcessResult> {
   const started = performance.now();
   const inputRevision = hexadecimal(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
-  const response = await fetch(`/processes/pictos-net/${endpoint}`, {
+  const response = await fetch('/processes/http-json', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ input: text }),
+    body: JSON.stringify({
+      connection: request.connection,
+      path: request.path,
+      method: request.method,
+      body: fillInputTemplate(request.body, text),
+    }),
   });
-  const said = await response.json().catch(() => ({})) as PictosAnswer;
-  if (!response.ok || typeof said.content !== 'string') {
-    throw new Error(said.error ?? 'PICTOS no devolvió una salida legible');
+  const said = await response.json().catch(() => ({})) as { error?: string; response?: unknown };
+  if (!response.ok || said.response === undefined) {
+    throw new Error(said.error ?? 'el proceso remoto no devolvió una respuesta legible');
   }
-  return {
-    content: said.content,
+  const content = valueAt(said.response, mapping.content);
+  if (content === undefined) throw new Error(`la respuesta no contiene ${mapping.content}`);
+  const result: ProcessResult = {
+    content: contentFrom(content),
     durationMs: Math.max(0, performance.now() - started),
     inputRevision,
-    executor: said.executor ?? 'pictos.net',
-    ...(said.requestId === undefined ? {} : { requestId: said.requestId }),
-    ...(said.processVersion === undefined ? {} : { processVersion: said.processVersion }),
-    ...(said.schemaId === undefined ? {} : { schemaId: said.schemaId }),
-    ...(said.schemaVersion === undefined ? {} : { schemaVersion: said.schemaVersion }),
-    ...(said.model === undefined ? {} : { model: said.model }),
   };
+  for (const [field, path] of Object.entries(mapping)) {
+    if (field === 'content' || path === undefined) continue;
+    const value = valueAt(said.response, path);
+    if (typeof value === 'string') (result as unknown as Record<string, unknown>)[field] = value;
+  }
+  return result;
 }

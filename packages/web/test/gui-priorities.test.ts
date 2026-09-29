@@ -53,6 +53,8 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(outliner, /label: 'Editar código',[\s\S]*?run: \(\) => openProcessSourceEditor\(node\)/);
     assert.match(outliner, /className = 'process-source-dialog'/);
     assert.match(outliner, /readProcessBlock\(editor\.value\) === null/);
+    assert.match(outliner, /Aquí vive la declaración completa: identidad, entrada, presentación, solicitud y lectura de la respuesta/);
+    assert.match(outliner, /presentationOf\(invocation\)/);
   });
 
   it('aplica la trazabilidad pública al cambiar el switch, sin un segundo gesto oculto', () => {
