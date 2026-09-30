@@ -5150,6 +5150,8 @@ export function renderOutliner(
     depth: number,
     ordinal: number | null = null,
     descend = true,
+    continuingAncestors: readonly boolean[] = [],
+    hasNextSibling = false,
   ): void => {
     const row = document.createElement('div');
     row.className = depth === 0 ? 'block' : 'block nested';
@@ -5173,6 +5175,41 @@ export function renderOutliner(
     /** Si este bloque dice que sus hijos van numerados. Gobierna su menú. */
     const numbering =
       readChildListStyle(page.blockProperties?.[node.block.stableId]) === 'numbered';
+
+    /*
+     * El hilo no es una cuadrícula de sangría: representa aristas reales.
+     *
+     * Los antepasados que todavía tienen un hermano posterior atraviesan esta
+     * fila; la arista inmediata baja desde el padre y dobla hacia la viñeta del
+     * bloque. Si queda otro hermano, esa misma arista continúa bajo la viñeta.
+     * Todo deriva del árbol visible y desaparece al plegar, sin persistirse.
+     */
+    let threads: HTMLSpanElement | null = null;
+    if (depth > 0 || (parent && !shut)) {
+      const threadHost = document.createElement('span');
+      threads = threadHost;
+      threadHost.className = 'block-threads';
+      threadHost.setAttribute('aria-hidden', 'true');
+      continuingAncestors.forEach((continues, level) => {
+        if (!continues) return;
+        const line = document.createElement('span');
+        line.className = 'thread-line';
+        line.style.setProperty('--thread-level', String(level));
+        threadHost.append(line);
+      });
+      if (depth > 0) {
+        const elbow = document.createElement('span');
+        elbow.className = hasNextSibling ? 'thread-elbow continues' : 'thread-elbow';
+        elbow.style.setProperty('--thread-level', String(depth - 1));
+        threadHost.append(elbow);
+      }
+      if (parent && !shut) {
+        const stem = document.createElement('span');
+        stem.className = 'thread-stem';
+        stem.style.setProperty('--thread-level', String(depth));
+        threadHost.append(stem);
+      }
+    }
 
     if (parent) {
       const fold = document.createElement('button');
@@ -5974,6 +6011,7 @@ export function renderOutliner(
     // el chevron y la viñeta: visualmente parecía otro mando del outline cuando
     // en realidad abre una lectura lateral.
     row.firstElementChild?.after(bullet, body);
+    if (threads !== null) row.append(threads);
     list.append(row);
     editors.set(node.block.stableId, { node, body });
     // El orden de lectura, que es este y no el del arbol guardado.
@@ -5996,8 +6034,18 @@ export function renderOutliner(
        * FoldingIsNotAChange), así que un subárbol plegado no puede cambiar la
        * numeración de la lista en la que está.
        */
+      const childAncestors = depth === 0
+        ? continuingAncestors
+        : [...continuingAncestors, hasNextSibling];
       node.children.forEach((child, index) =>
-        drawBlock(child, depth + 1, numbering ? index + 1 : null),
+        drawBlock(
+          child,
+          depth + 1,
+          numbering ? index + 1 : null,
+          true,
+          childAncestors,
+          index < node.children.length - 1,
+        ),
       );
     }
   };
@@ -6399,14 +6447,35 @@ export function renderOutliner(
    * página con tablas y cientos de bloques no se presenta como cuarenta segundos
    * de silencio seguidos por una aparición súbita.
    */
-  interface DrawEntry { node: Node; depth: number; ordinal: number | null }
+  interface DrawEntry {
+    node: Node;
+    depth: number;
+    ordinal: number | null;
+    continuingAncestors: readonly boolean[];
+    hasNextSibling: boolean;
+  }
   const entries: DrawEntry[] = [];
-  const queue = (node: Node, depth: number, ordinal: number | null): void => {
-    entries.push({ node, depth, ordinal });
+  const queue = (
+    node: Node,
+    depth: number,
+    ordinal: number | null,
+    continuingAncestors: readonly boolean[] = [],
+    hasNextSibling = false,
+  ): void => {
+    entries.push({ node, depth, ordinal, continuingAncestors, hasNextSibling });
     if (folded.has(node.block.stableId)) return;
     const numbered = readChildListStyle(page.blockProperties?.[node.block.stableId]) === 'numbered';
+    const childAncestors = depth === 0
+      ? continuingAncestors
+      : [...continuingAncestors, hasNextSibling];
     node.children.forEach((child, index) =>
-      queue(child, depth + 1, numbered ? index + 1 : null),
+      queue(
+        child,
+        depth + 1,
+        numbered ? index + 1 : null,
+        childAncestors,
+        index < node.children.length - 1,
+      ),
     );
   };
   for (const root of tree) queue(root, 0, null);
@@ -6442,7 +6511,14 @@ export function renderOutliner(
       while (at < cap && (at < minimum || performance.now() - began < 6)) {
         const entry = entries[at];
         if (entry !== undefined) {
-          drawBlock(entry.node, entry.depth, entry.ordinal, false);
+          drawBlock(
+            entry.node,
+            entry.depth,
+            entry.ordinal,
+            false,
+            entry.continuingAncestors,
+            entry.hasNextSibling,
+          );
           // `drawBlock` añade al final; el estado debe permanecer después de lo
           // ya compuesto y no intercalarse antes del lote siguiente.
           list.append(progress);

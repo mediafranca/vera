@@ -39,10 +39,15 @@ describe('autoría navegable en el historial de un bloque', () => {
 });
 
 describe('guías de jerarquía del outliner', () => {
-  it('marca sólo bloques anidados y deriva la guía del mismo paso de sangría', () => {
+  it('dibuja aristas padre-hijo con codos y sólo prolonga ramas que continúan', () => {
     assert.match(outliner, /row\.className = depth === 0 \? 'block' : 'block nested'/);
     assert.match(outliner, /'--block-indent-step'/);
-    assert.match(styles, /\.block\.nested::before \{[\s\S]*?width: var\(--block-indent\);[\s\S]*?var\(--block-indent-step\)/);
-    assert.match(styles, /color-mix\(in srgb, var\(--text-dim\) 14%, transparent\)/);
+    assert.match(outliner, /continuingAncestors\.forEach\(\(continues, level\)/);
+    assert.match(outliner, /elbow\.className = hasNextSibling \? 'thread-elbow continues' : 'thread-elbow'/);
+    assert.match(outliner, /if \(parent && !shut\) \{[\s\S]*?stem\.className = 'thread-stem'/);
+    assert.match(styles, /\.thread-elbow \{[\s\S]*?border-left: 1px solid currentColor;[\s\S]*?border-bottom: 1px solid currentColor;[\s\S]*?border-bottom-left-radius/);
+    assert.match(styles, /\.thread-elbow\.continues::after/);
+    assert.match(styles, /\.thread-stem \{[\s\S]*?top: var\(--thread-y\);[\s\S]*?border-left: 1px solid currentColor/);
+    assert.doesNotMatch(styles, /\.block\.nested::before/);
   });
 });

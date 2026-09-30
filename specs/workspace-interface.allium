@@ -406,16 +406,20 @@ contract BlockHistoryInspection {
 contract OutlineHierarchyPresentation {
     present: (page: core/Page) -> core/Page
 
-    @invariant IndentationHasAQuietContinuousGuide
-        -- Every nested block derives a faint vertical guide for each ancestor
-        -- level from the visible parent-child structure. The guides align with
-        -- ancestor bullets, survive folding and responsive indentation, and do
-        -- not change stored content, selection, focus or hit targets.
+    @invariant ParentAndChildAreJoinedByAThread
+        -- Every visible parent-child edge is drawn as one faint thread: it
+        -- descends from the parent bullet and turns through a rounded elbow
+        -- into the child bullet. A vertical segment continues only while that
+        -- branch has another visible sibling; the outliner never paints a
+        -- generic grid for indentation levels that are not connected.
 
-    @invariant GuidesNeverCompeteWithContent
-        -- Hierarchy guides remain lower contrast than text, bullets, selection,
-        -- focus and trail marks in both colour schemes; root blocks have no
-        -- guide and printing does not require the guides to understand the text.
+    @invariant ThreadsRevealStructureWithoutBecomingContent
+        -- Threads align with bullet centres, survive folding and responsive
+        -- indentation, and remain lower contrast than text, bullets, selection,
+        -- focus and trail marks in both colour schemes. They do not change
+        -- stored content, selection, focus or hit targets; root blocks have no
+        -- incoming thread and printing does not require threads to understand
+        -- the text.
 }
 
 -- La cabecera de una página: lo que se pregunta de ella antes de leerla.

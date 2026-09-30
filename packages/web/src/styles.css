@@ -2464,6 +2464,11 @@ html.presenting body {
   --rail-gap: 0.5rem;
   --fold: 1rem;
   --fold-gap: 0.05rem;
+  --thread-lead: var(--text-size, 1rem);
+  --thread-line: var(--line-height);
+  --thread-skip: 0px;
+  --thread-y: calc(var(--thread-skip) + var(--thread-lead) * var(--thread-line) / 2);
+  --thread-color: color-mix(in srgb, var(--text-dim) 18%, transparent);
   display: flex;
   gap: var(--rail-gap);
   align-items: baseline;
@@ -2473,31 +2478,87 @@ html.presenting body {
 /*
  * Una jerarquía se ve antes de leerse.
  *
- * Cada fila anidada deriva una línea por cada antepasado. Empiezan en el centro
- * de la viñeta raíz y repiten exactamente el paso de sangría, de modo que
- * siguen alineadas cuando el token o la escala móvil cambian. No son columnas
- * del documento ni áreas activas: sólo la lectura tenue del árbol vigente.
+ * No es una rejilla de sangría. Cada tramo representa una arista visible del
+ * árbol: baja desde una viñeta y dobla hacia su hija. Las verticales remotas
+ * sólo atraviesan una fila cuando esa rama todavía continúa después de ella.
+ * Todo se alinea con el mismo paso que gobierna la sangría y nunca recibe
+ * eventos: es la lectura tenue de la estructura vigente, no contenido.
  */
-.block.nested::before {
-  content: '';
+.block-threads {
   position: absolute;
   z-index: 0;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--rail, 1.4rem) / 2);
-  width: var(--block-indent);
+  inset: 0;
   pointer-events: none;
-  background-image: repeating-linear-gradient(
-    to right,
-    color-mix(in srgb, var(--text-dim) 14%, transparent) 0 1px,
-    transparent 1px var(--block-indent-step)
+  color: var(--thread-color);
+}
+
+.thread-line,
+.thread-elbow,
+.thread-stem {
+  position: absolute;
+  left: calc(
+    var(--rail, 1.4rem) / 2
+    + var(--block-indent-step) * var(--thread-level)
   );
 }
 
-.block > :not(.fold) {
+.thread-line {
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid currentColor;
+}
+
+.thread-elbow {
+  top: 0;
+  width: var(--block-indent-step);
+  height: var(--thread-y);
+  border-left: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  border-bottom-left-radius: calc(var(--block-indent-step) * 0.42);
+}
+
+.thread-elbow.continues::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: var(--thread-y);
+  left: -1px;
+  width: var(--block-indent-step);
+  border-bottom: 1px solid currentColor;
+  border-bottom-left-radius: calc(var(--block-indent-step) * 0.42);
+}
+
+.thread-elbow.continues {
+  bottom: 0;
+  height: auto;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+}
+
+.thread-stem {
+  top: var(--thread-y);
+  bottom: 0;
+  border-left: 1px solid currentColor;
+}
+
+.block:hover > .block-threads,
+.block:focus-within > .block-threads {
+  color: color-mix(in srgb, var(--accent) 46%, transparent);
+}
+
+.block > :not(.fold, .block-threads) {
   position: relative;
   z-index: 1;
 }
+
+.block:has(> .body > .body-text > :first-child:is(h2, h3, h4, h5, h6)) {
+  --thread-line: var(--head-line);
+  --thread-skip: var(--head-skip);
+}
+.block:has(> .body > .body-text > :first-child:is(h2)) { --thread-lead: var(--head-2); }
+.block:has(> .body > .body-text > :first-child:is(h3)) { --thread-lead: var(--head-3); }
+.block:has(> .body > .body-text > :first-child:is(h4)) { --thread-lead: var(--head-4); }
+.block:has(> .body > .body-text > :first-child:is(h5, h6)) { --thread-lead: var(--head-5); }
 
 /* La glosa acompaña el bloque sin entrar en su outline. En una lectura ancha
    vive en el margen; en vistas compactas se abre desde su marca. */
