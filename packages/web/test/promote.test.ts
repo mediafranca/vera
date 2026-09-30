@@ -15,7 +15,7 @@ import {
   blocksFor,
   fillTraceCrossings,
   provisionalTitle,
-  seedTrail,
+  seedArgumentPreparation,
   testimonyFor,
 } from '../src/promote.ts';
 import type { TraceStep } from '../src/trace.ts';
@@ -60,14 +60,17 @@ describe('el testimonio', () => {
 
 describe('el nombre con que nace', () => {
   it('es un andamio con la fecha, para que la página pueda existir', () => {
-    assert.equal(provisionalTitle(new Date('2026-08-09T12:00:00Z'), () => false), 'Recorrido del 2026-08-09');
+    assert.equal(
+      provisionalTitle(new Date('2026-08-09T12:00:00Z'), () => false),
+      'Preparación argumental del 2026-08-09',
+    );
   });
 
   it('no pisa una página que ya se llamaba así', () => {
-    const taken = new Set(['Recorrido del 2026-08-09']);
+    const taken = new Set(['Preparación argumental del 2026-08-09']);
     assert.equal(
       provisionalTitle(new Date('2026-08-09T12:00:00Z'), (name) => taken.has(name)),
-      'Recorrido del 2026-08-09 (2)',
+      'Preparación argumental del 2026-08-09 (2)',
     );
   });
 });
@@ -82,18 +85,23 @@ describe('lo que nace', () => {
   it('nace privado, porque haber andado no es haber decidido enseñarlo', () => {
     // @invariant ADraftTrailIsBornPrivate: un rastro que se publicara solo
     // convertiría el mapa en una cámara.
-    const seed = seedTrail(trace, { title: 'Recorrido del 2026-08-09' });
+    const seed = seedArgumentPreparation(trace, { title: 'Preparación argumental del 2026-08-09' });
     assert.deepEqual(seed.page, {
       kind: 'create_page',
-      title: 'Recorrido del 2026-08-09',
+      title: 'Preparación argumental del 2026-08-09',
       visibility: 'private',
     });
   });
 
-  it('nace declarado, que es lo único que lo hace un recorrido', () => {
-    const properties = seedTrail(trace, { title: 'X' }).properties('page:9');
+  it('nace como preparación y no anticipa la madurez que debe declarar la persona', () => {
+    const properties = seedArgumentPreparation(trace, { title: 'X' }).properties('page:9');
     assert.deepEqual(properties, [
-      { kind: 'set_property', page: 'page:9', propertyKey: 'tipo', propertyValue: 'argumento' },
+      {
+        kind: 'set_property',
+        page: 'page:9',
+        propertyKey: 'tipo',
+        propertyValue: 'preparación argumental',
+      },
     ]);
   });
 

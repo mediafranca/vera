@@ -43,6 +43,11 @@ contract GraphSearch {
     @invariant ExcerptShowsWhyItMatched
         -- Every hit carries a fragment of the content that matched, so a reader can
         -- judge relevance without opening the page.
+
+    @invariant SearchReturnsEvidenceNotTheCorpus
+        -- The complete current graph is searched where it resides. Only matching
+        -- evidence crosses the workspace boundary; beginning a search never waits
+        -- for the corpus to be copied into the client first.
 }
 
 ------------------------------------------------------------
@@ -216,6 +221,11 @@ surface GraphSearchAccess {
     @guarantee HitsCarryTheirLocation
         -- Every hit names the page it belongs to, and the block when the match was in
         -- one, so a result is navigable rather than merely informative.
+
+    @guarantee CurrentResultsArriveWithoutCorpusTransfer
+        -- Typing a query asks the resident search index and receives matching hits.
+        -- The workspace does not download or scan the complete graph before it can
+        -- present evidence from inside pages.
 }
 
 ------------------------------------------------------------

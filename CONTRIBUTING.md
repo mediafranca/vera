@@ -22,10 +22,10 @@ producir resultados negativos sin ocultarlos.
 
 1. **Primero la spec, después el código.** Si no hay spec que lo cubra, se
    escribe la spec.
-2. **Cada tarea en su rama.** Nunca se trabaja sobre `main` ni sobre la rama de
-   integración.
-3. **Nadie hace merge a `main`.** `main` está protegida y la mueve sólo la
-   custodia.
+2. **Cada tarea en su rama.** Nunca se trabaja directamente sobre `main` ni
+   sobre `dev`.
+3. **Todo pull request ordinario apunta a `dev`.** `main` recibe sólo
+   promociones estables desde `dev`, bajo responsabilidad de la custodia.
 4. **`make check` en verde antes de proponer.** Sin excepciones y sin «es que
    sólo…».
 
@@ -61,6 +61,13 @@ Se distribuye como plugin de Claude Code, desde el marketplace de JUXT:
 ```
 /plugin marketplace add juxt/claude-plugins
 /plugin install allium@juxt-plugins
+```
+
+El plugin no es requisito para contribuir. El verificador usado por la CI se
+puede instalar de manera neutral:
+
+```sh
+cargo install allium-cli --version 3.5.0 --locked
 ```
 
 ```sh
@@ -106,16 +113,16 @@ divergencia con un force-push no es una integración.
 
 | Rama | Qué es | Quién la mueve |
 | --- | --- | --- |
-| `main` | La línea protegida. | **Sólo la custodia.** |
-| `v0-implementacion` | La rama de integración. Es a donde apuntan los pull requests. | Por PR revisado. |
-| `vN.M-tema` | Una tanda de trabajo con nombre. `v0.4-local-first`, `v0.2-consultas`. | Quien la abrió. |
+| `main` | La última línea estable y publicable. | La custodia, mediante PR de promoción desde `dev`. |
+| `dev` | La rama predeterminada de integración. Todos los PR ordinarios apuntan aquí. | Por PR revisado y con CI en verde. |
+| `tipo/tema` | Una unidad breve de trabajo: `feat/captura-web`, `fix/enlaces-rotos`, `docs/gobernanza`. | Quien la abrió. |
 
 ### Las reglas
 
-- **Nunca se hace merge a `main`.** Está protegida y así se queda. La custodia
-  decide qué llega y cuándo, y por ahora esa custodia es una persona. No es
-  desconfianza: es que `main` es la referencia con la que se compara todo lo
-  demás, y una referencia que cualquiera mueve no es una referencia.
+- **Ningún PR ordinario apunta a `main`.** La custodia promueve `dev` a `main`
+  mediante un PR de release o estabilización. El diff de esa promoción debe ser
+  exactamente el acumulado que se publica; no se desarrollan arreglos nuevos en
+  el PR de promoción.
 - **Nunca se trabaja sobre la rama de integración.** Se abre una rama propia,
   aunque el cambio sea de una línea.
 - **Nunca se fuerza el empuje sobre una rama compartida.** `--force-with-lease`
@@ -123,16 +130,18 @@ divergencia con un force-push no es una integración.
 - **Una rama, un asunto.** Si a mitad de camino encuentras otra cosa que
   arreglar, anótala y ábrele su rama. Un pull request que hace dos cosas se
   revisa mal y se revierte peor.
-- **Se rebasa sobre la integración antes de proponer**, para que el historial
-  quede legible y el diff diga lo que hiciste tú.
+- **Se actualiza la rama desde `dev` antes de proponer**, por rebase o merge
+  según el caso, sin ocultar divergencias con un force-push sobre trabajo ya
+  compartido.
 
 ### El nombre de la rama
 
-`vN.M-tema-en-dos-o-tres-palabras`, en español, sin el nombre de quien la abre.
-La rama es del trabajo, no de la persona.
+`tipo/tema-en-dos-o-tres-palabras`, en español, sin el nombre de quien la abre.
+La rama es del trabajo, no de la persona. Los tipos habituales son `feat`,
+`fix`, `docs`, `spec`, `test`, `refactor` y `chore`.
 
 ```
-v0.4-local-first          v0.3-frontera          v0.2-consultas
+feat/captura-web          fix/enlaces-rotos      docs/gobernanza
 ```
 
 ### Dos cosas a la vez
@@ -241,7 +250,7 @@ Y a mano, lo que ninguna de las tres ve:
 
 ## 5. El pull request
 
-- **Apunta a la rama de integración** (`v0-implementacion`), nunca a `main`.
+- **Apunta a la rama de integración** (`dev`), nunca a `main`.
 - **El título sigue la forma del commit.** Si el PR trae un solo commit, es el
   mismo texto.
 - **El cuerpo dice tres cosas:** qué spec gobierna este cambio, qué se comprobó a
@@ -263,12 +272,18 @@ Y a mano, lo que ninguna de las tres ve:
 
 ### Cuánto tarda
 
-Hoy revisa una persona, con otro trabajo encima. Un cambio pequeño y bien
-formado, días. Un cambio grande sin spec previa puede no revisarse nunca, y ese
-es exactamente el caso que el punto 1 del método viene a evitar: **habla antes de
-escribir**. Abre un issue, propón la spec, y el código después.
+Hoy revisa una persona, con otro trabajo encima, y no hay un plazo de respuesta
+garantizado. Un cambio grande sin spec previa puede no revisarse nunca, y ese es
+exactamente el caso que el punto 1 del método viene a evitar: **habla antes de
+escribir**. Abre una discusión o un issue, propón la spec, y el código después.
 
 ## 6. Etiqueta
+
+Toda participación se rige por el [Código de conducta](CODE_OF_CONDUCT.md).
+Las preguntas de uso y diseño van a
+[Discussions](https://github.com/mediafranca/vera/discussions); los defectos
+reproducibles y el trabajo aceptado van a Issues. La política completa de
+decisión, custodia y mantenimiento está en [GOVERNANCE.md](GOVERNANCE.md).
 
 - **Se discute el trabajo, no a quien lo hizo.** «Esto rompe el invariante X» y
   no «no entendiste el invariante X».

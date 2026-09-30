@@ -1,14 +1,14 @@
 // El registro de exposición.
 //
 // Lo que se prueba aquí no es que la tabla guarde filas, sino que el registro
-// conteste las dos preguntas por las que existe: qué se llevó alguien, y quién
-// se llevó esto. Ver specs/mcp-server.allium, contrato WhatWasReadIsRecorded.
+// conserve una señal útil sin duplicar una fila por cada bloque entregado.
+// Ver specs/mcp-server.allium, contrato WhatWasReadIsRecorded.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { openStore, saveParticipant } from '../src/store.ts';
-import { exposuresOf, recordExposure, whoRead } from '../src/exposures.ts';
+import { clientsSeen, exposuresOf, recordExposure } from '../src/exposures.ts';
 
 const OWNER = 'participant:herbert';
 const COTITO = 'participant:cotito';
@@ -21,7 +21,7 @@ function freshStore() {
 }
 
 describe('el registro de exposición', () => {
-  it('anota quién se llevó qué, y no la respuesta', () => {
+  it('anota quién leyó y cuánto contexto recibió, pero no duplica sus identidades', () => {
     const store = freshStore();
     recordExposure(store, {
       participant: COTITO,
@@ -36,7 +36,7 @@ describe('el registro de exposición', () => {
     assert.equal(only?.participant, COTITO);
     assert.equal(only?.client, 'openclaw');
     assert.equal(only?.volume, 4096);
-    assert.deepEqual(only?.delivered, ['block:1', 'block:2', 'page:1']);
+    assert.equal(only?.deliveredCount, 3);
     // El texto entregado no está en ninguna parte: guardarlo dejaría una
     // segunda copia del corpus dentro del registro que existe para vigilarlo.
     assert.ok(!JSON.stringify(only).includes('content'));
@@ -62,31 +62,35 @@ describe('el registro de exposición', () => {
     );
   });
 
-  it('y contesta la pregunta al revés: quién ha leído esto', () => {
-    // La que uno se hace al encontrar una página que no debería haber salido.
+  it('resume cuánto contexto recibió cada cliente', () => {
     const store = freshStore();
     recordExposure(store, {
       participant: COTITO,
+      client: 'openclaw',
       surface: 'GET /search',
-      subject: 'contraseña',
-      delivered: ['page:privada', 'page:otra'],
+      subject: 'memoria',
+      delivered: ['page:1', 'page:2'],
+      volume: 100,
       at: 10,
     });
     recordExposure(store, {
-      participant: OWNER,
+      participant: COTITO,
+      client: 'openclaw',
       surface: 'GET /pages/:id',
-      subject: 'page:otra',
-      delivered: ['page:otra'],
+      subject: 'page:2',
+      delivered: ['page:2', 'block:1', 'block:2'],
+      volume: 200,
       at: 20,
     });
-    assert.deepEqual(
-      whoRead(store, 'page:privada').map((one) => one.participant),
-      [COTITO],
-    );
-    assert.deepEqual(
-      whoRead(store, 'page:otra').map((one) => one.participant),
-      [OWNER, COTITO],
-    );
+    assert.deepEqual(clientsSeen(store), [{
+      client: 'openclaw',
+      participant: COTITO,
+      deliveries: 2,
+      volume: 300,
+      deliveredCount: 5,
+      firstAt: 10,
+      lastAt: 20,
+    }]);
   });
 
   it('una lectura sin credencial se anota como lo que es, sin credencial', () => {
@@ -107,6 +111,10 @@ describe('el registro de exposición', () => {
       delivered: ['page:1', 'page:1', 'page:1'],
       at: 1,
     });
-    assert.deepEqual(exposuresOf(store)[0]?.delivered, ['page:1']);
+    assert.equal(exposuresOf(store)[0]?.deliveredCount, 1);
+    assert.equal(
+      store.db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE name = 'exposed_subjects'").get()?.n,
+      0,
+    );
   });
 });

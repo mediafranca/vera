@@ -54,6 +54,34 @@ describe('páginas que se pueden presentar', () => {
     assert.match(styles, /\.vera-presentation \.reveal \{[^}]*--content-width: min\(44em, 100%\);/);
     assert.match(styles, /max-height: calc\(100dvh - clamp\(5\.5rem, 11vh, 7\.5rem\)\);/);
     assert.doesNotMatch(styles, /\.vera-presentation \.body svg \{[^}]*max-height: 64vh;/);
+    assert.match(source, /classifySpatialSlides\(slides\)/);
+    assert.match(styles, /section\.presentation-spatial \{[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /width: calc\(100vw - var\(--presentation-slide-inline\) - var\(--presentation-slide-inline\)\) !important;/);
+    assert.match(styles, /height: calc\(100dvh - var\(--presentation-slide-top\) - var\(--presentation-slide-bottom\)\) !important;/);
+    assert.match(styles, /\.presentation-spatial \.body :is\(img, video\) \{[\s\S]*?width: auto !important;[\s\S]*?height: auto !important;[\s\S]*?max-width: calc\(100vw[\s\S]*?max-height: calc\(100dvh/);
+    assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?height: 100% !important;/);
+    assert.match(styles, /\.presentation-spatial \.body \.embedded-map iframe \{[\s\S]*?height: 100% !important;/);
+    assert.match(styles, /\.presentation-spatial > \.presentation-block > \.body:hover \{\s*background: transparent !important;/);
+    assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?border: 0 !important;[\s\S]*?box-shadow: none !important;/);
+  });
+
+  it('la presentación ya es el modo maximizado y no ofrece otro fullscreen', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /requestFullscreen|exitFullscreen|Pantalla completa/);
+    assert.doesNotMatch(source, /control\('Pantalla completa', 'maximize'\)/);
+  });
+
+  it('trata imágenes, dibujos, diagramas y ejecutables como láminas espaciales', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    for (const kind of ['executable', 'embedded-map', 'drawn', 'mermaid-figure']) {
+      assert.match(source, new RegExp(`only\\.matches\\('\\.${kind}'\\)`));
+    }
+    assert.match(source, /only\.matches\('\.table-scroll, table'\)/);
+    assert.match(source, /only\.matches\('img, svg'\)/);
+    assert.match(
+      readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
+      /presentation-medium="table"[\s\S]*?overflow: auto;[\s\S]*?\.body table \{[\s\S]*?font-size: clamp\(0\.9rem, 1\.5vw, 1\.2rem\) !important;[\s\S]*?word-break: normal !important;[\s\S]*?min-width: clamp\(8rem, 12vw, 10rem\);/,
+    );
   });
 
   it('convierte cada bloque raíz en una lámina y conserva dentro sus descendientes', () => {
@@ -90,7 +118,7 @@ describe('páginas que se pueden presentar', () => {
   it('usa la familia de iconos de Vera en vez de píldoras de texto', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-    for (const name of ['chevron-left', 'chevron-right', 'grid', 'feather', 'maximize', 'refresh-cw']) {
+    for (const name of ['chevron-left', 'chevron-right', 'grid', 'feather', 'refresh-cw']) {
       assert.match(source, new RegExp(`['"]${name}['"]`));
     }
     assert.match(source, /icon\(dark \? 'sun' : 'moon'\)/);

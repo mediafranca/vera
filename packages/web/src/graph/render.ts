@@ -1,4 +1,5 @@
 import * as d3 from "d3";
+import type { EmbeddedMapCamera, EmbeddedMapPlanarCamera } from "@vera/core";
 import type { GraphData, GraphLink, GraphNode } from "./types.ts";
 import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
@@ -47,6 +48,12 @@ export interface RenderSettings {
   showTitles?: boolean;
   fontSize?: number;
   thread?: ThreadSettings | null;
+  /** Hace orbitar lentamente la cámara 3D alrededor del eje vertical. */
+  autoRotate?: boolean;
+  /** Conserva hacia dónde se mira cuando una entrega progresiva amplía el mapa. */
+  preserveDirection?: boolean;
+  /** Cámara declarada por una incrustación; si falta, el mapa se encuadra solo. */
+  camera?: EmbeddedMapCamera;
 }
 
 // ── Title-mode constants ──
@@ -201,6 +208,13 @@ const positions = new Map<string, { x: number; y: number }>();
 /** El encuadre. Se conserva por lo mismo: volver no debe reencuadrar. */
 let heldTransform: d3.ZoomTransform | null = null;
 
+/** La cámara 2D que «Copiar incrustación» puede escribir como fuente. */
+export function graph2DCamera(): EmbeddedMapPlanarCamera | null {
+  return heldTransform === null
+    ? null
+    : { kind: '2d', x: heldTransform.x, y: heldTransform.y, k: heldTransform.k };
+}
+
 /**
  * Qué acomodo está corriendo, para que sólo corra el último.
  *
@@ -261,6 +275,11 @@ export function renderGraph(
 
   const width = container.clientWidth;
   const height = container.clientHeight;
+  if (heldTransform === null && settings.camera?.kind === '2d') {
+    heldTransform = d3.zoomIdentity
+      .translate(settings.camera.x, settings.camera.y)
+      .scale(settings.camera.k);
+  }
   // El nodo es su nombre. Un círculo al lado no dice nada que el nombre no diga,
   // y gasta el mismo sitio diciendo menos.
   const style = settings.nodeStyle ?? "title";

@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import { renderMarkdown } from '@vera/core';
+import type { EmbeddedMapCamera, EmbeddedMapPlanarCamera } from '@vera/core';
 import type { GraphData, GraphLink, GraphNode } from './types.ts';
 import type { ThreadSettings } from './render.ts';
 
@@ -8,6 +9,12 @@ type Side = -1 | 0 | 1;
 const held = new Map<string, { x: number; y: number }>();
 const openRelations = new Set<string>();
 let focusedRelation: string | null = null;
+let shownViewport: EmbeddedMapPlanarCamera | null = null;
+
+/** La cámara D4 que «Copiar incrustación» puede preservar. */
+export function graphD4Camera(): EmbeddedMapPlanarCamera | null {
+  return shownViewport === null ? null : { ...shownViewport };
+}
 
 interface RelationActions {
   types?: readonly string[];
@@ -150,6 +157,7 @@ export function renderGraphD4(
     fontFamily?: string;
     relations?: RelationActions;
     thread?: ThreadSettings | null;
+    camera?: EmbeddedMapCamera;
   } = {},
 ): void {
   container.innerHTML = '';
@@ -361,7 +369,10 @@ export function renderGraphD4(
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M0,-5L10,0L0,5Z');
-  let viewport = d3.zoomIdentity;
+  const embedded = options.camera?.kind === 'd4' ? options.camera : null;
+  let viewport = embedded === null
+    ? d3.zoomIdentity
+    : d3.zoomIdentity.translate(embedded.x, embedded.y).scale(embedded.k);
   const viewportCards: Array<{
     foreign: d3.Selection<SVGForeignObjectElement, unknown, null, undefined>;
     x: number;
@@ -400,6 +411,7 @@ export function renderGraphD4(
     .clickDistance(8)
     .on('zoom', (event) => {
       viewport = event.transform;
+      shownViewport = { kind: 'd4', x: viewport.x, y: viewport.y, k: viewport.k };
       if (iosWebKit) {
         // `transform` sobre foreignObject y CSS sobre su HTML forman dos capas
         // de composición en WebKit. Cambiar la cámara evita ese parallax: nada
@@ -414,6 +426,7 @@ export function renderGraphD4(
       positionViewportCards();
     });
   svg.call(zoom);
+  if (embedded !== null) svg.call(zoom.transform, viewport);
 
   const foldedLines: HTMLElement[] = [];
   const raiseReadingCards = (last?: SVGForeignObjectElement | null): void => {
@@ -955,7 +968,7 @@ export function renderGraphD4(
     return { left: at.x - dim.w / 2, right: at.x + dim.w / 2,
       top: at.y - dim.h / 2, bottom: at.y + dim.h / 2 };
   });
-  if (boxes.length > 0 && focusedLink === undefined) {
+  if (boxes.length > 0 && focusedLink === undefined && embedded === null) {
     const left = Math.min(...boxes.map((box) => box.left));
     const right = Math.max(...boxes.map((box) => box.right));
     const top = Math.min(...boxes.map((box) => box.top));

@@ -24,6 +24,7 @@
  */
 
 import * as d3 from "d3";
+import type { EmbeddedMap3DCamera } from "@vera/core";
 // @ts-expect-error d3-force-3d no publica tipos
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
 import type { GraphData, GraphNode } from "./types.ts";
@@ -31,6 +32,7 @@ import type { RenderSettings } from "./render";
 import { type Moving, runs, spineForce } from "./spine.ts";
 import { icon } from "../icons.ts";
 import {
+  advanceAutoRotation,
   clampElevation,
   frameAround,
   frameBox,
@@ -103,6 +105,8 @@ const positions = new Map<string, Point>();
 
 /** Desde dónde se estaba mirando. */
 let heldOrbit: Orbit | null = null;
+/** La órbita que efectivamente está pintada, incluso antes de que la mano la mueva. */
+let shownOrbit: Orbit | null = null;
 /** El último recorrido que se encuadró, para no reencuadrar en cada repintado. */
 let framed: string | null = null;
 
@@ -115,11 +119,23 @@ let framed: string | null = null;
  */
 let heldFor: string | null = null;
 
+/**
+ * La página cuya cámara ya reclamó la mano.
+ *
+ * Puede llegar antes que el recorrido enriquecido. Guardarla por página evita
+ * que un encuadre tardío borre un zoom o desplazamiento que ocurrió mientras el
+ * hilo todavía se estaba acomodando.
+ */
+let claimedFor: string | null = null;
+
 /** El nodo señalado, que se conserva entre dibujos como las posiciones. */
 let selected: string | null = null;
 
 /** Lo vivo ahora mismo, para poder desmontarlo. */
 let teardown: (() => void) | null = null;
+
+/** Cambia la órbita del mapa ya montado, sin volver a pedir ni dibujar sus datos. */
+let governAutoRotation: ((enabled: boolean) => void) | null = null;
 
 /**
  * Si lo que gira la rueda es un trackpad y no una rueda de ratón.
@@ -151,8 +167,10 @@ function looksLikeTrackpad(event: WheelEvent): boolean {
 /** Olvida la cámara y lo colocado. Para cuando el grafo cambia de veras. */
 export function forgetCamera(): void {
   heldOrbit = null;
+  shownOrbit = null;
   framed = null;
   heldFor = null;
+  claimedFor = null;
   positions.clear();
 }
 
@@ -165,6 +183,25 @@ export function selectNode3D(id: string | null): void {
 export function cleanupGraph3D(): void {
   teardown?.();
   teardown = null;
+  shownOrbit = null;
+}
+
+/** La cámara visible que una incrustación puede reproducir exactamente. */
+export function graph3DCamera(): EmbeddedMap3DCamera | null {
+  return shownOrbit === null
+    ? null
+    : {
+        kind: '3d',
+        centre: { ...shownOrbit.centre },
+        distance: shownOrbit.distance,
+        azimuth: shownOrbit.azimuth,
+        elevation: shownOrbit.elevation,
+      };
+}
+
+/** Gobierna la cámara 3D presente; si no hay una, la preferencia actuará al montarla. */
+export function setGraph3DAutoRotate(enabled: boolean): void {
+  governAutoRotation?.(enabled);
 }
 
 /**
@@ -292,8 +329,19 @@ export function renderGraph3D(
    * Conservar la vista es conservar un lugar, y un lugar sólo existe mientras
    * exista el reparto de nodos que lo definía.
    */
+  const previousDirection = settings.preserveDirection === true && heldOrbit !== null
+    ? { azimuth: heldOrbit.azimuth, elevation: heldOrbit.elevation }
+    : null;
   const signature = signatureOf(data.nodes.map((n) => n.id));
-  if (heldFor !== null && heldFor !== signature) heldOrbit = null;
+  const claimedHere = claimedFor !== null && claimedFor === settings.thread?.page;
+  /*
+   * Un recorrido llega por anillos y su propia página no forma parte del dibujo:
+   * se sustituye por las paradas. Por eso su firma cambia entre entregas y nunca
+   * puede servir de `focusId`. Si la mano ya reclamó esa cámara, ambas señales
+   * habituales dirían erróneamente «es otro mapa» y borrarían la órbita justo
+   * antes de dibujar el anillo siguiente.
+   */
+  if (heldFor !== null && heldFor !== signature && !claimedHere) heldOrbit = null;
   heldFor = signature;
 
   // ---------------------------------------------------------------------
@@ -358,7 +406,7 @@ export function renderGraph3D(
    */
   const focusId = data.nodes.find((n) => n.central === true)?.id ?? null;
   const remembered = known > 0 && focusId !== null && positions.has(focusId);
-  if (!remembered) heldOrbit = null;
+  if (!remembered && !claimedHere) heldOrbit = null;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const links = data.links
@@ -628,14 +676,25 @@ export function renderGraph3D(
     height: container.clientHeight,
   });
 
-  let orbit: Orbit = heldOrbit ?? {
+  const embedded = settings.camera?.kind === '3d' ? settings.camera : null;
+  let orbit: Orbit = embedded !== null ? {
+    centre: { ...embedded.centre },
+    distance: embedded.distance,
+    azimuth: embedded.azimuth,
+    elevation: embedded.elevation,
+  } : heldOrbit ?? {
     centre: { x: 0, y: 0, z: 0 },
     distance: 400,
-    azimuth: 0,
-    elevation: 0,
+    azimuth: previousDirection?.azimuth ?? 0,
+    elevation: previousDirection?.elevation ?? 0,
   };
   /** Si alguien ya decidió desde dónde mira. Encuadrar por encima sería quitarle el mapa. */
-  let moved = heldOrbit !== null;
+  let moved = heldOrbit !== null || embedded !== null;
+  /** Un gesto de cámara manda incluso si el autoencuadre del hilo llega después. */
+  const claimCamera = (): void => {
+    moved = true;
+    claimedFor = thread?.page ?? focusId;
+  };
 
   /**
    * Sobre que nombre esta el puntero, y con quien se nombra ese nombre.
@@ -749,7 +808,12 @@ export function renderGraph3D(
      * el encuadre no llegara, el hilo estaría dibujado en una esquina y lo que
      * se prometió —la forma— no se vería.
      */
-    if (thread !== null && thread.page !== framed) {
+    if (
+      embedded === null &&
+      thread !== null &&
+      thread.page !== framed &&
+      thread.page !== claimedFor
+    ) {
       const mine = threadBox();
       if (mine !== null) {
         orbit = frameAround(mine.box, mine.centre, lensNow(), orbit.azimuth, orbit.elevation);
@@ -829,6 +893,7 @@ export function renderGraph3D(
   // reservar memoria ni tocar el DOM más de lo necesario.
   // ---------------------------------------------------------------------
   const paint = (): void => {
+    shownOrbit = { ...orbit, centre: { ...orbit.centre } };
     const lens = lensNow();
     if (lens.width < 1 || lens.height < 1) return;
 
@@ -1052,7 +1117,7 @@ export function renderGraph3D(
    * `const`— y el mapa entero desaparecía. TypeScript no lo ve porque la llamada
    * pasa por dentro de otra función.
    */
-  if (remembered && heldOrbit !== null) {
+  if (embedded === null && remembered && heldOrbit !== null) {
     const yo = focus();
     if (
       yo !== null &&
@@ -1185,6 +1250,48 @@ export function renderGraph3D(
     sortByDepth();
   }
 
+  /*
+   * Una órbita optativa y lenta alrededor de Y. Se mide por tiempo y no por
+   * cuadros, para que una pantalla de 144 Hz no gire más rápido que una de 60.
+   * La preferencia de reducir movimiento manda incluso si quedó encendido el
+   * interruptor en otra sesión.
+   */
+  let autoRotating: number | null = null;
+  let rotationEnabled = false;
+  let previousRotationFrame: number | null = null;
+  let lastSorted = 0;
+  const rotate = (now: number): void => {
+    if (!rotationEnabled) return;
+    if (previousRotationFrame !== null) {
+      // Una pestaña suspendida no recupera de golpe todo el tiempo perdido.
+      orbit = advanceAutoRotation(orbit, Math.min(64, now - previousRotationFrame));
+      heldOrbit = orbit;
+      paint();
+      // Reordenar hermanos SVG es más caro que proyectarlos. A esta velocidad,
+      // dos veces por segundo mantiene correcto el orden sin trabajo inútil.
+      if (now - lastSorted >= 500) {
+        sortByDepth();
+        lastSorted = now;
+      }
+    }
+    previousRotationFrame = now;
+    autoRotating = requestAnimationFrame(rotate);
+  };
+  const setAutoRotation = (enabled: boolean): void => {
+    const allowed = enabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (allowed === rotationEnabled) return;
+    rotationEnabled = allowed;
+    previousRotationFrame = null;
+    if (allowed) {
+      autoRotating = requestAnimationFrame(rotate);
+    } else if (autoRotating !== null) {
+      cancelAnimationFrame(autoRotating);
+      autoRotating = null;
+    }
+  };
+  governAutoRotation = setAutoRotation;
+  setAutoRotation(settings.autoRotate === true);
+
   // ---------------------------------------------------------------------
   // La mano. Un dedo gira; dos dedos acercan y corren; la rueda acerca.
   //
@@ -1246,7 +1353,7 @@ export function renderGraph3D(
       event.preventDefault();
       pinch = measure(event.touches);
       spin = null;
-      moved = true;
+      claimCamera();
       return;
     }
     const finger = event.touches[0] as Touch;
@@ -1268,7 +1375,7 @@ export function renderGraph3D(
       orbit = panBy(orbit, now.x - pinch.x, now.y - pinch.y, lensNow());
       pinch = now;
       heldOrbit = orbit;
-      moved = true;
+      claimCamera();
       paint();
       sortByDepth();
       return;
@@ -1284,7 +1391,7 @@ export function renderGraph3D(
     // Pasado el temblor esto ya es un arrastre: se corta el desplazamiento de la
     // pagina, y con el, el `click` que ya no toca.
     if (spin.travelled >= TAP_SLOP) event.preventDefault();
-    moved = true;
+    claimCamera();
     turn(dx, dy);
     paint();
     sortByDepth();
@@ -1347,7 +1454,7 @@ export function renderGraph3D(
       if (travelled < TAP_SLOP) return;
       // Girando no se senala: lo encendido se apaga, y vuelve al soltar.
       if (hovered !== null) { hovered = null; lit = new Set(); }
-      moved = true;
+      claimCamera();
       /*
        * Con Shift, o con el botón de en medio, arrastrar corre el mapa en vez de
        * girarlo.
@@ -1375,7 +1482,7 @@ export function renderGraph3D(
 
   const onWheel = (event: WheelEvent): void => {
     event.preventDefault();
-    moved = true;
+    claimCamera();
 
     /*
      * El pellizco de un trackpad llega como rueda con Ctrl pulsado.
@@ -1455,7 +1562,7 @@ export function renderGraph3D(
   /** Llevar la órbita a un nodo, conservando desde dónde y a qué distancia se mira. */
   const orbitAround = (d: Drawn): void => {
     const n = d.node as GraphNode & Partial<Point>;
-    moved = true;
+    claimCamera();
     glideTo({ x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 });
   };
 
@@ -1560,7 +1667,7 @@ export function renderGraph3D(
   // Los controles de fuera: acercar, alejar, centrar.
   // ---------------------------------------------------------------------
   const onZoom = ((event: CustomEvent<"in" | "out">) => {
-    moved = true;
+    claimCamera();
     orbit = zoomBy(orbit, event.detail === "in" ? 0.67 : 1.5);
     heldOrbit = orbit;
     paint();
@@ -1571,6 +1678,7 @@ export function renderGraph3D(
   const onCentre = (() => {
     moved = false;
     heldOrbit = null;
+    if (claimedFor === (thread?.page ?? focusId)) claimedFor = null;
     fit();
     paint();
     sortByDepth();
@@ -1590,6 +1698,8 @@ export function renderGraph3D(
   teardown = (): void => {
     sim.stop();
     if (gliding !== null) cancelAnimationFrame(gliding);
+    setAutoRotation(false);
+    if (governAutoRotation === setAutoRotation) governAutoRotation = null;
     document.removeEventListener("constel:zoom", onZoom);
     document.removeEventListener("constel:center", onCentre);
     window.removeEventListener("resize", onResize);

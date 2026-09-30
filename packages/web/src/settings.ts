@@ -22,7 +22,7 @@ import {
   type DesignToken,
 } from './tokens.ts';
 
-export type Section = 'memoria' | 'archivos' | 'teclado' | 'apariencia';
+export type Section = 'memoria' | 'teclado' | 'apariencia';
 
 export interface SettingsHandlers {
   scheme(): ColourScheme;
@@ -33,6 +33,7 @@ export interface SettingsHandlers {
   onClose(): void;
   onOpenFiles(): void;
   onOpenSharing(): void;
+  onOpenActivity(): void;
   /**
    * Dibuja el estado del corpus y su índice.
    *
@@ -44,8 +45,7 @@ export interface SettingsHandlers {
 }
 
 const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'memoria', label: 'Memoria' },
-  { id: 'archivos', label: 'Archivos' },
+  { id: 'memoria', label: 'Vera' },
   { id: 'teclado', label: 'Teclado' },
   { id: 'apariencia', label: 'Apariencia' },
 ];
@@ -92,7 +92,7 @@ export function renderSettings(
   head.className = 'settings-head';
 
   const title = document.createElement('h2');
-  title.textContent = 'Configuración';
+  title.textContent = 'Configuración de Vera';
   head.append(title);
 
   const close = document.createElement('button');
@@ -105,21 +105,9 @@ export function renderSettings(
   head.append(close);
   host.append(head);
 
-  if (active !== 'apariencia' || !document.documentElement.dataset['access']?.includes('anybody')) {
-    const sharing = document.createElement('button');
-    sharing.type = 'button';
-    sharing.className = 'settings-destination';
-    const sharingName = document.createElement('strong');
-    sharingName.textContent = 'Espacios compartidos';
-    const sharingNote = document.createElement('span');
-    sharingNote.textContent = 'Administrar páginas, participantes e invitaciones';
-    sharing.append(sharingName, sharingNote);
-    sharing.addEventListener('click', handlers.onOpenSharing);
-    host.append(sharing);
-  }
-
   const tabs = document.createElement('nav');
   tabs.className = 'settings-tabs';
+  tabs.setAttribute('aria-label', 'Secciones de configuración');
   for (const section of SECTIONS) {
     const tab = document.createElement('button');
     tab.type = 'button';
@@ -136,7 +124,6 @@ export function renderSettings(
   host.append(body);
 
   if (active === 'memoria') drawMemory(body, handlers);
-  else if (active === 'archivos') void drawFilesSummary(body, handlers);
   else if (active === 'teclado') drawKeyboard(body);
   else drawAppearance(body, tokens, handlers);
 }
@@ -775,41 +762,6 @@ function participants(host: HTMLElement, space: SharedAdministration): HTMLEleme
 const readableSize = (bytes: number): string =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 
-/** La pestaña de configuración resume; administrar merece una dirección propia. */
-async function drawFilesSummary(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
-  const status = document.createElement('p');
-  status.className = 'settings-note';
-  status.textContent = 'Leyendo el almacén…';
-  host.append(status);
-  let files: CatalogAsset[];
-  try { files = await api.media(); }
-  catch { status.textContent = 'No se pudo leer el almacén.'; return; }
-
-  const counts = new Map<string, number>();
-  const kind = (type: string): string => type.startsWith('image/') ? 'Imágenes' : type.startsWith('audio/') ? 'Audios' : type === 'application/pdf' ? 'PDF' : 'Otros';
-  for (const file of files) counts.set(kind(file.mediaType), (counts.get(kind(file.mediaType)) ?? 0) + 1);
-  const orphaned = files.filter((file) => file.usages.length === 0).length;
-  const facts = document.createElement('dl');
-  facts.className = 'media-summary';
-  for (const label of ['Imágenes', 'Audios', 'PDF', 'Otros']) {
-    const count = counts.get(label) ?? 0;
-    if (count === 0) continue;
-    const term = document.createElement('dt'); term.textContent = label;
-    const value = document.createElement('dd'); value.textContent = String(count);
-    facts.append(term, value);
-  }
-  const orphanTerm = document.createElement('dt'); orphanTerm.textContent = 'Huérfanos';
-  const orphanValue = document.createElement('dd'); orphanValue.textContent = String(orphaned);
-  facts.append(orphanTerm, orphanValue);
-  const open = document.createElement('button');
-  open.type = 'button';
-  open.className = 'settings-open-files';
-  open.textContent = 'Administrar archivos';
-  open.addEventListener('click', handlers.onOpenFiles);
-  status.textContent = `${files.length} archivos en el almacén.`;
-  host.append(facts, open);
-}
-
 /** La página persistente del almacén: encontrar, describir, usar y limpiar. */
 export async function renderFilesAdministration(host: HTMLElement): Promise<void> {
   host.innerHTML = '';
@@ -822,7 +774,7 @@ export async function renderFilesAdministration(host: HTMLElement): Promise<void
   host.append(head);
   const intro = document.createElement('p');
   intro.className = 'settings-note';
-  intro.textContent = 'Los archivos guardados en Vera. La columna «Enlazado desde» muestra dónde se usa cada uno; sólo los huérfanos se pueden eliminar.';
+  intro.textContent = 'Los archivos guardados en Vera. Puedes renombrarlos, reemplazarlos o eliminarlos; Vera mantiene juntas sus referencias en las páginas.';
   const search = document.createElement('input');
   search.type = 'search';
   search.className = 'media-search';
@@ -871,11 +823,13 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
     image.src = file.url;
     image.alt = file.alternativeText ?? '';
     image.loading = 'lazy';
+    image.addEventListener('click', () => openMediaDetails(file));
     preview.append(image);
   } else if (file.mediaType.startsWith('audio/')) {
     const audio = document.createElement('audio');
     audio.src = file.url;
     audio.controls = true;
+    audio.addEventListener('dblclick', () => openMediaDetails(file));
     preview.append(audio);
   } else {
     const button = document.createElement('button');
@@ -959,11 +913,15 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
   remove.type = 'button';
   remove.className = 'media-delete';
   remove.textContent = 'Eliminar';
-  remove.disabled = file.usages.length > 0;
-  remove.title = remove.disabled ? 'Primero quita los enlaces desde los bloques indicados' : 'Eliminar este archivo huérfano';
+  remove.title = file.usages.length > 0
+    ? `Eliminar el archivo y retirarlo de ${file.usages.length} ${file.usages.length === 1 ? 'bloque' : 'bloques'}`
+    : 'Eliminar este archivo';
   remove.addEventListener('click', async () => {
     const named = file.originalName ?? file.path;
-    if (!window.confirm(`¿Eliminar definitivamente «${named}»?`)) return;
+    const scope = file.usages.length === 0
+      ? 'No está incrustado en ninguna página.'
+      : `También desaparecerá de ${file.usages.length} ${file.usages.length === 1 ? 'bloque' : 'bloques'}.`;
+    if (!window.confirm(`¿Eliminar definitivamente «${named}»?\n\n${scope}`)) return;
     remove.disabled = true;
     const result = await api.deleteMedia(file.hash);
     if ('error' in result) {
@@ -987,23 +945,46 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
  * quiere, y el ancho vuelve al mapa y al texto.
  */
 function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
-  const intro = document.createElement('p');
-  intro.className = 'settings-note';
-  intro.textContent =
-    'Lo que hay en este grafo, lo que quedó a medias, y las páginas que gobiernan ' +
-    'esta instancia. Para encontrar una página cualquiera está el buscador: ' +
-    'encuentra por lo que uno recuerda, sin obligar a reconocer un título en una lista.';
-  host.append(intro);
+  heading(host, 'Administrar', 'Destinos completos para tareas que necesitan su propio espacio.');
+  const administration = document.createElement('div');
+  administration.className = 'settings-destinations';
+  administration.append(
+    destination(
+      'Espacios compartidos',
+      'Publicación, páginas, participantes e invitaciones',
+      handlers.onOpenSharing,
+    ),
+    destination(
+      'Archivos',
+      'Encontrar, describir y limpiar imágenes, audios y documentos',
+      handlers.onOpenFiles,
+    ),
+    destination(
+      'Registro de actividad',
+      'Revisar cambios, eliminaciones y restauraciones',
+      handlers.onOpenActivity,
+    ),
+  );
+  host.append(administration);
 
-  if (handlers.drawMemory === undefined) return;
-  handlers.drawMemory(host);
+  heading(
+    host,
+    'Gobierno de Vera',
+    'Las páginas reservadas que definen cómo funciona esta instancia.',
+  );
+  const government = document.createElement('div');
+  government.className = 'settings-government';
+  host.append(government);
+  handlers.drawMemory?.(government);
 
-  heading(host, 'Portabilidad');
+  const backup = document.createElement('section');
+  backup.className = 'settings-backup';
+  heading(backup, 'Respaldo y traslado');
   const note = document.createElement('p');
   note.className = 'settings-note';
   note.textContent =
-    'El archivo .vera contiene el grafo, su registro completo y todos los assets. ' +
-    'Al importar, el contenido se agrega: nunca reemplaza páginas que ya existen.';
+    'Una copia completa en formato .vera contiene el grafo, su registro y todos los archivos. ' +
+    'Importar agrega contenido: nunca reemplaza las páginas que ya existen.';
 
   const actions = document.createElement('div');
   actions.className = 'memory-portability';
@@ -1041,7 +1022,22 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
     window.setTimeout(() => window.location.reload(), 500);
   });
   actions.append(download, choose, input);
-  host.append(note, actions, result);
+  backup.append(note, actions, result);
+  host.append(backup);
+}
+
+/** Un destino de configuración: una acción clara con su consecuencia debajo. */
+function destination(label: string, note: string, open: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'settings-destination';
+  const name = document.createElement('strong');
+  name.textContent = label;
+  const explanation = document.createElement('span');
+  explanation.textContent = note;
+  button.append(name, explanation);
+  button.addEventListener('click', open);
+  return button;
 }
 
 /** Un encabezado de sección, con su aclaración de cuándo vale lo que sigue. */

@@ -234,4 +234,11 @@ describe('matchingCommands', () => {
       ['html', 'svg', 'p5js'],
     );
   });
+
+  it('ofrece plantillas portables para clips y mapas', () => {
+    const clip = matchingCommands('fragmento de YouTube').find((command) => command.name === 'clip');
+    const map = matchingCommands('mapa 2D').find((command) => command.name === 'mapa');
+    assert.match(String(clip?.inserts), /desde: 00:00[\s\S]*hasta: 00:30/);
+    assert.match(String(map?.inserts), /página: \[\[\]\][\s\S]*alcance: 2[\s\S]*alto: 640/);
+  });
 });

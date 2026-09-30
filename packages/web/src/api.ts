@@ -107,16 +107,19 @@ export interface PageView {
   id: string;
   title: string;
   /**
-   * La página leída como recorrido, cuando dice que su orden es un argumento.
+   * La página leída como recorrido durante su preparación o como argumento.
    *
    * Viaja con la página porque leer un recorrido es leer su página. Nulo en las
-   * demás, que son casi todas. Ver packages/core/src/trail.ts.
+   * demás, que son casi todas. Su presencia hace visible la disposición en el
+   * mapa; no declara por sí sola que la obra ya sea publicable.
    */
   trail?: Trail | null;
   visibility: 'private' | 'public';
   /** Nulo cuando esta instancia no tiene un sitio público configurado. */
   publication?: PublicationView | null;
   createdAt: number;
+  /** La mano que sometió `create_page`, derivada del registro inmutable. */
+  createdBy?: { participant: string; name: string } | null;
   originCreatedAt: number | null;
   lastEditedAt: number | null;
   properties: { key: string; value: string }[];
@@ -128,13 +131,13 @@ export interface PageView {
    */
   blockProperties?: Record<string, { key: string; value: string }[]>;
   /**
-   * Lo que el corpus ya contesta a cada clave de esta página, por uso.
+   * Lo que puede contestarse a cada clave de esta página.
    *
-   * Es lo que se ofrece en el desplegable. Vocabulario observado y no declarado:
-   * la ontología que lo gobernaría todavía no existe, y hasta que exista lo que
-   * el corpus dice es mejor guía que una lista inventada.
+   * Reúne el vocabulario declarado por la ontología y el observado en el
+   * corpus. `uses` nunca se infla para hacer aparecer una opción: `declared`
+   * distingue una decisión de gobierno de una frecuencia de uso real.
    */
-  domains: Record<string, { value: string; uses: number }[]>;
+  domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
   blocks: BlockView[];
   /** Vista derivada de una página cuyo tipo es `concepto`. */
   concept?: {
@@ -286,6 +289,8 @@ export interface Hit {
   field: string;
   excerpt: string;
   rank: number;
+  /** Coincidencias interiores ya agrupadas por el servidor. */
+  matches?: number;
 }
 
 /** Un estado por el que pasó un bloque. */
@@ -517,6 +522,7 @@ export interface ActivityItem {
   at: number;
   by: string;
   participant: string;
+  participantKind: 'human' | 'agent' | null;
   channel: string;
   kind: Change['kind'];
   subjectId: string;
@@ -577,6 +583,13 @@ export type QueryAnswer =
 export type SubmitResult =
   | { status: 'applied'; sequence: number; subjectId: string }
   | { status: 'duplicate'; sequence: number; subjectId: string }
+  | { status: 'rejected'; reason: string };
+
+export type SubmitBatchResult =
+  | {
+      status: 'applied' | 'duplicate';
+      operations: { sequence: number; subjectId: string }[];
+    }
   | { status: 'rejected'; reason: string };
 
 export type SubmissionActivity =
@@ -789,6 +802,8 @@ export interface CorpusHealth {
   canEdit?: boolean;
   /** Una sesión invitada puede proponer sin modificar todavía el corpus. */
   canContribute?: boolean;
+  /** Una persona identificada en el espacio puede conversar aunque sólo lea. */
+  canAskLibrarian?: boolean;
   /** Falso en el origen público: anybody nunca puede elevarse desde allí. */
   canViewOwner?: boolean;
   /** Portada del sitio cuando la lectura ocurre por el origen público. */
@@ -1115,6 +1130,9 @@ export const api = {
 
   search: (text: string) => json<Hit[]>(`/search?q=${encodeURIComponent(text)}`),
 
+  /** Evidencia de búsqueda ya indexada y agrupada por página para la interfaz. */
+  searchPages: (text: string) => json<Hit[]>(`/search/pages?q=${encodeURIComponent(text)}`),
+
   youtubeTranscripts: (url: string) =>
     json<YoutubeTranscriptCatalog>(`/youtube/transcripts?url=${encodeURIComponent(url)}`),
 
@@ -1204,9 +1222,40 @@ export const api = {
 
   media: () => json<CatalogAsset[]>('/media'),
 
-  deleteMedia: async (hash: string): Promise<{ deleted: true } | { error: string }> => {
+  deleteMedia: async (hash: string): Promise<{ deleted: true; detached: number } | { error: string }> => {
     const response = await fetch(`/media/${encodeURIComponent(hash)}`, { method: 'DELETE' });
-    return await response.json() as { deleted: true } | { error: string };
+    return await response.json() as { deleted: true; detached: number } | { error: string };
+  },
+
+  renameMedia: async (hash: string, name: string): Promise<CatalogAsset | { error: string }> => {
+    try {
+      const response = await fetch(`/media/${encodeURIComponent(hash)}/rename`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const body = (await response.json()) as CatalogAsset & { error?: string };
+      return response.ok ? body : { error: body.error ?? `error ${response.status}` };
+    } catch {
+      return { error: 'sin conexión con el servidor' };
+    }
+  },
+
+  replaceMedia: async (hash: string, file: File): Promise<(CatalogAsset & { replaced: string }) | { error: string }> => {
+    try {
+      const response = await fetch(`/media/${encodeURIComponent(hash)}`, {
+        method: 'PUT',
+        headers: {
+          'content-type': file.type || 'application/octet-stream',
+          'x-filename': encodeURIComponent(file.name || 'archivo'),
+        },
+        body: await file.arrayBuffer(),
+      });
+      const body = (await response.json()) as CatalogAsset & { replaced: string; error?: string };
+      return response.ok ? body : { error: body.error ?? `error ${response.status}` };
+    } catch {
+      return { error: 'sin conexión con el servidor' };
+    }
   },
 
   describeMedia: async (
@@ -1276,6 +1325,68 @@ export const api = {
     channel: 'typed_text' | 'drawn' | 'walked' = 'typed_text',
   ): Promise<SubmitResult> {
     return this.send(named(change), channel, originId());
+  },
+
+  /**
+   * Confirma una estructura dependiente como un solo hecho canónico.
+   *
+   * Crear una página y luego poblarla con escrituras separadas permitiría que
+   * un corte dejara una mitad visible. El lote se prueba entero en el servidor
+   * y sólo entonces se incorpora; los canales paralelos conservan qué vino del
+   * rastro y qué fue una declaración ordinaria.
+   */
+  async submitCanonicalBatch(
+    entries: readonly {
+      change: Change;
+      channel?: 'typed_text' | 'drawn' | 'walked';
+    }[],
+  ): Promise<SubmitBatchResult> {
+    if (entries.length === 0) return { status: 'rejected', reason: 'el lote está vacío' };
+    if (proposeInsteadOfWriting) {
+      return { status: 'rejected', reason: 'una propuesta compartida todavía no admite lotes atómicos' };
+    }
+    const origin = originId();
+    const startedAt = performance.now();
+    reportSubmission({ phase: 'sending', originId: origin, startedAt });
+    let response: Response;
+    try {
+      response = await fetch('/operations/batch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          originId: origin,
+          changes: entries.map((entry) => named(entry.change)),
+          channels: entries.map((entry) => entry.channel ?? 'typed_text'),
+        }),
+      });
+    } catch (error) {
+      reportSubmission({ phase: 'offline', originId: origin, durationMs: performance.now() - startedAt });
+      throw error;
+    }
+    const body = await response.json() as SubmitBatchResult | { error?: string; detail?: string };
+    if ('status' in body) {
+      const durationMs = performance.now() - startedAt;
+      if (body.status === 'rejected') {
+        reportSubmission({ phase: 'rejected', originId: origin, durationMs, reason: body.reason });
+      } else {
+        reportSubmission({
+          phase: 'synchronised',
+          originId: origin,
+          durationMs,
+          sequence: body.operations.at(-1)?.sequence ?? 0,
+        });
+      }
+      return body;
+    }
+    const why = body.error ?? `el servidor contestó ${response.status}`;
+    const reason = body.detail === undefined ? why : `${why}: ${body.detail}`;
+    reportSubmission({
+      phase: 'rejected',
+      originId: origin,
+      durationMs: performance.now() - startedAt,
+      reason,
+    });
+    return { status: 'rejected', reason };
   },
 
   /**
@@ -1513,6 +1624,7 @@ export interface SeenClient {
   name: string;
   deliveries: number;
   volume: number;
+  deliveredCount: number;
   firstAt: number;
   lastAt: number;
 }

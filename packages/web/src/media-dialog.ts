@@ -6,6 +6,8 @@ export interface MediaDetails {
   mediaType: string;
   description?: string | null;
   alternativeText?: string | null;
+  originalName?: string | null;
+  usages?: { block: string; page: string; pageTitle: string }[];
 }
 
 /** La ficha permite mirar el archivo, describirlo y volver al contexto anterior. */
@@ -21,10 +23,10 @@ export function openMediaDetails(asset: MediaDetails): void {
   head.className = 'media-metadata-head';
   const heading = document.createElement('div');
   const title = document.createElement('h2');
-  title.textContent = '¿Qué estás subiendo?';
+  title.textContent = 'Archivo';
   const filename = document.createElement('p');
   filename.className = 'media-metadata-filename';
-  filename.textContent = asset.path.split('/').pop() ?? 'Archivo';
+  filename.textContent = asset.originalName ?? asset.path.split('/').pop() ?? 'Archivo';
   heading.append(title, filename);
   const close = document.createElement('button');
   close.type = 'button';
@@ -69,6 +71,23 @@ export function openMediaDetails(asset: MediaDetails): void {
   altLabel.append(alternativeText);
   altLabel.hidden = !asset.mediaType.startsWith('image/');
 
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Nombre del archivo';
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.value = asset.originalName ?? asset.path.split('/').pop() ?? '';
+  name.autocomplete = 'off';
+  nameLabel.append(name);
+
+  const replacement = document.createElement('input');
+  replacement.type = 'file';
+  replacement.hidden = true;
+  replacement.accept = asset.mediaType.startsWith('image/')
+    ? 'image/*'
+    : asset.mediaType.startsWith('audio/')
+      ? 'audio/*'
+      : 'application/pdf';
+
   const actions = document.createElement('div');
   actions.className = 'media-metadata-actions';
   const open = document.createElement('a');
@@ -80,27 +99,85 @@ export function openMediaDetails(asset: MediaDetails): void {
   cancel.type = 'button';
   cancel.textContent = 'Volver';
   cancel.addEventListener('click', () => dialog.close());
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'media-metadata-delete';
+  remove.textContent = 'Eliminar';
+  remove.addEventListener('click', async () => {
+    let usages = asset.usages;
+    if (usages === undefined) {
+      try {
+        usages = (await api.media()).find((file) => file.hash === hash)?.usages ?? [];
+      } catch {
+        usages = [];
+      }
+    }
+    const scope = usages.length === 0
+      ? 'No está incrustado en ninguna página.'
+      : `También desaparecerá de ${usages.length} ${usages.length === 1 ? 'bloque' : 'bloques'}.`;
+    if (!window.confirm(`¿Eliminar definitivamente «${name.value || filename.textContent}»?\n\n${scope}`)) return;
+    remove.disabled = true;
+    const result = await api.deleteMedia(hash);
+    if ('error' in result) {
+      remove.disabled = false;
+      remove.textContent = result.error;
+      return;
+    }
+    dialog.close();
+    window.location.reload();
+  });
+  const replace = document.createElement('button');
+  replace.type = 'button';
+  replace.textContent = 'Reemplazar';
+  replace.addEventListener('click', () => replacement.click());
+  replacement.addEventListener('change', async () => {
+    const file = replacement.files?.[0];
+    if (file === undefined) return;
+    replace.disabled = true;
+    replace.textContent = 'Reemplazando…';
+    const result = await api.replaceMedia(hash, file);
+    if ('error' in result) {
+      replace.disabled = false;
+      replace.textContent = result.error;
+      replacement.value = '';
+      return;
+    }
+    dialog.close();
+    window.location.reload();
+  });
   const save = document.createElement('button');
   save.type = 'submit';
   save.textContent = 'Guardar';
-  actions.append(open, cancel, save);
-  form.append(head, preview, descriptionLabel, altLabel, actions);
-  form.addEventListener('submit', (event) => {
+  actions.append(open, remove, replace, cancel, save);
+  form.append(head, preview, nameLabel, descriptionLabel, altLabel, replacement, actions);
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
     save.disabled = true;
-    void api.describeMedia(hash, {
-      description: description.value,
-      alternativeText: alternativeText.value,
-    }).then((result) => {
-      if ('error' in result) {
+    const currentName = asset.originalName ?? asset.path.split('/').pop() ?? '';
+    if (name.value.trim() !== currentName) {
+      const renamed = await api.renameMedia(hash, name.value);
+      if ('error' in renamed) {
         save.disabled = false;
-        save.textContent = result.error;
+        save.textContent = renamed.error;
         return;
       }
-      asset.description = result.description;
-      asset.alternativeText = result.alternativeText;
-      dialog.close();
+      asset.path = renamed.path;
+      asset.originalName = renamed.originalName;
+      filename.textContent = renamed.originalName ?? renamed.path.split('/').pop() ?? 'Archivo';
+    }
+    const result = await api.describeMedia(hash, {
+      description: description.value,
+      alternativeText: alternativeText.value,
     });
+    if ('error' in result) {
+      save.disabled = false;
+      save.textContent = result.error;
+      return;
+    }
+    asset.description = result.description;
+    asset.alternativeText = result.alternativeText;
+    dialog.close();
+    if (name.value.trim() !== currentName) window.location.reload();
   });
   dialog.addEventListener('close', () => dialog.remove());
   dialog.append(form);

@@ -128,6 +128,10 @@ export interface AskOptions {
   maxTokens?: number;
   /** Identidad opaca devuelta por processingModels. */
   model?: string;
+  /** Creatividad explícita. Omitida conserva la lectura reproducible a temperatura cero. */
+  temperature?: number;
+  /** Semilla de muestreo para procesos que necesitan una nueva posibilidad. */
+  seed?: number;
 }
 
 export interface ModelFailure {
@@ -256,7 +260,8 @@ export async function ask(
         '-t', '4',
         '-c', '4096',
         '-n', String(options.maxTokens ?? 200),
-        '--temp', '0',
+        '--temp', String(options.temperature ?? 0),
+        ...(options.seed === undefined ? [] : ['--seed', String(options.seed)]),
         '-p', prompt,
       ],
       options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS,

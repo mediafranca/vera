@@ -266,7 +266,6 @@ describe('primer corte vertical de espacios compartidos', () => {
       'content-type': 'application/json', cookie: `vera_session=${session}`,
       referer: `${publicBase}/s/doctorado/p/Dentro`,
     };
-
     const health = await fetch(`${publicBase}/health`, { headers });
     assert.equal(health.status, 200);
     assert.equal((await health.json() as any).canEdit, true);
@@ -288,6 +287,132 @@ describe('primer corte vertical de espacios compartidos', () => {
     });
     assert.equal(escaped.status, 403);
     assert.equal(running.vera.graph.block(outsideBlock)?.content, 'Privado');
+  });
+
+  it('una editora crea una página al interior del espacio y conserva su autoría', async () => {
+    const seed = await write({ kind: 'create_page', title: 'Semilla del espacio de creación', visibility: 'private' });
+    await write({ kind: 'set_property', page: seed,
+      propertyKey: 'espacio', propertyValue: 'creacion' });
+    assert.equal((await call('/shared-spaces', 'POST', {
+      name: 'Creación', slug: 'creacion', selectorKey: 'espacio', selectorValue: 'creacion',
+    })).status, 201);
+    const issued = await call('/shared-spaces/creacion/invitations', 'POST', {
+      permissions: ['read', 'edit'],
+    });
+    const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
+      secret: issued.json['secret'], name: 'Creadora invitada',
+    });
+    const session = 'vera_session_creadora';
+    const now = Date.now();
+    running.vera.store.db.prepare(`INSERT INTO human_sessions
+      (id,participant_id,proof_digest,status,began_at,expires_at,last_seen_at)
+      VALUES (?,?,?,'active',?,?,?)`).run('session:creadora', redeemed.json['participant'],
+        digestOf(session), now, now + 60_000, now);
+    const headers = {
+      'content-type': 'application/json', cookie: `vera_session=${session}`,
+      referer: `${publicBase}/s/creacion/p/Semilla%20del%20espacio%20de%20creaci%C3%B3n`,
+    };
+    const pageId = 'page:creada-en-espacio';
+    const created = await fetch(`${publicBase}/operations`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ originId: 'shared:creadora:page', change: {
+        kind: 'create_page', stableId: pageId, title: 'Nacida en el espacio', visibility: 'private',
+      } }),
+    });
+    assert.equal(created.status, 201, await created.text());
+    const creation = running.vera.graph.operations().find((operation) =>
+      operation.subjectId === pageId && operation.submission.change.kind === 'create_page');
+    assert.equal(creation?.submission.submittedBy, redeemed.json['participant']);
+
+    const page = await fetch(`${publicBase}/pages/${encodeURIComponent(pageId)}`, { headers });
+    const pageText = await page.text();
+    assert.equal(page.status, 200, pageText);
+    const view = JSON.parse(pageText) as any;
+    assert.deepEqual(view.createdBy, {
+      participant: redeemed.json['participant'], name: 'Creadora invitada',
+    });
+
+    const continued = await fetch(`${publicBase}/operations`, {
+      method: 'POST', headers: { ...headers, referer: `${publicBase}/s/creacion/p/Nacida%20en%20el%20espacio` },
+      body: JSON.stringify({ originId: 'shared:creadora:block', change: {
+        kind: 'create_block', stableId: 'block:creado-en-espacio', page: pageId,
+        parent: null, position: 0, content: 'Escrito por la invitada',
+      } }),
+    });
+    assert.equal(continued.status, 201, await continued.text());
+    assert.equal(running.vera.graph.block('block:creado-en-espacio')?.content, 'Escrito por la invitada');
+
+    const administration = await call('/shared-spaces');
+    const space = (administration.json['spaces'] as any[]).find((one) => one.slug === 'creacion');
+    assert.deepEqual(space.effectivePages.find((one: any) => one.page === pageId).reasons,
+      ['inclusión explícita']);
+    assert.equal((await call('/shared-spaces/creacion', 'DELETE')).status, 200);
+  });
+
+  it('una participante conversa privadamente con el bibliotecario dentro del espacio', async () => {
+    assert.equal((await call('/agents', 'POST', {
+      id: 'participant:cotito', name: 'Cotito',
+    })).status, 201);
+    const inside = running.vera.graph.pageTitled('Dentro')!;
+    const outside = running.vera.graph.pageTitled('Fuera del permiso')!;
+    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', {
+      permissions: ['read'],
+    });
+    const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
+      secret: issued.json['secret'], name: 'Conversadora invitada',
+    });
+    const session = 'vera_session_conversadora';
+    const now = Date.now();
+    running.vera.store.db.prepare(`INSERT INTO human_sessions
+      (id,participant_id,proof_digest,status,began_at,expires_at,last_seen_at)
+      VALUES (?,?,?,'active',?,?,?)`).run('session:conversadora', redeemed.json['participant'],
+        digestOf(session), now, now + 60_000, now);
+    const headers = {
+      'content-type': 'application/json', cookie: `vera_session=${session}`,
+      referer: `${publicBase}/s/doctorado/p/Dentro`,
+    };
+    const health = await fetch(`${publicBase}/health`, { headers });
+    assert.equal((await health.json() as any).canAskLibrarian, true);
+
+    const asked = await fetch(`${publicBase}/librarian/requests`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ pageId: inside.id, text: 'Ayúdame a relacionar esta página.' }),
+    });
+    const askedText = await asked.text();
+    assert.equal(asked.status, 201, askedText);
+    const request = JSON.parse(askedText) as any;
+    assert.equal(request.askedBy, redeemed.json['participant']);
+
+    const ownerRequest = await call('/librarian/requests', 'POST', {
+      pageId: inside.id, text: 'Esta conversación es de Herbert.',
+    });
+    assert.equal(ownerRequest.status, 201, JSON.stringify(ownerRequest.json));
+    const listed = await fetch(
+      `${publicBase}/librarian/requests?page=${encodeURIComponent(inside.id)}`,
+      { headers },
+    );
+    const listedText = await listed.text();
+    assert.equal(listed.status, 200, listedText);
+    assert.deepEqual((JSON.parse(listedText) as any[]).map((one) => one.id), [request.id]);
+    assert.equal((await fetch(
+      `${publicBase}/librarian/requests/${encodeURIComponent(ownerRequest.json['id'])}`,
+      { headers },
+    )).status, 404);
+
+    const outsideRequest = await fetch(`${publicBase}/librarian/requests`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ pageId: outside.id, text: 'No debo alcanzar esta página.' }),
+    });
+    assert.equal(outsideRequest.status, 404);
+    const anonymous = await fetch(`${publicBase}/librarian/requests`, {
+      method: 'POST', headers: { 'content-type': 'application/json', referer: headers.referer },
+      body: JSON.stringify({ pageId: inside.id, text: 'No tengo invitación.' }),
+    });
+    assert.equal(anonymous.status, 405);
+    const anonymousHealth = await fetch(`${publicBase}/health`, {
+      headers: { referer: headers.referer },
+    });
+    assert.equal((await anonymousHealth.json() as any).canAskLibrarian, false);
   });
 
   it('contribute no equivale a edición directa', async () => {

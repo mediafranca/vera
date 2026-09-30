@@ -735,6 +735,65 @@ const addTransparentBlockTraceability: Migration = {
   },
 };
 
+/** 20 — índice de subcadenas para la búsqueda interactiva resumida por página. */
+const addInteractiveSearchIndexes: Migration = {
+  version: 20,
+  name: 'índices interactivos de búsqueda por subcadena',
+  apply(db) {
+    for (const [index, column, table] of [
+      ['pages_search', 'title', 'pages'],
+      ['blocks_search', 'content', 'blocks'],
+      ['property_values_search', 'value', 'property_assignments'],
+      ['glosses_search', 'content', 'block_glosses'],
+    ] as const) {
+      const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      // Algunas bases de prueba e instalaciones antiquísimas sólo contienen
+      // el registro mínimo. schema.sql completará esas tablas al abrirlas; la
+      // migración no debe inventar un índice contra una columna aún ausente.
+      if (!columns.some((one) => one.name === column)) continue;
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${index} USING fts5 (
+        ${column}, content = '${table}', content_rowid = 'rowid',
+        tokenize = 'trigram remove_diacritics 1'
+      )`);
+      db.exec(`INSERT INTO ${index} (${index}) VALUES ('rebuild')`);
+      db.exec(`CREATE TRIGGER IF NOT EXISTS ${index}_insert AFTER INSERT ON ${table} BEGIN
+        INSERT INTO ${index} (rowid, ${column}) VALUES (new.rowid, new.${column});
+      END`);
+      db.exec(`CREATE TRIGGER IF NOT EXISTS ${index}_delete AFTER DELETE ON ${table} BEGIN
+        INSERT INTO ${index} (${index}, rowid, ${column}) VALUES ('delete', old.rowid, old.${column});
+      END`);
+      db.exec(`CREATE TRIGGER IF NOT EXISTS ${index}_update AFTER UPDATE OF ${column} ON ${table} BEGIN
+        INSERT INTO ${index} (${index}, rowid, ${column}) VALUES ('delete', old.rowid, old.${column});
+        INSERT INTO ${index} (rowid, ${column}) VALUES (new.rowid, new.${column});
+      END`);
+    }
+  },
+};
+
+/**
+ * 21 — exposiciones compactas.
+ *
+ * El registro anterior repetía una fila por cada página o bloque entregado. Una
+ * búsqueda interactiva podía convertir una sola tecla en decenas de miles de
+ * filas y la auditoría terminaba pesando mucho más que la memoria que vigilaba.
+ * Conservamos una magnitud por llamada y retiramos el índice microscópico.
+ */
+const compactExposureLog: Migration = {
+  version: 21,
+  name: 'exposiciones compactas',
+  apply(db) {
+    const present = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type = 'table' AND name = 'exposures'",
+    ).get() as { present: number } | undefined;
+    if (present === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(exposures)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'delivered_count')) {
+      db.exec('ALTER TABLE exposures ADD COLUMN delivered_count INTEGER NOT NULL DEFAULT 0');
+    }
+    db.exec('DROP TABLE IF EXISTS exposed_subjects');
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -755,6 +814,8 @@ export const MIGRATIONS: readonly Migration[] = [
   addAgentConversations,
   addDendriticGraphView,
   addTransparentBlockTraceability,
+  addInteractiveSearchIndexes,
+  compactExposureLog,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

@@ -50,7 +50,7 @@ export const p5FrameDocument = `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; connect-src 'none'">
-<style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--font-body:system-ui,sans-serif}html,body{margin:0;min-height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}canvas{display:block;max-width:100%;height:auto!important}pre{white-space:pre-wrap;color:var(--accent,#a00);padding:1rem}</style>
+<style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--font-body:system-ui,sans-serif}html,body{margin:0;min-height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}canvas{display:block;max-width:100%;height:auto!important}html[data-presentation="true"],html[data-presentation="true"] body{width:100%;height:100%}html[data-presentation="true"] canvas{width:100%!important;height:auto!important;max-width:none;max-height:100%;object-fit:contain}pre{white-space:pre-wrap;color:var(--accent,#a00);padding:1rem}</style>
 <script src="/p5.min.js"></script></head><body><script>
 const veraFrame = 'vera-executable-frame';
 const report = () => parent.postMessage({ type: veraFrame, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) }, '*');
@@ -63,11 +63,18 @@ addEventListener('message', event => {
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.presentation = event.data.presentation === true ? 'true' : 'false';
   if (event.data.active === false) window.noLoop?.();
   else if (event.data.active === true) window.loop?.();
   report();
 });
+// p5 crea el canvas después de que el documento ya terminó de cargar. Observar
+// sólo la raíz no basta: con overflow:hidden su caja puede conservar las seis
+// líneas iniciales aunque el canvas ya desborde. La mutación descubre la
+// inserción y el ResizeObserver del body acompaña cambios posteriores.
 new ResizeObserver(report).observe(document.documentElement);
+new ResizeObserver(report).observe(document.body);
+new MutationObserver(report).observe(document.body, { childList: true, subtree: true });
 const source = decodeURIComponent(location.hash.slice(1));
 const fail = error => { document.body.innerHTML = '<pre></pre>'; document.querySelector('pre').textContent = String(error?.message ?? error) + '\\n\\n' + source; };
 addEventListener('error', event => fail(event.error ?? event.message));

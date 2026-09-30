@@ -1,0 +1,237 @@
+-- allium: 3
+-- argument-workbench.allium
+
+-- Scope: La página de preparación argumental donde una persona reúne páginas y
+--   bloques ya existentes, los dispone, los anota en contexto y escoge un
+--   recorrido antes de escribir un argumento
+-- Includes: Material canónico referido sin copiarlo, anotación y función
+--   locales a la mesa, disposición todavía no argumental, secuencia como
+--   esqueleto y edición de la fuente desde su ventana en la mesa
+-- Excludes:
+--   - La gramática y persistencia del recorrido terminado (ver trail.allium)
+--   - La captura desde el navegador antes de que el material entre al corpus
+--   - El vocabulario definitivo de funciones retóricas, todavía por decidir
+--   - La apariencia concreta, el tamaño y el gesto de cada control
+-- Dependencies: Page, Block, Graph y Participant los gobierna core.allium; el
+--   argumento como recorrido y sus conectivas, trail.allium
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Lo que se dispone en la mesa
+------------------------------------------------------------
+
+-- Una escala compacta de estados de la obra, inspirada por el ciclo escolástico
+-- sin convertir sus nueve operaciones en nueve casillas obligatorias. El estado
+-- es opcional porque la procedencia del material no puede declararlo por la
+-- persona. `argumento` queda fuera de esta enum: es el tipo publicable que
+-- alcanza la misma página, no otra fase preparatoria.
+enum PreparationMaturity {
+    context | structure | composition | validation
+}
+
+-- Una colocación no es una tercera clase de contenido. Es la presencia
+-- contextual de una página o un bloque que ya existe en el corpus. Puede decir
+-- para qué se trajo y qué observa aquí quien compone, sin escribir esa función
+-- sobre la fuente como si valiera en todos sus usos futuros.
+value WorkbenchSource {
+    page: core/Page?
+    block: core/Block?
+}
+
+entity ArgumentWorkbench {
+    page: core/Page
+    held_by: core/Participant
+    phase: PreparationMaturity?
+    placements: WorkbenchPlacement with workbench = this
+}
+
+entity WorkbenchPlacement {
+    workbench: ArgumentWorkbench
+    source: WorkbenchSource
+    position: Integer
+    contextual_note: String?
+    contextual_role: String?
+    sequence_ordinal: Integer?
+}
+
+------------------------------------------------------------
+-- Contrato de composición
+------------------------------------------------------------
+
+contract WorkbenchComposition {
+    choose_phase: (workbench: ArgumentWorkbench, phase: PreparationMaturity?) -> ArgumentWorkbench
+    finish_argument: (workbench: ArgumentWorkbench) -> core/Page
+    find_pages: (workbench: ArgumentWorkbench, query: String) -> List<core/Page>
+    inspect_blocks: (workbench: ArgumentWorkbench, page: core/Page) -> List<core/Block>
+    collect_page: (workbench: ArgumentWorkbench, page: core/Page) -> WorkbenchPlacement
+    collect_block: (workbench: ArgumentWorkbench, block: core/Block) -> WorkbenchPlacement
+    arrange: (placement: WorkbenchPlacement, position: Integer) -> WorkbenchPlacement
+    annotate: (placement: WorkbenchPlacement, note: String?, role: String?) -> WorkbenchPlacement
+    choose_sequence: (workbench: ArgumentWorkbench, placements: List<WorkbenchPlacement>) -> List<WorkbenchPlacement>
+    edit_source: (participant: core/Participant, placement: WorkbenchPlacement, content: String) -> core/Change
+
+    @invariant TheWorkbenchIsTheSamePageThatCanBecomeAnArgument
+        -- La preparación tiene página, título, enlace e historia propios, pero
+        -- pertenece al tipo canónico `preparación argumental`, distinto de
+        -- `argumento`. Al terminar no se crea otra página: esa misma identidad
+        -- cambia a `argumento`, conservando título, bloques, colocaciones e
+        -- historia. Reabrirla devuelve esa misma página a preparación.
+        -- «Mesa de trabajo» nombra la superficie donde se manipula, no un
+        -- segundo objeto que después haya que reconciliar.
+
+    @invariant ThePhaseIsDeclaredAtTheTop
+        -- La cabecera hace visible el grado de madurez escolástica declarado y
+        -- permite actualizarlo directamente. El estado no se esconde en un menú
+        -- de sistema: explicita hasta dónde llevó la persona el trabajo y puede
+        -- orientar las acciones que la mesa ofrece sin ejecutarlas por ella.
+
+    @invariant PreparationUsesACompactStateScale
+        -- La mesa ofrece Contexto, Estructura, Composición y Validación como
+        -- estados de madurez de la obra. Los verbos nombran acciones; estos
+        -- sustantivos dicen dónde está el trabajo. La reducción no elimina las
+        -- operaciones del ciclo escolástico: evita volverlas una aduana fina y
+        -- lineal que la persona deba completar casilla por casilla.
+
+    @invariant MaturityIsAnExplicitHumanDeclaration
+        -- Vera no deduce madurez por cantidad de fuentes, extensión, tiempo ni
+        -- actividad de agentes. La persona adelanta el estado paso a paso cuando
+        -- reconoce que la preparación alcanzó el grado siguiente.
+
+    @invariant ArgumentIsTheTerminalPublishableState
+        -- `argumento` no es otro grado de preparación ni un nombre anticipado
+        -- para la mesa. Es el estado final del flujo: una pieza articulada por la
+        -- que alguien responde y que puede presentarse a otros. Llegar a él hace
+        -- explícita la condición de publicable; no publica por sí solo. Final
+        -- nombra su suficiencia presente, no una clausura irreversible.
+
+    @invariant FinishingAndReopeningAreAtomic
+        -- Tipo y madurez cambian como un solo hecho. Al terminar, `tipo` pasa a
+        -- `argumento` y deja de sostener un grado preparatorio paralelo; al
+        -- reabrir, `tipo` vuelve a `preparación argumental` y el grado escogido
+        -- vuelve a ser visible. Ninguna lectura observa una mitad contradictoria.
+
+    @invariant MaturityCanMoveBackward
+        -- La persona puede volver desde cualquier grado a uno anterior, incluso
+        -- desde `argumento`. Nueva evidencia, una objeción o un contexto distinto
+        -- pueden reabrir lo que antes bastaba. Vera no exige una justificación ni
+        -- protege la escala como si avanzar fuera acumular puntos.
+
+    @invariant RevisionDoesNotEraseFormerMaturity
+        -- Retroceder cambia el estado actual y la historia conserva los estados
+        -- que la preparación ya había alcanzado, quién los declaró y cuándo. El
+        -- rigor consiste en poder reconstruir la revisión, no en fingir que la
+        -- conclusión nunca fue puesta a prueba ni que sigue intacta para siempre.
+
+    @invariant PublishableDoesNotMeanPublished
+        -- Terminar habilita el gesto de publicación, pero no cambia visibilidad,
+        -- dirección pública ni destinatarios. La decisión de exponer el argumento
+        -- sigue siendo un acto separado y explícito.
+
+    @invariant TheWorkbenchRefersAndDoesNotCopy
+        -- Lo reunido sigue siendo la misma página o el mismo bloque del corpus.
+        -- La mesa no crea una copia, una ficha intermedia ni una versión privada
+        -- que después haya que reconciliar con el original.
+
+    @invariant ContextBelongsToThePlacement
+        -- La nota y la función describen para qué sirve esta fuente en esta mesa.
+        -- No se escriben como metadatos globales de la página o del bloque: una
+        -- misma perla puede ser premisa aquí, objeción allá y ejemplo después.
+
+    @invariant CollectionDoesNotAssertAnOrder
+        -- Añadir material sólo lo deja disponible. La posición espacial puede
+        -- cambiar cuanto haga falta sin afirmar todavía que una cosa se sigue de
+        -- otra ni insertar el material en un recorrido argumental.
+
+    @invariant OrderingMakesASkeletonAndNotYetAnArgument
+        -- Escoger una secuencia produce el esqueleto caminante: un recorrido
+        -- propuesto por las fuentes. Todavía no finge tener la voz, las
+        -- conectivas ni la responsabilidad retórica de un argumento escrito.
+
+    @invariant AuthoredVoiceMakesTheArgument
+        -- El argumento aparece cuando alguien da carne al esqueleto: escribe las
+        -- transiciones, decide qué mostrar y en qué orden, y responde por ese
+        -- movimiento ante otros. Vera puede ayudar a ver el material, pero no
+        -- confunde ordenarlo con haber sostenido ya una posición.
+
+    @invariant APlacedSourceRemainsAlive
+        -- Editar una fuente desde la mesa edita su identidad canónica mediante
+        -- la vía ordinaria de operaciones y deja la misma historia que editarla
+        -- desde su página. La mesa no guarda una corrección paralela.
+
+    @invariant AWindowShowsThatItsContentComesFromElsewhere
+        -- Una fuente abierta en la mesa se distingue sobriamente del texto
+        -- propio de la mesa. El límite visual dice que se está mirando y quizá
+        -- editando otro lugar; no convierte la fuente en una tarjeta ajena ni en
+        -- una miniaplicación con otro editor.
+
+    @invariant PageCompletionRevealsTheOutlineBeforeCollecting
+        -- Buscar por nombre completa páginas del corpus y permite inspeccionar
+        -- su estructura antes de añadir nada. La página se reconoce como una
+        -- unidad y sus bloques como líneas ordenadas, próximas a la lectura que
+        -- D4 hace de una página; elegir no exige abandonar la mesa ni abrir una
+        -- cadena de diálogos.
+
+    @invariant OneGestureCanChooseThePageOrPreciseBlocks
+        -- Desde la misma aparición se puede tomar la página completa o recorrer
+        -- sus líneas y seleccionar uno o varios bloques. Puntero, foco y tacto
+        -- hacen visible qué línea se escogerá; el gesto no depende sólo de hover
+        -- ni obliga a copiar identificadores.
+
+    @invariant ATraceSeedsPreparationAndNotAnArgument
+        -- Promover un tramo del breadcrumb crea una página de preparación y
+        -- coloca en ella las páginas recorridas como fuentes canónicas. El gesto
+        -- no declara que ese material ya forme un argumento, no escribe las
+        -- conectivas y no lo lleva por sí solo al estado publicable.
+
+    @invariant TheBreadcrumbIsOneEntranceAmongSeveral
+        -- El rastro del mapa, la selección directa de páginas o bloques y la
+        -- futura captura desde Vera Clip desembocan en la misma clase de página.
+        -- Cambia el lugar donde se encuentran las perlas, no la naturaleza de la
+        -- preparación ni la identidad canónica del material recolectado.
+
+    @invariant SeedingDoesNotChooseMaturity
+        -- La procedencia del material no determina la fase inicial. Haber
+        -- recorrido, seleccionado o capturado fuentes aporta contexto para el
+        -- trabajo, pero sólo la persona declara en qué estado de maduración se
+        -- encuentra la preparación.
+
+    @invariant TheArrangedTraceEntersWhole
+        -- Al promover un tramo entra completo y en el orden visible que ya tiene
+        -- en el breadcrumb. La persona pudo quitar y arrastrar pasos allí antes
+        -- del gesto; Vera no abre una segunda selección ni le pide repetir esa
+        -- composición. Dentro de la preparación todo sigue siendo podable y
+        -- reordenable.
+
+    @invariant PreparationAndArgumentKeepTheSameMapTrace
+        -- Mientras es preparación y cuando llega a argumento, enfocar la página
+        -- proyecta todas sus perlas en el mapa y cose el trazo en su orden
+        -- vigente. La preparación no pierde el dibujo que venía del breadcrumb;
+        -- cambiar madurez tampoco crea otro recorrido ni otra geometría.
+
+    @invariant ABlockPearlTouchesItsCanonicalPage
+        -- Una perla puede referir una página completa o un bloque preciso. En el
+        -- mapa, el bloque hace aparecer la página canónica que lo contiene y
+        -- conserva además su identidad fina para volver a él. Esto es una
+        -- proyección de la disposición abierta, no una nueva arista global para
+        -- cada referencia de bloque del corpus.
+}
+
+invariant EveryPlacementNamesOneCanonicalSource {
+    for placement in WorkbenchPlacements:
+        (placement.source.page != null and placement.source.block = null) or
+        (placement.source.page = null and placement.source.block != null)
+}
+
+------------------------------------------------------------
+-- Preguntas que la conversación todavía no ha decidido
+------------------------------------------------------------
+
+open question "¿Cómo se explican Collectio, Lectio, Excerptio, Ordinatio, Collatio, Disputatio, Compositio, Probatio y Traditio dentro de los cuatro estados compactos sin fingir una correspondencia uno a uno?"
+open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
+open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"
+open question "Cuando se coloca un bloque, ¿la ventana muestra sólo ese bloque, su subárbol completo o una profundidad elegida en cada colocación?"
+open question "¿Cómo se avisa y reconcilia que otra persona o agente cambió la fuente mientras estaba abierta y editándose desde la mesa?"
+open question "¿Qué gesto convierte la secuencia escogida en el recorrido de trail.allium, y qué ocurre después con el material reunido que no entró en esa secuencia?"
+open question "¿Vera Clip siempre deposita primero una captura canónica en la bitácora y luego ofrece referirla desde la mesa activa, o la elección de mesa ocurre antes de entregar la captura?"
+open question "¿La historia debe conservar las disposiciones descartadas de la mesa, o basta con la secuencia finalmente escogida y la procedencia de sus fuentes?"

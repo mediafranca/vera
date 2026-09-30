@@ -553,7 +553,9 @@ export async function renderConnections(
       observedCell(
         cellIn(row, at++),
         reading(one.seen),
-        one.seen === null ? 'todavía no ha leído nada' : `${weigh(one.seen.volume)} en total`,
+        one.seen === null
+          ? 'todavía no ha leído nada'
+          : `${weigh(one.seen.volume)} en total · ${one.seen.deliveredCount} elementos de contexto`,
       );
     }
   }
@@ -581,7 +583,11 @@ export async function renderConnections(
       observedCell(cellIn(row, 0), shortClient(one.client), one.client ?? undefined);
       observedCell(cellIn(row, 1), one.name);
       observedCell(cellIn(row, 2), reading(one));
-      observedCell(cellIn(row, 3), weigh(one.volume));
+      observedCell(
+        cellIn(row, 3),
+        weigh(one.volume),
+        `${one.deliveredCount} elementos de contexto`,
+      );
     }
   }
 

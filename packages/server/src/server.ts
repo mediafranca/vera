@@ -6,6 +6,7 @@
 // pasar por ahí.
 
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
@@ -13,7 +14,7 @@ import { hostname, userInfo } from 'node:os';
 import {
   TESTIMONY_KEY,
   VeraGraph,
-  isTrail,
+  isArgumentWork,
   readTrail,
   type Trail,
   answersIn,
@@ -34,6 +35,7 @@ import {
   canonicalUrl,
   suggestedPathFor,
   titleKey,
+  calendarDay,
   writeQuery,
   STARTER_RELATIONS,
   CHANGE_KINDS as CORE_CHANGE_KINDS,
@@ -53,7 +55,6 @@ import {
   loadGraph,
   discardAudio,
   describeMedia,
-  deleteOrphanMedia,
   listedMedia,
   mediaByHash,
   mediaReferences,
@@ -74,6 +75,7 @@ import {
   setFold,
   setTranscript,
   setSpokenOrigin,
+  searchPageSummaries,
   spokenOriginsOnPage,
   workspaceOf,
   type Store,
@@ -82,7 +84,7 @@ import { composeBooklet, composePaper, toPdf } from './paper.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
-import { clientsSeen, exposuresOf, recordExposure, whoRead } from '@vera/store/exposures';
+import { clientsSeen, exposuresOf, recordExposure } from '@vera/store/exposures';
 import { parseDocument } from '@vera/importer/document';
 import {
   SCOPES,
@@ -120,6 +122,16 @@ import {
 } from './model.ts';
 import { relevantConcepts, type ConceptCandidate } from './ontology-context.ts';
 import { LOCAL_MODEL, LOCAL_MODEL_NAME, promptFor, readAnswer } from './answer.ts';
+import {
+  arrangePictos,
+  composePictos,
+  generatePictos,
+  jsonFromProcessBlock,
+  understandPictos,
+  validatePictosMeaning,
+  validatePictosPlan,
+} from './pictos-process.ts';
+import { runRemoteProcess, type ProcessConnection } from './remote-process.ts';
 import { formalizationOf, mentionsOf } from './mentions.ts';
 import { CLIENT_KEY, CONNECTIONS_KIND, connectionsPage } from './mcp-page.ts';
 import { mcpConnect } from './mcp-connect.ts';
@@ -269,6 +281,8 @@ export interface ServerOptions {
    */
   port?: number;
   librarianHook?: { url: string; token: string };
+  /** Conexiones gobernadas que una fuente /proceso puede nombrar sin ver su secreto. */
+  processConnections?: Record<string, ProcessConnection>;
   /**
    * Por dónde se alcanza esta Vera desde otro equipo, si alguien lo declaró.
    *
@@ -313,6 +327,8 @@ interface SubmitBatchBody {
   originId?: unknown;
   participant?: unknown;
   changes?: unknown;
+  /** Canal paralelo a cada cambio. Ausente conserva el lote antiguo: todo tecleado. */
+  channels?: unknown;
 }
 
 const MAX_BATCH_CHANGES = 1_000;
@@ -392,6 +408,55 @@ const EXCERPT = 140;
 function excerpt(content: string): string {
   const flat = content.replace(/\s+/g, ' ').trim();
   return flat.length <= EXCERPT ? flat : `${flat.slice(0, EXCERPT).trimEnd()}…`;
+}
+
+const regexEscape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** La grafía portable que escriben los bloques, sin perder el nombre humano. */
+function portableMediaPath(fileName: string): { path: string; name: string } | null {
+  const clean = fileName.trim().replace(/^.*[\\/]/, '').replace(/[^\p{L}\p{N}._ -]/gu, '_');
+  if (clean === '' || clean === '.' || clean === '..') return null;
+  return { path: `../assets/${clean}`, name: clean };
+}
+
+function mediaFamily(mediaType: string): 'image' | 'audio' | 'pdf' | null {
+  if (mediaType.startsWith('image/')) return 'image';
+  if (mediaType.startsWith('audio/')) return 'audio';
+  if (mediaType === 'application/pdf') return 'pdf';
+  return null;
+}
+
+/** Reescribe las dos grafías que Vera reconoce para una ruta con blancos. */
+function renameMediaPaths(content: string, paths: readonly string[], next: string): string {
+  let rewritten = content;
+  const destination = next.replace(/ /g, '%20');
+  for (const path of paths) {
+    rewritten = rewritten.split(path).join(destination);
+    rewritten = rewritten.split(path.replace(/ /g, '%20')).join(destination);
+  }
+  return rewritten;
+}
+
+/**
+ * Retira una incrustación, no sólo sus bytes.
+ *
+ * Primero quita las formas Markdown y HTML completas; al final limpia cualquier
+ * referencia desnuda que haya quedado. Así borrar desde el catálogo no deja un
+ * `![texto]()` roto en el bloque ni un enlace que apunta a ninguna parte.
+ */
+function removeMediaPaths(content: string, paths: readonly string[]): string {
+  let rewritten = content;
+  for (const path of paths) {
+    for (const spelling of new Set([path, path.replace(/ /g, '%20')])) {
+      const target = regexEscape(spelling);
+      rewritten = rewritten
+        .replace(new RegExp(`!?\\[[^\\]]*\\]\\(\\s*<?${target}>?(?:\\s+["'][^"']*["'])?\\s*\\)`, 'g'), '')
+        .replace(new RegExp(`<(?:img|source)\\b[^>]*(?:src|href)=["']${target}["'][^>]*>`, 'gi'), '')
+        .replace(new RegExp(`<(?:audio|video|iframe|a)\\b[^>]*(?:src|href)=["']${target}["'][^>]*>[\\s\\S]*?<\\/(?:audio|video|iframe|a)>`, 'gi'), '')
+        .split(spelling).join('');
+    }
+  }
+  return rewritten.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** Valida la forma del cuerpo antes de dejarlo entrar al dominio. */
@@ -804,6 +869,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     );
   };
 
+  /**
+   * Una declaración rectora (`special-kind`) no se retira nunca desde la
+   * interfaz. Una página heredada que sólo conserva el tipo humano puede salir
+   * de circulación, pero únicamente después de dos decisiones explícitas:
+   * declararla obsoleta y marcarla para borrar.
+   */
+  const isSpecialPageProtectedFromDeletion = (pageId: string): boolean => {
+    const folded = (value: string): string =>
+      value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
+    const properties = graph.propertiesOf(pageId);
+    if (properties.some((property) => property.key === SPECIAL_KIND)) return true;
+    if (!isSpecialPage(pageId)) return false;
+    const obsolete = properties.some(
+      (property) => folded(property.key) === 'estado' && folded(property.value) === 'obsoleta',
+    );
+    const marked = properties.some(
+      (property) => folded(property.key) === folded(propertyNames().discard_request),
+    );
+    return !(obsolete && marked);
+  };
+
   /*
    * Los bloques de una página especial que declaran algo.
    *
@@ -832,6 +918,31 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
   /** Cada propiedad de este corpus, con qué clase de campo es. */
   const declaredProperties = () => readPropertyDeclarations(declaredIn('properties'));
+
+  /**
+   * Qué se puede contestar a una propiedad en esta página.
+   *
+   * La declaración gobierna el orden y hace ofrecibles incluso palabras que
+   * todavía no se han usado. Lo observado conserva su frecuencia verdadera y
+   * aporta la cola que aún no fue curada. Separar ambas procedencias evita la
+   * vieja trampa de fingir usos para conseguir un selector.
+   */
+  const domainOf = (key: string): { value: string; uses: number; declared?: boolean }[] => {
+    const observed = graph.observedValuesOf(key);
+    const declaration = declaredProperties().find(
+      (one) => titleKey(one.name) === titleKey(key),
+    );
+    if (declaration === undefined || declaration.values.length === 0) return observed;
+
+    const used = new Map(observed.map((one) => [titleKey(one.value), one] as const));
+    const declared = declaration.values.map((value) => ({
+      value,
+      uses: used.get(titleKey(value))?.uses ?? 0,
+      declared: true,
+    }));
+    const named = new Set(declaration.values.map(titleKey));
+    return [...declared, ...observed.filter((one) => !named.has(titleKey(one.value)))];
+  };
 
   /** Cada clase de cosa, con qué propiedades la constituyen. */
   const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
@@ -972,7 +1083,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
    * página y el papel del que sale un PDF.
    */
   /**
-   * La página leída como recorrido, si dice serlo.
+   * La página leída como recorrido si prepara o ya sostiene un argumento.
    *
    * Nada de esto se guarda: los nodos son las referencias que el texto lleva, las
    * conectivas son lo que queda del texto al quitarlas y los cruces son los pares
@@ -984,7 +1095,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   const trailOf = (pageId: string): Trail | null => {
     if (isSpecialPage(pageId)) return null;
     const names = propertyNames();
-    if (!isTrail(graph.propertiesOf(pageId), names)) return null;
+    if (!isArgumentWork(graph.propertiesOf(pageId), names.kind)) return null;
     const intent = graph
       .propertiesOf(pageId)
       .find((one) => one.key.trim().toLowerCase() === 'propósito');
@@ -1011,6 +1122,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             ?.value ?? null,
       })),
       resolve: (title) => graph.pageTitled(title)?.id ?? null,
+      resolveBlock: (id) => {
+        const block = graph.block(id);
+        if (block === undefined) return null;
+        const page = graph.page(block.page);
+        return page === undefined ? null : { page: page.id, title: page.title };
+      },
       /*
        * Sin contar los enlaces que salen del propio recorrido. Un recorrido
        * enlaza a todas sus paradas —es lo que lo hace encontrable desde cada
@@ -1301,6 +1418,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       : new Set(graph.pages().filter((page) => pageBelongsToSharedSpace(graph, publicScopedSpace, page.id))
         .map((page) => page.id));
     const isPublicPage = (page: string): boolean => scopedPageIds.has(page);
+    const creatorOf = (page: string): { participant: string; name: string } | null => {
+      const creation = graph.operations().find((operation) =>
+        operation.subjectId === page && operation.submission.change.kind === 'create_page');
+      if (creation === undefined) return null;
+      const participant = creation.submission.submittedBy;
+      return { participant, name: graph.participant(participant)?.name ?? participant };
+    };
     if (publicAccess && pathSpace !== null) {
       // Retira la cookie de versiones anteriores; ya no gobierna el ámbito.
       response.setHeader('set-cookie', 'vera_public_space=; Path=/; Max-Age=0; SameSite=Lax');
@@ -1320,8 +1444,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       publicScopedSpace !== null && canEditScopedSpace;
     const publicSharedContribution = request.method === 'POST' && path === '/shared-proposals' &&
       publicScopedSpace !== null && canContributeScopedSpace;
+    const publicSharedConversation = publicScopedSpace !== null && scopedParticipant !== null &&
+      scopedGrant !== undefined && (
+        (request.method === 'POST' && path === '/librarian/requests') ||
+        (request.method === 'GET' && path === '/librarian/requests') ||
+        ((request.method === 'GET' || request.method === 'DELETE') &&
+          /^\/librarian\/requests\/[^/]+$/.test(path))
+      );
     if (publicAccess && request.method !== 'GET' && request.method !== 'HEAD' &&
-      !publicReadThroughBody && !publicAdmission && !publicSharedEdit && !publicSharedContribution) {
+      !publicReadThroughBody && !publicAdmission && !publicSharedEdit && !publicSharedContribution &&
+      !publicSharedConversation) {
       send(response, 405, { error: 'anybody sólo puede leer' });
       return;
     }
@@ -1338,6 +1470,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/pages' ||
         path === '/buscar' ||
         path === '/search' ||
+        path === '/search/pages' ||
         path === '/query' ||
         path === '/p5-frame.html' ||
         path === '/p5.min.js' ||
@@ -1351,6 +1484,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         publicAdmission ||
         publicSharedEdit ||
         publicSharedContribution ||
+        publicSharedConversation ||
         publicSharedPath ||
         (publicScopedSpace !== null && path.startsWith('/p/')) ||
         canonicalPublication !== undefined ||
@@ -1387,6 +1521,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        * otra cosa y va con la identidad, no con la exposición.
        */
       send(response, 401, { error: who.detail });
+      return;
+    }
+    const conversationalHuman = publicAccess && publicSharedConversation
+      ? scopedParticipant
+      : who.participant;
+
+    // Una credencial de captura es una ranura, no una llave de lectura. Puede
+    // depositar exactamente en /captures y no abre ninguna otra superficie.
+    const presentedCredential = who.credential === null ? null : credentialById(store, who.credential);
+    if (
+      presentedCredential?.scopes.includes('capture') === true &&
+      !presentedCredential.scopes.includes('read') &&
+      !(request.method === 'POST' && path === '/captures')
+    ) {
+      send(response, 403, { error: 'esta credencial sólo autoriza capturas' });
       return;
     }
 
@@ -1436,25 +1585,193 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       response.end(body);
     };
 
+    /**
+     * Cambia referencias de archivos y texto del grafo en una sola transacción.
+     *
+     * Renombrar y eliminar pueden tocar varios bloques. Se ensayan contra una
+     * réplica y sólo después se persisten junto con el catálogo: o cambian ambos
+     * lados, o no cambia ninguno.
+     */
+    const commitMediaChange = (
+      permission: 'write' | 'discard',
+      changes: readonly { block: string; content: string }[],
+      mutateCatalogue: () => void,
+    ): { ok: true; operations: number } | { ok: false; status: number; error: string } => {
+      const credential = who.credential === null ? null : credentialById(store, who.credential);
+      if (who.credential !== null && credential === null) {
+        return { ok: false, status: 401, error: 'la credencial ya no está disponible' };
+      }
+      if (credential !== null) {
+        const refusal = scopeRefusal(credential, permission === 'discard' ? 'remove_block' : 'edit_block');
+        if (refusal !== null) return { ok: false, status: 403, error: refusal };
+      }
+
+      const trial = graph.replayFromLog();
+      const applied: Operation[] = [];
+      const channel: ContributionChannel =
+        trial.participant(who.participant)?.kind === 'agent' ? 'agent_generation' : 'typed_text';
+      const fence = credential === null ? null : confinementOf(store, credential.id);
+      const origin = `media:${randomUUID()}`;
+      for (const [at, change] of changes.entries()) {
+        const proposal: Change = { kind: 'edit_block', block: change.block, content: change.content };
+        if (fence !== null) {
+          const refusal = fenceRefusal(
+            store,
+            fence,
+            who.participant,
+            proposal,
+            (block) => trial.block(block)?.page ?? null,
+          );
+          if (refusal !== null) return { ok: false, status: refusal.status, error: refusal.error };
+        }
+        const outcome = trial.submitOperation({
+          originId: `${origin}:${at}`,
+          participant: who.participant,
+          channel,
+          change: proposal,
+        });
+        if (outcome.status !== 'applied') {
+          return {
+            ok: false,
+            status: 422,
+            error: outcome.status === 'duplicate' ? 'la edición ya existe' : outcome.reason,
+          };
+        }
+        applied.push(outcome.operation);
+      }
+
+      store.db.exec('BEGIN');
+      try {
+        for (const operation of applied) recordOperation(store, trial, operation);
+        mutateCatalogue();
+        store.db.exec('COMMIT');
+        if (applied.length > 0) graph = trial;
+        return { ok: true, operations: applied.length };
+      } catch (error) {
+        store.db.exec('ROLLBACK');
+        return {
+          ok: false,
+          status: 500,
+          error: error instanceof Error ? error.message : 'no se pudo cambiar el archivo',
+        };
+      }
+    };
+
     const librarianAgent = 'participant:cotito' as ParticipantId;
     const canAnswerAsLibrarian = (): boolean => {
       if (who.participant !== librarianAgent || who.credential === null) return false;
       return credentialById(store, who.credential)?.scopes.includes('write') ?? false;
     };
-    const readSmallJson = async (): Promise<Record<string, unknown>> => {
+    const readSmallJson = async (maximum = 64 * 1024): Promise<Record<string, unknown>> => {
       const chunks: Buffer[] = [];
       let size = 0;
       for await (const chunk of request) {
         const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         size += bytes.length;
-        if (size > 64 * 1024) throw new Error('el cuerpo excede 64 KiB');
+        if (size > maximum) throw new Error(`el cuerpo excede ${maximum} bytes`);
         chunks.push(bytes);
       }
       return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
     };
 
+    /*
+     * Puerta estrecha de Vera Clip.
+     *
+     * La captura nace en la bitácora del día como un subárbol importado. El
+     * identificador del navegador gobierna tanto las operaciones como los ids
+     * estables: perder la respuesta y reenviar nunca duplica el depósito.
+     */
+    if (request.method === 'POST' && path === '/captures') {
+      if (presentedCredential !== null && !presentedCredential.scopes.includes('capture')) {
+        send(response, 403, { error: 'la credencial no tiene alcance capture' });
+        return;
+      }
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(2_100_000); }
+      catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
+
+      const kind = body.kind === 'selection' || body.kind === 'article' ? body.kind : null;
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      const content = typeof body.content === 'string' ? body.content.trim() : '';
+      const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
+      const capturedAt = typeof body.capturedAt === 'string' ? Date.parse(body.capturedAt) : Number.NaN;
+      if (kind === null || title === '' || content === '' || idempotencyKey === '' || !Number.isFinite(capturedAt)) {
+        send(response, 422, { error: 'la captura necesita kind, title, content, capturedAt e idempotencyKey válidos' });
+        return;
+      }
+      if (Buffer.byteLength(content, 'utf8') > 2_000_000) {
+        send(response, 413, { error: 'la captura supera 2 MB' });
+        return;
+      }
+      let parsedUrl: URL;
+      try { parsedUrl = new URL(url); }
+      catch { send(response, 422, { error: 'la captura necesita una URL válida' }); return; }
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        send(response, 422, { error: 'la captura sólo admite fuentes HTTP o HTTPS' });
+        return;
+      }
+
+      const fingerprint = hashBytes(Buffer.from(idempotencyKey, 'utf8'));
+      const origin = `capture:${fingerprint}`;
+      const prior = graph.operations().find((operation) => operation.originId === `${origin}:root`);
+      if (prior !== undefined) {
+        send(response, 200, { status: 'duplicate', page: pageTouchedBy(prior.submission.change, prior.subjectId, (block) => graph.block(block)?.page), block: prior.subjectId });
+        return;
+      }
+
+      const day = calendarDay(capturedAt);
+      const existingDay = graph.pageTitled(day);
+      const pageId = existingDay?.id ?? `page:day:${day}`;
+      const rootId = `block:capture:${fingerprint.slice(0, 32)}`;
+      const sourceId = `${rootId}:source`;
+      const contentId = `${rootId}:content`;
+      const changes: Array<{ originId: string; change: Change }> = [];
+      if (existingDay === undefined) {
+        changes.push({ originId: `${origin}:page`, change: { kind: 'create_page', stableId: pageId, title: day, visibility: 'private' } });
+      }
+      const position = existingDay === undefined ? 0 : graph.blocksOf(pageId).filter((block) => block.parent === null).length;
+      const safeTitle = title.replace(/\]/g, '\\]');
+      changes.push(
+        { originId: `${origin}:root`, change: { kind: 'create_block', stableId: rootId, page: pageId, parent: null, position, content: `[${safeTitle}](${parsedUrl.toString()})` } },
+        { originId: `${origin}:source`, change: { kind: 'create_block', stableId: sourceId, page: pageId, parent: rootId, position: 0, content: `Fuente: ${parsedUrl.toString()} · captura ${kind === 'selection' ? 'de selección' : 'de artículo'} · ${new Date(capturedAt).toISOString()}` } },
+        { originId: `${origin}:content`, change: { kind: 'create_block', stableId: contentId, page: pageId, parent: rootId, position: 1, content } },
+      );
+
+      const trial = graph.replayFromLog();
+      const applied: Operation[] = [];
+      const captureChannel: ContributionChannel = graph.participant(who.participant)?.kind === 'agent'
+        ? 'agent_generation'
+        : 'import';
+      for (const entry of changes) {
+        const outcome = trial.submitOperation({
+          originId: entry.originId,
+          participant: who.participant,
+          channel: captureChannel,
+          change: entry.change,
+        });
+        if (outcome.status !== 'applied') {
+          send(response, 422, { error: outcome.status === 'rejected' ? outcome.reason : 'la captura ya existe parcialmente' });
+          return;
+        }
+        applied.push(outcome.operation);
+      }
+      store.db.exec('BEGIN');
+      try {
+        for (const operation of applied) recordOperation(store, trial, operation);
+        store.db.exec('COMMIT');
+        graph = trial;
+      } catch (error) {
+        store.db.exec('ROLLBACK');
+        send(response, 500, { error: 'no se pudo depositar la captura', detail: error instanceof Error ? error.message : String(error) });
+        return;
+      }
+      send(response, 202, { status: 'accepted', page: pageId, block: rootId });
+      return;
+    }
+
     if (request.method === 'POST' && path === '/librarian/requests') {
-      if (graph.participant(who.participant)?.kind !== 'human') {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: 'sólo una persona puede solicitar al bibliotecario' });
         return;
       }
@@ -1471,6 +1788,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'la página o el bloque ya no existe' });
         return;
       }
+      if (publicAccess && !isPublicPage(page.id)) {
+        send(response, 404, { error: 'la página o el bloque ya no existe' });
+        return;
+      }
       const blocks = graph.blocksOf(page.id);
       const snapshot = JSON.stringify({
         page: {
@@ -1482,7 +1803,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         blocks: blocks.map((one) => ({ id: one.stableId, parent: one.parent, position: one.position, content: one.content })),
       });
       const created = createLibrarianRequest(store, {
-        askedBy: who.participant,
+        askedBy: conversationalHuman,
         agent: librarianAgent,
         modality: block === undefined ? 'page' : 'block',
         text,
@@ -1502,7 +1823,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 400, { error: 'falta una página válida' });
         return;
       }
-      deliver(librarianRequestsFor(store, pageId, block), {
+      if (publicAccess && !isPublicPage(pageId)) {
+        send(response, 404, { error: 'falta una página válida' });
+        return;
+      }
+      deliver(librarianRequestsFor(
+        store,
+        pageId,
+        block,
+        publicAccess ? (conversationalHuman ?? undefined) : undefined,
+      ), {
         surface: 'GET /librarian/requests', subject: pageId, delivered: [pageId, ...(block ? [block] : [])],
       });
       return;
@@ -1514,16 +1844,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const action = librarianMatch[2] ?? null;
       const current = librarianRequest(store, id);
       if (current === undefined) { send(response, 404, { error: 'la solicitud no existe' }); return; }
+      if (publicAccess && (current.sourcePageId === null || !isPublicPage(current.sourcePageId))) {
+        send(response, 404, { error: 'la solicitud no existe' }); return;
+      }
       if (request.method === 'GET' && action === null) {
-        if (who.participant !== current.askedBy && who.participant !== librarianAgent) {
-          send(response, 403, { error: 'la solicitud pertenece a otra conversación' }); return;
+        if (conversationalHuman !== current.askedBy && who.participant !== librarianAgent) {
+          send(response, publicAccess ? 404 : 403, {
+            error: publicAccess ? 'la solicitud no existe' : 'la solicitud pertenece a otra conversación',
+          }); return;
         }
         deliver(current, { surface: 'GET /librarian/requests/:id', subject: id, delivered: [id] });
         return;
       }
       if (request.method === 'DELETE' && action === null) {
-        if (who.participant !== current.askedBy) {
-          send(response, 403, { error: 'sólo quien hizo la solicitud puede eliminarla' }); return;
+        if (conversationalHuman !== current.askedBy) {
+          send(response, publicAccess ? 404 : 403, {
+            error: publicAccess ? 'la solicitud no existe' : 'sólo quien hizo la solicitud puede eliminarla',
+          }); return;
         }
         removeLibrarianRequest(store, id);
         send(response, 200, { status: 'removed', id });
@@ -1588,6 +1925,40 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 201, answered);
           return;
         }
+        /*
+         * Una respuesta sobre una página es escritura, no una tarjeta auxiliar.
+         *
+         * El bloque lleva una identidad derivada de la solicitud y una operación
+         * idempotente propia. Así un reintento puede terminar de cerrar la solicitud
+         * sin duplicar el texto, y el historial conserva mano y canal como en toda
+         * escritura del bibliotecario.
+         */
+        if (current.sourcePageId === null) {
+          send(response, 409, { error: 'la solicitud no conserva la página donde debe escribirse la respuesta' });
+          return;
+        }
+        const replyBlock = `block:librarian-reply:${current.id.slice('agent-request:'.length)}`;
+        const roots = graph.blocksOf(current.sourcePageId).filter((block) => block.parent === null);
+        const outcome = graph.submitOperation({
+          originId: `librarian:${current.id}:page-reply`,
+          participant: who.participant,
+          channel: 'agent_generation',
+          change: {
+            kind: 'create_block',
+            stableId: replyBlock,
+            page: current.sourcePageId,
+            parent: null,
+            position: roots.length,
+            content: text,
+          },
+        });
+        if (outcome.status === 'rejected') {
+          send(response, 422, { error: outcome.reason }); return;
+        }
+        if (outcome.status === 'applied') {
+          const failure = persist(outcome.operation);
+          if (failure !== null) { send(response, 500, { error: failure }); return; }
+        }
         const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
         send(response, 201, answered);
@@ -1629,9 +2000,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
+        if (
+          body.channels !== undefined
+          && (!Array.isArray(body.channels) || body.channels.length !== body.changes.length)
+        ) {
+          send(response, 400, { error: 'channels, if given, must match changes length' });
+          return;
+        }
 
         const inputs = body.changes.map((change, at) =>
-          readOperation({ originId: `${body.originId}:${at}`, participant: body.participant, change }));
+          readOperation({
+            originId: `${body.originId}:${at}`,
+            participant: body.participant,
+            change,
+            ...(Array.isArray(body.channels) ? { channel: body.channels[at] } : {}),
+          }));
         const malformed = inputs.find((input) => 'error' in input);
         if (malformed !== undefined && 'error' in malformed) {
           send(response, 400, malformed);
@@ -1642,7 +2025,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           graph.operations().find((operation) => operation.originId === input.originId));
         if (existing.every((operation) => operation !== undefined)) {
           const same = existing.every((operation, at) =>
-            JSON.stringify(operation?.submission.change) === JSON.stringify(submissions[at]?.change));
+            JSON.stringify(operation?.submission.change) === JSON.stringify(submissions[at]?.change)
+            && operation?.submission.channel === submissions[at]?.channel);
           if (!same) {
             send(response, 409, { status: 'rejected', reason: 'ese origen de lote ya nombra otros cambios' });
             return;
@@ -1759,7 +2143,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
         if (publicSharedEdit) {
           const touched = pageTouchedBy(input.change, null, (block) => graph.block(block)?.page);
-          if (touched === null || !scopedPageIds.has(touched)) {
+          if (input.change.kind !== 'create_page' && (touched === null || !scopedPageIds.has(touched))) {
             send(response, 403, {
               status: 'rejected',
               reason: 'el permiso de edición sólo alcanza páginas de este espacio compartido',
@@ -1803,7 +2187,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           (block) => graph.block(block)?.page,
         );
         if (protectedPage !== null && isSpecialPage(protectedPage)) {
-          if (input.change.kind === 'remove_page') {
+          if (
+            input.change.kind === 'remove_page' &&
+            isSpecialPageProtectedFromDeletion(protectedPage)
+          ) {
             send(response, 422, {
               status: 'rejected',
               reason: 'una página especial gobierna Vera y no se puede eliminar',
@@ -1848,9 +2235,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // transacción revierte sola, pero sin este intento la excepción subía
         // hasta el proceso y se llevaba el servidor por delante: una operación
         // que no se puede guardar tiene que devolver un error, no un reinicio.
+        const createsSharedPage = publicSharedEdit && publicScopedSpace !== null &&
+          scopedParticipant !== null && input.change.kind === 'create_page';
+        const sharedPageSavepoint = `shared_page_${outcome.operation.sequence}`;
+        if (createsSharedPage) store.db.exec(`SAVEPOINT ${sharedPageSavepoint}`);
         try {
           recordOperation(store, graph, outcome.operation);
+          if (createsSharedPage) {
+            includeManualPage(store, scopedParticipant, publicScopedSpace, outcome.subjectId);
+            store.db.exec(`RELEASE ${sharedPageSavepoint}`);
+          }
         } catch (error) {
+          if (createsSharedPage) {
+            store.db.exec(`ROLLBACK TO ${sharedPageSavepoint}`);
+            store.db.exec(`RELEASE ${sharedPageSavepoint}`);
+          }
           /*
            * La memoria vuelve a ser la del disco.
            *
@@ -2004,7 +2403,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             send(response, 409, { error: `la página ${page} ya no está marcada para borrar` });
             return;
           }
-          if (decision === 'delete' && isSpecialPage(page)) {
+          if (decision === 'delete' && isSpecialPageProtectedFromDeletion(page)) {
             send(response, 422, { error: `la página especial ${page} no se puede eliminar` });
             return;
           }
@@ -2825,6 +3224,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           leer: { scopes: ['read'], permission: 'leer', fenced: false },
           propio: { scopes: ['read', 'write'], permission: 'escribe en lo suyo', fenced: true },
           todo: { scopes: ['read', 'write', 'discard'], permission: 'todo', fenced: false },
+          capturar: { scopes: ['capture'], permission: 'depositar capturas', fenced: false },
         };
         const chosen = DEALS[deal];
         if (chosen === undefined) {
@@ -3347,6 +3747,126 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'POST' && /^\/media\/[^/]+\/rename$/.test(path)) {
+      const hash = path.split('/')[2] ?? '';
+      if (!HASH.test(hash)) return send(response, 400, { error: 'hash inválido' });
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: { name?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          return send(response, 400, { error: 'nombre inválido' });
+        }
+        if (typeof body.name !== 'string') return send(response, 400, { error: 'falta el nombre' });
+        const wanted = portableMediaPath(body.name);
+        if (wanted === null) return send(response, 400, { error: 'el nombre está vacío o no es válido' });
+        const held = media.filter((entry) => entry.hash === hash);
+        if (held.length === 0) return send(response, 404, { error: 'no existe ese archivo' });
+        if (held.some((entry) => entry.path.startsWith('recording/'))) {
+          return send(response, 409, { error: 'las grabaciones se nombran desde su bloque de voz' });
+        }
+        const occupied = media.find((entry) => entry.path === wanted.path && entry.hash !== hash);
+        if (occupied !== undefined) return send(response, 409, { error: 'ya existe un archivo con ese nombre' });
+
+        const paths = held.map((entry) => entry.path);
+        const changes = graph.pages().flatMap((page) =>
+          graph.blocksOf(page.id).flatMap((block) => {
+            const content = renameMediaPaths(block.content, paths, wanted.path);
+            return content === block.content ? [] : [{ block: block.stableId, content }];
+          }));
+        const committed = commitMediaChange('write', changes, () => {
+          store.db.prepare('DELETE FROM media_references WHERE graph_id = ? AND hash = ?').run(store.graphId, hash);
+          store.db.prepare('INSERT INTO media_references (graph_id, path, hash) VALUES (?, ?, ?)')
+            .run(store.graphId, wanted.path, hash);
+          store.db.prepare('UPDATE media SET original_name = ? WHERE hash = ?').run(wanted.name, hash);
+        });
+        if (!committed.ok) return send(response, committed.status, { error: committed.error });
+
+        const first = held[0];
+        for (let at = media.length - 1; at >= 0; at -= 1) if (media[at]?.hash === hash) media.splice(at, 1);
+        if (first !== undefined) media.push({ ...first, path: wanted.path });
+        const result = listedMedia(store).find((entry) => entry.hash === hash);
+        send(response, 200, result === undefined ? { error: 'no se pudo releer el archivo' } : { ...result, url: `/media/${hash}` });
+      });
+      return;
+    }
+
+    if (request.method === 'PUT' && /^\/media\/[^/]+$/.test(path)) {
+      const hash = path.slice('/media/'.length);
+      if (!HASH.test(hash)) return send(response, 400, { error: 'hash inválido' });
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let tooLarge = false;
+      request.on('data', (chunk: Buffer) => {
+        size += chunk.byteLength;
+        if (size > 50 * 1024 * 1024) tooLarge = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => {
+        if (tooLarge) return send(response, 413, { error: 'el archivo supera los 50 MB' });
+        if (objectsRoot === null) return send(response, 500, { error: 'esta instancia no tiene almacén de objetos' });
+        const previous = mediaByHash(store, hash);
+        const held = media.filter((entry) => entry.hash === hash);
+        if (previous === null || held.length === 0) return send(response, 404, { error: 'no existe ese archivo' });
+        if (held.some((entry) => entry.path.startsWith('recording/'))) {
+          return send(response, 409, { error: 'el audio de una grabación se administra desde su bloque de voz' });
+        }
+        const bytes = Buffer.concat(chunks);
+        if (bytes.byteLength === 0) return send(response, 400, { error: 'no llegó ningún archivo' });
+        const declared = String(request.headers['content-type'] ?? '').split(';')[0] ?? '';
+        const incomingName = decodeURIComponent(String(request.headers['x-filename'] ?? previous.originalName ?? 'archivo'));
+        const mediaType = sniffMediaType(bytes) ?? (declared && declared !== 'application/octet-stream' ? declared : mediaTypeFor(incomingName));
+        if (mediaFamily(mediaType) === null) return send(response, 415, { error: 'Vera admite imágenes, audios y PDF' });
+        if (mediaFamily(mediaType) !== mediaFamily(previous.mediaType)) {
+          return send(response, 409, { error: 'el reemplazo debe conservar el tipo general del archivo' });
+        }
+
+        const stored = putObject(objectsRoot, bytes);
+        let deleteOldObject = false;
+        const committed = commitMediaChange('write', [], () => {
+          for (const entry of held) {
+            recordMedia(store, {
+              path: entry.path,
+              hash: stored.hash,
+              mediaType,
+              byteSize: stored.byteSize,
+              at: Date.now(),
+              originalName: previous.originalName ?? entry.path.split('/').pop() ?? 'archivo',
+            });
+          }
+          describeMedia(store, stored.hash, {
+            description: previous.description,
+            alternativeText: previous.alternativeText,
+          });
+          const remaining = store.db.prepare('SELECT 1 FROM media_references WHERE hash = ? LIMIT 1').get(hash);
+          const recording = store.db.prepare('SELECT 1 FROM recordings WHERE audio_hash = ? LIMIT 1').get(hash);
+          if (hash !== stored.hash && remaining === undefined && recording === undefined) {
+            store.db.prepare('DELETE FROM media WHERE hash = ?').run(hash);
+            deleteOldObject = true;
+          }
+        });
+        if (!committed.ok) return send(response, committed.status, { error: committed.error });
+        if (deleteOldObject) {
+          const old = objectPath(objectsRoot, hash);
+          if (existsSync(old)) unlinkSync(old);
+        }
+        for (const entry of media) {
+          if (entry.hash !== hash) continue;
+          entry.hash = stored.hash;
+          entry.mediaType = mediaType;
+          entry.description = previous.description;
+          entry.alternativeText = previous.alternativeText;
+        }
+        const result = listedMedia(store).find((entry) => entry.hash === stored.hash);
+        send(response, 200, result === undefined
+          ? { error: 'no se pudo releer el reemplazo' }
+          : { ...result, url: `/media/${stored.hash}`, replaced: hash });
+      });
+      return;
+    }
+
     if (request.method === 'PATCH' && path.startsWith('/media/')) {
       const hash = path.slice('/media/'.length);
       const chunks: Buffer[] = [];
@@ -3381,21 +3901,36 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (request.method === 'DELETE' && path.startsWith('/media/')) {
       const hash = path.slice('/media/'.length);
       if (!HASH.test(hash)) return send(response, 400, { error: 'hash inválido' });
-      const usages = listedMedia(store).find((entry) => entry.hash === hash)?.usages;
-      if (usages === undefined) return send(response, 404, { error: 'no existe ese archivo' });
-      if (usages.length > 0) {
-        return send(response, 409, { error: 'el archivo todavía está enlazado desde bloques', usages });
+      const held = media.filter((entry) => entry.hash === hash);
+      if (held.length === 0) return send(response, 404, { error: 'no existe ese archivo' });
+      if (held.some((entry) => entry.path.startsWith('recording/'))) {
+        return send(response, 409, { error: 'el audio de una grabación se elimina desde su bloque de voz' });
       }
-      const removed = deleteOrphanMedia(store, hash);
-      if (!removed.deleted) return send(response, 409, { error: 'el archivo todavía pertenece a una grabación' });
-      if (removed.deleteObject && objectsRoot !== null) {
+      const paths = held.map((entry) => entry.path);
+      const changes = graph.pages().flatMap((page) =>
+        graph.blocksOf(page.id).flatMap((block) => {
+          const content = removeMediaPaths(block.content, paths);
+          return content === block.content ? [] : [{ block: block.stableId, content }];
+        }));
+      let deleteObject = false;
+      const committed = commitMediaChange('discard', changes, () => {
+        store.db.prepare('DELETE FROM media_references WHERE graph_id = ? AND hash = ?').run(store.graphId, hash);
+        const remaining = store.db.prepare('SELECT 1 FROM media_references WHERE hash = ? LIMIT 1').get(hash);
+        const recording = store.db.prepare('SELECT 1 FROM recordings WHERE audio_hash = ? LIMIT 1').get(hash);
+        if (remaining === undefined && recording === undefined) {
+          store.db.prepare('DELETE FROM media WHERE hash = ?').run(hash);
+          deleteObject = true;
+        }
+      });
+      if (!committed.ok) return send(response, committed.status, { error: committed.error });
+      if (deleteObject && objectsRoot !== null) {
         const file = objectPath(objectsRoot, hash);
         if (existsSync(file)) unlinkSync(file);
       }
       for (let at = media.length - 1; at >= 0; at -= 1) {
         if (media[at]?.hash === hash) media.splice(at, 1);
       }
-      send(response, 200, { deleted: true });
+      send(response, 200, { deleted: true, detached: changes.length });
       return;
     }
 
@@ -3710,6 +4245,180 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // credenciales remotas no atraviesan esta frontera.
     if (request.method === 'GET' && path === '/processing/models') {
       send(response, 200, { models: await processingModels() });
+      return;
+    }
+
+    /*
+     * PICTOS se deja ver como tres transformaciones encadenables. Cada una
+     * recibe el bloque aceptado anterior; ninguna es una estación escondida de
+     * la siguiente.
+     */
+    if (request.method === 'POST' && path === '/processes/pictos/understand') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(16 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const input = typeof body['input'] === 'string' ? body['input'].trim() : '';
+      const model = typeof body['model'] === 'string' ? body['model'] : undefined;
+      if (input === '' || input.length > 1_200) {
+        send(response, 422, { error: 'Comprender necesita una frase de hasta 1.200 caracteres' });
+        return;
+      }
+      const made = await understandPictos(input, { ...(model === undefined ? {} : { model }) });
+      send(response, 'error' in made ? 503 : 200, made);
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/processes/pictos/arrange') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(16 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const meaning = validatePictosMeaning(jsonFromProcessBlock(
+        typeof body['input'] === 'string' ? body['input'] : '',
+      ));
+      const model = typeof body['model'] === 'string' ? body['model'] : undefined;
+      if (meaning === null) {
+        send(response, 422, { error: 'Componer necesita la salida JSON aceptada de Comprender' });
+        return;
+      }
+      const made = await arrangePictos(meaning, { ...(model === undefined ? {} : { model }) });
+      send(response, 'error' in made ? 503 : 200, made);
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/processes/pictos/produce') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(16 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const plan = validatePictosPlan(jsonFromProcessBlock(
+        typeof body['input'] === 'string' ? body['input'] : '',
+      ));
+      if (plan === null) {
+        send(response, 422, { error: 'Producir necesita la salida JSON aceptada de Componer' });
+        return;
+      }
+      const made = composePictos(plan);
+      send(response, 200, { content: made.content, plan: made.plan, svg: made.svg });
+      return;
+    }
+
+    /*
+     * Primer proceso generativo visible: el modelo propone sólo un plan
+     * pictográfico acotado. El servidor valida el vocabulario y compone el SVG;
+     * ningún texto del modelo se ejecuta ni escribe por sí mismo en el grafo.
+     */
+    if (request.method === 'POST' && path === '/processes/pictos/generate') {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      let refused = false;
+      request.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 16 * 1024) refused = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => {
+        if (refused) {
+          send(response, 413, { error: 'la entrada del proceso es demasiado grande' });
+          return;
+        }
+        let body: { input?: unknown; model?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const input = typeof body.input === 'string' ? body.input.trim() : '';
+        const model = typeof body.model === 'string' && body.model !== '' ? body.model : undefined;
+        if (input === '') {
+          send(response, 422, { error: 'una frase vacía no puede volverse pictograma' });
+          return;
+        }
+        if (input.length > 1_200) {
+          send(response, 422, { error: 'el ejemplo admite frases de hasta 1.200 caracteres' });
+          return;
+        }
+        void generatePictos(input, { ...(model === undefined ? {} : { model }) }).then((made) => {
+          if ('error' in made) {
+            send(response, 503, made);
+            return;
+          }
+          send(response, 200, {
+            content: made.content,
+            plan: made.plan,
+            svg: made.svg,
+          });
+        }).catch((error: unknown) => {
+          send(response, 500, {
+            error: error instanceof Error ? error.message : 'el proceso generativo falló',
+          });
+        });
+      });
+      return;
+    }
+
+    /*
+     * La persona puede corregir la lectura propuesta sin escribir JSON ni
+     * volver a invocar al modelo. Se valida el mismo contrato y Vera recompone
+     * el SVG; el navegador nunca entrega código ejecutable como plan.
+     */
+    if (request.method === 'POST' && path === '/processes/pictos/compose') {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      let refused = false;
+      request.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 16 * 1024) refused = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => {
+        if (refused) {
+          send(response, 413, { error: 'el plan pictográfico es demasiado grande' });
+          return;
+        }
+        let body: { plan?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const plan = validatePictosPlan(body.plan);
+        if (plan === null) {
+          send(response, 422, { error: 'el ajuste no forma un plan pictográfico válido' });
+          return;
+        }
+        const made = composePictos(plan);
+        send(response, 200, { content: made.content, plan: made.plan, svg: made.svg });
+      });
+      return;
+    }
+
+    /*
+     * Ejecutor declarativo común. El bloque proporciona ruta, cuerpo y lectura
+     * de respuesta; la instalación resuelve el nombre de conexión a un único
+     * host y una credencial que jamás atraviesa esta frontera.
+     */
+    if (request.method === 'POST' && path === '/processes/http-json') {
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(256 * 1024); }
+      catch { send(response, 400, { error: 'the body must be small JSON' }); return; }
+      const connectionName = typeof body['connection'] === 'string' ? body['connection'] : '';
+      const connection = options.processConnections?.[connectionName];
+      if (connection === undefined) {
+        send(response, 422, { error: `conexión de proceso no disponible: ${connectionName || 'sin nombre'}` });
+        return;
+      }
+      const remotePath = typeof body['path'] === 'string' ? body['path'] : '';
+      if (body['method'] !== 'POST' || body['body'] === undefined) {
+        send(response, 422, { error: 'la declaración remota necesita método POST y cuerpo JSON' });
+        return;
+      }
+      const made = await runRemoteProcess(connection, {
+        path: remotePath,
+        method: 'POST',
+        body: body['body'],
+      });
+      send(response, 'error' in made ? 503 : 200, made);
       return;
     }
 
@@ -5271,6 +5980,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           access: publicAccess ? 'anybody' : 'owner',
           canEdit: publicAccess ? canEditScopedSpace : true,
           canContribute: publicAccess ? canContributeScopedSpace : false,
+          canAskLibrarian: publicAccess
+            ? publicScopedSpace !== null && scopedParticipant !== null && scopedGrant !== undefined
+            : true,
           canViewOwner: !publicOrigin,
           entryPoint: publicAccess && siteEntry !== null && isPublicPage(siteEntry) ? siteEntry : null,
           transparentBlockTraceability: publicAccess && publicScopedSpace === null
@@ -5583,6 +6295,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             visibility: page.visibility,
             publication: publicationView(page.id),
             createdAt: page.createdAt,
+            createdBy: creatorOf(page.id),
             originCreatedAt: page.originCreatedAt,
             lastEditedAt: graph.lastEditedAt(page.id),
             properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
@@ -5705,19 +6418,19 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           visibility: page.visibility,
           publication: publicationView(page.id),
           createdAt: page.createdAt,
+          createdBy: creatorOf(page.id),
           originCreatedAt: page.originCreatedAt,
           lastEditedAt: graph.lastEditedAt(page.id),
           properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
-          // Lo que el corpus ya contesta a cada una de estas claves. Es el
-          // vocabulario observado, no uno declarado: mientras no haya ontología
-          // es lo único que hay, y cuando la haya seguirá siendo la evidencia
-          // desde la que se propone. Sólo viajan las claves de esta página.
+          // Lo que puede contestarse a cada una de estas claves. El vocabulario
+          // declarado gobierna el control; lo observado conserva la evidencia
+          // de uso y la cola aún no curada. Sólo viajan las claves de esta página.
           domains: publicAccess
             ? {}
             : Object.fromEntries(
                 [...new Set(graph.propertiesOf(page.id).map((p) => p.key))].map((key) => [
                   key,
-                  graph.observedValuesOf(key),
+                  domainOf(key),
                 ]),
               ),
           blocks: graph
@@ -6054,6 +6767,31 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
 
+      if (path === '/search/pages') {
+        const asked = url.searchParams.get('q') ?? '';
+        let hits;
+        if (asked.trim().length < 3) {
+          const outcome = graph.search({ text: asked, participant: publicAccess ? owner.id : participant });
+          const grouped = new Map<string, typeof outcome.hits[number] & { matches: number }>();
+          for (const hit of outcome.hits) {
+            if (hit.field === 'page_title') continue;
+            const previous = grouped.get(hit.page);
+            if (previous === undefined) grouped.set(hit.page, { ...hit, matches: 1 });
+            else previous.matches += 1;
+          }
+          hits = [...grouped.values()];
+        } else {
+          hits = searchPageSummaries(store, asked);
+        }
+        const visible = publicAccess ? hits.filter((hit) => isPublicPage(hit.page)) : hits;
+        deliver(visible, {
+          surface: 'GET /search/pages',
+          subject: asked,
+          delivered: visible.map((hit) => hit.page),
+        });
+        return;
+      }
+
       if (path === '/glosses') {
         const asked = url.searchParams.get('q') ?? '';
         const matches = graph
@@ -6127,6 +6865,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 return new Set(distances.keys());
               })()
             : new Set(allowed);
+          // Una preparación/argumento puede llevar perlas de bloque. Esas citas
+          // no son aristas globales, pero al enfocar la obra su página canónica
+          // sí pertenece al hilo y tiene que estar disponible para dibujarlo.
+          for (const stop of trailOf(centred.id)?.route ?? []) {
+            if (stop.page !== null && allowed.has(stop.page)) shown.add(stop.page);
+          }
           const links: { source: string; target: string }[] = [];
           for (const source of shown) {
             for (const target of neighbours.get(source) ?? []) {
@@ -6152,14 +6896,29 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
+        const centred = graph.page(centre) ?? graph.pageTitled(centre);
+        const focusedTrail = centred === undefined ? null : trailOf(centred.id);
         const hood = graph.neighbourhood({ centre, depth, participant });
+        const heldPages = new Set(hood.nodes.map((node) => node.page));
+        const threadPages = new Set(
+          (focusedTrail?.route ?? []).flatMap((stop) => stop.page === null ? [] : [stop.page]),
+        );
+        const extraThreadNodes = [...threadPages]
+          .filter((page) => !heldPages.has(page))
+          .map((page) => ({
+            page,
+            distance: 1,
+            degree: 0,
+            blockCount: graph.blocksOf(page).length,
+          }));
+        const mappedNodes = [...hood.nodes, ...extraThreadNodes];
         // El vecindario entrega títulos y aristas de páginas que nadie pidió por
         // su nombre: pedir profundidad 4 desde una página es llevarse el mapa.
         note(
           'GET /graph/:centre',
           `${centre} · profundidad ${depth}`,
           0,
-          hood.nodes.map((node) => node.page),
+          mappedNodes.map((node) => node.page),
         );
         /*
          * El mapa no es una descarga encubierta de 145 páginas.
@@ -6216,9 +6975,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const neededBlocks = new Set(
           referenceLinks.flatMap((link) => link.block === null ? [] : [link.block]),
         );
+        for (const stop of focusedTrail?.route ?? []) {
+          if (stop.targetBlock !== undefined) neededBlocks.add(stop.targetBlock);
+        }
         // La forma que ya consumen renderGraph, renderGraph3D y D4.
         send(response, 200, {
-          nodes: hood.nodes.map((node) => ({
+          nodes: mappedNodes.map((node) => ({
             id: node.page,
             name: graph.page(node.page)?.title ?? node.page,
             central: node.distance === 0,
@@ -6302,25 +7064,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        * El registro de exposición, para poder mirarlo.
        *
        * Un registro que no se puede leer no vigila nada. Dos preguntas: qué se
-       * ha llevado alguien —`?participant=`— y quién se ha llevado esto
-       * —`?subject=`—, que es la que uno se hace al encontrar una página que no
-       * debería haber salido de casa.
+       * ha llevado alguien —`?participant=`— y cuánto contexto recibió. Las
+       * identidades de cada bloque no se duplican aquí: esa materialización
+       * crecía mucho más rápido que el corpus que pretendía vigilar.
        *
        * Mirar el registro no se anota a sí mismo: haría crecer el registro cada
        * vez que se abre y el registro dejaría de ser sobre el corpus.
        */
       if (path === '/exposures') {
-        const subject = url.searchParams.get('subject');
         const who = url.searchParams.get('participant');
         const most = Number(url.searchParams.get('most') ?? '100');
-        const found =
-          subject !== null
-            ? whoRead(store, subject, most)
-            : exposuresOf(store, {
-                participant: who ?? undefined,
-                since: Number(url.searchParams.get('since') ?? '0'),
-                most,
-              });
+        const found = exposuresOf(store, {
+          participant: who ?? undefined,
+          since: Number(url.searchParams.get('since') ?? '0'),
+          most,
+        });
         send(response, 200, {
           count: found.length,
           exposures: found.map((one) => ({

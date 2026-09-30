@@ -35,7 +35,7 @@ git remote add upstream git@github.com:mediafranca/vera.git
 `upstream` te deja traer cambios de aquí sin perder los tuyos:
 
 ```sh
-git fetch upstream && git merge upstream/v0-implementacion
+git fetch upstream && git merge upstream/dev
 ```
 
 ---

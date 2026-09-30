@@ -1,0 +1,237 @@
+-- allium: 3
+-- epistemic-provenance.allium
+
+-- Scope: El papel que una página cumple en el conocimiento de Vera, cómo puede
+--   cambiar y cómo el bibliotecario propone su revisión
+-- Includes: Un rol principal opcional por página, vocabulario cerrado,
+--   propuestas atribuidas, pivotes históricos y composición de páginas en
+--   argumentos de nivel superior sin reclasificar las fuentes
+-- Excludes:
+--   - La verdad de cada frase o bloque
+--   - Puntajes de confianza
+--   - La fuerza probatoria de una fuente en un caso particular
+--   - La autorización de acciones según su evidencia
+--   - Una migración retrospectiva de todo el corpus
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Vocabulario
+------------------------------------------------------------
+
+-- Para qué existe una página dentro del conocimiento. No dice qué clase de
+-- objeto es —eso lo dice la ontología semántica— ni si todo lo que contiene es
+-- verdadero. Una síntesis puede haberla escrito una persona y una fuente puede
+-- contener errores.
+enum EpistemicRole {
+    source | testimony | analysis | synthesis | question | claim
+}
+
+enum ProposalStatus { suggested | accepted | rejected }
+
+------------------------------------------------------------
+-- Propuestas
+------------------------------------------------------------
+
+-- El rol vigente no se duplica aquí: vive como una propiedad ordinaria de la
+-- página y cada cambio ya produce una revisión canónica en core. Esta entidad
+-- conserva sólo el juicio todavía no adoptado del bibliotecario.
+entity EpistemicRoleProposal {
+    graph: core/Graph
+    page: core/Page
+    proposed_role: EpistemicRole
+    rationale: String
+    proposed_by: core/Participant
+    status: ProposalStatus
+    decided_by: core/Participant?
+    decided_at: Timestamp?
+}
+
+invariant EveryProposalIsAttributedAndReasoned {
+    for proposal in EpistemicRoleProposals:
+        proposal.rationale != "" and
+        proposal.proposed_by != null and
+        proposal.page.graph = proposal.graph
+}
+
+------------------------------------------------------------
+-- Contrato
+------------------------------------------------------------
+
+contract PageEpistemicRole {
+    -- Lee la propiedad que el corpus declara con `papel:: epistemic_role`.
+    -- Nulo significa que la página todavía no fue clasificada; no constituye
+    -- una séptima clase encubierta.
+    current_role: (page: core/Page) -> EpistemicRole?
+
+    proposals: (page: core/Page) -> Set<EpistemicRoleProposal>
+
+    @invariant APageHasAtMostOneCurrentRole
+        -- Una página puede no tener rol, pero nunca sostener dos a la vez. La
+        -- singularidad proviene de la misma clave de propiedad: cambiar el rol
+        -- reemplaza el valor vigente y no agrega otra etiqueta.
+
+    @invariant AbsenceIsNotARole
+        -- Una página heredada sin clasificación no se interpreta como nota,
+        -- fuente ni mezcla. Queda simplemente sin clasificar.
+
+    @invariant RoleDescribesFunctionAndDoesNotCertifyTruth
+        -- El rol orienta la lectura del documento completo. No convierte cada
+        -- bloque en evidencia ni hace indiscutible una afirmación por llamarla
+        -- fuente, análisis o síntesis.
+
+    @invariant AProposalDoesNotClassify
+        -- La memoria vigilante del bibliotecario puede señalar que el papel de
+        -- una página cambió, pero la propuesta por sí sola no toca la página.
+
+    @invariant AChangePreservesItsPredecessor
+        -- Un pivote se escribe mediante la operación ordinaria de propiedad.
+        -- La revisión anterior permanece atribuida y fechada en la historia; no
+        -- se reescribe el pasado para hacer parecer que la página siempre tuvo
+        -- su papel actual.
+
+    @invariant ReclassificationDoesNotRewriteContent
+        -- Cambiar el rol modifica la orientación de lectura, no el título ni
+        -- los bloques de la página.
+
+    @invariant HigherOrderArgumentsDoNotRelabelTheirSources
+        -- Una página nueva puede citar fuentes, testimonios, análisis o
+        -- preguntas como ladrillos de un argumento superior. El rol del nuevo
+        -- argumento pertenece a la nueva página; las citadas conservan el suyo.
+
+    @invariant NoRetrospectiveClassificationIsRequired
+        -- Adoptar este contrato no crea trabajo obligatorio sobre las páginas
+        -- existentes. Se clasifica al crear, revisar o usar una página como
+        -- fundamento, no mediante una campaña masiva de etiquetado.
+}
+
+------------------------------------------------------------
+-- Reglas
+------------------------------------------------------------
+
+rule LibrarianProposesEpistemicRole {
+    when: ProposeEpistemicRole(librarian, page, role, rationale)
+
+    let membership = core/Membership{graph: page.graph, participant: librarian}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: librarian.kind = agent
+
+    ensures: EpistemicRoleProposal.created(
+        graph: page.graph,
+        page: page,
+        proposed_role: role,
+        rationale: rationale,
+        proposed_by: librarian,
+        status: suggested,
+        decided_by: null,
+        decided_at: null
+    )
+}
+
+rule HumanAcceptsEpistemicRoleProposal {
+    when: AcceptEpistemicRoleProposal(participant, proposal)
+
+    let membership = core/Membership{graph: proposal.graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: participant.kind = human
+    requires: proposal.status = suggested
+
+    ensures:
+        proposal.status = accepted
+        proposal.decided_by = participant
+        proposal.decided_at = now
+        core/ParticipantSubmits(
+            participant: participant,
+            graph: proposal.graph,
+            origin_id: "accept-epistemic-role" + proposal.page.id,
+            change: set_property(
+                proposal.page,
+                property_named_for(proposal.graph, "epistemic_role"),
+                written_value(proposal.proposed_role)
+            ),
+            channel: typed_text
+        )
+}
+
+rule HumanRejectsEpistemicRoleProposal {
+    when: RejectEpistemicRoleProposal(participant, proposal)
+
+    let membership = core/Membership{graph: proposal.graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: participant.kind = human
+    requires: proposal.status = suggested
+
+    ensures:
+        proposal.status = rejected
+        proposal.decided_by = participant
+        proposal.decided_at = now
+}
+
+-- Una persona también puede declarar o pivotear el rol sin que haya propuesta.
+-- Es una propiedad ordinaria, por lo que conserva la misma autoría, secuencia,
+-- reversibilidad e historia que cualquier otro cambio en Vera.
+rule HumanSetsEpistemicRole {
+    when: SetEpistemicRole(participant, page, role)
+
+    let membership = core/Membership{graph: page.graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: participant.kind = human
+
+    ensures: core/ParticipantSubmits(
+        participant: participant,
+        graph: page.graph,
+        origin_id: "set-epistemic-role" + page.id,
+        change: set_property(
+            page,
+            property_named_for(page.graph, "epistemic_role"),
+            written_value(role)
+        ),
+        channel: typed_text
+    )
+}
+
+------------------------------------------------------------
+-- Superficie
+------------------------------------------------------------
+
+actor EpistemicParticipant {
+    within: core/Graph
+    identified_by: core/Participant where core/Membership{
+        participant: this, graph: within
+    }.status = active
+}
+
+surface EpistemicCuration {
+    facing participant: EpistemicParticipant
+    context graph: core/Graph
+
+    exposes:
+        graph.pages
+        EpistemicRoleProposal where graph = graph
+
+    provides:
+        ProposeEpistemicRole(participant, page, role, rationale)
+            when participant.kind = agent and page.graph = graph
+        AcceptEpistemicRoleProposal(participant, proposal)
+            when participant.kind = human and proposal.graph = graph
+        RejectEpistemicRoleProposal(participant, proposal)
+            when participant.kind = human and proposal.graph = graph
+        SetEpistemicRole(participant, page, role)
+            when participant.kind = human and page.graph = graph
+
+    @guarantee OneRoleIsVisibleAtATime
+        -- La página enseña su rol vigente, no una acumulación de etiquetas ni
+        -- el historial entero como si siguiera rigiendo.
+
+    @guarantee HistoryRemainsInspectable
+        -- Desde el rol vigente se puede llegar a las revisiones que muestran
+        -- cuándo cambió, quién lo cambió y por qué canal.
+}

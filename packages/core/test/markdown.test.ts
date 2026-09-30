@@ -429,6 +429,7 @@ describe('renderMarkdown', () => {
       assert.match(live, /<iframe [^>]*sandbox="allow-scripts"/);
       assert.match(live, /srcdoc=/);
       assert.ok(!live.includes('allow-same-origin'));
+      assert.ok(!live.includes('scrolling="no"'));
       assert.match(live, /fuente HTML/);
 
       assert.ok(!renderMarkdown('<button>histórico</button>').includes('<iframe'));
@@ -444,6 +445,13 @@ describe('renderMarkdown', () => {
       assert.match(html, /createCanvas\(40, 40\)/);
     });
 
+    it('presta el alto disponible sólo al p5.js que pide windowHeight', () => {
+      const fluid = renderMarkdown('```p5js\ncreateCanvas(windowWidth, windowHeight)\n```');
+      const intrinsic = renderMarkdown('```p5js\ncreateCanvas(400, 400)\n```');
+      assert.match(fluid, /executable-window-height/);
+      assert.ok(!intrinsic.includes('executable-window-height'));
+    });
+
     it('presenta SVG explícito en un recinto aislado y conserva su fuente', () => {
       const source = '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>';
       const html = renderMarkdown(`\`\`\`svg\n${source}\n\`\`\``);
@@ -455,6 +463,14 @@ describe('renderMarkdown', () => {
       assert.ok(!html.includes("script-src 'unsafe-inline'"));
       assert.match(html, /fuente ilustración SVG/);
       assert.match(html, /&lt;svg viewBox=/);
+      assert.match(html, /scrolling="no"/);
+      assert.match(html, /aspect-ratio:10 \/ 10;height:auto/);
+      assert.match(html, /html,body\{overflow:hidden\}body&gt;svg\{width:100%\}/);
+    });
+
+    it('respeta la proporción rectangular declarada por el SVG', () => {
+      const html = renderMarkdown('```svg\n<svg viewBox="0 0 510 240"></svg>\n```');
+      assert.match(html, /aspect-ratio:510 \/ 240;height:auto/);
     });
 
     it('el SVG pegado fuera de su bloque explícito permanece inerte', () => {
@@ -588,10 +604,17 @@ describe('incrustaciones', () => {
    * Estas pruebas hablan de un corpus que ya registró a estos dos servidores;
    * sin registro no entra nadie, y de eso hablan las últimas de aquí abajo.
    */
-  const allowed = { embedHosts: ['eadpucv.github.io', 'ejemplo.cl'] };
+  const allowed = { embedHosts: [
+    'eadpucv.github.io',
+    'ejemplo.cl',
+    'youtube-nocookie.com',
+    'player.vimeo.com',
+    'w.soundcloud.com',
+    'platform.twitter.com',
+  ] };
 
   it('una URL de YouTube pegada sola usa el reproductor sin cookies', () => {
-    const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ');
+    const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ', allowed);
     assert.match(html, /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
     assert.match(html, /sandbox=/);
     assert.match(html, /referrerpolicy="strict-origin-when-cross-origin"/);
@@ -599,10 +622,118 @@ describe('incrustaciones', () => {
     assert.match(html, /data-youtube-source="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
   });
 
+  it('un clip de YouTube conserva la fuente y limita la reproducción', () => {
+    const source = 'https://youtu.be/dQw4w9WgXcQ\ndesde: 01:20\nhasta: 02:05';
+    const html = renderMarkdown(`\`\`\`clip\n${source}\n\`\`\``, allowed);
+    assert.match(html, /embed\/dQw4w9WgXcQ\?start=80&amp;end=125/);
+    assert.match(html, /clip 01:20–02:05/);
+    assert.match(html, /data-youtube-source="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
+    assert.match(html, /fuente clip/);
+  });
+
+  it('un clip incompleto o invertido permanece como fuente inerte', () => {
+    for (const interval of ['desde: 00:40\nhasta: 00:20', 'desde: ahora\nhasta: 00:20']) {
+      const html = renderMarkdown(`\`\`\`clip\nhttps://youtu.be/dQw4w9WgXcQ\n${interval}\n\`\`\``, allowed);
+      assert.ok(!html.includes('<iframe'));
+      assert.match(html, /language-clip/);
+    }
+  });
+
+  it('un mapa declara foco, vista, alcance, rotación y alto', () => {
+    const source = 'página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: sí\nalto: 720';
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.match(html, /class="embedded-map"/);
+    assert.match(html, /map-frame\.html#/);
+    assert.match(html, /--embedded-height:720px/);
+    assert.match(html, /mapa · VERA · 3D · alcance 2 · rotación sí/);
+    assert.match(html, /fuente mapa/);
+  });
+
+  it('respeta un alto positivo pequeño en la página ordinaria', () => {
+    const source = 'página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: sí\nalto: 320';
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.match(html, /class="embedded-map"/);
+    assert.match(html, /--embedded-height:320px/);
+    assert.match(html, /alto: 320/);
+  });
+
+  it('conserva una cámara 3D válida como parte editable de la incrustación', () => {
+    const camera = JSON.stringify({
+      kind: '3d', centre: { x: 1, y: -2, z: 3 }, distance: 240, azimuth: 0.4, elevation: -0.2,
+    });
+    const source = `página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: no\ncámara: ${camera}\nalto: 400`;
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.match(html, /class="embedded-map"/);
+    assert.match(decodeURIComponent(html), /"kind":"3d"/);
+    assert.match(html, /cámara:/);
+  });
+
+  it('deja como fuente una cámara que no corresponde a la vista', () => {
+    const source = 'página: [[VERA]]\nvista: 2D\nalcance: 2\nrotación: no\n' +
+      'cámara: {"kind":"3d","centre":{"x":0,"y":0,"z":0},"distance":10,"azimuth":0,"elevation":0}\n' +
+      'alto: 400';
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.ok(!html.includes('<iframe'));
+    assert.match(html, /language-mapa/);
+  });
+
+  it('un mapa rechaza alcance, rotación o alto incoherentes', () => {
+    for (const source of [
+      'página: [[VERA]]\nvista: 2D\nalcance: 4\nrotación: no\nalto: 640',
+      'página: [[VERA]]\nvista: 2D\nalcance: 2\nrotación: sí\nalto: 640',
+      'página: [[VERA]]\nvista: D4\nalcance: 2\nrotación: no\nalto: 0',
+    ]) {
+      const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+      assert.ok(!html.includes('<iframe'));
+      assert.match(html, /language-mapa/);
+    }
+  });
+
   it('reconoce watch, shorts y no incrusta una URL mezclada con prosa', () => {
-    assert.match(renderMarkdown('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), /youtube-nocookie/);
-    assert.match(renderMarkdown('https://youtube.com/shorts/dQw4w9WgXcQ'), /youtube-nocookie/);
-    assert.ok(!renderMarkdown('mira https://youtu.be/dQw4w9WgXcQ').includes('<iframe'));
+    assert.match(renderMarkdown('https://www.youtube.com/watch?v=dQw4w9WgXcQ', allowed), /youtube-nocookie/);
+    assert.match(renderMarkdown('https://youtube.com/shorts/dQw4w9WgXcQ', allowed), /youtube-nocookie/);
+    assert.ok(!renderMarkdown('mira https://youtu.be/dQw4w9WgXcQ', allowed).includes('<iframe'));
+  });
+
+  it('YouTube tampoco se incrusta sin autorización del corpus', () => {
+    const html = renderMarkdown('https://youtu.be/dQw4w9WgXcQ');
+    assert.ok(!html.includes('<iframe'));
+    assert.match(html, /href="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
+  });
+
+  it('incrusta videos de Vimeo desde su reproductor oficial', () => {
+    const html = renderMarkdown('https://vimeo.com/1226797047', allowed);
+    assert.match(html, /player\.vimeo\.com\/video\/1226797047/);
+    assert.match(html, /sandbox=/);
+  });
+
+  it('conserva el hash de un video no listado de Vimeo', () => {
+    const html = renderMarkdown('https://vimeo.com/1226797047/092e059678', allowed);
+    assert.match(html, /player\.vimeo\.com\/video\/1226797047\?h=092e059678/);
+  });
+
+  it('incrusta pistas y listas de SoundCloud mediante su widget', () => {
+    const source = 'https://soundcloud.com/vera/una-pista';
+    const html = renderMarkdown(source, allowed);
+    assert.match(html, /w\.soundcloud\.com\/player\/\?url=/);
+    assert.match(html, /https%3A%2F%2Fsoundcloud\.com%2Fvera%2Funa-pista/);
+  });
+
+  it('incrusta posts de X y Twitter por su identidad estable', () => {
+    const x = renderMarkdown('https://x.com/vera/status/1234567890123456789', allowed);
+    const twitter = renderMarkdown('https://twitter.com/vera/status/1234567890123456789', allowed);
+    assert.match(x, /platform\.twitter\.com\/embed\/Tweet\.html\?id=1234567890123456789/);
+    assert.match(twitter, /platform\.twitter\.com\/embed\/Tweet\.html\?id=1234567890123456789/);
+  });
+
+  it('ningún adaptador nuevo elude la autorización del corpus', () => {
+    for (const source of [
+      'https://vimeo.com/1226797047',
+      'https://soundcloud.com/vera/una-pista',
+      'https://x.com/vera/status/1234567890123456789',
+    ]) {
+      assert.ok(!renderMarkdown(source).includes('<iframe'));
+    }
   });
 
   it('un bloque que es una incrustación entera se presenta como tal', () => {

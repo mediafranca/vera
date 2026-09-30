@@ -116,6 +116,20 @@ export const MIN_DEPTH = 1;
  */
 export const MAX_ELEVATION = Math.PI / 2 - Math.PI / 180;
 
+/** Dos minutos por vuelta: movimiento perceptible sin convertir el mapa en carrusel. */
+export const AUTO_ROTATION_PERIOD_MS = 120_000;
+
+/**
+ * Avanza una órbita alrededor del eje vertical sin tocar encuadre ni inclinación.
+ */
+export function advanceAutoRotation(orbit: Orbit, elapsedMs: number): Orbit {
+  const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  return {
+    ...orbit,
+    azimuth: orbit.azimuth + (elapsed / AUTO_ROTATION_PERIOD_MS) * Math.PI * 2,
+  };
+}
+
 /** Deja la elevación dentro de lo que la cámara sabe representar. */
 export function clampElevation(elevation: number): number {
   if (!Number.isFinite(elevation)) return 0;

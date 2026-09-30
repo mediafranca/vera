@@ -105,6 +105,48 @@ describe('ontología rectora de relaciones', () => {
   });
 });
 
+describe('dominios declarados de propiedades', () => {
+  it('ofrece el vocabulario gobernado antes de que todas sus palabras tengan uso', async () => {
+    const ontology = await write({
+      kind: 'create_page',
+      stableId: 'page:test-properties-governing',
+      title: 'VERA: Propiedades',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: ontology, propertyKey: 'special-kind', propertyValue: 'properties' });
+    const declaration = await write({
+      kind: 'create_block',
+      stableId: 'block:test-epistemic-role-property',
+      page: ontology,
+      parent: null,
+      position: 0,
+      content: 'rol epistémico',
+    });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'campo', propertyValue: 'una de' });
+    await write({
+      kind: 'set_property',
+      block: declaration,
+      propertyKey: 'valores',
+      propertyValue: 'fuente, testimonio, análisis, síntesis, pregunta, afirmación',
+    });
+
+    const page = await write({ kind: 'create_page', title: 'Con un papel', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'rol epistémico', propertyValue: 'análisis' });
+
+    const detail = (await get(`/pages/${encodeURIComponent(page)}`)) as {
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+    };
+    assert.deepEqual(detail.domains['rol epistémico'], [
+      { value: 'fuente', uses: 0, declared: true },
+      { value: 'testimonio', uses: 0, declared: true },
+      { value: 'análisis', uses: 1, declared: true },
+      { value: 'síntesis', uses: 0, declared: true },
+      { value: 'pregunta', uses: 0, declared: true },
+      { value: 'afirmación', uses: 0, declared: true },
+    ]);
+  });
+});
+
 describe('modelos de procesamiento', () => {
   it('ofrece sólo identidades presentables y nunca rutas ni secretos', async () => {
     const result = await get('/processing/models') as {
@@ -269,6 +311,38 @@ describe('POST /operations/batch', () => {
     ]);
   });
 
+  it('conserva el canal propio de cada cambio del lote', async () => {
+    const result = await postBatch({
+      originId: 'batch:channels',
+      participant: OWNER,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-channels', title: 'Canales del lote', visibility: 'private' },
+        { kind: 'set_property', page: 'page:batch-channels', propertyKey: 'tipo', propertyValue: 'preparación argumental' },
+        { kind: 'create_block', stableId: 'block:batch-walked', page: 'page:batch-channels', parent: null, position: 0, content: '[[Amereida]]' },
+        { kind: 'set_property', block: 'block:batch-walked', propertyKey: 'cruzado', propertyValue: 'se llegó desde el mapa' },
+      ],
+      channels: ['typed_text', 'typed_text', 'typed_text', 'walked'],
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.json));
+    const activity = await get('/activity') as { activity: { subjectId: string; channel: string }[] };
+    const testimony = activity.activity.find((one) => one.subjectId === 'block:batch-walked');
+    assert.equal(testimony?.channel, 'walked');
+  });
+
+  it('rechaza canales desalineados sin aplicar el lote', async () => {
+    const result = await postBatch({
+      originId: 'batch:bad-channels',
+      participant: OWNER,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-bad-channels', title: 'No debe nacer por canales', visibility: 'private' },
+      ],
+      channels: [],
+    });
+    assert.equal(result.status, 400);
+    const pages = await get('/pages') as { id: string }[];
+    assert.equal(pages.some((page) => page.id === 'page:batch-bad-channels'), false);
+  });
+
   it('no aplica el prefijo cuando un cambio posterior falla', async () => {
     const result = await postBatch({
       originId: 'batch:rejected',
@@ -281,6 +355,44 @@ describe('POST /operations/batch', () => {
     assert.equal(result.status, 422);
     const pages = (await get('/pages')) as { title: string }[];
     assert.equal(pages.some((page) => page.title === 'No debe quedar'), false);
+  });
+});
+
+describe('POST /captures', () => {
+  it('deposita en la bitácora y un reintento no duplica el subárbol', async () => {
+    const capture = {
+      kind: 'selection',
+      title: 'Una fuente',
+      url: 'https://example.com/articulo',
+      content: 'Fragmento capturado',
+      capturedAt: '2026-09-16T12:00:00.000Z',
+      idempotencyKey: 'capture-server-test',
+    };
+    const sendCapture = async () => {
+      const response = await fetch(`${base}/captures`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(capture),
+      });
+      return { status: response.status, json: await response.json() as Record<string, unknown> };
+    };
+    const first = await sendCapture();
+    const second = await sendCapture();
+    assert.equal(first.status, 202, JSON.stringify(first.json));
+    assert.equal(second.status, 200, JSON.stringify(second.json));
+    assert.equal(second.json['status'], 'duplicate');
+    const page = await get(`/pages/${encodeURIComponent(String(first.json['page']))}`) as { blocks: { content: string }[] };
+    assert.equal(page.blocks.filter((block) => block.content === 'Fragmento capturado').length, 1);
+    assert.ok(page.blocks.some((block) => block.content.includes('https://example.com/articulo')));
+  });
+
+  it('rechaza una captura demasiado grande antes de escribir', async () => {
+    const response = await fetch(`${base}/captures`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'article', title: 'Grande', url: 'https://example.com',
+        content: 'x'.repeat(2_000_001), capturedAt: '2026-09-16T12:00:00Z', idempotencyKey: 'too-large',
+      }),
+    });
+    assert.equal(response.status, 413);
   });
 });
 
@@ -337,12 +449,13 @@ describe('GET /activity', () => {
 
     const mine = (await get(`/activity?participant=${encodeURIComponent(OWNER)}`)) as {
       participant: { id: string; name: string; kind: string } | null;
-      activity: { participant: string; block: string | null }[];
+      activity: { participant: string; participantKind: string | null; block: string | null }[];
       deletedPages: { participant: string }[];
     };
     assert.deepEqual(mine.participant, { id: OWNER, name: 'Dueña', kind: 'human' });
     assert.ok(mine.activity.length > 0);
     assert.ok(mine.activity.every((one) => one.participant === OWNER));
+    assert.ok(mine.activity.every((one) => one.participantKind === 'human'));
     assert.equal(mine.activity[0]?.block, child);
     assert.ok(mine.deletedPages.every((one) => one.participant === OWNER));
   });
@@ -400,6 +513,45 @@ describe('POST /mcp/discards', () => {
       properties: { key: string }[];
     };
     assert.equal(keptView.properties.some((one) => one.key === 'por borrar'), false);
+  });
+
+  it('permite retirar una página especial heredada sólo si está obsoleta y marcada', async () => {
+    const retired = await write({
+      kind: 'create_page',
+      title: `Página especial obsoleta ${Date.now()}`,
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: retired, propertyKey: 'tipo', propertyValue: 'página especial' });
+    await write({ kind: 'set_property', page: retired, propertyKey: 'estado', propertyValue: 'obsoleta' });
+    await write({ kind: 'set_property', page: retired, propertyKey: 'por borrar', propertyValue: 'sí' });
+
+    const response = await fetch(`${base}/mcp/discards`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decisions: [{ page: retired, decision: 'delete' }] }),
+    });
+    assert.equal(response.status, 200, await response.text());
+    const pages = (await get('/pages')) as { id: string }[];
+    assert.equal(pages.some((page) => page.id === retired), false);
+  });
+
+  it('no retira una página rectora aunque esté obsoleta y marcada', async () => {
+    const governing = await write({
+      kind: 'create_page',
+      title: `Página rectora marcada ${Date.now()}`,
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'special-kind', propertyValue: 'test' });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'tipo', propertyValue: 'página especial' });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'estado', propertyValue: 'obsoleta' });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'por borrar', propertyValue: 'sí' });
+
+    const response = await fetch(`${base}/mcp/discards`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decisions: [{ page: governing, decision: 'delete' }] }),
+    });
+    assert.equal(response.status, 422);
   });
 });
 
@@ -478,6 +630,19 @@ describe('lecturas', () => {
     const hits = (await get('/search?q=Buscable')) as { page: string; field: string }[];
     assert.ok(hits.length >= 1);
     assert.equal(hits[0]?.field, 'page_title');
+  });
+
+  it('resume la búsqueda interactiva en una evidencia por página', async () => {
+    const page = await write({ kind: 'create_page', title: 'Página resumida', visibility: 'private' });
+    await write({ kind: 'create_block', page, parent: null, position: 0, content: 'aguja indexada una' });
+    await write({ kind: 'create_block', page, parent: null, position: 1, content: 'aguja indexada dos' });
+
+    const hits = (await get('/search/pages?q=aguja')) as Array<{
+      page: string; excerpt: string; matches: number;
+    }>;
+    assert.equal(hits.filter((hit) => hit.page === page).length, 1);
+    assert.equal(hits.find((hit) => hit.page === page)?.matches, 2);
+    assert.match(hits.find((hit) => hit.page === page)?.excerpt ?? '', /aguja/);
   });
 
   it('escribe, entrega y busca una glosa por la vía canónica', async () => {
@@ -594,6 +759,51 @@ describe('lecturas', () => {
       assert.equal(typeof node.degree, 'number');
       assert.equal(typeof node.blockCount, 'number');
     }
+  });
+
+  it('mantiene el hilo de una preparación e incorpora la página de una perla de bloque', async () => {
+    const source = await write({
+      kind: 'create_page', title: 'Fuente precisa', visibility: 'private',
+    });
+    const sourceBlock = await write({
+      kind: 'create_block', page: source, parent: null, position: 0,
+      content: 'La perla precisa.',
+    });
+    const workbench = await write({
+      kind: 'create_page', title: 'Preparación cartografiable', visibility: 'private',
+    });
+    await write({
+      kind: 'set_property', page: workbench, propertyKey: 'tipo',
+      propertyValue: 'preparación argumental',
+    });
+    await write({
+      kind: 'create_block', page: workbench, parent: null, position: 0,
+      content: `Primero ((${sourceBlock}))`,
+    });
+
+    const detail = await get(`/pages/${encodeURIComponent(workbench)}`) as {
+      trail: { route: {
+        ordinal: number; block: string; title: string;
+        page: string | null; targetBlock?: string;
+      }[] } | null;
+    };
+    assert.notEqual(detail.trail, null);
+    const route = detail.trail?.route ?? [];
+    assert.deepEqual(route, [{
+      ordinal: 1,
+      block: route[0]?.block,
+      title: 'Fuente precisa',
+      page: source,
+      targetBlock: sourceBlock,
+    }]);
+
+    const data = await get(`/graph/${encodeURIComponent(workbench)}?depth=0`) as {
+      nodes: { id: string; lines: { block: string }[] }[];
+    };
+    assert.ok(data.nodes.some((node) => node.id === source));
+    assert.ok(data.nodes.find((node) => node.id === source)?.lines.some(
+      (line) => line.block === sourceBlock,
+    ));
   });
 
   it('entrega el log desde una secuencia', async () => {

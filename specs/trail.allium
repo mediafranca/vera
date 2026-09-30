@@ -496,7 +496,17 @@ entity Trail {
 -- de Bush entero y no hace falta ningún mecanismo para tenerlo: sale de que leer
 -- deje huella y de que la huella se pueda guardar.
 
--- Promover el rastro a argumento.
+-- DEUDA DE CONSOLIDACIÓN (2026-09-28): la conversación sobre preparación
+-- argumental decidió que este gesto debe crear una página de preparación
+-- sembrada con el tramo, no un `argumento` publicable. La regla se conserva aquí
+-- como descripción del comportamiento legado hasta consolidar conjuntamente
+-- trail.allium, workspace-interface.allium y argument-workbench.allium. No debe
+-- tomarse como fundamento para nuevas superficies. Ver
+-- ATraceSeedsPreparationAndNotAnArgument y TheArrangedTraceEntersWhole en
+-- argument-workbench.allium: se conserva el tramo completo, ya podado y
+-- ordenado en el mapa, pero cambia la clase y la madurez de la página que nace.
+--
+-- Promover el rastro a argumento (comportamiento legado pendiente de migración).
 --
 -- El mapa ya lleva el rastro: dónde ha estado un participante, acumulado solo, sin
 -- que nadie lo componga, y desde ahí podado y reordenado a mano si a alguien le
@@ -1154,16 +1164,22 @@ surface TrailOnTheMap {
         -- cuando alguien lo enfoque.
 
     @guarantee PromotionArrivesAsAnArgumentAndNotAsAQueue
+        -- DEUDA DE CONSOLIDACIÓN: esta garantía describe la llegada atómica del
+        -- flujo legado, pero su destino `argumento` fue superado por la página de
+        -- preparación. Al consolidar se conservará la atomicidad y cambiará la
+        -- entidad que nace; no se aceptará una preparación parcialmente sembrada.
+        --
         -- Promover un breadcrumb confirma en orden la página, `tipo=argumento`,
         -- sus paradas y sus testimonios antes de abrirla. La vista nunca se
         -- adelanta a esa secuencia mostrando una página nacida sin tipo o un
         -- argumento al que todavía le faltan nodos en el registro canónico.
 
     @guarantee RefocusingRestoresTheWholeThread
-        -- Volver a enfocar la página del argumento vuelve a derivar su ruta de
-        -- los bloques vigentes y enciende de una vez el hilo que conecta todas
-        -- sus paradas. No depende del breadcrumb local que lo originó ni de que
-        -- aquella sesión siga abierta.
+        -- Volver a enfocar la página vuelve a derivar su ruta de los bloques
+        -- vigentes y enciende de una vez el hilo que conecta todas sus paradas,
+        -- tanto durante `preparación argumental` como al llegar a `argumento`.
+        -- No depende del breadcrumb local que lo originó ni de que aquella
+        -- sesión siga abierta; la madurez cambia, la disposición no se pierde.
 
     @guarantee TheWholeShapeAtOnce
         -- El mapa del recorrido muestra exclusivamente sus paradas: no incluye la
@@ -1631,7 +1647,11 @@ open question "El testimonio de un cruce y su cara derivada pueden discrepar —
 
 open question "Una conectiva puede acabar valiendo por sí sola, y entonces querría ser una página del corpus y no un fragmento dentro de un argumento. ¿Hay un gesto para promover una conectiva a página —dejando en su sitio un nodo que la cite— o eso es simplemente escribir la página y reescribir la conectiva, como cualquier otra cosa que se escribe dos veces?"
 
-open question "El rastro guarda páginas y un nodo afinado nombra un bloque, pero las referencias de bloque no se derivan como aristas en ningún sitio. ¿Debe graph-navigation derivarlas igual que deriva los enlaces —lo que haría de cada `((ref))` del corpus una arista y no sólo las de los recorridos— o hay una razón para que citar un bloque no acerque dos páginas en el mapa?"
+-- Resuelta el 2026-09-28 para recorridos y preparaciones: `((ref))` conserva el
+-- bloque preciso y, al enfocar esa obra, incorpora su página canónica al hilo.
+-- No se deriva una arista global para cada cita de bloque: la pertenencia es una
+-- proyección situada de la disposición abierta. La pregunta más amplia sobre el
+-- destino fino de las relaciones sigue separada abajo.
 
 open question "Un recorrido que se anda deja rastro, y de ese rastro puede salir otro recorrido. ¿Debe el segundo saber que viene del primero —citándolo como un nodo más, o como una procedencia aparte— o es más honesto que un recorrido no sepa de dónde salió, como no lo sabe ningún otro texto?"
 

@@ -105,4 +105,37 @@ describe('solicitudes al bibliotecario', () => {
     })).status, 200);
     assert.equal((await call(`/librarian/requests/${encodeURIComponent(requestId)}`)).status, 404);
   });
+
+  it('escribe una respuesta sobre la página como bloque ordinario, editable y atribuido', async () => {
+    const created = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, text: 'Investiga y deja la respuesta en la página' },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const pageRequest = created.json['id'] as string;
+    assert.equal((await call(`/librarian/requests/${encodeURIComponent(pageRequest)}/claim`, {
+      method: 'POST', secret,
+    })).status, 200);
+    const answered = await call(`/librarian/requests/${encodeURIComponent(pageRequest)}/reply`, {
+      method: 'POST', secret, body: { text: 'Respuesta extensa del bibliotecario.', changes: [] },
+    });
+    assert.equal(answered.status, 201, JSON.stringify(answered.json));
+
+    const blockId = `block:librarian-reply:${pageRequest.slice('agent-request:'.length)}`;
+    let pageView = await call(`/pages/${encodeURIComponent(page)}`);
+    assert.match(JSON.stringify(pageView.json), /Respuesta extensa del bibliotecario\./);
+    const authorship = pageView.json['authorship'] as Record<string, Record<string, unknown>>;
+    assert.equal(authorship[blockId]?.['participant'], COTITO);
+    assert.equal(authorship[blockId]?.['channel'], 'agent_generation');
+
+    const edited = await call('/operations', {
+      method: 'POST',
+      body: {
+        originId: 'librarian:editable-reply', participant: OWNER,
+        change: { kind: 'edit_block', block: blockId, content: 'Respuesta corregida por Herbert.' },
+      },
+    });
+    assert.equal(edited.status, 201, JSON.stringify(edited.json));
+    pageView = await call(`/pages/${encodeURIComponent(page)}`);
+    assert.match(JSON.stringify(pageView.json), /Respuesta corregida por Herbert\./);
+  });
 });

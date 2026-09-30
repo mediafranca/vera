@@ -15,22 +15,43 @@ import {
   foldsWhileRevealing,
   foldedState,
   invokeMenuAction,
+  initialFoldingOpen,
+  isFencedCodeContent,
   isSpecialPage,
   matchingMovePages,
   needsProgressiveComposition,
   nodeMarkdown,
+  pageReferenceRows,
   projectedReferenceText,
   referenceExcerptAddsContext,
   reloadAfterServerWriting,
+  reloadAfterDerivedWriting,
   reloadOptionsFor,
 } from '../src/outliner.ts';
-import type { BlockView } from '../src/api.ts';
+import type { BlockView, CrossingRow } from '../src/api.ts';
 
 const block = (stableId: string, parent: string | null, position: number, content = stableId): BlockView => ({
   stableId,
   parent,
   position,
   content,
+});
+
+describe('tipografía del fuente cercado', () => {
+  it('reconoce código y cercados ejecutables desde la valla inicial', () => {
+    for (const source of [
+      '```\nconst answer = 42',
+      '```html\n<main>hola</main>\n```',
+      '```p5js\ncreateCanvas(40, 40)\n```',
+      '```mermaid\ngraph TD\n```',
+      '~~~svg\n<svg></svg>\n~~~',
+    ]) assert.equal(isFencedCodeContent(source), true, source);
+  });
+
+  it('no vuelve monoespaciado un bloque de prosa que sólo contiene un ejemplo', () => {
+    assert.equal(isFencedCodeContent('Una explicación.\n```ts\nconst x = 1\n```'), false);
+    assert.equal(isFencedCodeContent('texto ordinario'), false);
+  });
 });
 
 describe('composición progresiva de páginas', () => {
@@ -84,6 +105,10 @@ describe('redibujar después de escribir', () => {
 
   it('una transformación escrita por el servidor vuelve al corpus', () => {
     assert.deepEqual(reloadAfterServerWriting(), { fromCorpus: true });
+  });
+
+  it('una relación vuelve al corpus porque no vive en la réplica de una página', () => {
+    assert.deepEqual(reloadAfterDerivedWriting(), { fromCorpus: true });
   });
 });
 
@@ -171,6 +196,85 @@ describe('extractos de referencias', () => {
 
   it('conserva una frase que explica el contexto de la referencia', () => {
     assert.equal(referenceExcerptAddsContext('William Wong', 'Conversé con [[William Wong]]'), true);
+  });
+});
+
+describe('referencias explicadas', () => {
+  const crossing = (
+    stableId: string,
+    fromPage: string,
+    toPage: string,
+    title: string,
+    said: string,
+  ): CrossingRow => ({
+    stableId,
+    revision: `operation:${stableId}`,
+    connective: `block:${stableId}`,
+    said,
+    blocks: [{ stableId: `block:${stableId}`, parent: null, position: 0, content: said }],
+    fromBlock: null,
+    fromPage,
+    toPage,
+    targetTitle: title,
+    title,
+    sense: 'directed',
+    term: null,
+    reads: null,
+    says: said,
+  });
+
+  it('enriquece una referencia existente en vez de duplicarla como afirmación', () => {
+    const relation = crossing('vera-mediafranca', 'page:vera', 'page:mediafranca', 'MediaFranca', 'Forma parte de');
+    const rows = pageReferenceRows({
+      blocks: [block('block:mención', null, 0, '[[MediaFranca]]')],
+      blockProperties: {},
+      references: [{ page: 'page:mediafranca', title: 'MediaFranca', block: 'block:mención', excerpt: '[[MediaFranca]]' }],
+      backlinks: [],
+      crossingsOut: [relation],
+      crossingsIn: [],
+    });
+    assert.equal(rows.names.length, 1);
+    assert.equal(rows.names[0]?.relation, relation);
+  });
+
+  it('incluye una relación explicada aunque no exista una mención literal', () => {
+    const relation = crossing('vera-otra', 'page:vera', 'page:otra', 'Otra', 'La explica');
+    const rows = pageReferenceRows({
+      blocks: [], blockProperties: {}, references: [], backlinks: [],
+      crossingsOut: [relation], crossingsIn: [],
+    });
+    assert.deepEqual(rows.names.map((row) => row.title), ['Otra']);
+    assert.equal(rows.names[0]?.relation, relation);
+  });
+
+  it('mantiene las dos direcciones en La nombran y Nombra a, sin una tercera categoría', () => {
+    const outgoing = crossing('vera-otra', 'page:vera', 'page:otra', 'Otra', 'Sale hacia Otra');
+    const incoming = crossing('otra-vera', 'page:otra', 'page:vera', 'Otra', 'Llega desde Otra');
+    const rows = pageReferenceRows({
+      blocks: [block('block:mención', null, 0, '[[Otra]]')],
+      blockProperties: {},
+      references: [{ page: 'page:otra', title: 'Otra', block: 'block:mención', excerpt: '[[Otra]]' }],
+      backlinks: [{ page: 'page:otra', title: 'Otra', block: 'block:otra', excerpt: '[[VERA]]' }],
+      crossingsOut: [outgoing],
+      crossingsIn: [incoming],
+    });
+    assert.equal(rows.names.length, 1);
+    assert.equal(rows.namedBy.length, 1);
+    assert.equal(rows.names[0]?.relation, outgoing);
+    assert.equal(rows.namedBy[0]?.relation, incoming);
+  });
+});
+
+describe('plegado inicial del pie', () => {
+  it('abre las secciones ordinarias y deja las referencias recogidas', () => {
+    assert.equal(initialFoldingOpen('otra sección'), true);
+    assert.equal(initialFoldingOpen('referencias:page:una'), false);
+    assert.equal(initialFoldingOpen('referencias:page:otra'), false);
+  });
+
+  it('recuerda el gesto de la persona por encima del valor inicial', () => {
+    assert.equal(initialFoldingOpen('referencias:page:una', true), true);
+    assert.equal(initialFoldingOpen('otra', false), false);
   });
 });
 

@@ -179,14 +179,43 @@ contract BlockBehaviourPresentation {
 
     @invariant TheCurrentBlockBehavioursAreNamed
         -- Vera distinguishes standard Markdown, explicit executable HTML, audio,
-        -- video, hand drawing, p5.js, SVG, query, Mermaid and Markdown table blocks.
+        -- video, YouTube clip, embedded map, hand drawing, p5.js, SVG, query,
+        -- Mermaid and Markdown table blocks.
         -- Each is presented and edited according to its own behaviour.
 
     @invariant BehaviourIsDerivedRatherThanDuplicated
-        -- Markdown tables, queries, Mermaid, drawings, HTML, p5.js and SVG are
-        -- recognised from their complete preserved source; audio and video are
-        -- recognised from their native attachment. Vera does not keep a second
-        -- mutable type label that can disagree with the content.
+        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, embedded
+        -- maps, HTML, p5.js and SVG are recognised from their complete preserved
+        -- source; audio and video are recognised from their native attachment.
+        -- Vera does not keep a second mutable type label that can disagree with
+        -- the content.
+
+    @invariant AYouTubeClipNamesItsInterval
+        -- A deliberate `clip` block preserves the YouTube address and names a
+        -- beginning and an end. Presentation plays only that interval; an absent,
+        -- inverted or malformed boundary leaves the source readable and inert.
+
+    @invariant AnEmbeddedMapNamesItsReading
+        -- A deliberate `mapa` block preserves its focus page, 2D, 3D or D4 view,
+        -- reach, rotation, available height and, when present, the exact camera
+        -- from which it was copied. In an ordinary page a positive declared
+        -- height is respected exactly. Presentation alone enlarges the same map
+        -- to the maximum height available in its current screen. Rotation is a
+        -- readable choice only for 3D; malformed or incomplete configuration
+        -- remains source.
+
+    @invariant EmbeddedMapsImproveWithoutBlocking
+        -- The map presents the first available reach immediately and adds later
+        -- rings as they arrive. Loading a wider reach never removes interaction
+        -- from the map already shown, and 3D rotation starts on what is present
+        -- rather than waiting for the final ring.
+
+    @invariant EmbeddedMapsSpeakTheCurrentVisualLanguage
+        -- Every embedded map uses the effective colour, typography, node and edge
+        -- tokens of the Vera page that contains it, in 2D, 3D and D4. A later
+        -- appearance change updates the map already shown without fetching its
+        -- graph again. The page lends resolved values, not its stylesheet or DOM,
+        -- so visual consistency does not erase the frame boundary.
 
     @invariant MarkdownIsTheSafeDefault
         -- A block that does not unambiguously satisfy one specialised form is
@@ -343,6 +372,54 @@ contract BlockManipulation {
         -- A selection and a caret are two different answers to "what does the
         -- next keystroke act on", and only one of them can be right. Beginning
         -- to write clears the selection; making a selection leaves the writing.
+}
+
+-- History is evidence about a block, not another descendant of that block.
+-- Inspecting it must therefore leave the outline where it is while keeping the
+-- block and its revisions visible at the same time.
+contract BlockHistoryInspection {
+    inspect_history: (block: core/Block) -> core/Block
+
+    @invariant HistoryFloatsWithoutChangingTheOutline
+        -- Opening a block's history presents one modeless floating inspector and
+        -- moves no block, descendant or following content. The inspector begins
+        -- beside the block that opened it and the page remains readable and
+        -- operable for comparison.
+
+    @invariant OneInspectorFollowsTheCurrentQuestion
+        -- Opening another block's history replaces the previous inspector.
+        -- Leaving the page closes it, so a floating history never outlives the
+        -- block context that made it meaningful.
+
+    @invariant TheInspectorCanMoveWithoutBecomingAnotherDocument
+        -- On a pointer-driven wide screen the inspector can be dragged and
+        -- resized within the viewport. Its position is temporary workspace
+        -- state, not corpus content. On a narrow screen it becomes a bottom
+        -- sheet whose revisions remain reachable without horizontal overflow.
+
+    @invariant HistoryRemainsKeyboardOperable
+        -- The inspector identifies itself as a non-modal dialog, moves focus to
+        -- its close control when opened, closes with Escape or that control, and
+        -- returns focus to the block action that opened it.
+}
+
+contract OutlineHierarchyPresentation {
+    present: (page: core/Page) -> core/Page
+
+    @invariant ParentAndChildAreJoinedByAThread
+        -- Every visible parent-child edge is drawn as one faint thread: it
+        -- descends from the parent bullet and turns through a rounded elbow
+        -- into the child bullet. A vertical segment continues only while that
+        -- branch has another visible sibling; the outliner never paints a
+        -- generic grid for indentation levels that are not connected.
+
+    @invariant ThreadsRevealStructureWithoutBecomingContent
+        -- Threads align with bullet centres, survive folding and responsive
+        -- indentation, and remain lower contrast than text, bullets, selection,
+        -- focus and trail marks in both colour schemes. They do not change
+        -- stored content, selection, focus or hit targets; root blocks have no
+        -- incoming thread and printing does not require threads to understand
+        -- the text.
 }
 
 -- La cabecera de una página: lo que se pregunta de ella antes de leerla.
@@ -502,6 +579,24 @@ contract ProgressivePageReading {
         -- each connective in full in the outgoing-reference area, so the same
         -- apparatus is not presented twice. Explicitly focusing it reveals its
         -- canonical blocks for inspection and editing.
+
+    @invariant ReferencesBeginBelowTheFold
+        -- The derived references area begins collapsed whenever a page is first
+        -- presented. Links and backlinks can be numerous and describe the page's
+        -- neighbourhood rather than its authored body, so they do not displace
+        -- the text before the reader asks for them. Opening or closing the area
+        -- remains a single reversible gesture and is preserved while that
+        -- workspace session redraws or changes pages.
+
+    @invariant ExplainedRelationsRemainReferences
+        -- The foot of a page has one References area, divided only by direction:
+        -- pages that name this one and pages this one names. Explaining, typing
+        -- or expanding a relation enriches the corresponding reference row; it
+        -- never moves the same neighbour into a second "assertions" section.
+        -- An explained relation without a literal wiki mention still appears in
+        -- the appropriate directional list, because the relation itself joins
+        -- the two pages. If both directions exist, each remains legible in its
+        -- own direction rather than being hidden in a third mutual category.
 }
 
 contract InstallableWebApplication {
@@ -541,7 +636,7 @@ enum WorkspaceLayout { text_only | graph_only | split }
 enum GraphViewMode { graph_2d | graph_3d | graph_d4 }
 enum ColourScheme { light | dark }
 enum MapContentScope { own_space | published }
-enum BlockBehaviour { markdown | html | audio | video | drawing | p5js | svg | query | mermaid | table }
+enum BlockBehaviour { markdown | html | audio | video | clip | map | drawing | p5js | svg | query | mermaid | table }
 enum SearchPresentation { completion | full_results }
 
 -- Qué hizo alguien para llegar a la página en la que está.
@@ -685,6 +780,7 @@ entity BlockReference {
 
 config {
     max_trace_steps: Integer = 50
+    copied_map_height: Integer = 400
 }
 
 ------------------------------------------------------------
@@ -1168,6 +1264,10 @@ surface VeraWorkspace {
     @guarantee TheCanonicalLogIsTheActivityRegister
         -- VERA: Registro de Actividad makes every canonical creation, edition,
         -- movement and deletion readable without copying it into a second log.
+        -- Living changes are ordered from the newest civil day to the oldest
+        -- and each day can be folded independently. Its heading counts how many
+        -- pages were created there, while every change names and links the human
+        -- or agent who authored it.
         -- Deleted pages remain present there as tombs even though they are no
         -- longer pages in the corpus. Living-page changes and deleted-page tombs
         -- are separate readings: a change names and links to its living page and
@@ -1259,6 +1359,41 @@ surface VeraWorkspace {
         -- in the map and not in a bar shared with everything else. A control
         -- placed away from what it governs makes a reader learn a mapping that
         -- the layout could have told them.
+
+    @guarantee BinaryMapChoicesStayCompact
+        -- The journal and automatic-rotation choices are compact icon-labelled
+        -- checkboxes in the eye menu, not textual buttons whose two labels make
+        -- the menu grow whenever their state changes. Their accessible names
+        -- still state the complete choice and current availability.
+
+    @guarantee TheCurrentMapViewCanBeEmbedded
+        -- Copying an embedding from the eye menu puts a complete `mapa` block in
+        -- the participant's clipboard. It names the page, dimension, reach,
+        -- rotation and the exact current camera, with a declared height of
+        -- config.copied_map_height. Pasting and rendering that source reproduces
+        -- the copied view rather than reframing it. The camera remains ordinary
+        -- editable source; omitting it asks Vera to frame the map normally.
+
+    @guarantee ThreeDimensionalMapMayOrbitItself
+        -- The three-dimensional map alone offers an optional slow orbit around
+        -- its vertical axis. The choice defaults to still, is remembered, and
+        -- changes neither the centre, distance nor inclination of the view.
+        -- Changing that choice acts on the camera already on screen: it neither
+        -- requests the graph again nor replaces the drawing before motion can
+        -- begin. A camera control must not be paid for as a data reload.
+        -- A request to reduce motion always keeps the map still, regardless of
+        -- the remembered choice.
+
+    @guarantee TheAvailableMapPrecedesItsEnrichment
+        -- A neighbourhood that has arrived is already visible, navigable and
+        -- governed by its camera controls while farther reaches are still being
+        -- prepared. Wider reaches arrive in ascending hops and extend that map;
+        -- they do not hold the nearer map behind the complete request.
+        --
+        -- Enrichment preserves the direction already chosen for the camera and
+        -- any live orbit. New nodes may require a wider frame, but their arrival
+        -- must not turn an active map back into a loading surface or silently
+        -- restart its controls.
 
     @guarantee PublishedIsAMapFilterNotAnIdentity
         -- A public reading projects its bounded public graph; the authenticated

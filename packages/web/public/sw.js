@@ -17,6 +17,9 @@
 
 // Subir este número tira el caché anterior entero al activarse. Hace falta
 // cuando lo guardado deja de ser válido, y no sólo cuando cambia esta lista.
+// v10 fuerza a las instalaciones abiertas antes del mecanismo de comparación
+// de huellas a tomar el armazón vigente. Esas versiones no podían descubrir por
+// sí mismas que el selector de relaciones y su editor habían cambiado.
 // v9 retira de la precarga `/index.html`: el servidor entrega el armazón en `/`
 // y esa ruta inexistente hacía abortar `cache.addAll`, dejando activo el worker
 // anterior. La navegación seguirá guardando su respuesta bajo `/index.html`, que
@@ -29,9 +32,13 @@
 // v6 reemplaza también los iconos anteriores por la familia nocturna.
 // v5 tiraba lo guardado por v4, que incluía respuestas de `/ontology` y de las
 // demás lecturas que la regla de abajo dejaba caer en el caché por descuido.
-const SHELL = 'vera-shell-v9';
+// v11 separa el documento del mapa incrustado del armazón principal. Guardarlo
+// bajo `/index.html` haría que abrir un mapa reemplazara la copia de arranque de
+// Vera por el iframe, y una caída posterior arrancaría sólo ese mapa.
+const SHELL = 'vera-shell-v11';
 const ASSETS = [
   '/',
+  '/map-frame.html',
   '/manifest.webmanifest',
   '/icon-16.png',
   '/icon-32.png',
@@ -96,8 +103,9 @@ self.addEventListener('fetch', (event) => {
      * no se puede servir.
      */
     const PLAZO = 2500;
-    /** El armazón guardado, sea cual sea la dirección que se pidió. */
-    const held = () => caches.match('/index.html').then((hit) => hit ?? caches.match('/'));
+    const shellKey = url.pathname === '/map-frame.html' ? '/map-frame.html' : '/index.html';
+    /** El armazón guardado que corresponde al documento pedido. */
+    const held = () => caches.match(shellKey).then((hit) => hit ?? (shellKey === '/index.html' ? caches.match('/') : undefined));
     const fromNetwork = fetch(request)
         .then((response) => {
           // El armazón se guarda SIEMPRE bajo la misma clave. Guardarlo sólo
@@ -107,7 +115,7 @@ self.addEventListener('fetch', (event) => {
           // La aplicación quedaba en blanco ante cualquier hipo del servidor.
           if (response.ok) {
             const copy = response.clone();
-            void caches.open(SHELL).then((cache) => cache.put('/index.html', copy));
+            void caches.open(SHELL).then((cache) => cache.put(shellKey, copy));
           }
           return response;
         })

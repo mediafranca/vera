@@ -34,6 +34,7 @@ desplegar y contribuir al programa.
 
 ### Planes y registro de decisiones
 
+- [Fundamentos epistémicos y recorridos argumentales](fundamentos-epistemicos.md)
 - [Que la mano no espere](plan-local-first.md)
 - [Del rastro al argumento](plan-recorridos.md)
 - [Nadie por omisión](plan-nadie-por-omision.md)

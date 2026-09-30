@@ -1,6 +1,7 @@
 // El registro canónico, vuelto legible sin copiarlo a otra base.
 
 import { api, type Change, type DeletedPageActivity } from './api.ts';
+import { activityDayLabel, groupActivityDays } from './activity-days.ts';
 
 export function isActivityPage(properties: readonly { key: string; value: string }[]): boolean {
   return properties.some(
@@ -84,18 +85,46 @@ function linkedSummary(
 
 function activityRow(one: Awaited<ReturnType<typeof api.activity>>['activity'][number]): HTMLLIElement {
   const item = document.createElement('li');
-  if (one.page !== null) item.append(linkedSummary(one.summary, one.page, one.block));
-  else item.append(one.summary);
+  if (one.kind === 'create_page') item.classList.add('activity-page-created');
+  const author = document.createElement('a');
+  author.className = 'activity-by';
+  author.href = participantActivityPath(one.participant);
+  author.textContent = `${one.participantKind === 'agent' ? 'agente ' : ''}${one.by}`;
+  const action = document.createElement('span');
+  action.className = 'activity-action';
+  action.append(author, ' ');
+  if (one.page !== null) action.append(linkedSummary(one.summary, one.page, one.block));
+  else action.append(one.summary);
+  item.append(action);
   if (one.excerpt !== null) {
     const excerpt = document.createElement('p');
     excerpt.className = 'activity-excerpt';
     excerpt.textContent = one.excerpt;
     item.append(excerpt);
   }
-  const detail = document.createElement('small');
-  detail.textContent = `${moment(one.at)} · ${one.by} · ${one.channel}`;
-  item.append(detail);
   return item;
+}
+
+function activityDay(
+  at: number,
+  first: boolean,
+): { details: HTMLDetailsElement; list: HTMLOListElement; update: (created: number, total: number) => void } {
+  const details = document.createElement('details');
+  details.className = 'activity-day';
+  details.open = first;
+  const summary = document.createElement('summary');
+  const date = document.createElement('span');
+  date.textContent = activityDayLabel(at);
+  const count = document.createElement('small');
+  summary.append(date, count);
+  const list = document.createElement('ol');
+  list.className = 'activity-list';
+  details.append(summary, list);
+  const update = (created: number, total: number): void => {
+    const pages = created === 0 ? '' : `${created} ${created === 1 ? 'página creada' : 'páginas creadas'} · `;
+    count.textContent = `${pages}${total} ${total === 1 ? 'cambio' : 'cambios'}`;
+  };
+  return { details, list, update };
 }
 
 export async function renderActivityPage(
@@ -183,13 +212,31 @@ export async function renderActivityPage(
       deletionsPanel.append(deleted);
     }
 
-    const list = document.createElement('ol');
-    list.className = 'activity-list';
+    const daysHost = document.createElement('div');
+    daysHost.className = 'activity-days';
+    const days = new Map<string, {
+      list: HTMLOListElement;
+      created: number;
+      total: number;
+      update: (created: number, total: number) => void;
+    }>();
     const append = (items: typeof view.activity): void => {
-      for (const one of items) list.append(activityRow(one));
+      for (const group of groupActivityDays(items)) {
+        let day = days.get(group.key);
+        if (day === undefined) {
+          const made = activityDay(group.at, days.size === 0);
+          day = { list: made.list, created: 0, total: 0, update: made.update };
+          days.set(group.key, day);
+          daysHost.append(made.details);
+        }
+        for (const one of group.items) day.list.append(activityRow(one));
+        day.created += group.createdPages;
+        day.total += group.items.length;
+        day.update(day.created, day.total);
+      }
     };
     append(view.activity);
-    changesPanel.append(list);
+    changesPanel.append(daysHost);
     if (view.nextBefore !== null) {
       const older = document.createElement('button');
       older.type = 'button';

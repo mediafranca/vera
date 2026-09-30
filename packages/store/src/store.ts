@@ -966,9 +966,60 @@ function loadSitesAndPublications(store: Store, graph: VeraGraph): void {
 export interface StoredHit {
   page: string;
   block: string | null;
-  field: 'page_title' | 'block_content' | 'gloss_content';
+  field: 'page_title' | 'block_content' | 'property_value' | 'gloss_content';
   excerpt: string;
   rank: number;
+}
+
+export interface StoredPageHit extends StoredHit {
+  /** Número total de campos interiores que justifican esta página. */
+  matches: number;
+}
+
+/**
+ * Evidencia interactiva, buscada donde vive el corpus y resumida antes de
+ * cruzar la frontera HTTP. Los índices trigram conservan la semántica de
+ * subcadena y el plegado de diacríticos del buscador canónico.
+ */
+export function searchPageSummaries(store: Store, text: string, limit = 50): StoredPageHit[] {
+  const asked = text.trim();
+  if (asked.length < 3) return [];
+  const term = `"${asked.replace(/"/g, '""')}"`;
+
+  return store.db.prepare(
+    `WITH evidence(page, block, field, excerpt, field_order, stable_id) AS (
+       SELECT b.page_id, b.id, 'block_content',
+              snippet(blocks_search, 0, '', '', ' … ', 18), 0, b.id
+         FROM blocks_search f JOIN blocks b ON b.rowid = f.rowid
+        WHERE blocks_search MATCH ?1 AND b.page_id IS NOT NULL
+       UNION ALL
+       SELECT coalesce(a.page_id, b.page_id), a.block_id, 'property_value',
+              a.key || ': ' || a.value, 1, a.id
+         FROM property_values_search f
+         JOIN property_assignments a ON a.rowid = f.rowid
+         LEFT JOIN blocks b ON b.id = a.block_id
+        WHERE property_values_search MATCH ?1
+          AND coalesce(a.page_id, b.page_id) IS NOT NULL
+       UNION ALL
+       SELECT b.page_id, g.block_id, 'gloss_content',
+              snippet(glosses_search, 0, '', '', ' … ', 18), 2, g.block_id
+         FROM glosses_search f
+         JOIN block_glosses g ON g.rowid = f.rowid
+         JOIN blocks b ON b.id = g.block_id
+        WHERE glosses_search MATCH ?1
+     ), summaries AS (
+       SELECT page, count(*) AS matches,
+              min(printf('%d:%s', field_order, stable_id)) AS first_key
+         FROM evidence GROUP BY page
+     )
+     SELECT s.page, e.block, e.field, e.excerpt, s.matches,
+            row_number() OVER (ORDER BY s.matches DESC, s.page) AS rank
+       FROM summaries s
+       JOIN evidence e ON e.page = s.page
+        AND printf('%d:%s', e.field_order, e.stable_id) = s.first_key
+      ORDER BY s.matches DESC, s.page
+      LIMIT ?2`,
+  ).all(term, limit) as unknown as StoredPageHit[];
 }
 
 /**

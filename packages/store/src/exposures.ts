@@ -1,5 +1,5 @@
-// El registro de exposición: qué salió de la memoria, hacia dónde y con qué
-// concesión.
+// El registro compacto de exposición: que algo salió de la memoria, hacia
+// dónde, por qué superficie y cuánto contexto ocupó.
 //
 // El log de operaciones cuenta lo que se escribió, y eso bastaba mientras todo
 // el que entraba escribía. Una inteligencia artificial hace algo que el log no
@@ -13,6 +13,9 @@
 // un registro con un agujero del tamaño de su lector principal es decorativo.
 // Aquí lo hereda toda puerta: la web, MCP, curl y lo que venga después.
 //
+// No se repite una fila por cada bloque entregado: esa materialización llegó a
+// pesar más que el corpus. El bibliotecario necesita magnitudes agregables para
+// cuidar la puerta, no una segunda estructura del grafo.
 // Ver specs/mcp-server.allium, contrato WhatWasReadIsRecorded.
 
 import type { Store } from './store.ts';
@@ -39,7 +42,8 @@ export interface Exposure {
 
 export interface RecordedExposure extends Exposure {
   id: string;
-  delivered: readonly string[];
+  /** Cuántas identidades distintas viajaron; no sus copias. */
+  deliveredCount: number;
   outcome: string;
   volume: number;
 }
@@ -53,10 +57,10 @@ let counter = 0;
  * después: una anotación que ocurre después de que el texto salió por el cable
  * es una anotación que un proceso caído convierte en lectura invisible.
  *
- * Lo que no se guarda es la respuesta. Copiar el texto entregado dejaría una
- * segunda copia del corpus dentro del registro que existe para vigilarlo, y
- * crecería más rápido que el corpus mismo. Se guarda a qué apuntaba —las
- * direcciones estables— y cuánto medía.
+ * Lo que no se guarda es la respuesta ni un índice por cada bloque. Copiar el
+ * texto o su estructura dejaría una segunda versión del corpus dentro del
+ * registro que existe para vigilarlo. Se guarda la consulta, cuántas identidades
+ * distintas viajaron y cuánto medía la respuesta.
  */
 export function recordExposure(store: Store, exposure: Exposure): string {
   counter += 1;
@@ -65,8 +69,9 @@ export function recordExposure(store: Store, exposure: Exposure): string {
   store.db
     .prepare(
       `INSERT INTO exposures
-         (id, graph_id, participant_id, credential_id, client, surface, subject, outcome, volume, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, graph_id, participant_id, credential_id, client, surface, subject,
+          outcome, volume, delivered_count, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -78,14 +83,9 @@ export function recordExposure(store: Store, exposure: Exposure): string {
       exposure.subject,
       exposure.outcome ?? 'served',
       Math.max(0, Math.round(exposure.volume ?? 0)),
+      delivered.length,
       exposure.at,
     );
-  if (delivered.length > 0) {
-    const insert = store.db.prepare(
-      'INSERT OR IGNORE INTO exposed_subjects (exposure_id, subject_id) VALUES (?, ?)',
-    );
-    for (const subject of delivered) insert.run(id, subject);
-  }
   return id;
 }
 
@@ -98,10 +98,11 @@ interface Row {
   subject: string;
   outcome: string;
   volume: number;
+  delivered_count: number;
   at: number;
 }
 
-const shape = (store: Store, row: Row): RecordedExposure => ({
+const shape = (row: Row): RecordedExposure => ({
   id: row.id,
   participant: row.participant_id,
   credential: row.credential_id,
@@ -110,12 +111,8 @@ const shape = (store: Store, row: Row): RecordedExposure => ({
   subject: row.subject,
   outcome: row.outcome,
   volume: row.volume,
+  deliveredCount: row.delivered_count,
   at: row.at,
-  delivered: (
-    store.db
-      .prepare('SELECT subject_id FROM exposed_subjects WHERE exposure_id = ? ORDER BY subject_id')
-      .all(row.id) as { subject_id: string }[]
-  ).map((one) => one.subject_id),
 });
 
 /**
@@ -145,26 +142,7 @@ export function exposuresOf(
       options.since ?? 0,
       most,
     ) as unknown as Row[];
-  return rows.map((row) => shape(store, row));
-}
-
-/**
- * Quién ha leído esto.
- *
- * La pregunta al revés, que es la que uno se hace cuando encuentra una página
- * que no debería haber salido de casa.
- */
-export function whoRead(store: Store, subject: string, most = 100): RecordedExposure[] {
-  const rows = store.db
-    .prepare(
-      `SELECT e.* FROM exposures e
-         JOIN exposed_subjects s ON s.exposure_id = e.id
-        WHERE e.graph_id = ? AND s.subject_id = ?
-        ORDER BY e.at DESC, e.rowid DESC
-        LIMIT ?`,
-    )
-    .all(store.graphId, subject, Math.max(1, Math.min(1000, most))) as unknown as Row[];
-  return rows.map((row) => shape(store, row));
+  return rows.map(shape);
 }
 
 export interface SeenClient {
@@ -174,6 +152,8 @@ export interface SeenClient {
   /** Cuántas entregas, y cuánto midieron en total. */
   deliveries: number;
   volume: number;
+  /** Cuántas páginas o bloques distintos sumaron esas respuestas. */
+  deliveredCount: number;
   firstAt: number;
   lastAt: number;
 }
@@ -190,6 +170,7 @@ export function clientsSeen(store: Store, since = 0): SeenClient[] {
   const rows = store.db
     .prepare(
       `SELECT client, participant_id, COUNT(*) AS n, SUM(volume) AS volume,
+              SUM(delivered_count) AS delivered_count,
               MIN(at) AS first_at, MAX(at) AS last_at
          FROM exposures
         WHERE graph_id = ? AND at >= ?
@@ -201,6 +182,7 @@ export function clientsSeen(store: Store, since = 0): SeenClient[] {
     participant_id: string;
     n: number;
     volume: number;
+    delivered_count: number;
     first_at: number;
     last_at: number;
   }[];
@@ -209,6 +191,7 @@ export function clientsSeen(store: Store, since = 0): SeenClient[] {
     participant: row.participant_id,
     deliveries: row.n,
     volume: row.volume ?? 0,
+    deliveredCount: row.delivered_count ?? 0,
     firstAt: row.first_at,
     lastAt: row.last_at,
   }));

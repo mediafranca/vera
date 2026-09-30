@@ -1,0 +1,45 @@
+name: Defecto reproducible
+description: Algo verificable funciona de manera distinta a la esperada.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: No incluyas credenciales ni contenido privado de un corpus real.
+  - type: input
+    id: version
+    attributes:
+      label: Versión o commit
+      placeholder: v0.6.9 o SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Plataforma
+      options: [Linux, macOS, Windows, Navegador, Otra]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos mínimos para reproducirlo
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Qué ocurrió
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Qué esperabas
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidencia no sensible
+      description: Logs depurados, capturas o un corpus sintético mínimo.

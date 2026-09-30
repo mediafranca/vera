@@ -65,8 +65,9 @@ export function pageSearchResults<T extends SearchPage>(
     };
     // El título ya se contó como señal; matches describe lo encontrado dentro.
     if (hit.field !== 'page_title') {
-      existing.matches += 1;
-      existing.score += 100;
+      const matches = hit.matches ?? 1;
+      existing.matches += matches;
+      existing.score += 100 * matches;
       if (hit.rank < existing.bestRank) {
         existing.excerpt = hit.excerpt;
         existing.bestRank = hit.rank;

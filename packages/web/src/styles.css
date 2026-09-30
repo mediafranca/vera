@@ -55,111 +55,149 @@
   font-display: swap;
 }
 
-.librarian-turn {
-  margin: 0.45rem 0 0.65rem 2.1rem;
-  padding: 0.7rem 0.85rem;
-  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 0 0.45rem 0.45rem 0;
-  background: color-mix(in srgb, var(--bg-raised) 90%, var(--accent));
-  color: var(--text);
-  font-size: 0.92rem;
-}
-
-.page-header + .librarian-turn { margin-left: 0; }
-.librarian-request { font-style: italic; }
-.librarian-state,
-.librarian-proposal {
-  margin-top: 0.3rem;
-  color: var(--text-dim);
-  font-size: 0.8rem;
-}
-.librarian-reply { margin-top: 0.55rem; }
-.librarian-reply > :first-child { margin-top: 0; }
-.librarian-reply > :last-child { margin-bottom: 0; }
-
-.librarian-active-overlay {
+.librarian-activity {
   position: fixed;
   z-index: 120;
-  width: min(25rem, calc(100vw - 2rem));
-  max-height: min(18rem, calc(100vh - 2rem));
-  overflow: auto;
-  padding: 0.85rem 0.95rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 76%, var(--text));
-  border-radius: 0.8rem;
-  color: var(--text);
-  background: color-mix(in srgb, var(--bg-raised) 92%, var(--accent));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
-    0 0 1.35rem color-mix(in srgb, var(--accent) 48%, transparent),
-    0 0.65rem 2rem color-mix(in srgb, var(--text) 25%, transparent);
-  backdrop-filter: blur(12px) saturate(115%);
-  -webkit-backdrop-filter: blur(12px) saturate(115%);
-  animation: librarian-glow 1.8s ease-in-out infinite;
-}
-
-.librarian-active-overlay[data-corner='bottom-right'] { right: 1rem; bottom: 1rem; }
-.librarian-active-overlay[data-corner='bottom-left'] { left: 1rem; bottom: 1rem; }
-.librarian-active-overlay[data-corner='top-left'] { left: 1rem; top: 1rem; }
-.librarian-active-overlay[data-corner='top-right'] { right: 1rem; top: 1rem; }
-
-.librarian-overlay-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-  line-height: 1.25;
-}
-
-.librarian-overlay-heading strong {
-  color: var(--text);
-  font-weight: 650;
-}
-
-.librarian-overlay-move {
-  flex: none;
-  min-height: 2rem;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--text) 38%, transparent);
-  border-radius: 0.45rem;
-  color: var(--text);
-  background: color-mix(in srgb, var(--bg) 88%, var(--accent));
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--rule));
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--bg-raised);
+  box-shadow: 0 0.45rem 1.4rem color-mix(in srgb, var(--text) 20%, transparent);
   cursor: pointer;
 }
 
-.librarian-overlay-move:hover,
-.librarian-overlay-move:focus-visible {
-  border-color: var(--text);
-  outline: 2px solid color-mix(in srgb, var(--accent) 75%, var(--text));
-  outline-offset: 2px;
+.librarian-activity .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  transform-origin: center;
+  animation: librarian-mark-pulse 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
-
-.librarian-overlay-request {
-  margin-top: 0.55rem;
+.librarian-activity:is(:hover, :focus-visible) {
   color: var(--text);
-  line-height: 1.45;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
+.librarian-activity[data-state='waiting'] .icon { animation: none; }
 
-.librarian-overlay-count {
-  margin-top: 0.45rem;
+.librarian-dialog {
+  box-sizing: border-box;
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: min(42rem, calc(100vh - 2rem));
+  padding: clamp(1.35rem, 4vw, 2.25rem);
+  border: 1px solid var(--rule);
+  border-radius: 0.35rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  box-shadow: 0 1.25rem 4rem rgb(0 0 0 / 0.28);
+  font-family: var(--font-ui);
+}
+.librarian-dialog::backdrop { background: rgb(0 0 0 / 0.5); backdrop-filter: blur(2px); }
+
+.librarian-dialog-header {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+.librarian-dialog-mark {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--accent);
+}
+.librarian-dialog-mark .icon { width: 1.65rem; height: 1.65rem; }
+.librarian-dialog-kicker,
+.librarian-dialog-label {
+  display: block;
+  color: var(--text-dim);
+  font: 0.72rem/1.3 var(--font-mono);
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+.librarian-dialog-header h2 { margin: 0.18rem 0 0; font: 600 1.35rem/1.2 var(--font-ui); }
+.librarian-dialog-header p { margin: 0.3rem 0 0; color: var(--text-dim); line-height: 1.45; }
+.librarian-dialog form,
+.librarian-progress-body { margin-top: 1.35rem; }
+.librarian-dialog-field {
+  display: block;
+  width: 100%;
+  margin-top: 0.55rem;
+  padding: 0.75rem 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  color: var(--text);
+  background: transparent;
+  font: 1rem/1.55 var(--font-body);
+  resize: vertical;
+}
+.librarian-dialog-field:focus { outline: 0; border-color: var(--accent); }
+.librarian-dialog-field[data-invalid='true'] { border-color: var(--warm); }
+.librarian-dialog-hint,
+.librarian-progress-elapsed,
+.librarian-progress-more {
+  margin: 0.65rem 0 0;
   color: var(--text-dim);
   font-size: 0.82rem;
+  line-height: 1.45;
+}
+.librarian-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1.4rem;
+}
+.librarian-dialog-actions button {
+  min-height: 2.45rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.25rem;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.librarian-dialog-actions button:is(:hover, :focus-visible) { border-color: var(--accent); outline: 0; }
+.librarian-dialog-actions .librarian-dialog-primary {
+  border-color: var(--accent);
+  color: var(--bg);
+  background: var(--accent);
   font-weight: 600;
 }
+.librarian-progress-request {
+  margin: 0.55rem 0 0;
+  padding: 0.8rem 0;
+  border-block: 1px solid var(--rule);
+  color: var(--text);
+  font: 1rem/1.55 var(--font-body);
+}
 
-@keyframes librarian-glow {
-  50% {
-    box-shadow:
-      0 0 0 2px color-mix(in srgb, var(--accent) 48%, transparent),
-      0 0 2rem color-mix(in srgb, var(--accent) 66%, transparent),
-      0 0.65rem 2rem color-mix(in srgb, var(--text) 25%, transparent);
+@keyframes librarian-mark-pulse {
+  0%, 100% {
+    opacity: 0.78;
+    transform: scale(0.96);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  48% {
+    opacity: 1;
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 0.3rem color-mix(in srgb, var(--accent) 42%, transparent));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .librarian-active-overlay { animation: none; }
+  .librarian-activity .icon { animation: none; }
 }
 
 @font-face {
@@ -1031,6 +1069,48 @@ button { touch-action: manipulation; }
   border-color: var(--accent);
 }
 
+.map-compact-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--rule);
+}
+
+.map-icon-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.map-icon-check[hidden] {
+  display: none;
+}
+
+.map-icon-check .icon,
+#map-copy-embed .icon {
+  display: block;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.map-icon-check input {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+#map-copy-embed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0.2rem 0.3rem;
+}
+
 /* Lo que el mapa dice cuando no puede dibujarse. Centrado en su sitio, porque
    ocupa el lugar del mapa y no es una nota al margen. */
 .map-aviso {
@@ -1656,7 +1736,7 @@ button { touch-action: manipulation; }
     z-index: 30;
     padding: 0.3rem 0.55rem;
     border-radius: 999px;
-    background: var(--surface);
+    background: var(--bg-raised);
     box-shadow: 0 1px 5px color-mix(in srgb, var(--text) 18%, transparent);
   }
 }
@@ -1780,6 +1860,9 @@ html.presenting body {
   width: 100%;
   height: 100%;
   --content-width: min(44em, 100%);
+  --presentation-slide-top: clamp(3.25rem, 5vh, 4.5rem);
+  --presentation-slide-inline: clamp(1rem, 3vw, 3rem);
+  --presentation-slide-bottom: clamp(1rem, 3vh, 2rem);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 2rem;
@@ -1810,7 +1893,7 @@ html.presenting body {
   overscroll-behavior: contain;
   touch-action: pan-y;
   scrollbar-gutter: stable;
-  padding: clamp(3.25rem, 5vh, 4.5rem) clamp(1rem, 3vw, 3rem) clamp(1rem, 3vh, 2rem);
+  padding: var(--presentation-slide-top) var(--presentation-slide-inline) var(--presentation-slide-bottom);
 }
 
 .vera-presentation .presentation-block {
@@ -1875,11 +1958,156 @@ html.presenting body {
   width: 100%;
 }
 
+/* La fuente sigue editable en el outline, pero no forma parte de la lámina. */
+.vera-presentation .executable > details {
+  display: none;
+}
+
 .vera-presentation .body figcaption {
   margin-top: 0.35rem;
   color: color-mix(in srgb, var(--text) 68%, transparent);
   font: 0.72rem/1.35 var(--font-ui);
   text-align: center;
+}
+
+/*
+ * Una lámina espacial no es una columna de lectura con un medio dentro: el
+ * medio es la lámina. Su caja sale de `--content-width` y mide directamente
+ * contra el viewport útil. `contain` decide cuál dimensión manda: un afiche
+ * vertical agota el alto; un sketch apaisado, el ancho.
+ */
+.vera-presentation .reveal .slides section.presentation-spatial {
+  overflow: hidden;
+}
+
+.vera-presentation .presentation-spatial > .presentation-block,
+.vera-presentation .presentation-spatial > .presentation-block > .body {
+  /* La hoja gobernada puede vestir la lámina, pero no devolver un medio puro a
+     la columna tipográfica: maximizarlo es semántica del modo, no del tema. */
+  width: calc(100vw - var(--presentation-slide-inline) - var(--presentation-slide-inline)) !important;
+  height: calc(100dvh - var(--presentation-slide-top) - var(--presentation-slide-bottom)) !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.vera-presentation .presentation-spatial > .presentation-block > .body {
+  display: grid;
+  place-items: center;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.vera-presentation .presentation-spatial > .presentation-block > .body:hover {
+  background: transparent !important;
+}
+
+.vera-presentation .presentation-spatial > .presentation-block > .body > p:only-child,
+.vera-presentation .presentation-spatial > .presentation-block > .body > p:only-child > a:only-child {
+  display: grid;
+  place-items: center;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+}
+
+.vera-presentation .presentation-spatial .body > :is(.drawn, .mermaid-figure, .executable, .embedded-map) {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+}
+
+/* Los medios reemplazados conservan su proporción intrínseca. Darles ancho y
+   alto simultáneamente crea una caja del tamaño de la lámina y deja a hojas
+   gobernadas la posibilidad de neutralizar `object-fit`; auto + dos máximos
+   hace que el navegador elija inequívocamente el eje limitante. */
+.vera-presentation .presentation-spatial .body :is(img, video) {
+  width: auto !important;
+  height: auto !important;
+  /* Porcentajes aquí vuelven a depender de la cadena de wrappers Markdown.
+     Las medidas explícitas del viewport hacen que mande el alto disponible y,
+     sólo cuando haga falta, el ancho disponible. */
+  max-width: calc(100vw - var(--presentation-slide-inline) - var(--presentation-slide-inline)) !important;
+  max-height: calc(100dvh - var(--presentation-slide-top) - var(--presentation-slide-bottom)) !important;
+  margin: 0 !important;
+  object-fit: contain !important;
+}
+
+.vera-presentation .presentation-spatial .body :is(.drawn, .mermaid-figure) {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.vera-presentation .presentation-spatial .body :is(.drawn, .mermaid-figure) svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.vera-presentation .presentation-spatial .body .executable iframe {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* En edición manda `alto`; en Presentación manda el escenario disponible. */
+.vera-presentation .presentation-spatial .body .embedded-map iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  border: 0 !important;
+}
+
+.vera-presentation .presentation-spatial .body .embedded-map figcaption,
+.vera-presentation .presentation-spatial .body .embedded-map details {
+  display: none;
+}
+
+/* Una tabla que constituye la lámina completa también es espacial: primero usa
+   el escenario entero; sólo si aun así no cabe aparece desplazamiento. */
+.vera-presentation .presentation-spatial[data-presentation-medium="table"] {
+  overflow: auto;
+}
+
+.vera-presentation .presentation-spatial[data-presentation-medium="table"] > .presentation-block > .body {
+  display: block;
+}
+
+.vera-presentation .presentation-spatial .body > .table-scroll,
+.vera-presentation .presentation-spatial .body > table {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  overflow: auto;
+}
+
+.vera-presentation .presentation-spatial .body table {
+  width: 100% !important;
+  max-width: none !important;
+  font-size: clamp(0.9rem, 1.5vw, 1.2rem) !important;
+}
+
+.vera-presentation .presentation-spatial .body table :is(th, td) {
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+.vera-presentation .presentation-spatial .body table :is(th, td):first-child {
+  min-width: clamp(8rem, 12vw, 10rem);
 }
 
 .presentation-toolbar {
@@ -2088,6 +2316,21 @@ html.presenting body {
   outline: none;
 }
 
+/* Una URL larga sigue siendo texto del front matter, no una razón para que la
+   página entera gane un segundo eje. `pre-wrap` conserva cualquier separación
+   deliberada y `anywhere` permite partir también una dirección sin espacios. */
+.property-value:has(.property-external) {
+  width: 100%;
+  min-width: 0;
+}
+
+.property-external {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .property-choose {
   display: inline-flex;
   align-items: center;
@@ -2221,11 +2464,101 @@ html.presenting body {
   --rail-gap: 0.5rem;
   --fold: 1rem;
   --fold-gap: 0.05rem;
+  --thread-lead: var(--text-size, 1rem);
+  --thread-line: var(--line-height);
+  --thread-skip: 0px;
+  --thread-y: calc(var(--thread-skip) + var(--thread-lead) * var(--thread-line) / 2);
+  --thread-color: color-mix(in srgb, var(--text-dim) 18%, transparent);
   display: flex;
   gap: var(--rail-gap);
   align-items: baseline;
   position: relative;
 }
+
+/*
+ * Una jerarquía se ve antes de leerse.
+ *
+ * No es una rejilla de sangría. Cada tramo representa una arista visible del
+ * árbol: baja desde una viñeta y dobla hacia su hija. Las verticales remotas
+ * sólo atraviesan una fila cuando esa rama todavía continúa después de ella.
+ * Todo se alinea con el mismo paso que gobierna la sangría y nunca recibe
+ * eventos: es la lectura tenue de la estructura vigente, no contenido.
+ */
+.block-threads {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  color: var(--thread-color);
+}
+
+.thread-line,
+.thread-elbow,
+.thread-stem {
+  position: absolute;
+  left: calc(
+    var(--rail, 1.4rem) / 2
+    + var(--block-indent-step) * var(--thread-level)
+  );
+}
+
+.thread-line {
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid currentColor;
+}
+
+.thread-elbow {
+  top: 0;
+  width: var(--block-indent-step);
+  height: var(--thread-y);
+  border-left: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  border-bottom-left-radius: calc(var(--block-indent-step) * 0.42);
+}
+
+.thread-elbow.continues::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: var(--thread-y);
+  left: -1px;
+  width: var(--block-indent-step);
+  border-bottom: 1px solid currentColor;
+  border-bottom-left-radius: calc(var(--block-indent-step) * 0.42);
+}
+
+.thread-elbow.continues {
+  bottom: 0;
+  height: auto;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+}
+
+.thread-stem {
+  top: var(--thread-y);
+  bottom: 0;
+  border-left: 1px solid currentColor;
+}
+
+.block:hover > .block-threads,
+.block:focus-within > .block-threads {
+  color: color-mix(in srgb, var(--accent) 46%, transparent);
+}
+
+.block > :not(.fold, .block-threads) {
+  position: relative;
+  z-index: 1;
+}
+
+.block:has(> .body > .body-text > :first-child:is(h2, h3, h4, h5, h6)) {
+  --thread-line: var(--head-line);
+  --thread-skip: var(--head-skip);
+}
+.block:has(> .body > .body-text > :first-child:is(h2)) { --thread-lead: var(--head-2); }
+.block:has(> .body > .body-text > :first-child:is(h3)) { --thread-lead: var(--head-3); }
+.block:has(> .body > .body-text > :first-child:is(h4)) { --thread-lead: var(--head-4); }
+.block:has(> .body > .body-text > :first-child:is(h5, h6)) { --thread-lead: var(--head-5); }
 
 /* La glosa acompaña el bloque sin entrar en su outline. En una lectura ancha
    vive en el margen; en vistas compactas se abre desde su marca. */
@@ -2364,19 +2697,6 @@ html.presenting body {
   #vera-root[data-layout='text_only'] .block.wide-content > .block-gloss {
     width: calc(100% - var(--rail) - var(--rail-gap) - 0.65rem);
   }
-}
-
-/*
- * Lo que se despliega bajo un bloque ocupa su propia línea.
- *
- * La fila es flex, así que un panel añadido a ella se coloca como una columna
- * más: la historia de un bloque salía a la derecha del texto, estrujada al ancho
- * de una letra y altísima. Con la fila envolviendo y el panel ocupando el ancho
- * entero, cae debajo; y se sangra lo que miden el chevron y la viñeta, para que
- * empiece donde empieza el texto y no donde empieza la fila.
- */
-.block:has(> .history) {
-  flex-wrap: wrap;
 }
 
 /* El control de plegado. Está siempre en la columna —vacío en las hojas— para
@@ -3166,6 +3486,8 @@ html.presenting body {
 .passkey-enrollment-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 .passkey-enrollment-dialog h2 { margin: 0 0 1rem; font: 600 clamp(1.3rem, 5vw, 1.8rem)/1.2 var(--font-ui); }
 .passkey-enrollment-dialog p { margin: 0.75rem 0; color: var(--text-dim); line-height: 1.5; }
+.passkey-enrollment-dialog .passkey-steps { margin: 1rem 0; padding-left: 1.35rem; color: var(--text); line-height: 1.5; }
+.passkey-enrollment-dialog .passkey-steps li + li { margin-top: 0.45rem; }
 .passkey-enrollment-dialog p[data-bad='true'] { color: var(--warm); }
 .passkey-enrollment-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 1.5rem; }
 .passkey-enrollment-dialog button { padding: 0.7rem 0.9rem; border: 1px solid var(--rule); border-radius: 0.5rem; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; }
@@ -3235,18 +3557,6 @@ html.presenting body {
 .toast[data-corner='bottom-left'] { left: 1rem; bottom: 1rem; right: auto; }
 .toast[data-corner='top-left'] { left: 1rem; top: 1rem; right: auto; bottom: auto; }
 .toast[data-corner='top-right'] { right: 1rem; top: 1rem; bottom: auto; }
-
-.librarian-active-overlay > .toast {
-  position: static;
-  width: auto;
-  margin-top: 0.7rem;
-  padding: 0.65rem 0 0;
-  border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 40%, var(--rule));
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
 
 .body {
   flex: 1;
@@ -3332,6 +3642,19 @@ html.presenting body {
   /* Redimensionar a mano dejó de tener sentido: el siguiente carácter escrito
      devolvería el campo al alto de su contenido. */
   resize: none;
+}
+
+/*
+ * El fuente de un bloque cercado es código también mientras se edita.
+ *
+ * En lectura, `<pre><code>` ya usa la tipografía monoespaciada; los cercados
+ * ejecutables y Mermaid muestran su resultado y conservan el fuente en un
+ * detalle. Al abrir cualquiera de ellos, el textarea revela ese fuente crudo:
+ * esta clase mantiene allí la misma voz tipográfica y cambia en el acto si la
+ * primera valla se escribe o se borra.
+ */
+.body.code-source > .editor {
+  font-family: var(--font-mono);
 }
 
 /*
@@ -3503,13 +3826,13 @@ code {
  * antes de sus encabezados. Lo que un título separa no es un párrafo de otro,
  * es un asunto del anterior.
  */
-.body > :first-child:not(:is(h1, h2, h3, h4, h5, h6)),
-.body-text > :first-child:not(:is(h1, h2, h3, h4, h5, h6)) {
+.body > :first-child:not(:is(h1, h2, h3, h4, h5, h6, .table-scroll, img, .mermaid-figure, .executable, .embed)),
+.body-text > :first-child:not(:is(h1, h2, h3, h4, h5, h6, .table-scroll, img, .mermaid-figure, .executable, .embed)) {
   margin-top: 0;
 }
 
-.body > :last-child,
-.body-text > :last-child {
+.body > :last-child:not(:is(.table-scroll, img, .mermaid-figure, .executable, .embed)),
+.body-text > :last-child:not(:is(.table-scroll, img, .mermaid-figure, .executable, .embed)) {
   margin-bottom: 0;
 }
 
@@ -3640,8 +3963,7 @@ pre.copyable-code {
   position: relative;
 }
 
-.body pre.copyable-code,
-.librarian-reply pre.copyable-code {
+.body pre.copyable-code {
   padding-top: 2.15rem;
 }
 
@@ -3745,6 +4067,35 @@ pre.copyable-code {
 .mermaid-figure svg {
   max-width: 100%;
   height: auto;
+}
+
+/*
+ * El aire de los objetos también pertenece a la retícula tipográfica.
+ *
+ * Tablas, imágenes, dibujos, diagramas, HTML e incrustaciones tenían seis
+ * márgenes parecidos pero distintos —entre 0,4 y 0,6 em/rem— y el reinicio del
+ * primer y último hijo podía quitarles uno de los dos. El resultado era una
+ * página casi alineada, que es peor que una claramente libre: cada objeto
+ * desplazaba de manera distinta la línea que seguía.
+ *
+ * Una línea de lectura antes y una después, salida de los mismos dos tokens que
+ * gobiernan la prosa. El selector directo evita imponer este aire a una imagen
+ * pequeña que viva dentro de una celda, una lista o una incrustación. El dibujo
+ * es la excepción estructural: su pie vive fuera de la figura, por eso el
+ * margen abraza `.drawn-body` completo y se retiran los márgenes internos.
+ */
+.body > :is(.table-scroll, img, .mermaid-figure, .executable, .embed),
+.body-text > :is(.table-scroll, img, .mermaid-figure, .executable, .embed) {
+  margin-block: calc(var(--text-size, 16px) * var(--line-height));
+}
+
+.body.drawn-body {
+  margin-block: calc(var(--text-size, 16px) * var(--line-height));
+}
+
+.body.drawn-body > .body-text > .drawn,
+.body.drawn-body > .drawn-foot {
+  margin-block: 0;
 }
 
 .mermaid-error {
@@ -3988,6 +4339,49 @@ pre.copyable-code {
   border-right: 1px solid var(--rule);
 }
 
+html:has(.embedded-map-frame),
+body:has(.embedded-map-frame) {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+#vera-root.embedded-map-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.embedded-map-frame #map {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.embedded-map-frame #map-status {
+  position: absolute;
+  right: .7rem;
+  bottom: .5rem;
+  z-index: 2;
+  margin: 0;
+  padding: .15rem .35rem;
+  border-radius: .25rem;
+  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
+  color: var(--text-dim);
+  font: .7rem/1.4 var(--font-ui);
+}
+
+.embedded-map-frame #map-status:empty {
+  display: none;
+}
+
 /*
  * El mapa que no se pudo poner al día.
  *
@@ -4008,7 +4402,7 @@ pre.copyable-code {
   font-family: var(--font-ui);
   font-size: 0.75rem;
   color: var(--text-dim);
-  background: var(--surface);
+  background: var(--bg-raised);
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--rule);
   border-radius: 2px;
@@ -4293,9 +4687,9 @@ pre.copyable-code {
   position: fixed;
   right: 1rem;
   top: calc(3.4rem + env(safe-area-inset-top));
-  width: 30rem;
+  width: 42rem;
   max-width: calc(100vw - 2rem);
-  max-height: 78vh;
+  max-height: 84vh;
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
@@ -4423,7 +4817,8 @@ body.settings-open #text {
 .settings-tabs {
   display: flex;
   gap: 0.2rem;
-  padding: 0.5rem 0.9rem 0;
+  padding: 0.55rem 1rem 0;
+  border-bottom: 1px solid var(--rule);
 }
 
 .settings-tab {
@@ -4440,26 +4835,63 @@ body.settings-open #text {
   border-color: var(--rule);
   border-bottom-color: transparent;
   background: var(--bg);
+  margin-bottom: -1px;
 }
 
 .settings-body {
-  padding: 0.9rem;
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.settings-destinations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+  margin-bottom: 1.15rem;
 }
 
 .settings-destination {
   display: grid;
-  width: calc(100% - 1.8rem);
-  margin: .75rem .9rem .15rem;
-  padding: .7rem .8rem;
+  align-content: start;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.15rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: .75rem .85rem;
   text-align: left;
   color: var(--text);
-  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
   border: 1px solid var(--rule);
-  border-radius: .45rem;
+  border-radius: 4px;
   cursor: pointer;
+  font: inherit;
 }
-.settings-destination:hover { border-color: var(--accent); }
-.settings-destination span { margin-top: .2rem; color: var(--text-dim); font-size: .76rem; }
+.settings-destination:hover,
+.settings-destination:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+}
+.settings-destination strong { font-size: .86rem; font-weight: 600; }
+.settings-destination span { margin-top: .22rem; color: var(--text-dim); font-size: .74rem; line-height: 1.35; }
+.settings-destination:disabled { cursor: default; opacity: .55; }
+.settings-destination:disabled:hover { border-color: var(--rule); background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
+
+.settings-corpus-summary {
+  margin: 0 0 .65rem;
+  color: var(--text-dim);
+  font-size: .74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-government-list { margin-bottom: 0; }
+
+.settings-backup {
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.settings-backup h3 { margin-top: 0; }
 
 .sharing-administration { width: min(76rem, 100%); margin: 0 auto; padding: 1.5rem 2rem 4rem; box-sizing: border-box; }
 .sharing-administration .special-page-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
@@ -4468,6 +4900,7 @@ body.settings-open #text {
 .sharing-administration-body { width: 100%; }
 
 @media (max-width: 640px) {
+  .settings-destinations { grid-template-columns: 1fr; }
   .sharing-administration { padding: 1rem .8rem 3rem; }
 }
 
@@ -5981,18 +6414,6 @@ html[data-working-slow='true']::after {
   white-space: nowrap;
 }
 
-/* --------------------------------------------------------------------------
- * Las dos columnas al pie: lo que la página afirma y lo que afirman sobre ella.
- *
- * Al lado de las referencias y distintas de ellas. Un retroenlace dice que
- * alguien nombró esta página; una relación dice qué dijo al nombrarla, y por eso
- * lleva las dos frases: la explicación y el sitio desde el que se explica.
- * -------------------------------------------------------------------------- */
-
-.relations {
-  margin: 2rem 0 0;
-}
-
 .concept-members {
   margin: 2rem 0 0;
   padding-top: 1rem;
@@ -6049,16 +6470,6 @@ html[data-working-slow='true']::after {
 
 
 
-.relations ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.relation {
-  margin: 0 0 0.9rem;
-}
-
 /* El término, delante y en versalita: es la clase de relación, no lo que se
    dijo. Cuando no lo hay, la fila empieza por la página, que es lo que siempre
    está. */
@@ -6069,40 +6480,19 @@ html[data-working-slow='true']::after {
   margin-right: 0.4rem;
 }
 
-.relation-page {
-  appearance: none;
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.relation-page:hover { text-decoration: underline; }
-
-/* Un destino que nadie ha escrito todavía: la relación está en pie y la página
-   no. Se dibuja como cualquier enlace sin resolver del corpus. */
-.relation-page.unresolved {
-  color: var(--text-dim);
-  text-decoration: underline dotted;
-}
-
 /* Lo dicho: la conectiva, que es la relación misma y la única voz propia de
    esta fila. */
 .relation-said {
   margin: 0.15rem 0 0;
 }
 
-/* Un recinto continuo: el color pertenece a la arista y contiene el árbol
-   entero, para que sus bloques no parezcan parte de ninguna página extrema. */
+/* Una sola regla basta para distinguir la voz de la relación de las páginas
+   que conecta. No se encierra cada nivel en otra tarjeta: la jerarquía ya la
+   dicen la sangría y las viñetas. */
 .relation-outline {
-  margin: 0.45rem 0 0.25rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--rule));
-  border-left: 0.28rem solid color-mix(in srgb, var(--accent) 72%, var(--rule));
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+  margin: 0.4rem 0 0.25rem;
+  padding: 0.15rem 0 0.15rem 0.9rem;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
 }
 .relation-outline-node { margin-left: calc(var(--relation-depth) * 1.15rem); }
 .relation-outline-line { display: grid; grid-template-columns: 1rem minmax(0, 1fr); align-items: start; }
@@ -6111,14 +6501,13 @@ html[data-working-slow='true']::after {
 .relation-outline-preview { min-height: 1.5em; cursor: text; }
 .relation-outline-editor {
   min-height: 1.5em;
-  padding: 0.05rem 0.2rem;
-  border-radius: 0.25rem;
+  padding: 0.05rem 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .relation-outline-editor:focus {
-  outline: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
-  background: var(--bg);
+  outline: 0;
+  box-shadow: inset 0 -1px var(--accent);
 }
 
 .relation-meta {
@@ -6131,6 +6520,7 @@ html[data-working-slow='true']::after {
 }
 
 .relation-type-select {
+  -webkit-appearance: none;
   appearance: none;
   field-sizing: content;
   width: auto;
@@ -6177,7 +6567,7 @@ html[data-working-slow='true']::after {
   max-width: 100%;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
   border-radius: .45rem;
-  background: var(--surface, Canvas);
+  background: var(--bg-raised, Canvas);
   color: inherit;
   padding: .25rem .45rem;
 }
@@ -6192,14 +6582,6 @@ html[data-working-slow='true']::after {
   cursor: pointer;
 }
 .relation-outline-add:hover { color: var(--accent); }
-
-/* Y la frase desde la que se afirma, atenuada: es el sujeto de la afirmación,
-   no la afirmación. Sin ella la fila sería una flecha sin sujeto. */
-.relation-from {
-  margin: 0.1rem 0 0;
-  color: var(--text-dim);
-  font-size: 0.82rem;
-}
 
 /* El renglón donde se pregunta a qué apunta una relación nueva. Vive bajo el
    bloque desde el que se explica, que es donde se está mirando. */
@@ -6216,13 +6598,15 @@ html[data-working-slow='true']::after {
  * del otro.
  */
 .relation-ask {
-  margin: 0.3rem 0 0.2rem;
+  margin: 0.45rem 0 0.3rem;
+  padding-left: 0.9rem;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
   flex-basis: 100%;
 }
 
 .relation-field {
-  width: 34%;
-  min-width: 20rem;
+  width: min(100%, 46rem);
+  min-width: 0;
   max-width: 100%;
   display: block;
   font-family: var(--font-body);
@@ -6231,9 +6615,10 @@ html[data-working-slow='true']::after {
   line-height: 1.5;
   color: var(--text);
   background: transparent;
-  border: 1px solid var(--rule);
-  border-radius: 0.3ex;
-  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-block: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 0.55rem 0;
   resize: vertical;
   overflow: hidden;
 }
@@ -6269,15 +6654,8 @@ html[data-working-slow='true']::after {
   text-decoration: underline dotted;
 }
 
-/* Lo que la otra página dice de ésta, en las que se nombran en los dos
-   sentidos. Va debajo y más atenuado: es la mitad que no se lee desde aquí. */
-.backlink-excerpt.reciprocal {
-  opacity: 0.75;
-  font-style: italic;
-}
-
 /* --------------------------------------------------------------------------
- * El pie de la página: relaciones y referencias, plegables.
+ * El pie de la página: referencias enriquecidas por relaciones, plegables.
  *
  * `details` del navegador: trae el teclado, el lector de pantalla y el triángulo
  * sin escribirlos, y lo plegado sigue estando en el documento, así que buscar en
@@ -6428,6 +6806,34 @@ html[data-working-slow='true']::after {
   gap: 0.65rem;
 }
 
+.embed details,
+.embedded-map details {
+  font: .78rem/1.4 var(--font-ui);
+  color: var(--text-dim);
+}
+
+.embedded-map {
+  width: 100%;
+  max-width: none;
+  margin: .6rem 0;
+}
+
+.embedded-map iframe {
+  display: block;
+  width: 100%;
+  height: var(--embedded-height, 640px);
+  min-height: 0;
+  border: 1px solid var(--rule);
+  border-radius: .3ex;
+  background: var(--bg-raised);
+}
+
+.embedded-map figcaption {
+  margin-top: .25rem;
+  color: var(--text-dim);
+  font: .7rem/1.4 var(--font-mono);
+}
+
 .linked-resource {
   margin: 0.6rem 0;
   padding: 0.7rem 0.8rem;
@@ -6491,6 +6897,16 @@ html[data-working-slow='true']::after {
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 4px;
   background: var(--bg);
+}
+
+.executable-window-height {
+  width: 100%;
+  max-width: none;
+}
+
+.executable-window-height iframe {
+  height: max(640px, 100dvh);
+  min-height: 640px;
 }
 
 .executable summary {
@@ -6843,6 +7259,150 @@ html[data-working-slow='true']::after {
   height: 1.1rem;
 }
 
+/* Un proceso conserva la línea del outline y despliega su mesa dentro del flujo. */
+.process-body {
+  min-width: 0;
+  outline: none;
+}
+
+.process-block {
+  border-block: 1px solid var(--rule);
+  color: var(--text);
+  font-family: var(--font-ui);
+  margin-block: .2rem .55rem;
+}
+
+.process-source-dialog {
+  width: min(42rem, calc(100vw - 2rem));
+  border: 1px solid var(--rule);
+  border-radius: .65rem;
+  background: var(--bg);
+  color: var(--text);
+  padding: 1.15rem;
+  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / .2);
+}
+.process-source-dialog::backdrop { background: rgb(0 0 0 / .45); }
+.process-source-dialog h2 { margin: 0 0 .35rem; font: 600 1.25rem/1.2 var(--font-ui); }
+.process-source-dialog p { margin: .35rem 0 .9rem; color: var(--text-dim); }
+.process-source-dialog textarea {
+  display: block;
+  width: 100%;
+  min-height: 11rem;
+  resize: vertical;
+  border: 1px solid var(--rule);
+  border-radius: .4rem;
+  padding: .8rem;
+  background: var(--paper, var(--bg));
+  color: var(--text);
+  font: .92rem/1.5 var(--font-mono, ui-monospace, monospace);
+}
+.process-source-dialog textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.process-source-dialog textarea[aria-invalid='true'] { border-color: var(--warm); }
+.process-source-dialog .process-source-feedback { min-height: 1.25rem; color: var(--warm); }
+.process-source-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; }
+
+.process-header {
+  align-items: center;
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: minmax(11rem, 1.4fr) minmax(9rem, 1fr) auto auto auto;
+  min-height: 3rem;
+  padding: .45rem .55rem;
+}
+
+.process-identity {
+  align-items: center;
+  display: flex;
+  gap: .6rem;
+  min-width: 0;
+}
+
+.process-identity > span:last-child { display: grid; }
+.process-identity small { color: var(--text-dim); font-size: .68rem; letter-spacing: .04em; }
+.process-identity strong { font-family: var(--font-body); font-size: .95rem; font-weight: 600; }
+.process-mark { align-items: center; color: var(--accent); display: inline-flex; }
+.process-mark svg { height: 1.2rem; width: 1.2rem; }
+.process-input, .process-status { color: var(--text-dim); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-running { color: var(--accent); }
+
+.process-run, .process-toggle, .process-proposal button {
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: inherit;
+  cursor: pointer;
+  min-height: 2rem;
+  padding: .3rem .65rem;
+}
+
+.process-run:disabled { cursor: default; opacity: .45; }
+.process-toggle { align-items: center; display: inline-flex; justify-content: center; padding-inline: .45rem; }
+.process-toggle.open svg { transform: rotate(180deg); }
+
+.process-table {
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.process-station { min-height: 9rem; padding: .8rem; }
+.process-station + .process-station { border-left: 1px solid var(--rule); }
+.process-station h4 { font-size: .72rem; letter-spacing: .08em; margin: 0 0 .8rem; text-transform: uppercase; }
+.process-station-content { font-family: var(--font-body); font-size: .88rem; line-height: 1.45; white-space: pre-wrap; }
+.process-station-content > input,
+.process-station-content > select,
+.process-station-content > textarea,
+.process-role-editor input,
+.process-role-editor select {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+  padding: .25rem .1rem;
+  width: 100%;
+}
+.process-station-content > textarea { display: block; margin-top: .35rem; resize: vertical; }
+.process-role-editor {
+  align-items: baseline;
+  display: grid;
+  gap: .35rem;
+  grid-template-columns: 4.2rem minmax(4rem, 1fr) minmax(5rem, .8fr);
+  margin-top: .45rem;
+}
+.process-role-editor > span { color: var(--text-dim); font: .68rem var(--font-ui); text-transform: uppercase; }
+.process-edit-input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--accent);
+  cursor: pointer;
+  display: block;
+  font: .72rem var(--font-ui);
+  margin-top: .75rem;
+  padding: .15rem 0;
+}
+
+.process-proposal {
+  border-left: 1px dashed var(--accent);
+  margin: .9rem 0 .9rem 1.1rem;
+  padding: .15rem 0 .15rem 1rem;
+}
+.process-proposal small { color: var(--accent); font-size: .67rem; font-weight: 650; letter-spacing: .1em; }
+.process-proposal-preview { margin: .65rem 0; max-width: 48rem; }
+.process-proposal-preview pre { font-size: .75rem; max-height: 14rem; overflow: auto; white-space: pre-wrap; }
+.process-proposal-preview .executable { margin-block: 0; }
+.process-proposal-actions { display: flex; gap: .5rem; }
+.process-proposal .process-accept { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+@media (max-width: 760px) {
+  .process-header { grid-template-columns: 1fr auto auto; }
+  .process-input { grid-column: 1 / -1; grid-row: 2; }
+  .process-status { display: none; }
+  .process-table { grid-template-columns: 1fr; }
+  .process-station + .process-station { border-left: 0; border-top: 1px solid var(--rule); }
+}
+
 .drawn-edit .icon-edit-filled {
   fill: currentColor;
   stroke: none;
@@ -6868,29 +7428,66 @@ html[data-working-slow='true']::after {
 
 /* --- La historia de un bloque ------------------------------------------- */
 
-.history {
-  /*
-   * Ocupa su propia línea dentro de la fila, que es flex.
-   *
-   * Sin esto se colocaba como una columna más, a la derecha del texto: estrujada
-   * al ancho de una letra y altísima. La sangría iguala lo que mide la viñeta
-   * con su hueco —ver `--rail` en `.block`— para que empiece donde empieza el
-   * texto y no donde empieza la fila.
-   */
-  flex-basis: 100%;
-  margin: 0.5rem 0 0.75rem calc(var(--rail, 1.4rem) + var(--rail-gap, 0.5rem));
-  padding: 0.5rem 0.6rem;
-  border-left: 2px solid var(--rule);
+/*
+ * Un inspector y no otro descendiente.
+ *
+ * Es fijo para que desplazar la página no se lleve la evidencia que se está
+ * comparando, modeless para que el bloque siga disponible y redimensionable
+ * para que una revisión larga no dicte el tamaño de la ventana.
+ */
+.history-inspector {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(34rem, calc(100vw - 24px));
+  height: fit-content;
+  max-height: calc(100dvh - 24px);
+  min-width: 20rem;
+  min-height: 8rem;
+  resize: both;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  box-shadow: 0 14px 42px color-mix(in srgb, var(--text) 24%, transparent);
+  color: var(--text);
   font-size: 0.8rem;
 }
 
 .history-head {
   display: flex;
+  align-items: start;
   justify-content: space-between;
   gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 0.75rem;
+}
+
+.history-inspector.moving .history-head { cursor: grabbing; }
+
+.history-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.history-head span { display: block; margin-top: 0.12rem; }
+
+.history-states {
+  min-height: 0;
+  max-height: min(24rem, calc(100dvh - 7rem));
+  overflow: auto;
+  padding: 0 0.75rem 0.65rem;
+  overscroll-behavior: contain;
 }
 
 .history-state {
@@ -6948,8 +7545,39 @@ html[data-working-slow='true']::after {
   cursor: pointer;
 }
 
+.history-close {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0.2rem;
+  border: 0;
+}
+
+.history-close .icon { width: 1rem; height: 1rem; }
+
 .history-copy {
   margin-top: 0.2rem;
+}
+
+@media (max-width: 640px) {
+  .history-inspector {
+    inset: auto 0 0 0 !important;
+    width: auto;
+    height: min(70dvh, 34rem);
+    max-height: none;
+    min-width: 0;
+    min-height: 10rem;
+    resize: none;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 10px 10px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .history-head { cursor: default; }
 }
 
 /* --- Conexiones con servicios de fuera ---------------------------------- */
@@ -7501,7 +8129,7 @@ html[data-working-slow='true']::after {
   border: 1px solid var(--rule);
   border-radius: 4px;
   padding: 0 0.65rem;
-  background: var(--surface);
+  background: var(--bg-raised);
   color: var(--text);
   font: 0.82rem var(--font-ui);
 }
@@ -7877,6 +8505,84 @@ html[data-working-slow='true']::after {
 
 
 /* ---------------------------------------------------------------------------
+ * La mesa de trabajo argumental
+ *
+ * Una sola regla, no una tarjeta: la cabecera declara que se está preparando
+ * una posición sin encerrar el texto corriente en otro contenedor.
+ * ------------------------------------------------------------------------- */
+
+.argument-workbench-band {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin: 0.4rem 0 1.2rem;
+  padding: 0.7rem 0 0.75rem calc(var(--rail, 1.4rem) + var(--rail-gap, 0.2rem));
+  border-top: 1px solid var(--rule);
+}
+
+.argument-workbench-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.argument-workbench-what,
+.argument-workbench-maturity > span:first-child {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.argument-workbench-explanation {
+  font-size: 0.84rem;
+  color: var(--text-dim);
+}
+
+.argument-workbench-maturity {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: none;
+}
+
+.argument-workbench-maturity select {
+  max-width: 12rem;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 0.1rem 1.2rem 0.15rem 0;
+  color: var(--text);
+  background-color: transparent;
+  font: inherit;
+}
+
+.argument-workbench-maturity select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.argument-workbench-phase {
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .argument-workbench-band,
+  .argument-workbench-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .argument-workbench-band {
+    gap: 0.75rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * El recorrido
  *
  * Una página cuyo orden alguien declaró que era un argumento. Lo que se le añade
@@ -8161,6 +8867,48 @@ html[data-working-slow='true']::after {
   color: var(--text-dim);
 }
 
+/* Al cambiar de página, la anterior sigue siendo legible mientras llegan la
+ * copia local o el corpus. El aviso ocupa una sola línea y no suplanta el texto
+ * que ya está en la pantalla. */
+.awaiting-next {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  width: fit-content;
+  max-width: calc(100% - 2rem);
+  margin: 0.55rem auto;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
+  box-shadow: 0 0.2rem 0.8rem color-mix(in srgb, var(--text) 10%, transparent);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.awaiting-next .page-header {
+  display: contents;
+}
+
+.awaiting-next .page-title {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.awaiting-next .page-title::before {
+  content: 'abriendo ';
+}
+
+.awaiting-next .awaiting-elapsed {
+  display: inline;
+  margin: 0;
+}
+
 .awaiting-failed {
   font-family: var(--font-ui);
   font-size: 0.8rem;
@@ -8405,7 +9153,7 @@ html[data-working-slow='true']::after {
   padding: 1.5rem;
   overflow-y: auto;
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--bg-raised);
   box-shadow: 0 8px 40px color-mix(in srgb, var(--text) 30%, transparent);
 }
 
@@ -8543,7 +9291,7 @@ html[data-working-slow='true']::after {
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--accent);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--bg-raised);
   color: var(--text);
   font-family: var(--font-text, inherit);
   font-size: 0.86rem;
@@ -8621,7 +9369,8 @@ html[data-working-slow='true']::after {
   line-height: 1;
   cursor: pointer;
 }
-.media-metadata textarea {
+.media-metadata textarea,
+.media-metadata input[type='text'] {
   width: 100%;
   resize: vertical;
   box-sizing: border-box;
@@ -8634,7 +9383,8 @@ html[data-working-slow='true']::after {
   font: inherit;
   line-height: 1.45;
 }
-.media-metadata textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.media-metadata textarea:focus,
+.media-metadata input[type='text']:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .media-detail-preview {
   display: grid;
   place-items: center;
@@ -8662,6 +9412,7 @@ html[data-working-slow='true']::after {
 }
 .media-metadata-actions a:first-child { margin-right: auto; color: var(--accent); }
 .media-metadata-actions button[type='submit'] { color: var(--accent); border-color: var(--accent); }
+.media-metadata-actions .media-metadata-delete { color: var(--warm); border-color: color-mix(in srgb, var(--warm), var(--rule) 55%); }
 @media (max-width: 640px) {
   .media-metadata { width: calc(100vw - 1rem); max-height: calc(100vh - 1rem); padding: .8rem; }
   .media-detail-preview iframe { height: 46vh; }
@@ -8723,6 +9474,60 @@ html[data-working-slow='true']::after {
 
 .activity-list a { color: var(--accent); }
 
+.activity-days {
+  display: grid;
+  gap: .55rem;
+}
+
+.activity-day {
+  border-top: 1px solid var(--rule);
+}
+
+.activity-day > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: .4rem;
+  padding: .65rem 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  list-style: none;
+}
+
+.activity-day > summary::-webkit-details-marker { display: none; }
+
+.activity-day > summary::before {
+  content: '›';
+  color: var(--text-dim);
+  font-size: .9rem;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+
+.activity-day[open] > summary::before { transform: rotate(90deg); }
+
+.activity-day > summary > span::first-letter { text-transform: uppercase; }
+
+.activity-day > summary small {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  white-space: nowrap;
+  margin-left: .6rem;
+}
+
+.activity-page-created > .activity-action {
+  font-weight: 600;
+}
+
+.activity-by {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: .16em;
+}
+
 .activity-excerpt {
   margin: 0;
   overflow: hidden;
@@ -8747,6 +9552,7 @@ html[data-working-slow='true']::after {
 .activity-list {
   display: grid;
   gap: .7rem;
+  margin: .15rem 0 1rem;
   padding-left: 1.25rem;
 }
 /* La aceptación de una invitación antecede a la aplicación y usa una superficie mínima. */

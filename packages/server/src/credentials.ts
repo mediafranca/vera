@@ -25,7 +25,7 @@ import type { Store } from '@vera/store';
  * puede enseñarte después. Todo lo demás deja el estado anterior legible en el
  * registro; una eliminación deja una ausencia.
  */
-export const SCOPES = ['read', 'write', 'discard'] as const;
+export const SCOPES = ['read', 'write', 'discard', 'capture'] as const;
 export type Scope = (typeof SCOPES)[number];
 
 export interface Credential {

@@ -82,4 +82,49 @@ describe('Vera Conecta dentro de Desktop', () => {
     assert.equal(store.state, null);
     assert.equal(conecta.status().status, 'desactivado');
   });
+
+  it('entrega una captura del relay a la puerta estrecha local', async () => {
+    const store = new MemoryStore();
+    store.state = {
+      relayUrl: 'https://conecta.example', installationId: 'i', linkSecret: 's', credentials: {},
+    };
+    let socket: FakeSocket | null = null;
+    globalThis.WebSocket = class {
+      constructor(url: string | URL) {
+        socket = new FakeSocket(String(url));
+        return socket as unknown as WebSocket;
+      }
+    } as unknown as typeof WebSocket;
+    const calls: Array<{ url: string; authorization: string; body: string }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/mcp/connections')) {
+        assert.match(String(init?.body), /"deal":"capturar"/);
+        return Response.json({ secret: 'capture-secret', client: 'conecta-clip' }, { status: 201 });
+      }
+      calls.push({
+        url,
+        authorization: String((init?.headers as Record<string, string>)?.authorization),
+        body: String(init?.body),
+      });
+      return Response.json({ status: 'accepted', page: 'page:day', block: 'block:capture' }, { status: 202 });
+    }) as typeof fetch;
+
+    const conecta = new DesktopConecta(store, 'http://127.0.0.1:4173');
+    conecta.start();
+    socket?.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({
+      tipo: 'captura', request_id: 'r1', principal_id: 'clip-a',
+      identificador_de_idempotencia: 'capture-a',
+      cuerpo: JSON.stringify({ idempotencyKey: 'capture-a', content: 'Texto' }),
+    }) }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(calls, [{
+      url: 'http://127.0.0.1:4173/captures',
+      authorization: 'Bearer capture-secret',
+      body: JSON.stringify({ idempotencyKey: 'capture-a', content: 'Texto' }),
+    }]);
+    assert.equal(JSON.parse(socket?.sent.at(-1) ?? '{}').tipo, 'captura_aceptada');
+    conecta.stop();
+  });
 });

@@ -1,0 +1,376 @@
+-- allium: 3
+-- executable-process-blocks.allium
+
+-- Scope: Bloques que invocan transformaciones registradas sobre entradas
+--   canónicas y producen resultados revisables dentro de una página de Vera.
+-- Includes: definición e invocación separadas, una transformación por bloque,
+--   cadenas explícitas mediante salidas aceptadas, entradas por puerto,
+--   ejecución confinada, propuesta hija, aceptación como bloque hermano y
+--   procedencia.
+-- Excludes:
+--   - El algoritmo particular de cada transformador.
+--   - El diseño definitivo del selector o del editor de procesos.
+--   - La correspondencia semántico–geométrica de PICTOS, que sigue siendo un
+--     problema de investigación del proceso y no una obligación general de Vera.
+-- Dependencies: Page, Block y Participant los gobierna core.allium; las formas
+--   interpretativas existentes permanecen en processing-forms.allium.
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract ExecutableProcess {
+    execute: (invocation: ProcessInvocation, participant: core/Participant) -> ProcessRun
+
+    @invariant TheEditableSourceContainsTheWholeProcessDeclaration
+        -- El modal devuelve la fuente declarativa completa: identidad y versión,
+        -- entradas, presentación, ejecutor, solicitud y mapeo de la respuesta.
+        -- Vera no completa en código oculto una mitad específica del proceso.
+        -- Sólo las credenciales y la política que limita cada conexión quedan
+        -- fuera del bloque, porque conceden autoridad y no son contenido.
+
+    @invariant InputsNameExactRevisions
+        -- Cada puerto apunta a un bloque y a la revisión leída. Editar la
+        -- entrada mientras el proceso corre no permite presentar la salida como
+        -- si describiera silenciosamente el texto nuevo.
+
+    @invariant ProgramsDoNotWriteTheGraph
+        -- El transformador recibe valores y devuelve valores. No recibe una
+        -- credencial, el objeto grafo ni una puerta lateral para crear, mover o
+        -- editar bloques. Sólo Vera puede incorporar el resultado.
+
+    @invariant ExecutionIsFinite
+        -- Toda ejecución tiene un plazo y puede terminarse. Un transformador
+        -- defectuoso no sacrifica la disponibilidad del cuaderno ni del equipo.
+
+    @invariant RequesterCoordinatorExecutorAndAcceptorRemainDistinct
+        -- Pulsar Ejecutar formula la solicitud; coordinarla, transformarla y
+        -- aceptar su resultado son actos diferentes. Cotito sólo aparece como
+        -- coordinador cuando realmente reclamó la solicitud, y la salida
+        -- conserva el nombre del modelo, transformador o servicio que la produjo.
+
+    @invariant AcceptanceDoesNotRewriteAuthorship
+        -- Aceptar incorpora una propuesta al texto: no convierte a quien acepta
+        -- en autor del contenido generado ni atribuye a Cotito lo que hizo otro
+        -- ejecutor. La procedencia conserva ambos actos.
+
+    @invariant FailureLeavesNoResult
+        -- Una entrada incompatible, una salida ilegible, una interrupción o un
+        -- plazo agotado explican el fallo y no crean ni mueven bloques.
+
+    @invariant OneInvocationPerformsOneTransformation
+        -- Un bloque de proceso no oculta un pipeline de estaciones. Recibe una
+        -- o varias entradas, realiza una sola transformación nombrable y ofrece
+        -- una sola salida. Una secuencia se expresa encadenando bloques.
+
+    @invariant ChangedInputsDoNotRewriteDownstreamHistory
+        -- Cada ejecución aguas abajo conserva la revisión exacta que consumió.
+        -- Si una salida anterior cambia, la traza existente sigue siendo cierta
+        -- para aquella revisión pero no se presenta como actual ni se reejecuta
+        -- silenciosamente.
+}
+
+contract ProcessResultLifecycle {
+    accept: (proposal: ProcessResultProposal, participant: core/Participant) -> core/Block
+    regenerate: (proposal: ProcessResultProposal, participant: core/Participant) -> ProcessRun
+
+    @invariant TheProposalBeginsUnderTheProcess
+        -- Mientras se revisa, el resultado se presenta como hijo del bloque de
+        -- proceso. Su subordinación visual dice que todavía es una salida
+        -- propuesta y no una parte ordinaria de la página.
+
+    @invariant AcceptanceMakesAnOrdinarySibling
+        -- Aceptar retira la propuesta del recinto del proceso y materializa su
+        -- contenido como hermano del bloque de proceso en la misma página. Desde
+        -- entonces se edita, mueve y enlaza como cualquier bloque.
+
+    @invariant AcceptancePreservesProvenance
+        -- El bloque aceptado recuerda la definición y versión ejecutadas, los
+        -- bloques y revisiones de entrada, la ejecución y quién la solicitó.
+
+    @invariant RejectionChangesNoCorpusContent
+        -- Descartar una propuesta deja el bloque de proceso y sus entradas donde
+        -- estaban; no crea un hermano vacío ni una operación a medias.
+
+    @invariant OnlyOneProposalIsVisible
+        -- Una ejecución ofrece una sola respuesta. Regenerar retira la propuesta
+        -- provisional visible y pide otra; los intentos anteriores sobreviven en
+        -- la procedencia, no como una galería de alternativas en la página.
+
+    @invariant HumanAdjustmentIsNotRegeneration
+        -- Corregir una etiqueta, un rol o una decisión de composición modifica
+        -- la propuesta visible y la vuelve a validar sin consultar otra vez al
+        -- oráculo. Regenerar, en cambio, solicita una posibilidad nueva.
+
+    @invariant AcceptedOutputsAreNeverReplacedByRerunning
+        -- Volver a ejecutar abre una propuesta provisional nueva. Cualquier
+        -- salida aceptada permanece como el bloque ordinario que ya llegó a ser.
+
+    @invariant TheAcceptedRunLeavesATrace
+        -- El bloque de proceso recuerda su última salida aceptada, versión,
+        -- entrada y duración. Recargar la página no lo devuelve falsamente al
+        -- estado «sin ejecutar» ni exige inspeccionar el bloque producido.
+
+    @invariant AcceptedOutputsCanBecomeInputs
+        -- Una salida aceptada ya es un bloque canónico y puede ocupar un puerto
+        -- del proceso siguiente. La referencia enlaza su identidad y la revisión
+        -- consumida; la propuesta hija todavía no alimenta la cadena.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum ProcessRunStatus { running | proposed | accepted | rejected | superseded | failed | stale }
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+-- Una capacidad reutilizable y versionada. Puede tener uno o varios puertos.
+entity ProcessDefinition {
+    name: String
+    purpose: String
+    version: Integer
+    enabled: Boolean
+    output_kind: String
+    executor: String
+    source: String
+    connection: String?
+    request: String?
+    response_mapping: String?
+}
+
+-- Un puerto enlaza una entrada canónica con la revisión efectivamente leída.
+value ProcessInput {
+    port: String
+    block: core/Block
+    revision: String
+}
+
+-- El bloque visible que elige una definición y conecta sus entradas.
+entity ProcessInvocation {
+    block: core/Block
+    definition: ProcessDefinition
+    inputs: List<ProcessInput>
+}
+
+entity ProcessRun {
+    invocation: ProcessInvocation
+    definition_version: Integer
+    requested_by: core/Participant
+    coordinated_by: core/Participant?
+    executed_by: String
+    accepted_by: core/Participant?
+    status: ProcessRunStatus
+    started_at: Timestamp
+    finished_at: Timestamp?
+    explanation: String?
+
+    transitions status {
+        running -> proposed
+        running -> failed
+        proposed -> accepted
+        proposed -> rejected
+        proposed -> superseded
+        proposed -> stale
+        terminal: accepted, rejected, superseded, failed, stale
+    }
+}
+
+-- La salida revisable es una proyección transitoria presentada como hija. Sólo
+-- al aceptar se vuelve un bloque canónico con identidad e historia propias.
+entity ProcessResultProposal {
+    run: ProcessRun
+    content: String
+    output_kind: String
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule ParticipantRunsAProcessBlock {
+    when: RunProcess(participant, invocation)
+
+    requires: invocation.definition.enabled = true
+    requires: invocation.inputs.count > 0
+
+    ensures:
+        let run = ProcessRun.created(
+            invocation: invocation,
+            definition_version: invocation.definition.version,
+            requested_by: participant,
+            coordinated_by: null,
+            executed_by: invocation.definition.executor,
+            accepted_by: null,
+            status: running,
+            started_at: now,
+            finished_at: null,
+            explanation: null
+        )
+        ExecutableProcess.execute(invocation, participant) = run
+}
+
+rule AValidResultBecomesAChildProposal {
+    when: ProcessFinished(run, content, output_kind)
+
+    requires: run.status = running
+    requires: output_kind = run.invocation.definition.output_kind
+
+    ensures:
+        run.status = proposed
+        run.finished_at = now
+        ProcessResultProposal.created(
+            run: run,
+            content: content,
+            output_kind: output_kind
+        )
+}
+
+rule AcceptingAProposalCreatesTheSibling {
+    when: AcceptProcessResult(participant, proposal)
+
+    requires: proposal.run.status = proposed
+
+    ensures:
+        proposal.run.status = accepted
+        proposal.run.accepted_by = participant
+        exists ProcessResultLifecycle.accept(proposal, participant)
+}
+
+rule RejectingAProposalWritesNothing {
+    when: RejectProcessResult(participant, proposal)
+
+    requires: proposal.run.status = proposed
+
+    ensures:
+        proposal.run.status = rejected
+        proposal.run.finished_at = now
+}
+
+rule RegeneratingReplacesOnlyThePendingProposal {
+    when: RegenerateProcessResult(participant, proposal)
+
+    requires: proposal.run.status = proposed
+
+    ensures:
+        proposal.run.status = superseded
+        proposal.run.finished_at = now
+        let next = ProcessRun.created(
+            invocation: proposal.run.invocation,
+            definition_version: proposal.run.invocation.definition.version,
+            requested_by: participant,
+            coordinated_by: null,
+            executed_by: proposal.run.invocation.definition.executor,
+            accepted_by: null,
+            status: running,
+            started_at: now,
+            finished_at: null,
+            explanation: null
+        )
+        ProcessResultLifecycle.regenerate(proposal, participant) = next
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface ProcessBlockExecution {
+    facing writer: core/Participant
+    context invocation: ProcessInvocation
+
+    exposes:
+        invocation.definition.name
+        invocation.definition.purpose
+        invocation.inputs
+        ProcessRun
+        ProcessResultProposal
+
+    contracts:
+        fulfils ExecutableProcess
+        fulfils ProcessResultLifecycle
+
+    provides:
+        RunProcess(writer, invocation)
+        AcceptProcessResult(writer, proposal)
+        RejectProcessResult(writer, proposal)
+        RegenerateProcessResult(writer, proposal)
+
+    @guarantee PortsAreNamed
+        -- Un proceso con varias fuentes no finge que todas cumplen el mismo
+        -- papel. Cada entrada conserva un nombre aunque una cadena simple use
+        -- sólo la salida aceptada del paso anterior.
+
+    @guarantee TheBoundaryIsVisible
+        -- Antes de aceptar, la indentación mantiene la salida dentro del proceso;
+        -- después, el resultado aparece en el outline ordinario como hermano.
+
+    @guarantee TheProcessRemainsABlock
+        -- `/proceso` cambia el régimen del bloque, no lo saca del outline. La
+        -- viñeta, el asa, el plegado, el menú, los hijos, el movimiento y las
+        -- referencias siguen siendo los de cualquier bloque de Vera.
+
+    @guarantee TheBulletMenuOpensTheInvocationSource
+        -- El menú de la viñeta ofrece «Editar código». La acción devuelve ese
+        -- mismo bloque a su fuente declarativa completa dentro de un editor
+        -- modal. Allí se pueden cambiar identidad, presentación, versión,
+        -- entradas, conexión, solicitud y mapeo de respuesta. Guardar edita ese
+        -- bloque canónico; cancelar no escribe ni abre otra página.
+
+    @guarantee ExecutionDetailsDoNotBecomeFollowingBlocks
+        -- Endpoint, cuerpo de solicitud, schema, modelo, request id y demás
+        -- detalles de ejecución no aparecen como párrafos que continúan el
+        -- outline. La declaración editable vive en el bloque de proceso; la
+        -- procedencia de cada corrida vive con su salida y se inspecciona como
+        -- metadato de esa salida.
+
+    @guarantee ProcessAppearanceRequiresAnInvocation
+        -- La marca lambda, el estado y Play sólo aparecen cuando el contenido
+        -- del bloque es una invocación `/proceso` válida. Una traza histórica o
+        -- un texto que describe una ejecución no se disfraza de control vivo.
+
+    @guarantee ExternalProcessesRunThroughTheServer
+        -- Una definición remota se ejecuta servidor a servidor. La credencial
+        -- permanece fuera del navegador. La fuente del bloque elige una conexión
+        -- gobernada, una ruta relativa, el cuerpo y cómo leer la respuesta; no
+        -- puede inventar otro host ni extraer el secreto. Vera conserva el JSON
+        -- nativo y nombra al servicio remoto como ejecutor. Un fallo remoto deja
+        -- una explicación y ningún resultado.
+
+    @guarantee TheProcessOpensInThePageFlow
+        -- El bloque despliega su entrada, la transformación y su propuesta en
+        -- la página; no inventa estaciones internas ni obliga a abandonar el
+        -- contexto de escritura.
+
+    @guarantee IntermediateResultsAreTangibleWithoutCode
+        -- Una salida JSON aceptada es un bloque ordinario. La interfaz puede
+        -- volverla editable mediante nombres, selectores, campos o un árbol del
+        -- dominio; ver o escribir JSON crudo no es requisito para intervenir.
+
+    @guarantee ThePictosExperimentUsesThreeProcessBlocks
+        -- La exploración de PICTOS en Vera encadena Comprender (texto a JSON
+        -- semántico), Componer (JSON semántico a JSON de árbol visual) y
+        -- Producir como tres bloques independientes. Esto no describe el
+        -- PICTOS actual: allí Producir genera primero un bitmap porque alcanza
+        -- mejor calidad visual, y la reconstrucción posterior de ese bitmap
+        -- como SVG estructurado sigue siendo su debilidad. Generar un SVG
+        -- semántica y gráficamente coherente desde el origen es una hipótesis
+        -- para una versión posterior, no una capacidad ya conseguida.
+
+    @guarantee TheRestingActionIsExecute
+        -- Cerrado y sin ejecución, el único gesto con peso es Ejecutar. Abrir la
+        -- mesa y las acciones específicas aparecen como controles secundarios.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "¿Qué tipos de salida además de texto y SVG autocontenido debe reconocer el primer corte?"
+
+open question "Cuando cambia una entrada ya usada, ¿cómo debe señalar Vera que las ejecuciones aguas abajo están desactualizadas y desde qué punto ofrece volver a correr la cadena?"
+
+open question "¿Cómo generalizar la solicitud persistente al bibliotecario para que `/proceso` conserve solicitud, reclamo y propuesta antes de aceptar, sin imponer que Cotito sea el ejecutor de todo proceso?"

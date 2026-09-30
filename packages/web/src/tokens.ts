@@ -143,10 +143,27 @@ const LAYOUT_KEY = 'vera.layout';
 const VIEW_KEY = 'vera.graphView';
 const REACH_KEY = 'vera.graphReach';
 const JOURNALS_KEY = 'vera.graphJournals';
+const AUTO_ROTATE_KEY = 'vera.graphAutoRotate';
 
 export type ColourScheme = 'light' | 'dark';
 export type WorkspaceLayout = 'text_only' | 'graph_only' | 'split';
 export type GraphViewMode = 'graph_2d' | 'graph_3d' | 'graph_d4';
+
+/**
+ * D4 siempre entra por el anillo inmediato.
+ *
+ * Es una frontera de coste y no una preferencia de presentación: una consulta
+ * que era razonable en 2D o 3D puede ser demasiado pesada al componer todas las
+ * columnas y conectivas de D4. Una vez entregado el primer anillo, la persona
+ * conserva el control y puede ampliar el alcance normalmente.
+ */
+export function reachForGraphViewChange(
+  from: GraphViewMode,
+  to: GraphViewMode,
+  reach: number,
+): number {
+  return to === 'graph_d4' && from !== 'graph_d4' ? 1 : reach;
+}
 
 /**
  * Los tokens de este participante.
@@ -324,6 +341,11 @@ export const session = {
   /** Los días no pueblan la vecindad; el interruptor sólo permite ver el día en foco. */
   graphJournals: (): boolean => localStorage.getItem(JOURNALS_KEY) === 'true',
   setGraphJournals: (shown: boolean) => localStorage.setItem(JOURNALS_KEY, String(shown)),
+
+  /** La cámara 3D sólo gira sola cuando la persona lo ha pedido. */
+  graphAutoRotate: (): boolean => localStorage.getItem(AUTO_ROTATE_KEY) === 'true',
+  setGraphAutoRotate: (rotating: boolean) =>
+    localStorage.setItem(AUTO_ROTATE_KEY, String(rotating)),
 
   graphView: (): GraphViewMode =>
     (localStorage.getItem(VIEW_KEY) as GraphViewMode | null) ?? 'graph_2d',

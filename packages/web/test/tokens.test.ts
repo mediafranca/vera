@@ -1,7 +1,10 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { session } from '../src/tokens.ts';
+import { DEFAULT_TOKENS, reachForGraphViewChange, session } from '../src/tokens.ts';
+
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -33,6 +36,19 @@ describe('vista del mapa publicado', () => {
   });
 });
 
+describe('entrada segura a D4', () => {
+  it('baja a un salto al entrar desde 2D o 3D', () => {
+    assert.equal(reachForGraphViewChange('graph_2d', 'graph_d4', 3), 1);
+    assert.equal(reachForGraphViewChange('graph_3d', 'graph_d4', 2), 1);
+  });
+
+  it('no impide que dentro de D4 se amplíe ni altera las otras transiciones', () => {
+    assert.equal(reachForGraphViewChange('graph_d4', 'graph_d4', 3), 3);
+    assert.equal(reachForGraphViewChange('graph_d4', 'graph_2d', 2), 2);
+    assert.equal(reachForGraphViewChange('graph_2d', 'graph_3d', 3), 3);
+  });
+});
+
 describe('despliegue del front matter', () => {
   it('nace cerrado y conserva exactamente la última elección del lector', () => {
     const storage = new MemoryStorage();
@@ -47,6 +63,11 @@ describe('despliegue del front matter', () => {
     assert.equal(session.frontMatterOpen(), false);
     assert.equal(storage.getItem('vera.frontMatterOpen'), 'false');
   });
+
+  it('parte las direcciones largas sin añadir desplazamiento horizontal', () => {
+    assert.match(styles, /\.property-external\s*\{[^}]*white-space:\s*pre-wrap[^}]*overflow-wrap:\s*anywhere[^}]*word-break:\s*break-word/s);
+    assert.match(styles, /\.property-value:has\(\.property-external\)\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0/s);
+  });
 });
 
 describe('diarios en el mapa', () => {
@@ -59,5 +80,25 @@ describe('diarios en el mapa', () => {
     assert.equal(session.graphJournals(), true);
     session.setGraphJournals(false);
     assert.equal(session.graphJournals(), false);
+  });
+});
+
+describe('rotación automática del mapa 3D', () => {
+  it('nace apagada y el interruptor recuerda exactamente su estado', () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+
+    assert.equal(session.graphAutoRotate(), false);
+    session.setGraphAutoRotate(true);
+    assert.equal(session.graphAutoRotate(), true);
+    session.setGraphAutoRotate(false);
+    assert.equal(session.graphAutoRotate(), false);
+  });
+});
+
+describe('superficies del sistema de diseño', () => {
+  it('cada superficie elevada usa el token gobernado que Vera realmente define', () => {
+    assert.ok(DEFAULT_TOKENS.some((token) => token.name === '--bg-raised'));
+    assert.doesNotMatch(styles, /var\(--surface\b/);
   });
 });

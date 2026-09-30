@@ -929,9 +929,9 @@ erDiagram
   emitirla, y no vuelve a poder leerse.
 - **`discard` va aparte de `write`** porque borrar es el único acto que el grafo
   no puede enseñarte después.
-- **`exposed_subjects` guarda qué salió exactamente**, no sólo qué se pidió: una
-  búsqueda que devolvió doce extractos expuso doce cosas, y el registro tiene que
-  poder nombrarlas.
+- **`exposures.delivered_count` mide lo que salió sin duplicar el corpus**: una
+  búsqueda que devolvió doce extractos conserva una sola fila con cardinalidad y
+  volumen, no doce filas auxiliares.
 
 ### Medios, voz y sitio
 

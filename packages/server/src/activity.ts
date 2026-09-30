@@ -11,6 +11,7 @@ export interface ActivityItem {
   at: number;
   by: string;
   participant: string;
+  participantKind: 'human' | 'agent' | null;
   channel: string;
   kind: Change['kind'];
   subjectId: string;
@@ -259,11 +260,13 @@ export function activityOf(graph: VeraGraph): {
     }
 
     const title = pageId === null ? null : pages.get(pageId)?.title ?? beforeTitle;
+    const author = graph.participant(operation.submission.submittedBy);
     activity.push({
       sequence: operation.sequence,
       at: operation.appliedAt,
-      by: graph.participant(operation.submission.submittedBy)?.name ?? operation.submission.submittedBy,
+      by: author?.name ?? operation.submission.submittedBy,
       participant: operation.submission.submittedBy,
+      participantKind: author?.kind ?? null,
       channel: operation.submission.channel,
       kind: change.kind,
       subjectId: operation.subjectId,
