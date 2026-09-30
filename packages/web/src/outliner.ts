@@ -3111,6 +3111,81 @@ export function referenceExcerptAddsContext(title: string, excerpt: string): boo
   return excerpt.trim().toLocaleLowerCase() !== `[[${title.trim()}]]`.toLocaleLowerCase();
 }
 
+/** Una vecina, en una de las dos direcciones legibles al pie de la página. */
+export interface PageReferenceRow {
+  title: string;
+  page: string | null;
+  excerpt: string;
+  /** El bloque de esta página donde ocurre la mención, si ocurre aquí. */
+  from: string | null;
+  /** La explicación canónica de esta misma dirección, cuando alguien la escribió. */
+  relation: CrossingRow | null;
+}
+
+/**
+ * Reúne menciones y relaciones explicadas sin fingir que son dos vecindarios.
+ *
+ * Una relación puede existir sin un wikienlace literal; aun así une dos páginas
+ * y por eso ocupa la misma lista direccional. Cuando ambos existen, se conserva
+ * una sola fila y la explicación enriquece la referencia.
+ */
+export function pageReferenceRows(
+  page: Pick<
+    PageView,
+    'blocks' | 'blockProperties' | 'references' | 'backlinks' | 'crossingsOut' | 'crossingsIn'
+  >,
+): { namedBy: PageReferenceRow[]; names: PageReferenceRow[] } {
+  const key = (id: string | null, title: string): string =>
+    id === null ? `title:${title.trim().toLocaleLowerCase()}` : `page:${id}`;
+  const names = new Map<string, PageReferenceRow>();
+  for (const reference of page.references ?? []) {
+    names.set(key(reference.page, reference.title), {
+      title: reference.title,
+      page: reference.page,
+      excerpt: projectedReferenceText(page, reference.block, reference.excerpt),
+      from: reference.block,
+      relation: null,
+    });
+  }
+  for (const relation of page.crossingsOut ?? []) {
+    const at = key(relation.toPage, relation.targetTitle);
+    const existing = names.get(at);
+    names.set(at, {
+      title: existing?.title ?? relation.title,
+      page: existing?.page ?? relation.toPage,
+      excerpt: existing?.excerpt ?? relation.says,
+      from: existing?.from ?? relation.fromBlock,
+      relation,
+    });
+  }
+
+  const namedBy = new Map<string, PageReferenceRow>();
+  for (const backlink of page.backlinks ?? []) {
+    const at = key(backlink.page, backlink.title);
+    if (namedBy.has(at)) continue;
+    namedBy.set(at, {
+      title: backlink.title,
+      page: backlink.page,
+      excerpt: backlink.excerpt,
+      from: null,
+      relation: null,
+    });
+  }
+  for (const relation of page.crossingsIn ?? []) {
+    const at = key(relation.fromPage, relation.title);
+    const existing = namedBy.get(at);
+    namedBy.set(at, {
+      title: existing?.title ?? relation.title,
+      page: existing?.page ?? relation.fromPage,
+      excerpt: existing?.excerpt ?? relation.says,
+      from: null,
+      relation,
+    });
+  }
+
+  return { namedBy: [...namedBy.values()], names: [...names.values()] };
+}
+
 /**
  * Traduce las rutas del corpus a los objetos que Vera guarda.
  *
@@ -6626,84 +6701,6 @@ export function renderOutliner(
   }
 
   /*
-   * Las dos columnas: lo que esta página afirma y lo que afirman sobre ella.
-   *
-   * Van antes de las referencias y no después, y son cosa distinta de ellas. Un
-   * retroenlace dice que alguien nombró esta página; una relación dice qué dijo
-   * al nombrarla. Se ven las relaciones explicadas existan o no menciones entre
-   * las dos páginas, y no se ven las menciones que nadie explicó: son dos
-   * preguntas distintas y ésta es la segunda.
-   */
-  for (const [rows, name, outgoing] of [
-    [page.crossingsOut ?? [], 'Afirma sobre otras', true],
-    [page.crossingsIn ?? [], 'Afirman sobre ésta', false],
-  ] as [CrossingRow[], string, boolean][]) {
-    if (rows.length === 0) continue;
-
-    const folded = foldingSection(`rel:${name}`, `${name} (${rows.length})`, 2);
-    folded.section.classList.add('relations');
-    const section = folded.body;
-
-    const list = document.createElement('ul');
-    for (const row of rows) {
-      const item = document.createElement('li');
-      item.className = 'relation';
-
-      // El término, cuando lo hay. Sin él la fila dice lo mismo con una palabra
-      // menos: explicar no exige clasificar.
-      if (row.reads !== null) {
-        const term = document.createElement('span');
-        term.className = 'relation-term';
-        term.textContent = row.reads;
-        item.append(term);
-      }
-
-      const other = document.createElement('button');
-      other.type = 'button';
-      other.className = 'relation-page';
-      other.textContent = row.title;
-      // Un destino que nadie ha escrito se ve como lo que es: la relación está
-      // en pie y la página todavía no.
-      if (outgoing && row.toPage === null) other.classList.add('unresolved');
-      other.addEventListener('click', () => callbacks.onOpen(
-        outgoing ? (row.toPage ?? row.targetTitle) : row.fromPage,
-        outgoing ? 'followed_reference' : 'followed_backlink',
-        row.revision === null ? null : { id: row.stableId, revision: row.revision, content: row.said },
-      ));
-      item.append(other);
-
-      // Lo dicho, que es la relación misma, y debajo la frase desde la que se
-      // afirma: una relación sin su frase es una flecha sin sujeto.
-      const said = document.createElement('div');
-      renderRelationTypeControl(item, row, callbacks, readOnly);
-      renderRelationOutline(
-        said, row, callbacks, readOnly,
-        (host, content) => renderPreview(host, content, outgoing ? 'followed_reference' : 'followed_backlink'),
-      );
-      item.append(said);
-
-      const from = document.createElement('div');
-      from.className = 'relation-from markdown-preview';
-      renderPreview(from, row.says, outgoing ? 'followed_reference' : 'followed_backlink');
-      item.append(from);
-
-      // El botón anterior ya ofrece el destino. Si la cita vuelve a nombrar esa
-      // misma página, conservar otro enlace idéntico multiplica paradas para el
-      // teclado y el lector de pantalla sin añadir una acción nueva.
-      const destination = (outgoing ? row.targetTitle : row.title).toLowerCase();
-      for (const repeated of item.querySelectorAll<HTMLAnchorElement>('a.wiki')) {
-        if ((repeated.dataset['page'] ?? repeated.textContent ?? '').toLowerCase() !== destination) continue;
-        repeated.tabIndex = -1;
-        repeated.setAttribute('aria-hidden', 'true');
-      }
-
-      list.append(item);
-    }
-    section.append(list);
-    container.append(folded.section);
-  }
-
-  /*
    * Referencias: una sola sección, en los dos sentidos.
    *
    * El pie contestaba media pregunta —quién habla de esta página— y la otra
@@ -6711,61 +6708,22 @@ export function renderOutliner(
    * vecina una página había que releerla entera.
    *
    * Las dos columnas van a la par porque son la misma pregunta mirada desde los
-   * dos lados. Las que van en los dos sentidos van debajo y juntas, porque no
-   * son dos hechos sino uno: dos páginas que se nombran mutuamente están
-   * relacionadas de una manera que ninguna de las dos columnas dice por
-   * separado, y repetirlas arriba las contaría dos veces.
+   * dos lados. Explicar una referencia no crea otro vecindario: la explicación,
+   * su tipo y su outline viven en la fila que ya une esas páginas. Si el vínculo
+   * va en ambos sentidos aparece una vez en cada dirección; esconderlo en una
+   * tercera categoría obligaría a reaprender qué significa cada lista.
    *
    * Y cada renglón lleva su pluma. El momento en que alguien sabe por qué dos
    * páginas se tocan es el momento en que las está mirando juntas, y aquí están
    * juntas: explicar desde otro sitio sería pedirle que se acuerde después.
    */
   {
-    const out = new Map((page.references ?? []).map((one) => [one.title.toLowerCase(), one]));
-    const back = new Map<string, (typeof page.backlinks)[number]>();
-    for (const one of page.backlinks) {
-      if (!back.has(one.title.toLowerCase())) back.set(one.title.toLowerCase(), one);
-    }
+    const { namedBy: named, names } = pageReferenceRows(page);
 
-    interface Row {
-      title: string;
-      page: string | null;
-      excerpt: string;
-      /** El bloque de esta página donde ocurre la mención, si ocurre aquí. */
-      from: string | null;
-      /** Y lo que la otra dice de ésta, cuando se nombran las dos. */
-      says?: string;
-    }
-
-    const both: Row[] = [];
-    for (const [key, one] of out) {
-      const other = back.get(key);
-      if (other === undefined) continue;
-      both.push({
-        title: one.title,
-        page: one.page,
-        excerpt: projectedReferenceText(page, one.block, one.excerpt),
-        from: one.block,
-        says: other.excerpt,
-      });
-    }
-    const mutual = new Set(both.map((one) => one.title.toLowerCase()));
-    const names: Row[] = [...out.values()]
-      .filter((one) => !mutual.has(one.title.toLowerCase()))
-      .map((one) => ({
-        title: one.title,
-        page: one.page,
-        excerpt: projectedReferenceText(page, one.block, one.excerpt),
-        from: one.block,
-      }));
-    const named: Row[] = [...back.values()]
-      .filter((one) => !mutual.has(one.title.toLowerCase()))
-      .map((one) => ({ title: one.title, page: one.page, excerpt: one.excerpt, from: null }));
-
-    if (both.length + names.length + named.length > 0) {
+    if (names.length + named.length > 0) {
       const whole = foldingSection(
         `referencias:${page.id}`,
-        `Referencias (${both.length + names.length + named.length})`,
+        `Referencias (${names.length + named.length})`,
         2,
       );
       whole.section.classList.add('references');
@@ -6779,14 +6737,10 @@ export function renderOutliner(
      * siempre una caja en blanco y lo escrito ayer no aparecía por ninguna parte
      * —parecía que no se hubiera guardado, y lo que pasaba es que no se enseñaba.
      */
-    const explained = (row: Row): CrossingRow | undefined =>
-      (page.crossingsOut ?? []).find((crossing) =>
-        row.page !== null
-          ? crossing.toPage === row.page
-          : crossing.targetTitle.toLowerCase() === row.title.toLowerCase(),
-      );
-
-    const list = (rows: Row[], gesture: 'followed_reference' | 'followed_backlink'): HTMLElement => {
+    const list = (
+      rows: PageReferenceRow[],
+      gesture: 'followed_reference' | 'followed_backlink',
+    ): HTMLElement => {
         const ul = document.createElement('ul');
         for (const row of rows) {
           const item = document.createElement('li');
@@ -6804,7 +6758,7 @@ export function renderOutliner(
           quill.innerHTML = icon('feather');
           quill.title = `explicar por qué ${row.title} tiene que ver con esta página`;
           quill.setAttribute('aria-label', `explicar la relación con ${row.title}`);
-          const held = explained(row);
+          const held = row.relation ?? undefined;
           if (held !== undefined) {
             quill.classList.add('explained');
             quill.title = `cambiar por qué ${row.title} tiene que ver con esta página`;
@@ -6834,12 +6788,6 @@ export function renderOutliner(
 
           link.append(where);
           if (said.childNodes.length > 0) link.append(said);
-          if (row.says !== undefined) {
-            const answers = document.createElement('div');
-            answers.className = 'backlink-excerpt reciprocal markdown-preview';
-            renderPreview(answers, row.says, gesture);
-            link.append(answers);
-          }
           const open = (): void => callbacks.onOpen(
             row.page ?? row.title,
             gesture,
@@ -6894,7 +6842,7 @@ export function renderOutliner(
       for (const [name, rows, gesture, way] of [
         ['La nombran', named, 'followed_backlink', 'in'],
         ['Nombra a', names, 'followed_reference', 'out'],
-      ] as [string, Row[], 'followed_reference' | 'followed_backlink', 'in' | 'out'][]) {
+      ] as [string, PageReferenceRow[], 'followed_reference' | 'followed_backlink', 'in' | 'out'][]) {
         if (rows.length === 0) continue;
         const column = foldingSection(`ref:${name}`, `${name} (${rows.length})`, 3);
         column.section.classList.add('reference-column', `reference-${way}`);
@@ -6902,17 +6850,6 @@ export function renderOutliner(
         columns.append(column.section);
       }
       if (columns.children.length > 0) section.append(columns);
-
-      if (both.length > 0) {
-        const mutuals = foldingSection(
-          'ref:ambos',
-          `En los dos sentidos (${both.length})`,
-          3,
-        );
-        mutuals.section.classList.add('reference-mutual');
-        mutuals.body.append(list(both, 'followed_reference'));
-        section.append(mutuals.section);
-      }
 
       container.append(whole.section);
     }

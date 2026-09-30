@@ -583,6 +583,16 @@ contract ProgressivePageReading {
         -- the text before the reader asks for them. Opening or closing the area
         -- remains a single reversible gesture and is preserved while that
         -- workspace session redraws or changes pages.
+
+    @invariant ExplainedRelationsRemainReferences
+        -- The foot of a page has one References area, divided only by direction:
+        -- pages that name this one and pages this one names. Explaining, typing
+        -- or expanding a relation enriches the corresponding reference row; it
+        -- never moves the same neighbour into a second "assertions" section.
+        -- An explained relation without a literal wiki mention still appears in
+        -- the appropriate directional list, because the relation itself joins
+        -- the two pages. If both directions exist, each remains legible in its
+        -- own direction rather than being hidden in a third mutual category.
 }
 
 contract InstallableWebApplication {

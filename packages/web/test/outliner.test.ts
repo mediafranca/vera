@@ -21,13 +21,14 @@ import {
   matchingMovePages,
   needsProgressiveComposition,
   nodeMarkdown,
+  pageReferenceRows,
   projectedReferenceText,
   referenceExcerptAddsContext,
   reloadAfterServerWriting,
   reloadAfterDerivedWriting,
   reloadOptionsFor,
 } from '../src/outliner.ts';
-import type { BlockView } from '../src/api.ts';
+import type { BlockView, CrossingRow } from '../src/api.ts';
 
 const block = (stableId: string, parent: string | null, position: number, content = stableId): BlockView => ({
   stableId,
@@ -198,9 +199,75 @@ describe('extractos de referencias', () => {
   });
 });
 
+describe('referencias explicadas', () => {
+  const crossing = (
+    stableId: string,
+    fromPage: string,
+    toPage: string,
+    title: string,
+    said: string,
+  ): CrossingRow => ({
+    stableId,
+    revision: `operation:${stableId}`,
+    connective: `block:${stableId}`,
+    said,
+    blocks: [{ stableId: `block:${stableId}`, parent: null, position: 0, content: said }],
+    fromBlock: null,
+    fromPage,
+    toPage,
+    targetTitle: title,
+    title,
+    sense: 'directed',
+    term: null,
+    reads: null,
+    says: said,
+  });
+
+  it('enriquece una referencia existente en vez de duplicarla como afirmación', () => {
+    const relation = crossing('vera-mediafranca', 'page:vera', 'page:mediafranca', 'MediaFranca', 'Forma parte de');
+    const rows = pageReferenceRows({
+      blocks: [block('block:mención', null, 0, '[[MediaFranca]]')],
+      blockProperties: {},
+      references: [{ page: 'page:mediafranca', title: 'MediaFranca', block: 'block:mención', excerpt: '[[MediaFranca]]' }],
+      backlinks: [],
+      crossingsOut: [relation],
+      crossingsIn: [],
+    });
+    assert.equal(rows.names.length, 1);
+    assert.equal(rows.names[0]?.relation, relation);
+  });
+
+  it('incluye una relación explicada aunque no exista una mención literal', () => {
+    const relation = crossing('vera-otra', 'page:vera', 'page:otra', 'Otra', 'La explica');
+    const rows = pageReferenceRows({
+      blocks: [], blockProperties: {}, references: [], backlinks: [],
+      crossingsOut: [relation], crossingsIn: [],
+    });
+    assert.deepEqual(rows.names.map((row) => row.title), ['Otra']);
+    assert.equal(rows.names[0]?.relation, relation);
+  });
+
+  it('mantiene las dos direcciones en La nombran y Nombra a, sin una tercera categoría', () => {
+    const outgoing = crossing('vera-otra', 'page:vera', 'page:otra', 'Otra', 'Sale hacia Otra');
+    const incoming = crossing('otra-vera', 'page:otra', 'page:vera', 'Otra', 'Llega desde Otra');
+    const rows = pageReferenceRows({
+      blocks: [block('block:mención', null, 0, '[[Otra]]')],
+      blockProperties: {},
+      references: [{ page: 'page:otra', title: 'Otra', block: 'block:mención', excerpt: '[[Otra]]' }],
+      backlinks: [{ page: 'page:otra', title: 'Otra', block: 'block:otra', excerpt: '[[VERA]]' }],
+      crossingsOut: [outgoing],
+      crossingsIn: [incoming],
+    });
+    assert.equal(rows.names.length, 1);
+    assert.equal(rows.namedBy.length, 1);
+    assert.equal(rows.names[0]?.relation, outgoing);
+    assert.equal(rows.namedBy[0]?.relation, incoming);
+  });
+});
+
 describe('plegado inicial del pie', () => {
   it('abre las secciones ordinarias y deja las referencias recogidas', () => {
-    assert.equal(initialFoldingOpen('rel:Afirma sobre otras'), true);
+    assert.equal(initialFoldingOpen('otra sección'), true);
     assert.equal(initialFoldingOpen('referencias:page:una'), false);
     assert.equal(initialFoldingOpen('referencias:page:otra'), false);
   });

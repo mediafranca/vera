@@ -6353,18 +6353,6 @@ html[data-working-slow='true']::after {
   white-space: nowrap;
 }
 
-/* --------------------------------------------------------------------------
- * Las dos columnas al pie: lo que la página afirma y lo que afirman sobre ella.
- *
- * Al lado de las referencias y distintas de ellas. Un retroenlace dice que
- * alguien nombró esta página; una relación dice qué dijo al nombrarla, y por eso
- * lleva las dos frases: la explicación y el sitio desde el que se explica.
- * -------------------------------------------------------------------------- */
-
-.relations {
-  margin: 2rem 0 0;
-}
-
 .concept-members {
   margin: 2rem 0 0;
   padding-top: 1rem;
@@ -6421,16 +6409,6 @@ html[data-working-slow='true']::after {
 
 
 
-.relations ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.relation {
-  margin: 0 0 0.9rem;
-}
-
 /* El término, delante y en versalita: es la clase de relación, no lo que se
    dijo. Cuando no lo hay, la fila empieza por la página, que es lo que siempre
    está. */
@@ -6439,25 +6417,6 @@ html[data-working-slow='true']::after {
   font-size: 0.72rem;
   color: var(--text-dim);
   margin-right: 0.4rem;
-}
-
-.relation-page {
-  appearance: none;
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.relation-page:hover { text-decoration: underline; }
-
-/* Un destino que nadie ha escrito todavía: la relación está en pie y la página
-   no. Se dibuja como cualquier enlace sin resolver del corpus. */
-.relation-page.unresolved {
-  color: var(--text-dim);
-  text-decoration: underline dotted;
 }
 
 /* Lo dicho: la conectiva, que es la relación misma y la única voz propia de
@@ -6563,14 +6522,6 @@ html[data-working-slow='true']::after {
 }
 .relation-outline-add:hover { color: var(--accent); }
 
-/* Y la frase desde la que se afirma, atenuada: es el sujeto de la afirmación,
-   no la afirmación. Sin ella la fila sería una flecha sin sujeto. */
-.relation-from {
-  margin: 0.1rem 0 0;
-  color: var(--text-dim);
-  font-size: 0.82rem;
-}
-
 /* El renglón donde se pregunta a qué apunta una relación nueva. Vive bajo el
    bloque desde el que se explica, que es donde se está mirando. */
 /*
@@ -6642,15 +6593,8 @@ html[data-working-slow='true']::after {
   text-decoration: underline dotted;
 }
 
-/* Lo que la otra página dice de ésta, en las que se nombran en los dos
-   sentidos. Va debajo y más atenuado: es la mitad que no se lee desde aquí. */
-.backlink-excerpt.reciprocal {
-  opacity: 0.75;
-  font-style: italic;
-}
-
 /* --------------------------------------------------------------------------
- * El pie de la página: relaciones y referencias, plegables.
+ * El pie de la página: referencias enriquecidas por relaciones, plegables.
  *
  * `details` del navegador: trae el teclado, el lector de pantalla y el triángulo
  * sin escribirlos, y lo plegado sigue estando en el documento, así que buscar en
