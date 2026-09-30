@@ -2470,6 +2470,35 @@ html.presenting body {
   position: relative;
 }
 
+/*
+ * Una jerarquía se ve antes de leerse.
+ *
+ * Cada fila anidada deriva una línea por cada antepasado. Empiezan en el centro
+ * de la viñeta raíz y repiten exactamente el paso de sangría, de modo que
+ * siguen alineadas cuando el token o la escala móvil cambian. No son columnas
+ * del documento ni áreas activas: sólo la lectura tenue del árbol vigente.
+ */
+.block.nested::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--rail, 1.4rem) / 2);
+  width: var(--block-indent);
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    color-mix(in srgb, var(--text-dim) 14%, transparent) 0 1px,
+    transparent 1px var(--block-indent-step)
+  );
+}
+
+.block > :not(.fold) {
+  position: relative;
+  z-index: 1;
+}
+
 /* La glosa acompaña el bloque sin entrar en su outline. En una lectura ancha
    vive en el margen; en vistas compactas se abre desde su marca. */
 .gloss-toggle {
@@ -2607,19 +2636,6 @@ html.presenting body {
   #vera-root[data-layout='text_only'] .block.wide-content > .block-gloss {
     width: calc(100% - var(--rail) - var(--rail-gap) - 0.65rem);
   }
-}
-
-/*
- * Lo que se despliega bajo un bloque ocupa su propia línea.
- *
- * La fila es flex, así que un panel añadido a ella se coloca como una columna
- * más: la historia de un bloque salía a la derecha del texto, estrujada al ancho
- * de una letra y altísima. Con la fila envolviendo y el panel ocupando el ancho
- * entero, cae debajo; y se sangra lo que miden el chevron y la viñeta, para que
- * empiece donde empieza el texto y no donde empieza la fila.
- */
-.block:has(> .history) {
-  flex-wrap: wrap;
 }
 
 /* El control de plegado. Está siempre en la columna —vacío en las hojas— para
@@ -7407,29 +7423,66 @@ html[data-working-slow='true']::after {
 
 /* --- La historia de un bloque ------------------------------------------- */
 
-.history {
-  /*
-   * Ocupa su propia línea dentro de la fila, que es flex.
-   *
-   * Sin esto se colocaba como una columna más, a la derecha del texto: estrujada
-   * al ancho de una letra y altísima. La sangría iguala lo que mide la viñeta
-   * con su hueco —ver `--rail` en `.block`— para que empiece donde empieza el
-   * texto y no donde empieza la fila.
-   */
-  flex-basis: 100%;
-  margin: 0.5rem 0 0.75rem calc(var(--rail, 1.4rem) + var(--rail-gap, 0.5rem));
-  padding: 0.5rem 0.6rem;
-  border-left: 2px solid var(--rule);
+/*
+ * Un inspector y no otro descendiente.
+ *
+ * Es fijo para que desplazar la página no se lleve la evidencia que se está
+ * comparando, modeless para que el bloque siga disponible y redimensionable
+ * para que una revisión larga no dicte el tamaño de la ventana.
+ */
+.history-inspector {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(34rem, calc(100vw - 24px));
+  height: fit-content;
+  max-height: calc(100dvh - 24px);
+  min-width: 20rem;
+  min-height: 8rem;
+  resize: both;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  box-shadow: 0 14px 42px color-mix(in srgb, var(--text) 24%, transparent);
+  color: var(--text);
   font-size: 0.8rem;
 }
 
 .history-head {
   display: flex;
+  align-items: start;
   justify-content: space-between;
   gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 0.75rem;
+}
+
+.history-inspector.moving .history-head { cursor: grabbing; }
+
+.history-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.history-head span { display: block; margin-top: 0.12rem; }
+
+.history-states {
+  min-height: 0;
+  max-height: min(24rem, calc(100dvh - 7rem));
+  overflow: auto;
+  padding: 0 0.75rem 0.65rem;
+  overscroll-behavior: contain;
 }
 
 .history-state {
@@ -7487,8 +7540,39 @@ html[data-working-slow='true']::after {
   cursor: pointer;
 }
 
+.history-close {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0.2rem;
+  border: 0;
+}
+
+.history-close .icon { width: 1rem; height: 1rem; }
+
 .history-copy {
   margin-top: 0.2rem;
+}
+
+@media (max-width: 640px) {
+  .history-inspector {
+    inset: auto 0 0 0 !important;
+    width: auto;
+    height: min(70dvh, 34rem);
+    max-height: none;
+    min-width: 0;
+    min-height: 10rem;
+    resize: none;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 10px 10px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .history-head { cursor: default; }
 }
 
 /* --- Conexiones con servicios de fuera ---------------------------------- */

@@ -2407,51 +2407,137 @@ async function processBlock(
   }
 }
 
+let historyInspector: HTMLElement | null = null;
+let historyInspectorCleanup: (() => void) | null = null;
+let historyReadTurn = 0;
+let historyPage: string | null = null;
+
+/** Cierra la única historia flotante y, si corresponde, vuelve a su viñeta. */
+function closeHistoryInspector(restoreFocus = true): void {
+  historyReadTurn += 1;
+  const inspector = historyInspector;
+  const back = inspector?.dataset['returnFocus'];
+  historyInspectorCleanup?.();
+  historyInspectorCleanup = null;
+  historyInspector = null;
+  historyPage = null;
+  inspector?.remove();
+  if (restoreFocus && back !== undefined) {
+    document.querySelector<HTMLElement>(`.block[data-id="${CSS.escape(back)}"] > .bullet`)?.focus();
+  }
+}
+
+/** Sitúa el inspector al lado de la viñeta, sin dejarlo fuera de la ventana. */
+function placeHistoryInspector(inspector: HTMLElement, anchor: HTMLElement): void {
+  const margin = 12;
+  const gap = 10;
+  const at = anchor.getBoundingClientRect();
+  const box = inspector.getBoundingClientRect();
+  let left = at.right + gap;
+  if (left + box.width > window.innerWidth - margin) left = at.left - box.width - gap;
+  left = Math.max(margin, Math.min(left, window.innerWidth - box.width - margin));
+  const top = Math.max(margin, Math.min(at.top, window.innerHeight - box.height - margin));
+  inspector.style.left = `${Math.round(left)}px`;
+  inspector.style.top = `${Math.round(top)}px`;
+}
+
+/** Hace movible el inspector en escritorio; en teléfono el CSS lo vuelve hoja. */
+function dragHistoryInspector(inspector: HTMLElement, handle: HTMLElement): void {
+  let drag: { pointer: number; x: number; y: number; left: number; top: number } | null = null;
+  handle.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('button, a') !== null) return;
+    if (window.matchMedia('(max-width: 640px)').matches) return;
+    const box = inspector.getBoundingClientRect();
+    drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: box.left, top: box.top };
+    handle.setPointerCapture(event.pointerId);
+    inspector.classList.add('moving');
+    event.preventDefault();
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (drag === null || drag.pointer !== event.pointerId) return;
+    const margin = 8;
+    const box = inspector.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(
+      drag.left + event.clientX - drag.x,
+      window.innerWidth - box.width - margin,
+    ));
+    const top = Math.max(margin, Math.min(
+      drag.top + event.clientY - drag.y,
+      window.innerHeight - box.height - margin,
+    ));
+    inspector.style.left = `${Math.round(left)}px`;
+    inspector.style.top = `${Math.round(top)}px`;
+  });
+  const finish = (event: PointerEvent): void => {
+    if (drag === null || drag.pointer !== event.pointerId) return;
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+    drag = null;
+    inspector.classList.remove('moving');
+  };
+  handle.addEventListener('pointerup', finish);
+  handle.addEventListener('pointercancel', finish);
+}
+
 /**
- * Enseña por qué estados pasó un bloque, junto al bloque.
+ * Enseña por qué estados pasó un bloque sin convertir la historia en otro hijo.
  *
- * Junto a él y no en otra pantalla: lo que se está preguntando es «¿qué decía
- * esto antes?», y esa pregunta se hace mirándolo. Cada estado se puede copiar;
- * ninguno se aplica solo, porque volver a un estado anterior es escribir y se
- * escribe a mano o se deshace, que ya existe.
+ * El inspector es modeless: el bloque y la página siguen disponibles para
+ * comparar. Cada estado se puede copiar; ninguno se aplica solo, porque volver
+ * a un estado anterior es escribir y se escribe a mano o se deshace.
  */
 async function showHistory(
   block: string,
-  row: HTMLElement,
+  anchor: HTMLElement,
   notify: (message: string) => void,
-  returnFocus?: HTMLElement,
 ): Promise<void> {
-  row.querySelector('.history')?.remove();
+  closeHistoryInspector(false);
+  historyPage = anchor.closest<HTMLElement>('[data-page]')?.dataset['page'] ?? null;
+  const turn = historyReadTurn;
   let said;
   try {
     said = await api.history(block);
   } catch {
-    notify('no se pudo leer la historia de este bloque');
+    if (turn === historyReadTurn) {
+      historyPage = null;
+      notify('no se pudo leer la historia de este bloque');
+    }
     return;
   }
+  if (turn !== historyReadTurn) return;
 
-  const panel = document.createElement('div');
-  panel.className = 'history';
+  const panel = document.createElement('section');
+  panel.className = 'history-inspector';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'false');
+  panel.setAttribute('aria-labelledby', 'history-inspector-title');
+  panel.dataset['returnFocus'] = block;
+  if (historyPage !== null) panel.dataset['page'] = historyPage;
   const head = document.createElement('div');
   head.className = 'history-head';
-  head.textContent =
+  const heading = document.createElement('div');
+  const title = document.createElement('h2');
+  title.id = 'history-inspector-title';
+  title.textContent = 'Historial del bloque';
+  const summary = document.createElement('span');
+  summary.textContent =
     said.states.length === 1
       ? 'nació así y no se ha tocado'
       : `${said.states.length} estados${said.alive ? '' : ' · el bloque ya no está'}`;
+  heading.append(title, summary);
   const shut = document.createElement('button');
   shut.type = 'button';
   shut.className = 'history-close';
-  shut.textContent = 'cerrar';
+  shut.innerHTML = icon('x');
+  shut.setAttribute('aria-label', 'Cerrar historial');
   shut.addEventListener('click', (event) => {
-    // El cierre es un gesto completo: no debe subir al bloque ni volver a abrir
-    // el panel mediante los oyentes delegados de la lectura pública.
     event.preventDefault();
     event.stopPropagation();
-    panel.remove();
-    returnFocus?.focus();
+    closeHistoryInspector();
   });
-  head.append(shut);
-  panel.append(head);
+  head.append(heading, shut);
+  const states = document.createElement('div');
+  states.className = 'history-states';
+  panel.append(head, states);
 
   for (const state of [...said.states].reverse()) {
     const line = document.createElement('div');
@@ -2477,9 +2563,25 @@ async function showHistory(
       copy.addEventListener('click', () => copyText(state.content ?? '', notify));
       line.append(copy);
     }
-    panel.append(line);
+    states.append(line);
   }
-  row.append(panel);
+  const controller = new AbortController();
+  historyInspectorCleanup = () => controller.abort();
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || historyInspector !== panel) return;
+    event.preventDefault();
+    closeHistoryInspector();
+  }, { signal: controller.signal });
+  window.addEventListener('resize', () => {
+    if (historyInspector === panel && anchor.isConnected && !panel.classList.contains('moving')) {
+      placeHistoryInspector(panel, anchor);
+    }
+  }, { signal: controller.signal });
+  dragHistoryInspector(panel, head);
+  document.body.append(panel);
+  historyInspector = panel;
+  placeHistoryInspector(panel, anchor);
+  shut.focus();
 }
 
 /**
@@ -3102,6 +3204,7 @@ export function renderOutliner(
   readOnly = false,
   transparentBlockTraceability = false,
 ): void {
+  if (historyPage !== null && historyPage !== page.id) closeHistoryInspector(false);
   document.querySelector('.librarian-activity')?.remove();
   const librarianDialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
   if (librarianDialog?.open) librarianDialog.close();
@@ -4974,12 +5077,16 @@ export function renderOutliner(
     descend = true,
   ): void => {
     const row = document.createElement('div');
-    row.className = 'block';
+    row.className = depth === 0 ? 'block' : 'block nested';
     // La sangría sale de un token, y la hoja la encoge en pantallas estrechas.
     // Ver `--indent` en tokens.ts y `--indent-scale` en styles.css.
     row.style.setProperty(
       '--block-indent',
       `calc(var(--indent, 1.25rem) * var(--indent-scale, 1) * ${depth})`,
+    );
+    row.style.setProperty(
+      '--block-indent-step',
+      'calc(var(--indent, 1.25rem) * var(--indent-scale, 1))',
     );
     row.style.paddingLeft = 'var(--block-indent)';
     row.dataset['id'] = node.block.stableId;
@@ -5402,7 +5509,7 @@ export function renderOutliner(
           ...(transparentBlockTraceability ? [{
             label: 'Ver historial del bloque',
             icon: 'clock',
-            run: () => showHistory(node.block.stableId, row, toast, bullet),
+            run: () => showHistory(node.block.stableId, bullet, toast),
           } satisfies MenuAction] : []),
         ]]);
         return;
@@ -5575,7 +5682,7 @@ export function renderOutliner(
           {
             label: 'Ver la historia del bloque',
             icon: 'clock',
-            run: () => void showHistory(node.block.stableId, row, toast),
+            run: () => void showHistory(node.block.stableId, bullet, toast),
           },
         ],
         [

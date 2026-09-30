@@ -374,6 +374,50 @@ contract BlockManipulation {
         -- to write clears the selection; making a selection leaves the writing.
 }
 
+-- History is evidence about a block, not another descendant of that block.
+-- Inspecting it must therefore leave the outline where it is while keeping the
+-- block and its revisions visible at the same time.
+contract BlockHistoryInspection {
+    inspect_history: (block: core/Block) -> core/Block
+
+    @invariant HistoryFloatsWithoutChangingTheOutline
+        -- Opening a block's history presents one modeless floating inspector and
+        -- moves no block, descendant or following content. The inspector begins
+        -- beside the block that opened it and the page remains readable and
+        -- operable for comparison.
+
+    @invariant OneInspectorFollowsTheCurrentQuestion
+        -- Opening another block's history replaces the previous inspector.
+        -- Leaving the page closes it, so a floating history never outlives the
+        -- block context that made it meaningful.
+
+    @invariant TheInspectorCanMoveWithoutBecomingAnotherDocument
+        -- On a pointer-driven wide screen the inspector can be dragged and
+        -- resized within the viewport. Its position is temporary workspace
+        -- state, not corpus content. On a narrow screen it becomes a bottom
+        -- sheet whose revisions remain reachable without horizontal overflow.
+
+    @invariant HistoryRemainsKeyboardOperable
+        -- The inspector identifies itself as a non-modal dialog, moves focus to
+        -- its close control when opened, closes with Escape or that control, and
+        -- returns focus to the block action that opened it.
+}
+
+contract OutlineHierarchyPresentation {
+    present: (page: core/Page) -> core/Page
+
+    @invariant IndentationHasAQuietContinuousGuide
+        -- Every nested block derives a faint vertical guide for each ancestor
+        -- level from the visible parent-child structure. The guides align with
+        -- ancestor bullets, survive folding and responsive indentation, and do
+        -- not change stored content, selection, focus or hit targets.
+
+    @invariant GuidesNeverCompeteWithContent
+        -- Hierarchy guides remain lower contrast than text, bullets, selection,
+        -- focus and trail marks in both colour schemes; root blocks have no
+        -- guide and printing does not require the guides to understand the text.
+}
+
 -- La cabecera de una página: lo que se pregunta de ella antes de leerla.
 --
 -- Cuatro naturalezas distintas conviven ahí y la interfaz tiene que ser honesta
