@@ -1,0 +1,22 @@
+name: Documentación
+description: Falta, contradicción o mejora concreta en la documentación.
+title: "docs: "
+labels: ["documentation"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Página o archivo
+      placeholder: URL o ruta
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qué falta o contradice el comportamiento
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Corrección propuesta o evidencia
