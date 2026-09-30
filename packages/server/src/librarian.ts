@@ -146,12 +146,20 @@ export function librarianRequest(store: Store, id: string): LibrarianRequest | u
   return row === undefined ? undefined : fromRow(row);
 }
 
-export function librarianRequestsFor(store: Store, sourcePageId: string, sourceBlockId?: string | null): LibrarianRequest[] {
-  const rows = (sourceBlockId === undefined
-    ? store.db.prepare(`${SELECT_REQUEST} WHERE r.graph_id=? AND r.source_page_id=? ORDER BY r.created_at DESC`)
-      .all(store.graphId, sourcePageId)
-    : store.db.prepare(`${SELECT_REQUEST} WHERE r.graph_id=? AND r.source_page_id=? AND r.source_block_id IS ? ORDER BY r.created_at DESC`)
-      .all(store.graphId, sourcePageId, sourceBlockId)) as unknown as RequestRow[];
+export function librarianRequestsFor(
+  store: Store,
+  sourcePageId: string,
+  sourceBlockId?: string | null,
+  askedBy?: string,
+): LibrarianRequest[] {
+  const blockClause = sourceBlockId === undefined ? '' : ' AND r.source_block_id IS ?';
+  const askerClause = askedBy === undefined ? '' : ' AND r.asked_by=?';
+  const parameters: (string | null)[] = [store.graphId, sourcePageId];
+  if (sourceBlockId !== undefined) parameters.push(sourceBlockId);
+  if (askedBy !== undefined) parameters.push(askedBy);
+  const rows = store.db.prepare(
+    `${SELECT_REQUEST} WHERE r.graph_id=? AND r.source_page_id=?${blockClause}${askerClause} ORDER BY r.created_at DESC`,
+  ).all(...parameters) as unknown as RequestRow[];
   return rows.map(fromRow);
 }
 

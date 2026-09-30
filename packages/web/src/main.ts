@@ -8,6 +8,7 @@ import './executable-frames.ts';
 
 import {
   api,
+  mint,
   onSubmissionActivity,
   type CorpusHealth,
   type Hit,
@@ -47,16 +48,26 @@ import { pageSearchResults } from './search-results.ts';
 import { createPage } from './pages.ts';
 import { changesGraphMeaning } from './invalidation.ts';
 import { sameReadablePage } from './page-validation.ts';
+import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
-import { forgetPositions, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
-import { graphOfThread } from './graph/thread.ts';
-import { renderGraph3D, cleanupGraph3D, forgetCamera, selectNode3D } from './graph/render3d.ts';
-import { renderGraphD4 } from './graph/renderD4.ts';
+import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
+import { graphOfThread, threadSettings } from './graph/thread.ts';
+import {
+  renderGraph3D,
+  cleanupGraph3D,
+  forgetCamera,
+  graph3DCamera,
+  selectNode3D,
+  setGraph3DAutoRotate,
+} from './graph/render3d.ts';
+import { graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
+import { mapEmbeddingSource } from './map-embedding.ts';
 import {
   applyTokens,
   loadTokens,
+  reachForGraphViewChange,
   saveTokens,
   session,
   syncPresentation,
@@ -81,7 +92,7 @@ import {
   blocksFor,
   fillTraceCrossings,
   provisionalTitle,
-  seedTrail,
+  seedArgumentPreparation,
 } from './promote.ts';
 import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
@@ -106,6 +117,8 @@ interface Workspace {
   depth: number;
   /** Si el diario que ocupa el foco puede aparecer en el mapa. */
   graphJournals: boolean;
+  /** Si la cámara de la vista 3D orbita lentamente por sí sola. */
+  graphAutoRotate: boolean;
 }
 
 const workspace: Workspace = {
@@ -119,6 +132,7 @@ const workspace: Workspace = {
   trace: loadTrace(),
   depth: session.reach(),
   graphJournals: session.graphJournals(),
+  graphAutoRotate: session.graphAutoRotate(),
 };
 
 /**
@@ -346,6 +360,7 @@ let showingKept = false;
 function drawMemory(host: HTMLElement): void {
   const status = document.createElement('div');
   status.id = 'status';
+  status.className = 'settings-corpus-summary';
   status.textContent =
     corpus === null
       ? 'todavía sin datos del grafo'
@@ -389,34 +404,28 @@ function drawMemory(host: HTMLElement): void {
   // acabarían diciendo dos cosas.
   const KNOWN = GOVERNING_KINDS;
 
-  const heading = document.createElement('h3');
-  heading.className = 'settings-group';
-  heading.textContent = 'Gobierno de Vera';
-  host.append(heading);
-
-  const explanation = document.createElement('p');
-  explanation.className = 'settings-note';
-  explanation.textContent = 'Distingue lo que rige el software de las superficies, proyecciones y documentos que sólo lo explican.';
-  host.append(explanation);
-
   const special = document.createElement('div');
   special.id = 'special-pages';
+  special.className = 'settings-destinations settings-government-list';
   host.append(special);
 
   void api.specialPages().then((found) => {
     const row = (label: string, what: string): HTMLButtonElement => {
       const item = document.createElement('button');
       item.type = 'button';
-      item.className = 'index-item';
-      const name = document.createElement('span');
+      item.className = 'settings-destination settings-government-destination';
+      const name = document.createElement('strong');
       name.textContent = label;
       const said = document.createElement('span');
-      said.className = 'count';
       said.textContent = what;
       item.append(name, said);
       special.append(item);
       return item;
     };
+
+    /** El espacio reservado importa en la dirección y en el corpus, no en cada botón. */
+    const visibleTitle = (title: string): string =>
+      title.replace(/^VERA\s*:\s*/i, '').trim();
 
     // Por el orden en que se leen, no por el orden en que el corpus las
     // devuelva: el vocabulario antes que lo que se declara con él, y las
@@ -426,9 +435,11 @@ function drawMemory(host: HTMLElement): void {
       return at === -1 ? KNOWN.length : at;
     };
 
-    const declared = [...found].sort(
+    const declared = found
+      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication')
+      .sort(
       (a, b) => rank(a.kind) - rank(b.kind) || a.title.localeCompare(b.title, 'es'),
-    );
+      );
 
     for (const page of declared) {
       // Varias de una misma clase es normal y no un conflicto: un corpus puede
@@ -436,8 +447,8 @@ function drawMemory(host: HTMLElement): void {
       // título, que es lo que la distingue de la otra.
       const known = KNOWN.find((one) => one.key === page.kind);
       const item = row(
-        page.title,
-        known === undefined ? `clase no reconocida · ${page.kind}` : `${known.mode} · ${known.what}`,
+        visibleTitle(page.title),
+        known === undefined ? `Clase de sistema no reconocida: ${page.kind}` : known.what,
       );
       item.addEventListener('click', () => {
         closeSettings();
@@ -458,10 +469,10 @@ function drawMemory(host: HTMLElement): void {
      * escribirlo estaría pidiendo una decisión que nadie tomó.
      */
     for (const kind of KNOWN) {
-      if (kind.key === 'service') continue;
+      if (kind.key === 'service' || kind.key === 'activity' || kind.key === 'publication') continue;
       if (found.some((page) => page.kind === kind.key)) continue;
-      const item = row(`${kind.label} — sin definir`, `${kind.mode} · ${kind.what}`);
-      item.title = `Todavía no hay una página especial de ${kind.label.toLowerCase()}. Su modo previsto es ${kind.mode}.`;
+      const item = row(kind.label, `Sin definir · ${kind.what}`);
+      item.title = `Todavía no hay una página del sistema para ${kind.label.toLowerCase()}.`;
       item.disabled = true;
     }
   });
@@ -495,9 +506,52 @@ function applyLayout(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
     button.setAttribute('aria-pressed', String(button.dataset['view'] === workspace.graphView));
   }
+  $('#map-auto-rotate-field').hidden = workspace.graphView !== 'graph_3d';
 
   if (effective !== 'text_only') drawGraph();
   else cleanupGraph3D();
+}
+
+const REACH_MIN = 1;
+const REACH_MAX = 3;
+
+/** El número de saltos y qué flechas quedan por dar. */
+function showGraphReach(): void {
+  const value = document.querySelector<HTMLElement>('#map-reach-value');
+  const less = document.querySelector<HTMLButtonElement>('#map-reach-less');
+  const more = document.querySelector<HTMLButtonElement>('#map-reach-more');
+  if (value === null || less === null || more === null) return;
+  value.textContent = String(workspace.depth);
+  less.disabled = workspace.depth <= REACH_MIN;
+  more.disabled = workspace.depth >= REACH_MAX;
+}
+
+function setGraphReach(reach: number, redraw = true): void {
+  const next = Math.min(REACH_MAX, Math.max(REACH_MIN, reach));
+  if (next === workspace.depth) {
+    showGraphReach();
+    return;
+  }
+  workspace.depth = next;
+  session.setReach(next);
+  showGraphReach();
+  // El alcance cambia qué nodos hay: ni la colocación ni la cámara anterior
+  // describen ya el mismo mapa.
+  forgetPositions();
+  forgetCamera();
+  if (redraw) void refreshGraph();
+}
+
+/** Cambiar de dimensión tiene una sola entrada, incluida la guarda de D4. */
+function setGraphView(view: GraphViewMode): void {
+  const reach = reachForGraphViewChange(workspace.graphView, view, workspace.depth);
+  workspace.graphView = view;
+  // `applyLayout` dibuja una vez con el alcance ya seguro; redibujar aquí haría
+  // dos consultas consecutivas, justamente lo que esta guarda evita.
+  setGraphReach(reach, false);
+  if (isAnybody()) session.setPublicGraphView(view);
+  else session.setGraphView(view);
+  applyLayout();
 }
 
 function setLayout(layout: WorkspaceLayout): void {
@@ -574,6 +628,11 @@ function drawUnstartedDay(date: string): void {
   start.textContent = 'escribir';
   start.addEventListener('click', () => void startDay(date));
   host.append(start);
+
+  // Que hoy todavía no exista no corta la bitácora. Al comenzar un día nuevo,
+  // el primer tramo que sigue debajo es el día anterior más reciente que sí
+  // tenga escritura.
+  continueBackwards(date, 0);
 
   drawGraph();
 }
@@ -685,9 +744,10 @@ const PATIENCE = 300;
  */
 function awaiting(title: string | null, since: number): Counting {
   const text = $('#text');
-  text.innerHTML = '';
   const holder = document.createElement('div');
-  holder.className = 'page awaiting';
+  const reading = text.querySelector('.page-header, .blocks, .day-slice') !== null;
+  holder.className = reading ? 'awaiting awaiting-next' : 'page awaiting';
+  if (!reading) text.innerHTML = '';
   const header = document.createElement('header');
   header.className = 'page-header';
   const heading = document.createElement('h1');
@@ -697,7 +757,8 @@ function awaiting(title: string | null, since: number): Counting {
   elapsed.className = 'awaiting-elapsed';
   header.append(heading, elapsed);
   holder.append(header);
-  text.append(holder);
+  if (reading) text.prepend(holder);
+  else text.append(holder);
   /*
    * Sin nombre para recordar.
    *
@@ -705,7 +766,14 @@ function awaiting(title: string | null, since: number): Counting {
    * las dos juntas haría que Vera prometiera una mediana que no describe a
    * ninguna. Se cuenta —que no puede equivocarse— y no se nombra. Ver waiting.ts.
    */
-  return countInto(elapsed, '', null, { since });
+  const counting = countInto(elapsed, '', null, { since });
+  return {
+    elapsed: counting.elapsed,
+    close(outcome) {
+      counting.close(outcome);
+      if (reading) holder.remove();
+    },
+  };
 }
 
 /**
@@ -903,7 +971,6 @@ async function openPage(
    * Lo que va detrás no es volver a pedir la página: es la pregunta barata de qué
    * ha pasado desde el cursor. Ver `catchUpWithCorpus`.
    */
-  let kept = options.delivered !== undefined || here || isAnybody() ? null : await held.page(id);
   /*
    * Incluso una copia incompleta se conserva hasta que la canónica haya llegado.
    * Antes se soltaba apenas el índice anunciaba otra cantidad de bloques. Si la
@@ -911,19 +978,30 @@ async function openPage(
    * degradación y dejaba una página vacía. La discrepancia sirve para exigir la
    * validación, nunca para borrar antes de recuperar.
    */
-  const retained = kept;
-  if (kept !== null) {
-    if (slow !== null) clearTimeout(slow);
-    fromKept = true;
-    page = kept;
-    if (navigator.onLine) validation = canonicalPage(kept, delivery.signal);
-  }
+  let retained: PageView | null = null;
 
   try {
     if (options.delivered !== undefined) {
       page = options.delivered;
       needsEnrichment = true;
-    } else if (page === undefined) {
+    } else if (!here && !isAnybody()) {
+      const retainedLookup = held.page(id);
+      const canonicalLookup = api.readablePage(id, delivery.signal).catch(async (error) => {
+        if (!(error instanceof Error) || !/no such page/i.test(error.message)) throw error;
+        const remembered = await retainedLookup;
+        if (remembered === null || remembered.title === id) throw error;
+        return api.readablePage(remembered.title, delivery.signal);
+      });
+      const delivered = await firstReadable(retainedLookup, canonicalLookup);
+      page = delivered.page;
+      if (delivered.source === 'retained') {
+        retained = delivered.page;
+        fromKept = true;
+        validation = navigator.onLine ? delivered.validation : null;
+      } else {
+        needsEnrichment = true;
+      }
+    } else {
       page = await api.readablePage(id, delivery.signal);
       needsEnrichment = true;
       // Leerla es lo que hace que se retenga. rule RetainDeliveredPage.
@@ -996,14 +1074,15 @@ async function openPage(
   // La identidad manda a partir de aquí: la URL pudo nombrarla por su título.
   workspace.activePage = page.id;
   id = page.id;
-  openTrail =
-    page.trail == null || page.trail.route.length < 2
-      ? null
-      : {
-          page: page.id,
-          stops: page.trail.route.map((one) => ({ page: one.page, ordinal: one.ordinal })),
-          kinds: page.trail.crossings.map((one) => one.kind),
-        };
+  const deliveredThread = threadSettings(page.id, page.trail ?? null);
+  /*
+   * Una entrega legible omite deliberadamente las derivaciones costosas. Si es
+   * un redibujado de la misma página, eso no autoriza a apagar durante unos
+   * instantes el hilo que ya conocíamos; el enriquecimiento decidirá si sigue.
+   * Al navegar a otra página sí se descarta, porque el hilo pertenece a la obra
+   * abierta y no puede heredarse.
+   */
+  if (!staying || deliveredThread !== null) openTrail = deliveredThread;
   nameWindow(page.title);
 
   // La dirección sigue a la página, salvo cuando es la dirección la que trajo
@@ -1180,7 +1259,20 @@ async function openPage(
       openView.crossingsOut = complete.crossingsOut;
       openView.crossingsIn = complete.crossingsIn;
       openView.trail = complete.trail ?? null;
+      const hadThread = openTrail !== null;
+      openTrail = threadSettings(complete.id, openView.trail);
       if (!isAnybody()) void held.keepPage(openView);
+
+      /*
+       * La primera entrega dejó el mapa utilizable antes de calcular el
+       * recorrido. En cuanto llega esa lectura, la misma página debe cambiar de
+       * nodo corriente a hilo sin que haga falta volver, recargar o entrar por
+       * una ruta afortunada. Una segunda llamada gana a cualquier dibujo anterior
+       * mediante graphTurn, igual que los otros cambios de vista.
+       */
+      if ((hadThread || openTrail !== null) && $('#vera-root').dataset['layout'] !== 'text_only') {
+        void drawGraph();
+      }
 
       const finish = (): void => {
         if (opening !== thisOpening || workspace.activePage !== complete.id || openView === null) return;
@@ -1269,6 +1361,17 @@ let journalDepth = 0;
 /** El oyente del desplazamiento en curso, para no apilar uno por redibujado. */
 let journalPull: (() => void) | null = null;
 
+/**
+ * Qué lectura continua sigue vigente.
+ *
+ * Quitar el oyente no cancela una petición que ya salió. Si la página se
+ * redibuja mientras ese día viene del servidor, la lectura vieja y la nueva
+ * pueden recibir la misma respuesta y montar dos veces la misma fecha. Cada
+ * interrupción cambia esta generación; una respuesta anterior puede terminar,
+ * pero ya no puede tocar el documento.
+ */
+let journalRun = 0;
+
 /*
  * Dejar de tirar del hilo del diario.
  *
@@ -1285,15 +1388,18 @@ let journalPull: (() => void) | null = null;
  * reposición en nada.
  */
 function stopJournalPull(): void {
-  if (journalPull === null) return;
-  $('#text').removeEventListener('scroll', journalPull);
-  journalPull = null;
+  journalRun += 1;
+  if (journalPull !== null) {
+    $('#text').removeEventListener('scroll', journalPull);
+    journalPull = null;
+  }
 }
 
 function continueBackwards(from: string, keptScroll: number): void {
   const text = $('#text');
 
   stopJournalPull();
+  const run = journalRun;
 
   // Los días que hay, del más reciente al más antiguo. `YYYY-MM-DD` ordena igual
   // como texto que como fecha, así que no hace falta interpretarlo.
@@ -1302,7 +1408,10 @@ function continueBackwards(from: string, keptScroll: number): void {
     .sort((a, b) => b.title.localeCompare(a.title));
 
   const here = days.findIndex((candidate) => candidate.title === from);
-  let next = here + 1;
+  // El día de arriba puede ser el «hoy» provisional, que aún no forma parte del
+  // índice. En ese caso se empieza por el primer día real anterior a él. Esto
+  // también evita enseñar por accidente una fecha futura importada.
+  let next = here >= 0 ? here + 1 : days.findIndex((candidate) => candidate.title < from);
 
   // Reponer sólo si se estaba en esta misma página. Llegar de nuevo a un día
   // —desde el mapa, desde un enlace— es empezar a leerlo, no continuar.
@@ -1316,7 +1425,7 @@ function continueBackwards(from: string, keptScroll: number): void {
     text.scrollTop = keptScroll;
   };
 
-  if (here < 0 || next >= days.length) {
+  if (next < 0 || next >= days.length) {
     text.scrollTop = keptScroll;
     return;
   }
@@ -1325,7 +1434,7 @@ function continueBackwards(from: string, keptScroll: number): void {
   let loading = false;
 
   const pull = (): void => {
-    if (loading || next >= days.length) return;
+    if (run !== journalRun || loading || next >= days.length) return;
     // Mientras queden tramos por reponer se tira sin mirar la distancia al
     // fondo: la vista todavía no está donde debe, así que medirla no diría nada.
     const reponiendo = journalDepth < refill;
@@ -1337,26 +1446,42 @@ function continueBackwards(from: string, keptScroll: number): void {
     loading = true;
 
     void api
-      .page(day.id)
+      .readablePage(day.id)
       .then((older) => {
+        if (run !== journalRun) return;
         const slice = document.createElement('section');
         slice.className = 'day-slice';
+        /*
+         * Montarlo antes de componerlo.
+         *
+         * Las páginas grandes se dibujan por lotes y el compositor cancela su
+         * trabajo cuando el contenedor ya no está conectado al documento. Si se
+         * llamaba a `renderOutliner` antes de añadir el tramo, cualquier día que
+         * activara la composición progresiva quedaba detenido en su indicador
+         * inicial: se veían el título y las referencias, pero ningún bloque.
+         *
+         * El tramo ya pertenece a esta generación del diario (se comprobó arriba),
+         * así que puede entrar al DOM antes de empezar a pintarse. De ese modo la
+         * misma regla que aborta una navegación obsoleta deja avanzar al día vivo.
+         */
+        text.append(slice);
         // Cada tramo se dibuja con el mismo outliner que el día de arriba: se
         // edita igual, se pliega igual y habla con las mismas teclas. Un diario
         // que sólo se pudiera leer hacia atrás sería un archivo, no un cuaderno.
-      renderOutliner(slice, older, callbacksForJournalSlice(older, slice), null, null, isReadOnly(),
-        isAnybody() && corpus?.transparentBlockTraceability === true);
-        text.append(slice);
+        renderOutliner(slice, older, callbacksForJournalSlice(older, slice), null, null, isReadOnly(),
+          isAnybody() && corpus?.transparentBlockTraceability === true);
         journalDepth += 1;
         if (journalDepth >= refill) settle();
       })
       .catch(() => {
+        if (run !== journalRun) return;
         // Sin red se deja de tirar del hilo y lo ya leído se queda: insistir
         // contra un servidor que no está sólo llenaría la consola.
         next = days.length;
         settle();
       })
       .finally(() => {
+        if (run !== journalRun) return;
         loading = false;
         // Encadena: si el tramo recién puesto tampoco llena la pantalla, sigue.
         pull();
@@ -1436,6 +1561,7 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
   return {
     // Pulsar el nombre de otra página dentro del texto que se lee.
     onNavigate: (title) => void openTitle(title, 'followed_reference'),
+    canAskLibrarian: corpus?.canAskLibrarian === true,
     scheme: () => workspace.scheme,
     onScheme: (next) => {
       if (next === workspace.scheme) return;
@@ -1514,11 +1640,19 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
        */
       if (options?.fromCorpus === true) {
         if (workspace.activePage !== null) {
-          void openPage(
-            workspace.activePage,
-            focus,
-            options.replaceRoute === true ? { replaceRoute: true } : {},
-          );
+          const active = workspace.activePage;
+          void (async () => {
+            await openPage(
+              active,
+              focus,
+              options.replaceRoute === true ? { replaceRoute: true } : {},
+            );
+            // Volver al corpus puede insertar o retirar aparatos derivados por
+            // encima del lugar que se estaba mirando. Restaurar sólo scrollTop
+            // movería visualmente el texto; el ancla semántica conserva el
+            // bloque y su posición en la ventana.
+            restoreTextViewport(text, viewport);
+          })();
         }
         return;
       }
@@ -1669,6 +1803,17 @@ async function openFilesAdministration(push = false): Promise<void> {
   $('#vera-root').classList.add('special-surface');
   closeSettings();
   await renderFilesAdministration($('#text'));
+}
+
+/** Abre la proyección canónica de actividad, descubierta por su clase y no por su título. */
+async function openActivityAdministration(): Promise<void> {
+  const activity = (await api.specialPages()).find((page) => page.kind === 'activity');
+  if (activity === undefined) {
+    notice('esta instancia todavía no tiene un registro de actividad');
+    return;
+  }
+  closeSettings();
+  await openPage(activity.id, null, { gesture: 'opened_directly' });
 }
 
 /**
@@ -1840,7 +1985,7 @@ async function openTitle(title: string, gesture: NavigationGesture): Promise<voi
     return;
   }
 
-  if (isAnybody()) {
+  if (isReadOnly()) {
     notice(`«${title}» no forma parte de este sitio público.`);
     return;
   }
@@ -2297,7 +2442,7 @@ async function bringItOver(taking: Behind): Promise<void> {
 let graphTurn = 0;
 let graphDelivery: AbortController | null = null;
 
-async function drawGraph(completeD4 = false): Promise<void> {
+async function drawGraph(reach = 1): Promise<void> {
   if (workspace.activePage === null) return;
   const container = $('#graph');
   const turn = ++graphTurn;
@@ -2312,8 +2457,8 @@ async function drawGraph(completeD4 = false): Promise<void> {
     notice('Esta página no está publicada; el mapa vuelve a mostrar tu espacio.');
   }
   let data;
-  const progressiveD4 = workspace.graphView === 'graph_d4' && workspace.depth > 1;
-  const requestedDepth = progressiveD4 && !completeD4 ? 1 : workspace.depth;
+  const targetDepth = workspace.depth;
+  const requestedDepth = Math.min(targetDepth, Math.max(1, reach));
   try {
     data = await api.graph(
       workspace.activePage,
@@ -2394,6 +2539,8 @@ async function drawGraph(completeD4 = false): Promise<void> {
     history: pagesOf(workspace.trace),
     showEdges: true,
     showTitles: true,
+    autoRotate: workspace.graphAutoRotate,
+    preserveDirection: requestedDepth > 1,
     // El nodo es su nombre. @guarantee GraphNodesAreTheirNames: un círculo al
     // lado no dice nada que el nombre no diga, y gasta el mismo sitio diciendo
     // menos. En 2D los nombres no se traslapan: dos nombres uno encima de otro
@@ -2485,15 +2632,15 @@ async function drawGraph(completeD4 = false): Promise<void> {
   }
 
   /*
-   * D4 llega en dos cortes. El primero ya quedó pintado e interactivo; sólo
-   * entonces se pide el alcance elegido. `requestAnimationFrame` fuerza esa
-   * primera pintura antes de iniciar el trabajo que puede volver a ocupar el
-   * hilo principal. El mapa de grado uno permanece intacto durante la espera y
-   * cualquier navegación aborta la segunda entrega mediante `graphTurn`.
+   * El mapa llega por anillos. El que ya llegó queda pintado e interactivo;
+   * sólo entonces se pide el salto siguiente. `requestAnimationFrame` fuerza
+   * esa pintura antes de iniciar el trabajo que puede volver a ocupar el hilo.
+   * La entrega presente permanece intacta durante la espera y cualquier
+   * navegación aborta la siguiente mediante `graphTurn`.
    */
-  if (progressiveD4 && !completeD4 && turn === graphTurn) {
+  if (requestedDepth < targetDepth && turn === graphTurn) {
     window.requestAnimationFrame(() => {
-      if (turn === graphTurn) void drawGraph(true);
+      if (turn === graphTurn) void drawGraph(requestedDepth + 1);
     });
   }
 }
@@ -2572,13 +2719,13 @@ function drawTrail(): void {
     pill.textContent = page?.title ?? id;
     pill.addEventListener('click', () => void openPage(id));
     /*
-     * Y desde cualquier parada, guardar el tramo que va de ahí hasta aquí.
+     * Y desde cualquier parada, sembrar con el tramo que va de ahí hasta aquí.
      *
      * Con el botón secundario y no con uno propio: el rastro es para volver, y
      * un botón por paso al lado de cada nombre convertiría la fila en una
-     * botonera. Quien quiera promover lo hace pulsando donde quiere empezar.
+     * botonera. Quien quiera llevarlo a una mesa pulsa donde quiere empezar.
      */
-    pill.title = `volver a ${page?.title ?? id} · con el botón derecho, guardar el recorrido desde aquí`;
+    pill.title = `volver a ${page?.title ?? id} · con el botón derecho, abrir una mesa desde aquí`;
     pill.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       void promoteTrace(index);
@@ -2601,7 +2748,7 @@ function drawTrail(): void {
   }
 
   /*
-   * Guardar lo andado.
+   * Llevar lo andado a una mesa de trabajo.
    *
    * Uno solo y al final de la fila: el gesto corriente sobre el rastro es
    * volver, y promover es el que se hace de vez en cuando. Guarda el rastro
@@ -2616,8 +2763,8 @@ function drawTrail(): void {
     // botón con texto ahí dentro compite con ellos por lo mismo que uno viene a
     // leer. Lo que dice la palabra va en el título, donde no estorba.
     keep.innerHTML = icon('steps-1');
-    keep.title = 'guardar como recorrido: lo andado se convierte en una página con sus paradas y sus huecos';
-    keep.setAttribute('aria-label', 'guardar como recorrido');
+    keep.title = 'abrir una mesa de trabajo con todo lo andado';
+    keep.setAttribute('aria-label', 'crear una preparación argumental');
     keep.addEventListener('click', () => void promoteTrace(null));
     trail.append(keep);
   }
@@ -2700,11 +2847,10 @@ async function exportTraceBooklet(): Promise<void> {
 }
 
 /**
- * Convierte lo andado en un recorrido, desde una parada o desde el principio.
+ * Siembra una preparación argumental, desde una parada o desde el principio.
  *
- * Guardar un tramo no vacía el rastro ni lo marca: se sigue andando y se sigue
- * acumulando, y el mismo tramo se puede guardar dos veces si a alguien le da por
- * contar dos cosas distintas con el mismo paseo.
+ * Sembrar un tramo no vacía el rastro ni lo marca: se sigue andando y se sigue
+ * acumulando, y el mismo tramo puede alimentar dos preparaciones distintas.
  * @invariant TheTraceItselfIsNotConsumed.
  */
 async function promoteTrace(from: number | null): Promise<void> {
@@ -2739,82 +2885,75 @@ async function promoteTrace(from: number | null): Promise<void> {
     pages.some((one) => one.title.trim().toLowerCase() === name.trim().toLowerCase()),
   );
 
-  const seed = seedTrail(trace, { title });
-  // Promover es una sola secuencia dependiente: la página debe existir en el
-  // corpus antes de declararla argumento, y la declaración antes de abrirla.
-  // La cola local sirve para la mano corriente; aquí permitiría que `openPage`
-  // llegara antes que el tipo y restituyera una página ordinaria o incompleta.
-  const born = await api.submitConfirmed(seed.page as never);
-  if (born.status !== 'applied') {
-    notice(`No se pudo crear el recorrido: ${born.status === 'rejected' ? born.reason : 'error'}.`);
-    return;
-  }
-  const page = born.subjectId;
-
-  const write = async (
-    change: unknown,
-    channel: 'typed_text' | 'walked' = 'typed_text',
-  ) => api.submitConfirmed(change as never, channel);
-
-  for (const change of seed.properties(page)) {
-    const written = await write(change);
-    if (written.status === 'rejected') {
-      notice(`El recorrido nació, pero no pudo declararse argumento: ${written.reason}.`);
-      return;
-    }
-  }
-
+  const seed = seedArgumentPreparation(trace, { title });
+  const page = mint('page');
+  const entries: {
+    change: Parameters<typeof api.submitCanonicalBatch>[0][number]['change'];
+    channel?: 'typed_text' | 'walked';
+  }[] = [
+    {
+      change: {
+        kind: 'create_page',
+        stableId: page,
+        title: seed.page.title,
+        visibility: seed.page.visibility,
+      },
+    },
+    ...seed.properties(page).map((change) => ({ change })),
+  ];
   let position = 0;
   for (const one of blocksFor(trace, titleOf)) {
     position += 1;
-    const block = await write({
-      kind: 'create_block',
-      page,
-      parent: null,
-      position,
-      content: one.content,
+    const block = mint('block');
+    entries.push({
+      change: {
+        kind: 'create_block',
+        stableId: block,
+        page,
+        parent: null,
+        position,
+        content: one.content,
+      },
     });
-    if (block.status === 'rejected') {
-      notice(`El recorrido quedó incompleto: ${block.reason}.`);
-      return;
-    }
-    // La promoción se confirma de punta a punta antes de abrirse. El testimonio
-    // entra por `walked`: no lo tecleó nadie, ocurrió al andar.
-    if (block.status === 'applied' && one.testimony !== null) {
-      const testimony = await write(
-        {
+    if (one.testimony !== null) {
+      entries.push({
+        change: {
           kind: 'set_property',
-          block: block.subjectId,
+          block,
           propertyKey: TESTIMONY_KEY,
           propertyValue: one.testimony,
         },
-        'walked',
-      );
-      if (testimony.status === 'rejected') {
-        notice(`El recorrido quedó sin uno de sus testimonios: ${testimony.reason}.`);
-        return;
-      }
+        channel: 'walked',
+      });
       if (one.crossing != null) {
         for (const [propertyKey, propertyValue] of [
           ['conectiva', one.crossing.id],
           ['revisión de conectiva', one.crossing.revision],
         ] as const) {
-          const cited = await write(
-            { kind: 'set_property', block: block.subjectId, propertyKey, propertyValue },
-            'walked',
-          );
-          if (cited.status === 'rejected') {
-            notice(`El recorrido quedó sin citar una conectiva: ${cited.reason}.`);
-            return;
-          }
+          entries.push({
+            change: { kind: 'set_property', block, propertyKey, propertyValue },
+            channel: 'walked',
+          });
         }
       }
     }
   }
 
+  let born;
+  try {
+    born = await api.submitCanonicalBatch(entries);
+  } catch {
+    notice('No se pudo crear la preparación: sin conexión con el servidor.');
+    return;
+  }
+  if (born.status === 'rejected') {
+    notice(`No se pudo crear la preparación: ${born.reason}.`);
+    return;
+  }
+
   await loadPages();
   await openPage(page, null, { gesture: 'opened_directly' });
-  notice('Guardado. Falta lo que hay entre una parada y la siguiente: eso es el argumento.');
+  notice('Mesa de trabajo creada. La fase queda abierta para que tú la declares.');
 }
 
 async function refreshGraph(): Promise<void> {
@@ -2898,7 +3037,7 @@ async function openSearchResults(text: string, push = true): Promise<void> {
 
   let hits: Hit[];
   try {
-    hits = await api.search(query);
+    hits = await api.searchPages(query);
   } catch {
     counting.close('failed');
     status.textContent = `No se pudo completar la búsqueda de “${query}”.`;
@@ -3072,7 +3211,11 @@ function wireSearch(): void {
       const turn = ++searchTurn;
       let hits;
       try {
-        hits = await api.search(text);
+        // Dos letras todavía se resuelven inmediatamente contra los títulos
+        // retenidos. El índice trigram empieza a aportar evidencia interior
+        // desde tres caracteres, sin barrer el corpus por cada tecla.
+        if (text.length < 3) return;
+        hits = await api.searchPages(text);
       } catch {
         return;
       }
@@ -3208,52 +3351,27 @@ function wireTheme(): void {
    * Tres y no cuatro: al cuarto salto el mapa ya no dice «qué hay cerca de aquí»
    * sino «qué hay», y eso no cabe en la mirada.
    */
-  const REACH_MIN = 1;
-  const REACH_MAX = 3;
   const reachLess = $<HTMLButtonElement>('#map-reach-less');
   const reachMore = $<HTMLButtonElement>('#map-reach-more');
-  const reachValue = $('#map-reach-value');
   reachLess.innerHTML = icon('chevron-left');
   reachMore.innerHTML = icon('chevron-right');
 
-  /** El número y qué flechas quedan por dar. */
-  const showReach = (): void => {
-    reachValue.textContent = String(workspace.depth);
-    // Una flecha que no lleva a ninguna parte se apaga en vez de no hacer nada:
-    // que el control diga dónde se acaba es parte de decir dónde se está.
-    reachLess.disabled = workspace.depth <= REACH_MIN;
-    reachMore.disabled = workspace.depth >= REACH_MAX;
-  };
-
-  const stepReach = (by: number): void => {
-    const next = Math.min(REACH_MAX, Math.max(REACH_MIN, workspace.depth + by));
-    if (next === workspace.depth) return;
-    workspace.depth = next;
-    session.setReach(next);
-    showReach();
-    // El alcance cambia qué nodos hay, así que lo colocado deja de valer, y
-    // tampoco tiene sentido volver a la cámara de un grafo que ya no es ese.
-    forgetPositions();
-    forgetCamera();
-    void refreshGraph();
-  };
-
-  reachLess.addEventListener('click', () => stepReach(-1));
-  reachMore.addEventListener('click', () => stepReach(+1));
-  showReach();
+  reachLess.addEventListener('click', () => setGraphReach(workspace.depth - 1));
+  reachMore.addEventListener('click', () => setGraphReach(workspace.depth + 1));
+  showGraphReach();
 
   /*
    * Los diarios no son ruido opcional dentro de una vecindad. El interruptor
    * sólo autoriza a dibujar el día que ya está seleccionado y ocupa el foco;
    * ningún otro día aparece jamás como vecino.
    */
-  const journalSwitch = $<HTMLButtonElement>('#map-journals');
+  const journalSwitch = $<HTMLInputElement>('#map-journals');
+  $('#map-journals-icon').innerHTML = icon('calendar');
   const showJournals = (): void => {
-    journalSwitch.setAttribute('aria-checked', String(workspace.graphJournals));
-    journalSwitch.textContent = workspace.graphJournals ? 'encendido' : 'apagado';
+    journalSwitch.checked = workspace.graphJournals;
   };
-  journalSwitch.addEventListener('click', () => {
-    workspace.graphJournals = !workspace.graphJournals;
+  journalSwitch.addEventListener('change', () => {
+    workspace.graphJournals = journalSwitch.checked;
     session.setGraphJournals(workspace.graphJournals);
     showJournals();
     forgetPositions();
@@ -3261,6 +3379,59 @@ function wireTheme(): void {
     void refreshGraph();
   });
   showJournals();
+
+  /*
+   * Girar es una propiedad de la cámara 3D, no de los datos ni de las otras
+   * proyecciones. Por eso el control sólo aparece junto a esa dimensión. La
+   * preferencia se recuerda, pero una petición del sistema de reducir movimiento
+   * tiene precedencia sobre ella.
+   */
+  const autoRotateSwitch = $<HTMLInputElement>('#map-auto-rotate');
+  $('#map-auto-rotate-icon').innerHTML = icon('refresh-cw');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const showAutoRotate = (): void => {
+    const allowed = !reducedMotion.matches;
+    autoRotateSwitch.disabled = !allowed;
+    autoRotateSwitch.checked = allowed && workspace.graphAutoRotate;
+    autoRotateSwitch.title = allowed ? '' : 'Desactivada por la preferencia de reducir movimiento';
+  };
+  autoRotateSwitch.addEventListener('change', () => {
+    if (reducedMotion.matches) return;
+    workspace.graphAutoRotate = autoRotateSwitch.checked;
+    session.setGraphAutoRotate(workspace.graphAutoRotate);
+    showAutoRotate();
+    setGraph3DAutoRotate(workspace.graphAutoRotate);
+  });
+  reducedMotion.addEventListener('change', () => {
+    showAutoRotate();
+    setGraph3DAutoRotate(workspace.graphAutoRotate && !reducedMotion.matches);
+  });
+  showAutoRotate();
+
+  const copyMap = $<HTMLButtonElement>('#map-copy-embed');
+  copyMap.innerHTML = icon('copy');
+  copyMap.addEventListener('click', async () => {
+    const page = pages.find((one) => one.id === workspace.activePage);
+    const view = workspace.graphView === 'graph_3d' ? '3d' : workspace.graphView === 'graph_d4' ? 'd4' : '2d';
+    const camera = view === '3d' ? graph3DCamera() : view === 'd4' ? graphD4Camera() : graph2DCamera();
+    if (page === undefined || camera === null) {
+      notice('La vista todavía no está lista para copiarse.');
+      return;
+    }
+    const source = mapEmbeddingSource(
+      page.title,
+      view,
+      workspace.depth as 1 | 2 | 3,
+      workspace.graphAutoRotate,
+      camera,
+    );
+    try {
+      await navigator.clipboard.writeText(source);
+      notice('Incrustación del mapa copiada.');
+    } catch {
+      notice('No se pudo copiar la incrustación; el portapapeles no está disponible.');
+    }
+  });
 
   // El switch de la vista, en el orden del espacio que gobierna.
   const SWITCH: Record<string, IconName> = {
@@ -3315,6 +3486,7 @@ function wireTheme(): void {
       onClose: closeSettings,
       onOpenFiles: () => void openFilesAdministration(true),
       onOpenSharing: () => void openSharingAdministration(true),
+      onOpenActivity: () => void openActivityAdministration(),
     });
     document.body.classList.add('settings-open');
     // Recordar la sección entre aperturas: se vuelve a la misma que se dejó.
@@ -3323,7 +3495,7 @@ function wireTheme(): void {
         (tab as HTMLElement).hidden = true;
       }
       tab.addEventListener('click', () => {
-        section = (['memoria', 'archivos', 'teclado', 'apariencia'] as Section[])[at] ?? 'memoria';
+        section = (['memoria', 'teclado', 'apariencia'] as Section[])[at] ?? 'memoria';
       });
     });
   };
@@ -3631,10 +3803,7 @@ async function start(): Promise<void> {
   }
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
     button.addEventListener('click', () => {
-      workspace.graphView = button.dataset['view'] as GraphViewMode;
-      if (isAnybody()) session.setPublicGraphView(workspace.graphView);
-      else session.setGraphView(workspace.graphView);
-      applyLayout();
+      setGraphView(button.dataset['view'] as GraphViewMode);
     });
   }
 
@@ -3755,6 +3924,15 @@ async function boot(attempt = 1): Promise<void> {
     timer = window.setTimeout(again, wait * 1000);
   }
 }
+
+window.addEventListener('message', (event: MessageEvent<unknown>) => {
+  const data = event.data as { type?: unknown; page?: unknown } | null;
+  if (event.origin !== location.origin || data?.type !== 'vera-embedded-map-open' || typeof data.page !== 'string') return;
+  const belongsToMap = [...document.querySelectorAll<HTMLIFrameElement>('.embedded-map iframe')]
+    .some((frame) => frame.contentWindow === event.source);
+  if (!belongsToMap) return;
+  void openPage(data.page, null, { gesture: 'pressed_on_the_map' });
+});
 
 if (!handlesSharedAccess()) void boot();
 

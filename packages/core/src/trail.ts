@@ -1,7 +1,8 @@
-// El recorrido: una página cuyo orden alguien declaró que era un argumento.
+// El recorrido: la lectura ordenada de una preparación o argumento.
 //
 // No hay entidad que mantener y no hay tabla nueva. Un recorrido es una página
-// con `tipo:: argumento`, y todo lo demás se calcula mirándola: los nodos son las
+// con `tipo:: preparación argumental` o `tipo:: argumento`, y todo lo demás se
+// calcula mirándola: los nodos son las
 // referencias que su texto lleva, en el orden en que se leen; las conectivas son
 // lo que queda del texto cuando se le quitan las referencias; los cruces son los
 // pares de nodos consecutivos. Un recorrido de siete nodos tiene seis cruces, y
@@ -22,10 +23,11 @@
 //
 // Ver specs/trail.allium.
 
+import { ARGUMENT_KIND } from './argument-workbench.ts';
 import type { PropertyNames } from './property-names.ts';
 
 /** El valor de `tipo` con que una página dice que su orden es un argumento. */
-export const TRAIL_KIND = 'argumento';
+export const TRAIL_KIND = ARGUMENT_KIND;
 
 /**
  * La propiedad con que un bloque de cruce dice cómo se anduvo.
@@ -62,6 +64,8 @@ export interface TrailNode {
   title: string;
   /** A qué página lleva. Nulo es un puente cortado: se enseña, no se quita. */
   page: string | null;
+  /** El bloque preciso referido, cuando la perla es `((bloque))`. */
+  targetBlock?: string;
 }
 
 export interface TrailCrossing {
@@ -102,7 +106,7 @@ export interface Trail {
   argues: boolean;
 }
 
-/** ¿Esta página dice de sí misma que su orden es un argumento? */
+/** ¿Esta página dice de sí misma que ya alcanzó el estado argumento? */
 export function isTrail(
   properties: readonly { key: string; value: string }[],
   names: PropertyNames,
@@ -114,9 +118,6 @@ export function isTrail(
       one.value.trim().toLowerCase() === TRAIL_KIND,
   );
 }
-
-/** Una referencia `[[así]]` dentro del texto. */
-const REFERENCE = /\[\[([^\]]+)\]\]/g;
 
 /**
  * Los bloques en el orden en que se leen.
@@ -150,6 +151,7 @@ interface Piece {
   kind: 'text' | 'node';
   said: string;
   block: string;
+  targetBlock?: string;
   /** El testimonio del bloque, para el cruce que llega a este nodo. */
   testimony: string | null;
 }
@@ -169,15 +171,16 @@ function pieces(blocks: readonly TrailBlock[]): Piece[] {
     const testimony = block.testimony ?? null;
     const before = said.length;
     let at = 0;
-    for (const found of block.content.matchAll(REFERENCE)) {
+    for (const found of block.content.matchAll(/\[\[([^\]]+)\]\]|\(\(([^()\s]+)\)\)/g)) {
       const before = block.content.slice(at, found.index);
       if (before.trim() !== '') {
         said.push({ kind: 'text', said: before, block: block.stableId, testimony });
       }
       said.push({
         kind: 'node',
-        said: (found[1] ?? '').trim(),
+        said: (found[1] ?? found[2] ?? '').trim(),
         block: block.stableId,
+        ...(found[2] === undefined ? {} : { targetBlock: found[2] }),
         testimony,
       });
       at = found.index + found[0].length;
@@ -216,6 +219,8 @@ export interface TrailReading {
   blocks: readonly TrailBlock[];
   /** De un título a la página que nombra, o null si nadie la escribió todavía. */
   resolve: (title: string) => string | null;
+  /** Resuelve una referencia precisa a su página sin convertirla en copia. */
+  resolveBlock?: (block: string) => { page: string; title: string } | null;
   /**
    * ¿Unía ya el corpus estas dos páginas?
    *
@@ -258,11 +263,15 @@ export function readTrail(said: TrailReading): Trail {
       }
       continue;
     }
+    const resolvedBlock = piece.targetBlock === undefined
+      ? null
+      : (said.resolveBlock?.(piece.targetBlock) ?? null);
     route.push({
       ordinal: route.length + 1,
       block: piece.block,
-      title: piece.said,
-      page: said.resolve(piece.said),
+      title: resolvedBlock?.title ?? piece.said,
+      page: resolvedBlock?.page ?? (piece.targetBlock === undefined ? said.resolve(piece.said) : null),
+      ...(piece.targetBlock === undefined ? {} : { targetBlock: piece.targetBlock }),
     });
     pending = { text: [], blocks: [] };
     between.push(pending);

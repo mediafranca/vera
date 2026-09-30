@@ -181,10 +181,10 @@ describe('vera-mcp por stdio', () => {
     await call('vera_leer_pagina', { pagina: 'La bitácora' });
     const found = (await (
       await fetch(`http://127.0.0.1:${PORT}/exposures?most=20`)
-    ).json()) as { exposures: { surface: string; client: string | null; delivered: string[] }[] };
+    ).json()) as { exposures: { surface: string; client: string | null; deliveredCount: number }[] };
     const mine = found.exposures.find((one) => one.surface === 'GET /pages/:id');
     assert.ok(mine !== undefined, 'la lectura no quedó anotada');
     assert.equal(mine.client, 'la prueba');
-    assert.ok(mine.delivered.length >= 3, 'la página y sus bloques tienen que quedar nombrados');
+    assert.ok(mine.deliveredCount >= 3, 'la página y sus bloques tienen que quedar contados');
   });
 });

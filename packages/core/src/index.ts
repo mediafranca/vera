@@ -73,10 +73,19 @@ export type {
  */
 export {
   embedIn,
+  embeddedMapCamera,
+  embeddedMapHeight,
+  embeddedMapConfig,
   headingAnchor,
   inlineMarkdown,
   renderMarkdown,
   uniqueAnchors,
+} from './markdown.ts';
+export type {
+  EmbeddedMap3DCamera,
+  EmbeddedMapCamera,
+  EmbeddedMapConfig,
+  EmbeddedMapPlanarCamera,
 } from './markdown.ts';
 
 /*
@@ -117,6 +126,23 @@ export {
 export type { PropertyNames, PropertyRole } from './property-names.ts';
 export type { Crossing, CrossingSense, RelationTerm } from './relations.ts';
 export type { QuerySource, QueryUnreadable, QueryView } from './query-source.ts';
+
+export {
+  ARGUMENT_KIND,
+  ARGUMENT_MATURITY_KEY,
+  ARGUMENT_PREPARATION_KIND,
+  ARGUMENT_PREPARATION_PHASES,
+  argumentMaturity,
+  argumentMaturityChanges,
+  argumentPreparationPhase,
+  isArgumentPreparation,
+  isArgumentWork,
+} from './argument-workbench.ts';
+export type {
+  ArgumentMaturity,
+  ArgumentMaturityChange,
+  ArgumentPreparationPhase,
+} from './argument-workbench.ts';
 
 export {
   suggestTitles,

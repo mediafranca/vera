@@ -37,11 +37,10 @@ contract ConversationWithAgent {
         -- together with a snapshot of what they said at that moment. Vera never
         -- grants the whole corpus merely because the agent could read it.
 
-    @invariant AReplyIsNotAnAppliedChange
-        -- Replying, proposing graph operations and applying graph operations are
-        -- distinct observable acts. Text that says it changed Vera is not proof
-        -- that anything changed, and a reply cannot mutate the corpus as a side
-        -- effect of appearing.
+    @invariant APageReplyUsesOrdinaryWriting
+        -- A reply made from a page enters that page as an ordinary editable block,
+        -- attributed to the answering agent through the usual operation history.
+        -- Any other proposed graph operations remain separate and unapplied.
 
     @invariant EveryTurnNamesItsHandAndDoor
         -- Every request and reply names who produced it and the modality by which
@@ -90,6 +89,12 @@ contract ConversationWithAgent {
         -- Dispatch may retry after a timeout or restart. The durable request id is
         -- the idempotency key: receiving it twice cannot create two conversations,
         -- two replies or two proposals.
+
+    @invariant AHumanReadsOnlyTheirOwnConversation
+        -- A participant invited into a shared space remains a full human
+        -- conversant, but the request list, individual turns and replies visible
+        -- there belong only to that participant. Sharing a page does not merge
+        -- the private conversations held over it.
 }
 
 ------------------------------------------------------------
@@ -172,6 +177,7 @@ entity AgentReply {
     request: ConversationRequest
     answered_by: core/Participant
     text: String
+    written_block: core/Block?
     created_at: Timestamp
     proposal: OperationProposal with reply = this
 }
@@ -422,12 +428,57 @@ rule VeraRecordsDispatchFailure {
         -- be sent again with the same identity after OpenClaw recovers.
 }
 
-rule LibrarianAnswersARequest {
+rule LibrarianAnswersOnAPage {
     when: AnswerAgentRequest(agent, request, text, changes)
 
     requires: request.conversation.agent = agent
     requires: request.status = working
     requires: request.modality != block
+    requires: request.source_page != null
+    requires: text != ""
+
+    ensures:
+        request.status = answered
+        request.finished_at = now
+        let written = core/Block.created(
+            stable_id: stable_reply_id(request),
+            page: request.source_page,
+            crossing_id: null,
+            parent: null,
+            position: 0,
+            content: text
+        )
+        let reply = AgentReply.created(
+            request: request,
+            answered_by: agent,
+            text: text,
+            written_block: written,
+            created_at: now
+        )
+        if changes.count > 0:
+            OperationProposal.created(
+                reply: reply,
+                proposed_by: agent,
+                changes: changes,
+                status: proposed,
+                proposed_at: now,
+                decided_by: null,
+                decided_at: null
+            )
+
+    @guidance
+        -- The block is created through the same agent_generation operation boundary
+        -- as any other librarian writing. It carries no special read-only chrome:
+        -- editing is ordinary editing, while its origin remains visible in history.
+}
+
+rule LibrarianAnswersAwayFromAPage {
+    when: AnswerAgentRequest(agent, request, text, changes)
+
+    requires: request.conversation.agent = agent
+    requires: request.status = working
+    requires: request.modality != block
+    requires: request.source_page = null
     requires: text != ""
 
     ensures:
@@ -437,6 +488,7 @@ rule LibrarianAnswersARequest {
             request: request,
             answered_by: agent,
             text: text,
+            written_block: null,
             created_at: now
         )
         if changes.count > 0:
@@ -645,6 +697,7 @@ surface LibrarianConversationPage {
         ConversationRequest.status
         ConversationRequest.failure_reason
         AgentReply.text
+        AgentReply.written_block
         OperationProposal.changes
         OperationProposal.status
 

@@ -10,7 +10,8 @@ operación a la mano equivocada.
 
 ## Estado de esta versión
 
-`0.6.0-alpha.1` es una alfa de investigación. La aplicación privada escucha en
+La versión publicada más reciente y la rama `main` son una alfa de investigación.
+La aplicación privada escucha en
 `127.0.0.1` por defecto y debe permanecer allí, detrás de una frontera de red
 con autenticación. **No expongas el puerto privado directamente a Internet ni
 cambies `VERA_HOST` a una interfaz pública:** las personas todavía no se
@@ -46,6 +47,7 @@ de un corpus real si no son imprescindibles.
 
 ## Versiones soportadas
 
-Mientras Vera siga en alfa, sólo la rama predeterminada y la versión alfa más
-reciente reciben correcciones de seguridad. No se prometen parches para ramas
-anteriores.
+Mientras Vera siga en alfa, sólo `main`, `dev` y la versión alfa publicada más
+reciente reciben correcciones de seguridad. `dev` recibe primero el arreglo y
+`main` lo recibe mediante una promoción extraordinaria si la gravedad no admite
+esperar a la siguiente versión. No se prometen parches para ramas históricas.

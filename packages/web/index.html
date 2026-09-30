@@ -176,12 +176,24 @@
               </span>
             </div>
 
-            <label class="map-field">
-              <span class="map-field-name">diarios</span>
-              <span class="map-choice">
-                <button id="map-journals" type="button" role="switch" aria-checked="false">apagados</button>
-              </span>
-            </label>
+            <div class="map-compact-actions">
+              <label class="map-icon-check" title="Mostrar el diario en foco">
+                <span id="map-journals-icon" aria-hidden="true"></span>
+                <input id="map-journals" type="checkbox" aria-label="Mostrar el diario en foco">
+              </label>
+
+              <label class="map-icon-check" id="map-auto-rotate-field" title="Rotación automática" hidden>
+                <span id="map-auto-rotate-icon" aria-hidden="true"></span>
+                <input id="map-auto-rotate" type="checkbox" aria-label="Rotación automática">
+              </label>
+
+              <button
+                id="map-copy-embed"
+                type="button"
+                aria-label="Copiar incrustación de esta vista"
+                title="Copiar incrustación de esta vista"
+              ></button>
+            </div>
           </div>
         </div>
 

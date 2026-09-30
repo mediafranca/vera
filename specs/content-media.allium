@@ -22,12 +22,25 @@ use "./core.allium" as core
 contract NativeMediaSupport {
     store: (resource: MediaResource) -> StoredMedia
     present: (resource: MediaResource) -> PresentedMedia
+    rename: (resource: MediaResource, file_name: String) -> MediaResource
+    replace: (resource: MediaResource, replacement_source: String, replacement_media_type: String) -> MediaResource
+    delete: (resource: MediaResource) -> Boolean
 
     @invariant SourceFidelity
         -- Vera preserves the canonical source or original file for every resource.
         -- Presentation and transcription do not replace or destructively
         -- transcode that source. An audio source may be deleted only by an
         -- explicit participant action after its transcript has been validated.
+
+    @invariant ManagedFileIdentity
+        -- Renaming or replacing an internally managed file preserves the
+        -- identity of the resource and every PageEmbedding that points to it.
+        -- Deleting it is the only operation that removes those embeddings.
+
+    @invariant NoBrokenEmbeddings
+        -- Deleting an internally managed file removes all of its page
+        -- embeddings in the same accepted action. A page never keeps a broken
+        -- reference to a file that the catalogue says no longer exists.
 
     @invariant NativePresentation
         -- Every declared media variant can be presented within a Vera page
@@ -65,7 +78,10 @@ enum TranscriptProvenance { published | automatic_original | automatic_translati
 
 entity MediaResource {
     kind: Markdown | Audio | RasterImage | Pdf | Svg | Mermaid | CanvasSketch | ExternalVideo
+    graph: core/Graph
     title: String?
+    file_name: String?
+    source_revision: Integer
     custody: MediaCustody
     created_by: core/Participant
     created_at: Timestamp
@@ -208,6 +224,65 @@ rule PresentMediaWithinPage {
     )
 }
 
+rule ParticipantRenamesManagedFile {
+    when: RenameManagedFile(participant, graph, resource, file_name)
+
+    let membership = core/Membership{graph: graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: resource.graph = graph
+    requires: resource.custody = internal
+    requires: file_name != ""
+
+    ensures: resource.file_name = file_name
+
+    @guidance
+        -- The resource identity and every PageEmbedding remain unchanged. A
+        -- portable textual projection may rewrite its path atomically.
+}
+
+rule ParticipantReplacesManagedFile {
+    when: ReplaceManagedFile(participant, graph, resource, replacement_source, replacement_media_type)
+
+    let membership = core/Membership{graph: graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: resource.graph = graph
+    requires: resource.custody = internal
+    requires: replacement_source != ""
+    requires: replacement_media_type != ""
+
+    ensures: resource.source_revision = resource.source_revision + 1
+
+    @guidance
+        -- Replacement changes the canonical bytes but preserves the resource's
+        -- name, descriptions and PageEmbeddings. The new source must remain in
+        -- the same presentable media family as the source it replaces.
+}
+
+rule ParticipantDeletesManagedFile {
+    when: DeleteManagedFile(participant, graph, resource)
+
+    let membership = core/Membership{graph: graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: resource.graph = graph
+    requires: resource.custody = internal
+
+    ensures:
+        for embedding in PageEmbeddings where resource = resource:
+            not exists embedding
+        not exists resource
+
+    @guidance
+        -- The participant may invoke the same action from the file catalogue or
+        -- from an embedding's detail surface. When more than one embedding will
+        -- disappear, the surface makes that scope explicit before submission.
+}
+
 rule PresentAudioArtifact {
     when: PresentAudio(audio)
 
@@ -337,6 +412,29 @@ surface PageMedia {
         TranscribeAudio(participant, page, audio, transcript)
         ValidateAudioTranscript(participant, page, audio)
         DeleteAudioSource(participant, page, audio)
+        RenameManagedFile(participant, page.graph, resource, file_name)
+        ReplaceManagedFile(participant, page.graph, resource, replacement_source, replacement_media_type)
+        DeleteManagedFile(participant, page.graph, resource)
+
+    contracts:
+        fulfils NativeMediaSupport
+}
+
+surface MediaAdministration {
+    facing participant: core/VeraParticipant
+    context graph: core/Graph
+
+    exposes:
+        for resource in MediaResources where graph = graph:
+            resource.title
+            resource.file_name
+            resource.source_revision
+            resource.custody
+
+    provides:
+        RenameManagedFile(participant, graph, resource, file_name)
+        ReplaceManagedFile(participant, graph, resource, replacement_source, replacement_media_type)
+        DeleteManagedFile(participant, graph, resource)
 
     contracts:
         fulfils NativeMediaSupport

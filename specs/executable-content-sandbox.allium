@@ -185,7 +185,10 @@ contract AuthoredExecutableBlocks {
         -- otro contenido que el sketch produzca. El ajuste evita tanto el gran
         -- hueco vacío como el desplazamiento interior que sólo sería consecuencia
         -- de una medida fija, sin dejar que una medida inválida o desmesurada
-        -- vuelva inutilizable la página que contiene el bloque.
+        -- vuelva inutilizable la página que contiene el bloque. La excepción es
+        -- un sketch p5.js que pide explícitamente `windowHeight`: su recinto toma
+        -- todo el alto disponible antes de ejecutarlo y nunca menos de 640 píxeles,
+        -- para que esa medida describa un espacio útil desde el primer cuadro.
 
     @invariant P5TravelsWithVera
         -- El runtime p5.js que ejecuta un bloque `/p5js` viene incluido con Vera.

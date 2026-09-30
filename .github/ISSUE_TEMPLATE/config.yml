@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Preguntas y propuestas tempranas
+    url: https://github.com/mediafranca/vera/discussions
+    about: Conversa antes de convertir una idea abierta en tarea.
+  - name: Reportar una vulnerabilidad
+    url: https://github.com/mediafranca/vera/blob/dev/SECURITY.md
+    about: Lee el canal privado antes de compartir credenciales, datos personales o fallos de seguridad.

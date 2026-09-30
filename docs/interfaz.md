@@ -101,9 +101,12 @@ Lo dibuja `renderOutliner()`. Es la única parte que cambia con la página.
         · button.fold ....................... plegar/desplegar. Vacío si es hoja
         · button.bullet ..................... abre el menú del bloque
         · div.body .......................... Markdown renderizado; al pulsar, editor
-· section.backlinks ......................... si hay referencias entrantes
+· section.references ....................... si hay referencias en cualquier dirección
     · h2 «Referencias (n)»
-    · button.backlink ....................... página + extracto; abre la página
+    · section.reference-in «La nombran» ..... páginas que apuntan a ésta
+    · section.reference-out «Nombra a» ...... páginas a las que ésta apunta
+        · li.reference ...................... página + extracto; abre la página
+            · div.relation-said ............. tipo y explicación, cuando existen
 ```
 
 ### El bloque, por dentro

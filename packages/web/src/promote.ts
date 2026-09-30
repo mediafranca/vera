@@ -1,4 +1,4 @@
-// Guardar un tramo del rastro como recorrido.
+// Sembrar una preparación argumental con un tramo del rastro.
 //
 // Componer un recorrido empieza por haberlo andado. Lo que el taller ofrece no
 // es un compositor de rutas —una lista donde arrastrar nodos, un panel donde
@@ -12,15 +12,15 @@
 // convoca algo que falta. Por eso promover no pide saber el argumento de
 // antemano: es lo que uno hace mientras se entera de cuál era.
 //
-// Lo que nace es un argumento con todas sus premisas, el registro de por dónde
-// se pasó de una a otra, y ningún razonamiento. Vera transcribe el testimonio y
-// no escribe la conectiva nunca: un «y después» de plantilla tendría la forma de
-// una conectiva sin afirmar nada, y ocuparía el sitio donde va lo que alguien
-// tiene que escribir. @invariant TheFirstDraftSaysWhatHappenedAndNotWhatItMeant.
+// Lo que nace no es aún un argumento: es la mesa donde sus fuentes y huecos
+// quedan disponibles para ser podados, ordenados, anotados y articulados. Vera
+// transcribe el testimonio y no escribe la conectiva nunca: un «y después» de
+// plantilla tendría la forma de una conectiva sin afirmar nada, y ocuparía el
+// sitio donde va lo que alguien tiene que escribir.
 //
 // Ver specs/trail.allium, regla PromoteTheTraceAsAnArgument.
 
-import { TESTIMONY_KEY, TRAIL_KIND } from '@vera/core';
+import { ARGUMENT_PREPARATION_KIND, TESTIMONY_KEY } from '@vera/core';
 import type { NavigationGesture, TraceStep } from './trace.ts';
 
 /**
@@ -54,16 +54,16 @@ export function testimonyFor(step: TraceStep, titleOf: (page: string) => string)
  *
  * Un andamio, y se dice que lo es. Lo pone Vera para que la página pueda existir
  * sin obligar a nadie a saber todavía de qué trata; ponerle el suyo es un
- * renombrado como cualquier otro, y no es un trámite: el título de un recorrido
- * es el título de un texto, y escribirlo es decir qué se está afirmando.
+ * renombrado como cualquier otro. Todavía no es el título de un argumento: es
+ * el nombre provisional de un trabajo que apenas se volvió manipulable.
  * @invariant TheUpgradeIsHavingAName.
  */
 export function provisionalTitle(at: Date, taken: (title: string) => boolean): string {
   const day = at.toISOString().slice(0, 10);
-  const first = `Recorrido del ${day}`;
+  const first = `Preparación argumental del ${day}`;
   if (!taken(first)) return first;
   for (let n = 2; n < 100; n += 1) {
-    const other = `Recorrido del ${day} (${n})`;
+    const other = `Preparación argumental del ${day} (${n})`;
     if (!taken(other)) return other;
   }
   return `${first} · ${at.getTime()}`;
@@ -75,6 +75,8 @@ export type Change =
   | { kind: 'set_property'; page: string; propertyKey: string; propertyValue: string }
   | { kind: 'create_block'; page: string; parent: null; position: number; content: string }
   | { kind: 'set_property'; block: string; propertyKey: string; propertyValue: string };
+
+type CreatePageChange = Extract<Change, { kind: 'create_page' }>;
 
 export interface Seeded {
   /** Los cambios en el orden en que hay que mandarlos. */
@@ -104,7 +106,7 @@ export function fillTraceCrossings(
 }
 
 /**
- * Los cambios que hacen nacer un recorrido a partir de un tramo del rastro.
+ * Los cambios que hacen nacer una preparación a partir de un tramo del rastro.
  *
  * Devuelve la lista y no la manda: quién la manda sabe de páginas nuevas y de
  * errores, y esta función sabe de recorridos. Se prueba entera sin servidor.
@@ -112,15 +114,20 @@ export function fillTraceCrossings(
  * `page` es el identificador que tendrá la página, que quien manda conoce sólo
  * después de crearla; por eso los bloques se piden aparte, con `blocksFor`.
  */
-export function seedTrail(
+export function seedArgumentPreparation(
   trace: readonly TraceStep[],
   said: { title: string; intent?: string | null },
-): { page: Change; properties: (page: string) => Change[] } {
+): { page: CreatePageChange; properties: (page: string) => Change[] } {
   return {
     page: { kind: 'create_page', title: said.title, visibility: 'private' },
     properties: (page) => {
       const changes: Change[] = [
-        { kind: 'set_property', page, propertyKey: 'tipo', propertyValue: TRAIL_KIND },
+        {
+          kind: 'set_property',
+          page,
+          propertyKey: 'tipo',
+          propertyValue: ARGUMENT_PREPARATION_KIND,
+        },
       ];
       if (said.intent != null && said.intent !== '') {
         changes.push({

@@ -169,11 +169,11 @@ describe('interacción de D4', () => {
     assert.doesNotMatch(renderer, /createRelation\(source\.id, target\.id\) \?\?/);
   });
 
-  it('entrega grado uno antes de pedir el alcance completo de D4', () => {
-    assert.match(main, /const progressiveD4 = workspace\.graphView === 'graph_d4' && workspace\.depth > 1/);
-    assert.match(main, /const requestedDepth = progressiveD4 && !completeD4 \? 1 : workspace\.depth/);
+  it('participa en la entrega progresiva común sin esperar el alcance completo', () => {
+    assert.match(main, /const targetDepth = workspace\.depth/);
+    assert.match(main, /const requestedDepth = Math\.min\(targetDepth, Math\.max\(1, reach\)\)/);
     assert.match(main, /api\.graph\([\s\S]*requestedDepth/);
-    assert.match(main, /requestAnimationFrame\(\(\) => \{[\s\S]*drawGraph\(true\)/);
+    assert.match(main, /requestAnimationFrame\(\(\) => \{[\s\S]*drawGraph\(requestedDepth \+ 1\)/);
     assert.match(main, /if \(turn === graphTurn\)/);
   });
 

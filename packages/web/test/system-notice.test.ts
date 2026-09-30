@@ -18,6 +18,27 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.doesNotMatch(polling, /callbacks\.onReload/);
   });
 
+  it('pide dentro de Vera y reduce el trabajo activo a su marca pulsable', () => {
+    const asking = outliner.slice(outliner.indexOf('async function askLibrarian('), outliner.indexOf('function librarianDialogHeader('));
+    assert.doesNotMatch(asking, /window\.prompt/);
+    assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
+    assert.match(outliner, /activity\.className = 'librarian-activity'/);
+    assert.match(outliner, /activity\.onclick = \(\) => openLibrarianProgress\(requests\)/);
+    assert.match(outliner, /Tiempo transcurrido:/);
+    assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
+    assert.match(styles, /\.librarian-activity \.icon/);
+    assert.match(styles, /\.librarian-activity \.icon[\s\S]*?animation: librarian-mark-pulse/);
+    assert.match(styles, /@keyframes librarian-mark-pulse/);
+    assert.match(styles, /prefers-reduced-motion[\s\S]*?\.librarian-activity \.icon \{ animation: none; \}/);
+  });
+
+  it('deja las respuestas terminadas como bloques editables y no monta una copia auxiliar', () => {
+    assert.doesNotMatch(outliner, /function librarianTurn\(/);
+    assert.doesNotMatch(outliner, /className = 'librarian-reply'/);
+    assert.doesNotMatch(styles, /\.librarian-turn\b|\.librarian-reply\b/);
+    assert.match(outliner, /Las respuestas terminadas son contenido del grafo/);
+  });
+
   it('hace respirar el perímetro completo de los renders pendientes', () => {
     const pending = styles.match(/\.block:is\(\.rich-pending, \.rich-native-pending\)[\s\S]*?@media \(prefers-reduced-motion/)?.[0] ?? '';
     assert.match(pending, /border: 2px solid var\(--warm\)/);

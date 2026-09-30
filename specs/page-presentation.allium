@@ -5,7 +5,7 @@
 --   presentation document
 -- Includes: Eligibility, entry and exit, derivation of slides from blocks,
 --   linear navigation, presenter notes, media, deep links, overview,
---   fullscreen, stable active revisions, local controls, public entry and
+--   viewport-filling stage, stable active revisions, local controls, public entry and
 --   failure-safe return to the ordinary page
 -- Excludes:
 --   - Treating an individual block as the canonical presentation container
@@ -72,9 +72,9 @@ contract PagePresentationProjection {
 
     @invariant AuthoredChoicesAndDeviceChoicesStayDistinct
         -- Choices that express the deck as a work, such as its theme and aspect
-        -- ratio, belong to the presentation page. Fullscreen, control visibility,
-        -- overview and presenter-note visibility belong only to the current
-        -- reading session and never write presentation properties.
+        -- ratio, belong to the presentation page. Control visibility, overview
+        -- and presenter-note visibility belong only to the current reading
+        -- session and never write presentation properties.
 
     @invariant PublicReadingPrecedesPublicPerformance
         -- A published presentation keeps its ordinary canonical page as the
@@ -104,9 +104,9 @@ contract PresentationNavigation {
         -- slide, so presenting does not lose the reader's place in the outline.
 
     @invariant PresentationIsOperableWithoutAPointer
-        -- Entry, previous and next movement, overview, presenter notes,
-        -- fullscreen and exit are keyboard operable and expose their current
-        -- state to assistive technology.
+        -- Entry, previous and next movement, overview, presenter notes and exit
+        -- are keyboard operable and expose their current state to assistive
+        -- technology.
 }
 
 ------------------------------------------------------------
@@ -148,7 +148,6 @@ entity PresentationSession {
     deck: PresentationDeck
     current: PresentationSlide
     status: PresentationStatus
-    fullscreen: Boolean
     controls_visible: Boolean
     notes_visible: Boolean
     overview_visible: Boolean
@@ -188,7 +187,6 @@ rule EnterADeclaredPresentationPage {
             deck: deck,
             current: addressed_or_first_slide(deck, address),
             status: active,
-            fullscreen: false,
             controls_visible: true,
             notes_visible: false,
             overview_visible: false,
@@ -247,15 +245,6 @@ rule ClosePresentationOverview {
     requires: session.overview_visible = true
 
     ensures: session.overview_visible = false
-}
-
-rule SetPresentationFullscreen {
-    when: ParticipantSetsPresentationFullscreen(session, enabled)
-
-    requires: session.status = active
-    requires: session.fullscreen != enabled
-
-    ensures: session.fullscreen = enabled
 }
 
 rule SetPresenterNotesVisibility {
@@ -423,7 +412,6 @@ surface PresentationViewer {
     exposes:
         page.title
         PresentationSession.current
-        PresentationSession.fullscreen
         PresentationSession.controls_visible
         PresentationSession.notes_visible
         PresentationSession.overview_visible
@@ -435,7 +423,6 @@ surface PresentationViewer {
         ParticipantOpensPresentationOverview(session)
         ParticipantClosesPresentationOverview(session)
         ParticipantSelectsOverviewSlide(session, slide)
-        ParticipantSetsPresentationFullscreen(session, enabled)
         ParticipantSetsPresentationControlsVisibility(session, visible)
         ParticipantSetsPresenterNotesVisibility(session, visible)
         PresentationSourceRevisionObserved(session, revision)
@@ -457,14 +444,15 @@ surface PresentationViewer {
         -- ofrece una acción que contradiga lo que la propia página dice que es.
 
     @guarantee TheViewerUsesTheWholeAvailableStage
-        -- The active slide occupies the presentation stage without Vera's text,
-        -- graph or editing chrome competing with it. Fullscreen is optional and
-        -- leaving it does not leave the presentation session. The stage does not
-        -- inherit the ordinary page's lateral column or add a second virtual
-        -- margin: prose remains deliberately readable and centred, while images,
-        -- diagrams and other spatial content may use nearly all available space.
-        -- A media-led slide gives the medium the largest size that still leaves
-        -- an authored caption visible without requiring vertical scrolling.
+        -- The viewer itself is the maximised presentation mode: the active slide
+        -- occupies the viewport without Vera's text, graph or editing chrome
+        -- competing with it, and offers no second fullscreen state inside that
+        -- mode. The stage does not inherit the ordinary page's lateral column or
+        -- add a second virtual margin. Prose remains deliberately readable and
+        -- centred; a slide led by an image, drawing, diagram, SVG or executable
+        -- canvas escapes that text measure and grows until either its available
+        -- viewport width or height is exhausted, preserving its proportions and
+        -- any authored caption without requiring vertical scrolling.
 
     @guarantee TablesUseTheStageBeforeShrinking
         -- A table uses the available slide width symmetrically before Vera makes
@@ -499,8 +487,8 @@ surface PresentationViewer {
         -- block when it still exists, otherwise it returns to the first slide.
 
     @guarantee LocalControlsLeaveNoGraphTrace
-        -- Fullscreen, overview, controls and note visibility are session state.
-        -- Reloading may forget them; changing them creates no graph operation.
+        -- Overview, controls and note visibility are session state. Reloading
+        -- may forget them; changing them creates no graph operation.
 
     @guarantee PublicPresentationsRemainPages
         -- A public canonical URL opens the ordinary published page. Presentar or

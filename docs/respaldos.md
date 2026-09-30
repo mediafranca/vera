@@ -20,8 +20,20 @@ systemctl --user status vera-backup.timer
 journalctl --user -u vera-backup.service
 ```
 
-Este repositorio local protege contra errores humanos y reduce el espacio, pero
-no contra la pérdida física de Alexei. El siguiente nivel debe copiar el mismo
-repositorio restic a almacenamiento externo cifrado o adoptar réplica continua
-fuera de la máquina.
+El repositorio local protege contra errores humanos. Una segunda tarea,
+`vera-backup-andrei.timer`, replica esos snapshots a un repositorio Restic
+cifrado en Andrei mediante SFTP sobre Tailscale. La réplica tiene límites de
+CPU, memoria, E/S y ancho de banda, y su fallo no invalida el respaldo local.
 
+```sh
+systemctl --user status vera-backup-andrei.timer
+journalctl --user -u vera-backup-andrei.service
+```
+
+El repositorio remoto vive en `~/Backups/vera-restic` de Andrei. Usa la misma
+credencial cifrada de Restic conservada en Alexei; ni la contraseña ni la base
+descifrada se almacenan en el portátil remoto. La retención replica la política
+local: siete diarios, cuatro semanales y seis mensuales.
+
+Los snapshots etiquetados `pre-exposure-compaction` son puntos de recuperación
+manuales y quedan fuera de la poda temporal ordinaria.

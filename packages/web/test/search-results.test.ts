@@ -52,4 +52,12 @@ describe('resultados del buscador', () => {
 
     assert.equal(pageSearchResults('memoria', [...pages, exact], hits)[0]?.page.id, 'page:exact');
   });
+
+  it('acepta evidencia ya resumida sin perder el total de coincidencias', () => {
+    const results = pageSearchResults('memoria', pages, [{
+      page: 'page:many', block: 'block:2', field: 'block_content',
+      excerpt: 'memoria resumida', rank: 1, matches: 17,
+    }]);
+    assert.equal(results.find((result) => result.page.id === 'page:many')?.matches, 17);
+  });
 });

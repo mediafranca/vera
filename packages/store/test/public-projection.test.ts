@@ -109,6 +109,11 @@ describe('proyección pública', () => {
     assert.ok(summary.files.includes('p5.min.js'));
     assert.ok(summary.files.includes('p5-frame.html'));
     assert.ok(readFileSync(join(target, 'p5.min.js')).byteLength > 100_000);
+    const frame = readFileSync(join(target, 'p5-frame.html'), 'utf8');
+    assert.match(frame, /new ResizeObserver\(report\)\.observe\(document\.body\)/);
+    assert.match(frame, /new MutationObserver\(report\)\.observe\(document\.body/);
+    assert.match(frame, /dataset\.presentation = event\.data\.presentation === true/);
+    assert.match(frame, /html\[data-presentation="true"\] canvas\{width:100%!important;height:auto!important;max-width:none;max-height:100%/);
     assert.match(
       readFileSync(join(target, 'pagina-publica', 'index.html'), 'utf8'),
       /src="\/p5-frame\.html#/,

@@ -70,6 +70,7 @@ const seenBy = (client: string | null, participant: string, at: number, n = 1): 
   participant,
   deliveries: n,
   volume: n * 100,
+  deliveredCount: n * 2,
   firstAt: at,
   lastAt: at,
 });
