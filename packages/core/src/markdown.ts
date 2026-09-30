@@ -642,18 +642,65 @@ function youtubeClip(source: string, hosts: readonly string[]): string | null {
   });
 }
 
+export type EmbeddedMapPlanarCamera = {
+  kind: '2d' | 'd4';
+  x: number;
+  y: number;
+  k: number;
+};
+
+export type EmbeddedMap3DCamera = {
+  kind: '3d';
+  centre: { x: number; y: number; z: number };
+  distance: number;
+  azimuth: number;
+  elevation: number;
+};
+
+export type EmbeddedMapCamera = EmbeddedMapPlanarCamera | EmbeddedMap3DCamera;
+
 export interface EmbeddedMapConfig {
   page: string;
   view: '2d' | '3d' | 'd4';
   reach: 1 | 2 | 3;
   rotate: boolean;
   height: number;
+  camera?: EmbeddedMapCamera;
 }
 
-/** A declared height is a preference above Vera's legibility floor. */
+/** La altura declarada manda en la página ordinaria; Presentación crece por CSS. */
 export function embeddedMapHeight(value: number): number | null {
   if (!Number.isInteger(value) || value <= 0 || value > 2400) return null;
-  return Math.max(640, value);
+  return value;
+}
+
+const finiteWithin = (value: unknown, limit = 10_000_000): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit;
+
+/** Valida una cámara escrita: es contenido editable, no estado confiable del cliente. */
+export function embeddedMapCamera(value: unknown, view: EmbeddedMapConfig['view']): EmbeddedMapCamera | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') return null;
+  const said = value as Record<string, unknown>;
+  if ((view === '2d' || view === 'd4') && said['kind'] === view) {
+    const { x, y, k } = said;
+    if (!finiteWithin(x) || !finiteWithin(y) || !finiteWithin(k, 100) || k <= 0.001) return null;
+    return { kind: view, x, y, k };
+  }
+  if (view !== '3d' || said['kind'] !== '3d' || typeof said['centre'] !== 'object' || said['centre'] === null) {
+    return null;
+  }
+  const centre = said['centre'] as Record<string, unknown>;
+  const { distance, azimuth, elevation } = said;
+  if (!finiteWithin(centre['x']) || !finiteWithin(centre['y']) || !finiteWithin(centre['z']) ||
+      !finiteWithin(distance) || distance <= 0 || !finiteWithin(azimuth) || !finiteWithin(elevation)) return null;
+  return {
+    kind: '3d',
+    centre: { x: centre['x'], y: centre['y'], z: centre['z'] },
+    distance,
+    azimuth,
+    elevation,
+  };
 }
 
 export function embeddedMapConfig(source: string): EmbeddedMapConfig | null {
@@ -663,6 +710,7 @@ export function embeddedMapConfig(source: string): EmbeddedMapConfig | null {
   const reach = Number(values.get('alcance'));
   const rotation = (values.get('rotacion') ?? 'no').trim().toLowerCase();
   const saidHeight = values.get('alto');
+  const saidCamera = values.get('camara');
   const height = embeddedMapHeight(
     saidHeight === undefined || saidHeight.trim() === '' ? 640 : Number(saidHeight),
   );
@@ -671,12 +719,22 @@ export function embeddedMapConfig(source: string): EmbeddedMapConfig | null {
   if (height === null) return null;
   if (!['si', 'sí', 'no'].includes(rotation)) return null;
   if (view !== '3d' && rotation !== 'no') return null;
+  let camera: EmbeddedMapCamera | null = null;
+  if (saidCamera !== undefined && saidCamera.trim() !== '') {
+    try {
+      camera = embeddedMapCamera(JSON.parse(saidCamera), view as EmbeddedMapConfig['view']);
+    } catch {
+      return null;
+    }
+    if (camera === null) return null;
+  }
   return {
     page,
     view: view as EmbeddedMapConfig['view'],
     reach: reach as EmbeddedMapConfig['reach'],
     rotate: view === '3d' && rotation !== 'no',
     height,
+    ...(camera === null ? {} : { camera }),
   };
 }
 

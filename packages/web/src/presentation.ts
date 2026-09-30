@@ -122,7 +122,7 @@ function renderNode(node: PresentationNode, options: RenderOptions, depth = 0): 
   return host;
 }
 
-type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'table' | 'video';
+type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'map' | 'table' | 'video';
 
 /**
  * El único contenido visual de una lámina, si ésta es espacial y no prosa con
@@ -138,6 +138,7 @@ function spatialMedium(body: HTMLElement): SpatialMedium | null {
   if (only === null) return null;
 
   if (only.matches('.executable')) return 'executable';
+  if (only.matches('.embedded-map')) return 'map';
   if (only.matches('.drawn')) return 'drawing';
   if (only.matches('.mermaid-figure')) return 'diagram';
   if (only.matches('.table-scroll, table')) return 'table';

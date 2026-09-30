@@ -639,7 +639,7 @@ describe('incrustaciones', () => {
     }
   });
 
-  it('un mapa declara foco, vista, alcance, rotación y alto mínimo', () => {
+  it('un mapa declara foco, vista, alcance, rotación y alto', () => {
     const source = 'página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: sí\nalto: 720';
     const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
     assert.match(html, /class="embedded-map"/);
@@ -649,12 +649,32 @@ describe('incrustaciones', () => {
     assert.match(html, /fuente mapa/);
   });
 
-  it('eleva un alto positivo menor que el mínimo sin convertir el mapa en código', () => {
+  it('respeta un alto positivo pequeño en la página ordinaria', () => {
     const source = 'página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: sí\nalto: 320';
     const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
     assert.match(html, /class="embedded-map"/);
-    assert.match(html, /--embedded-height:640px/);
+    assert.match(html, /--embedded-height:320px/);
     assert.match(html, /alto: 320/);
+  });
+
+  it('conserva una cámara 3D válida como parte editable de la incrustación', () => {
+    const camera = JSON.stringify({
+      kind: '3d', centre: { x: 1, y: -2, z: 3 }, distance: 240, azimuth: 0.4, elevation: -0.2,
+    });
+    const source = `página: [[VERA]]\nvista: 3D\nalcance: 2\nrotación: no\ncámara: ${camera}\nalto: 400`;
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.match(html, /class="embedded-map"/);
+    assert.match(decodeURIComponent(html), /"kind":"3d"/);
+    assert.match(html, /cámara:/);
+  });
+
+  it('deja como fuente una cámara que no corresponde a la vista', () => {
+    const source = 'página: [[VERA]]\nvista: 2D\nalcance: 2\nrotación: no\n' +
+      'cámara: {"kind":"3d","centre":{"x":0,"y":0,"z":0},"distance":10,"azimuth":0,"elevation":0}\n' +
+      'alto: 400';
+    const html = renderMarkdown(`\`\`\`mapa\n${source}\n\`\`\``);
+    assert.ok(!html.includes('<iframe'));
+    assert.match(html, /language-mapa/);
   });
 
   it('un mapa rechaza alcance, rotación o alto incoherentes', () => {

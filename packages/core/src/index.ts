@@ -73,11 +73,19 @@ export type {
  */
 export {
   embedIn,
+  embeddedMapCamera,
   embeddedMapHeight,
+  embeddedMapConfig,
   headingAnchor,
   inlineMarkdown,
   renderMarkdown,
   uniqueAnchors,
+} from './markdown.ts';
+export type {
+  EmbeddedMap3DCamera,
+  EmbeddedMapCamera,
+  EmbeddedMapConfig,
+  EmbeddedMapPlanarCamera,
 } from './markdown.ts';
 
 /*
@@ -96,7 +104,7 @@ export {
   writeDrawing,
 } from './drawing.ts';
 export type { DrawnSvg, Extents, Nib, Point, Segment, Stroke } from './drawing.ts';
-export type { EmbeddedMapConfig, RenderOptions } from './markdown.ts';
+export type { RenderOptions } from './markdown.ts';
 export { answersIn } from './vocabulary.ts';
 
 export {

@@ -197,11 +197,12 @@ contract BlockBehaviourPresentation {
 
     @invariant AnEmbeddedMapNamesItsReading
         -- A deliberate `mapa` block preserves its focus page, 2D, 3D or D4 view,
-        -- reach and available height. It occupies the whole available width and
-        -- never less than 640 pixels of effective height: a positive declared
-        -- height below that floor is raised to 640 rather than turning the map
-        -- back into code. Rotation is a readable choice only for 3D; malformed
-        -- or incomplete configuration remains source.
+        -- reach, rotation, available height and, when present, the exact camera
+        -- from which it was copied. In an ordinary page a positive declared
+        -- height is respected exactly. Presentation alone enlarges the same map
+        -- to the maximum height available in its current screen. Rotation is a
+        -- readable choice only for 3D; malformed or incomplete configuration
+        -- remains source.
 
     @invariant EmbeddedMapsImproveWithoutBlocking
         -- The map presents the first available reach immediately and adds later
@@ -721,6 +722,7 @@ entity BlockReference {
 
 config {
     max_trace_steps: Integer = 50
+    copied_map_height: Integer = 400
 }
 
 ------------------------------------------------------------
@@ -1299,6 +1301,20 @@ surface VeraWorkspace {
         -- in the map and not in a bar shared with everything else. A control
         -- placed away from what it governs makes a reader learn a mapping that
         -- the layout could have told them.
+
+    @guarantee BinaryMapChoicesStayCompact
+        -- The journal and automatic-rotation choices are compact icon-labelled
+        -- checkboxes in the eye menu, not textual buttons whose two labels make
+        -- the menu grow whenever their state changes. Their accessible names
+        -- still state the complete choice and current availability.
+
+    @guarantee TheCurrentMapViewCanBeEmbedded
+        -- Copying an embedding from the eye menu puts a complete `mapa` block in
+        -- the participant's clipboard. It names the page, dimension, reach,
+        -- rotation and the exact current camera, with a declared height of
+        -- config.copied_map_height. Pasting and rendering that source reproduces
+        -- the copied view rather than reframing it. The camera remains ordinary
+        -- editable source; omitting it asks Vera to frame the map normally.
 
     @guarantee ThreeDimensionalMapMayOrbitItself
         -- The three-dimensional map alone offers an optional slow orbit around

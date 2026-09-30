@@ -51,17 +51,19 @@ import { sameReadablePage } from './page-validation.ts';
 import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
-import { forgetPositions, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
+import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
 import { graphOfThread } from './graph/thread.ts';
 import {
   renderGraph3D,
   cleanupGraph3D,
   forgetCamera,
+  graph3DCamera,
   selectNode3D,
   setGraph3DAutoRotate,
 } from './graph/render3d.ts';
-import { renderGraphD4 } from './graph/renderD4.ts';
+import { graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
+import { mapEmbeddingSource } from './map-embedding.ts';
 import {
   applyTokens,
   loadTokens,
@@ -3349,13 +3351,13 @@ function wireTheme(): void {
    * sólo autoriza a dibujar el día que ya está seleccionado y ocupa el foco;
    * ningún otro día aparece jamás como vecino.
    */
-  const journalSwitch = $<HTMLButtonElement>('#map-journals');
+  const journalSwitch = $<HTMLInputElement>('#map-journals');
+  $('#map-journals-icon').innerHTML = icon('calendar');
   const showJournals = (): void => {
-    journalSwitch.setAttribute('aria-checked', String(workspace.graphJournals));
-    journalSwitch.textContent = workspace.graphJournals ? 'encendido' : 'apagado';
+    journalSwitch.checked = workspace.graphJournals;
   };
-  journalSwitch.addEventListener('click', () => {
-    workspace.graphJournals = !workspace.graphJournals;
+  journalSwitch.addEventListener('change', () => {
+    workspace.graphJournals = journalSwitch.checked;
     session.setGraphJournals(workspace.graphJournals);
     showJournals();
     forgetPositions();
@@ -3370,20 +3372,18 @@ function wireTheme(): void {
    * preferencia se recuerda, pero una petición del sistema de reducir movimiento
    * tiene precedencia sobre ella.
    */
-  const autoRotateSwitch = $<HTMLButtonElement>('#map-auto-rotate');
+  const autoRotateSwitch = $<HTMLInputElement>('#map-auto-rotate');
+  $('#map-auto-rotate-icon').innerHTML = icon('refresh-cw');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const showAutoRotate = (): void => {
     const allowed = !reducedMotion.matches;
     autoRotateSwitch.disabled = !allowed;
-    autoRotateSwitch.setAttribute('aria-checked', String(allowed && workspace.graphAutoRotate));
-    autoRotateSwitch.textContent = allowed
-      ? (workspace.graphAutoRotate ? 'encendida' : 'apagada')
-      : 'movimiento reducido';
+    autoRotateSwitch.checked = allowed && workspace.graphAutoRotate;
     autoRotateSwitch.title = allowed ? '' : 'Desactivada por la preferencia de reducir movimiento';
   };
-  autoRotateSwitch.addEventListener('click', () => {
+  autoRotateSwitch.addEventListener('change', () => {
     if (reducedMotion.matches) return;
-    workspace.graphAutoRotate = !workspace.graphAutoRotate;
+    workspace.graphAutoRotate = autoRotateSwitch.checked;
     session.setGraphAutoRotate(workspace.graphAutoRotate);
     showAutoRotate();
     setGraph3DAutoRotate(workspace.graphAutoRotate);
@@ -3393,6 +3393,31 @@ function wireTheme(): void {
     setGraph3DAutoRotate(workspace.graphAutoRotate && !reducedMotion.matches);
   });
   showAutoRotate();
+
+  const copyMap = $<HTMLButtonElement>('#map-copy-embed');
+  copyMap.innerHTML = icon('copy');
+  copyMap.addEventListener('click', async () => {
+    const page = pages.find((one) => one.id === workspace.activePage);
+    const view = workspace.graphView === 'graph_3d' ? '3d' : workspace.graphView === 'graph_d4' ? 'd4' : '2d';
+    const camera = view === '3d' ? graph3DCamera() : view === 'd4' ? graphD4Camera() : graph2DCamera();
+    if (page === undefined || camera === null) {
+      notice('La vista todavía no está lista para copiarse.');
+      return;
+    }
+    const source = mapEmbeddingSource(
+      page.title,
+      view,
+      workspace.depth as 1 | 2 | 3,
+      workspace.graphAutoRotate,
+      camera,
+    );
+    try {
+      await navigator.clipboard.writeText(source);
+      notice('Incrustación del mapa copiada.');
+    } catch {
+      notice('No se pudo copiar la incrustación; el portapapeles no está disponible.');
+    }
+  });
 
   // El switch de la vista, en el orden del espacio que gobierna.
   const SWITCH: Record<string, IconName> = {

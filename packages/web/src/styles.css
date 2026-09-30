@@ -1069,6 +1069,48 @@ button { touch-action: manipulation; }
   border-color: var(--accent);
 }
 
+.map-compact-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--rule);
+}
+
+.map-icon-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.map-icon-check[hidden] {
+  display: none;
+}
+
+.map-icon-check .icon,
+#map-copy-embed .icon {
+  display: block;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.map-icon-check input {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+#map-copy-embed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0.2rem 0.3rem;
+}
+
 /* Lo que el mapa dice cuando no puede dibujarse. Centrado en su sitio, porque
    ocupa el lugar del mapa y no es una nota al margen. */
 .map-aviso {
@@ -1973,7 +2015,7 @@ html.presenting body {
   margin: 0 !important;
 }
 
-.vera-presentation .presentation-spatial .body > :is(.drawn, .mermaid-figure, .executable) {
+.vera-presentation .presentation-spatial .body > :is(.drawn, .mermaid-figure, .executable, .embedded-map) {
   width: 100% !important;
   height: 100% !important;
   max-width: none !important;
@@ -2019,6 +2061,20 @@ html.presenting body {
   border-radius: 0 !important;
   outline: 0 !important;
   box-shadow: none !important;
+}
+
+/* En edición manda `alto`; en Presentación manda el escenario disponible. */
+.vera-presentation .presentation-spatial .body .embedded-map iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  border: 0 !important;
+}
+
+.vera-presentation .presentation-spatial .body .embedded-map figcaption,
+.vera-presentation .presentation-spatial .body .embedded-map details {
+  display: none;
 }
 
 /* Una tabla que constituye la lámina completa también es espacial: primero usa
@@ -4210,7 +4266,7 @@ html:has(.embedded-map-frame),
 body:has(.embedded-map-frame) {
   width: 100%;
   height: 100%;
-  min-height: 640px;
+  min-height: 0;
   margin: 0;
   overflow: hidden;
 }
@@ -4220,7 +4276,7 @@ body:has(.embedded-map-frame) {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 640px;
+  min-height: 0;
   background: var(--bg);
   color: var(--text);
 }
@@ -4228,7 +4284,7 @@ body:has(.embedded-map-frame) {
 .embedded-map-frame #map {
   width: 100%;
   height: 100%;
-  min-height: 640px;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -6744,8 +6800,8 @@ html[data-working-slow='true']::after {
 .embedded-map iframe {
   display: block;
   width: 100%;
-  height: max(var(--embedded-height, 640px), 100dvh);
-  min-height: 640px;
+  height: var(--embedded-height, 640px);
+  min-height: 0;
   border: 1px solid var(--rule);
   border-radius: .3ex;
   background: var(--bg-raised);

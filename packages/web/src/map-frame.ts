@@ -1,6 +1,6 @@
 import './styles.css';
 
-import { embeddedMapHeight, type EmbeddedMapConfig } from '@vera/core';
+import { embeddedMapCamera, embeddedMapHeight, type EmbeddedMapConfig } from '@vera/core';
 import { renderGraph } from './graph/render.ts';
 import { renderGraph3D } from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
@@ -17,7 +17,9 @@ function configuration(): EmbeddedMapConfig | null {
     if (typeof value.rotate !== 'boolean') return null;
     const height = embeddedMapHeight(Number(value.height));
     if (height === null) return null;
-    return { ...value, height } as EmbeddedMapConfig;
+    const camera = value.camera === undefined ? undefined : embeddedMapCamera(value.camera, value.view);
+    if (value.camera !== undefined && camera === null) return null;
+    return { ...value, height, ...(camera === undefined ? {} : { camera }) } as EmbeddedMapConfig;
   } catch {
     return null;
   }
@@ -65,6 +67,7 @@ if (config === null || root === null || map === null || status === null) {
       nodeStyle: 'title' as const,
       autoRotate: config.view === '3d' && config.rotate,
       preserveDirection: reach > 1 || appearanceChange,
+      ...(config.camera === undefined ? {} : { camera: config.camera }),
     };
     if (config.view === '3d') renderGraph3D(map, data, open, settings);
     else if (config.view === 'd4') renderGraphD4(map, data, open, settings);

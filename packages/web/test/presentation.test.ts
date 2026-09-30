@@ -60,6 +60,7 @@ describe('páginas que se pueden presentar', () => {
     assert.match(styles, /height: calc\(100dvh - var\(--presentation-slide-top\) - var\(--presentation-slide-bottom\)\) !important;/);
     assert.match(styles, /\.presentation-spatial \.body :is\(img, video\) \{[\s\S]*?width: auto !important;[\s\S]*?height: auto !important;[\s\S]*?max-width: calc\(100vw[\s\S]*?max-height: calc\(100dvh/);
     assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?height: 100% !important;/);
+    assert.match(styles, /\.presentation-spatial \.body \.embedded-map iframe \{[\s\S]*?height: 100% !important;/);
     assert.match(styles, /\.presentation-spatial > \.presentation-block > \.body:hover \{\s*background: transparent !important;/);
     assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?border: 0 !important;[\s\S]*?box-shadow: none !important;/);
   });
@@ -72,7 +73,7 @@ describe('páginas que se pueden presentar', () => {
 
   it('trata imágenes, dibujos, diagramas y ejecutables como láminas espaciales', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
-    for (const kind of ['executable', 'drawn', 'mermaid-figure']) {
+    for (const kind of ['executable', 'embedded-map', 'drawn', 'mermaid-figure']) {
       assert.match(source, new RegExp(`only\\.matches\\('\\.${kind}'\\)`));
     }
     assert.match(source, /only\.matches\('\.table-scroll, table'\)/);

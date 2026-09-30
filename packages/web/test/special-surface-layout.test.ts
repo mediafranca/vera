@@ -63,12 +63,13 @@ describe('superficies especiales', () => {
   });
 
   it('ofrece rotación automática sólo en 3D y gobierna la cámara sin recargar el grafo', () => {
-    assert.match(html, /id="map-auto-rotate-field" hidden/);
-    assert.match(html, /id="map-auto-rotate"[^>]+role="switch"[^>]+aria-checked="false"/);
+    assert.match(html, /id="map-auto-rotate-field"[^>]+hidden/);
+    assert.match(html, /id="map-auto-rotate" type="checkbox"/);
+    assert.match(html, /id="map-copy-embed"/);
     assert.match(main, /map-auto-rotate-field'\)\.hidden = workspace\.graphView !== 'graph_3d'/);
     assert.match(main, /prefers-reduced-motion: reduce/);
     assert.match(main, /setGraph3DAutoRotate\(workspace\.graphAutoRotate\)/);
-    const toggle = main.match(/autoRotateSwitch\.addEventListener\('click',[\s\S]*?\n  \}\);/)?.[0] ?? '';
+    const toggle = main.match(/autoRotateSwitch\.addEventListener\('change',[\s\S]*?\n  \}\);/)?.[0] ?? '';
     assert.doesNotMatch(toggle, /applyLayout|drawGraph/);
     assert.match(graph3d, /governAutoRotation\?\.\(enabled\)/);
     assert.match(graph3d, /setAutoRotation\(false\)/);

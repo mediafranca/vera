@@ -24,6 +24,7 @@
  */
 
 import * as d3 from "d3";
+import type { EmbeddedMap3DCamera } from "@vera/core";
 // @ts-expect-error d3-force-3d no publica tipos
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
 import type { GraphData, GraphNode } from "./types.ts";
@@ -104,6 +105,8 @@ const positions = new Map<string, Point>();
 
 /** Desde dónde se estaba mirando. */
 let heldOrbit: Orbit | null = null;
+/** La órbita que efectivamente está pintada, incluso antes de que la mano la mueva. */
+let shownOrbit: Orbit | null = null;
 /** El último recorrido que se encuadró, para no reencuadrar en cada repintado. */
 let framed: string | null = null;
 
@@ -155,6 +158,7 @@ function looksLikeTrackpad(event: WheelEvent): boolean {
 /** Olvida la cámara y lo colocado. Para cuando el grafo cambia de veras. */
 export function forgetCamera(): void {
   heldOrbit = null;
+  shownOrbit = null;
   framed = null;
   heldFor = null;
   positions.clear();
@@ -169,6 +173,20 @@ export function selectNode3D(id: string | null): void {
 export function cleanupGraph3D(): void {
   teardown?.();
   teardown = null;
+  shownOrbit = null;
+}
+
+/** La cámara visible que una incrustación puede reproducir exactamente. */
+export function graph3DCamera(): EmbeddedMap3DCamera | null {
+  return shownOrbit === null
+    ? null
+    : {
+        kind: '3d',
+        centre: { ...shownOrbit.centre },
+        distance: shownOrbit.distance,
+        azimuth: shownOrbit.azimuth,
+        elevation: shownOrbit.elevation,
+      };
 }
 
 /** Gobierna la cámara 3D presente; si no hay una, la preferencia actuará al montarla. */
@@ -640,14 +658,20 @@ export function renderGraph3D(
     height: container.clientHeight,
   });
 
-  let orbit: Orbit = heldOrbit ?? {
+  const embedded = settings.camera?.kind === '3d' ? settings.camera : null;
+  let orbit: Orbit = heldOrbit ?? (embedded === null ? {
     centre: { x: 0, y: 0, z: 0 },
     distance: 400,
     azimuth: previousDirection?.azimuth ?? 0,
     elevation: previousDirection?.elevation ?? 0,
-  };
+  } : {
+    centre: { ...embedded.centre },
+    distance: embedded.distance,
+    azimuth: embedded.azimuth,
+    elevation: embedded.elevation,
+  });
   /** Si alguien ya decidió desde dónde mira. Encuadrar por encima sería quitarle el mapa. */
-  let moved = heldOrbit !== null;
+  let moved = heldOrbit !== null || embedded !== null;
 
   /**
    * Sobre que nombre esta el puntero, y con quien se nombra ese nombre.
@@ -841,6 +865,7 @@ export function renderGraph3D(
   // reservar memoria ni tocar el DOM más de lo necesario.
   // ---------------------------------------------------------------------
   const paint = (): void => {
+    shownOrbit = { ...orbit, centre: { ...orbit.centre } };
     const lens = lensNow();
     if (lens.width < 1 || lens.height < 1) return;
 
