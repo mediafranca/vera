@@ -119,6 +119,15 @@ let framed: string | null = null;
  */
 let heldFor: string | null = null;
 
+/**
+ * La página cuya cámara ya reclamó la mano.
+ *
+ * Puede llegar antes que el recorrido enriquecido. Guardarla por página evita
+ * que un encuadre tardío borre un zoom o desplazamiento que ocurrió mientras el
+ * hilo todavía se estaba acomodando.
+ */
+let claimedFor: string | null = null;
+
 /** El nodo señalado, que se conserva entre dibujos como las posiciones. */
 let selected: string | null = null;
 
@@ -161,6 +170,7 @@ export function forgetCamera(): void {
   shownOrbit = null;
   framed = null;
   heldFor = null;
+  claimedFor = null;
   positions.clear();
 }
 
@@ -323,7 +333,15 @@ export function renderGraph3D(
     ? { azimuth: heldOrbit.azimuth, elevation: heldOrbit.elevation }
     : null;
   const signature = signatureOf(data.nodes.map((n) => n.id));
-  if (heldFor !== null && heldFor !== signature) heldOrbit = null;
+  const claimedHere = claimedFor !== null && claimedFor === settings.thread?.page;
+  /*
+   * Un recorrido llega por anillos y su propia página no forma parte del dibujo:
+   * se sustituye por las paradas. Por eso su firma cambia entre entregas y nunca
+   * puede servir de `focusId`. Si la mano ya reclamó esa cámara, ambas señales
+   * habituales dirían erróneamente «es otro mapa» y borrarían la órbita justo
+   * antes de dibujar el anillo siguiente.
+   */
+  if (heldFor !== null && heldFor !== signature && !claimedHere) heldOrbit = null;
   heldFor = signature;
 
   // ---------------------------------------------------------------------
@@ -388,7 +406,7 @@ export function renderGraph3D(
    */
   const focusId = data.nodes.find((n) => n.central === true)?.id ?? null;
   const remembered = known > 0 && focusId !== null && positions.has(focusId);
-  if (!remembered) heldOrbit = null;
+  if (!remembered && !claimedHere) heldOrbit = null;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const links = data.links
@@ -672,6 +690,11 @@ export function renderGraph3D(
   };
   /** Si alguien ya decidió desde dónde mira. Encuadrar por encima sería quitarle el mapa. */
   let moved = heldOrbit !== null || embedded !== null;
+  /** Un gesto de cámara manda incluso si el autoencuadre del hilo llega después. */
+  const claimCamera = (): void => {
+    moved = true;
+    claimedFor = thread?.page ?? focusId;
+  };
 
   /**
    * Sobre que nombre esta el puntero, y con quien se nombra ese nombre.
@@ -785,7 +808,12 @@ export function renderGraph3D(
      * el encuadre no llegara, el hilo estaría dibujado en una esquina y lo que
      * se prometió —la forma— no se vería.
      */
-    if (embedded === null && thread !== null && thread.page !== framed) {
+    if (
+      embedded === null &&
+      thread !== null &&
+      thread.page !== framed &&
+      thread.page !== claimedFor
+    ) {
       const mine = threadBox();
       if (mine !== null) {
         orbit = frameAround(mine.box, mine.centre, lensNow(), orbit.azimuth, orbit.elevation);
@@ -1325,7 +1353,7 @@ export function renderGraph3D(
       event.preventDefault();
       pinch = measure(event.touches);
       spin = null;
-      moved = true;
+      claimCamera();
       return;
     }
     const finger = event.touches[0] as Touch;
@@ -1347,7 +1375,7 @@ export function renderGraph3D(
       orbit = panBy(orbit, now.x - pinch.x, now.y - pinch.y, lensNow());
       pinch = now;
       heldOrbit = orbit;
-      moved = true;
+      claimCamera();
       paint();
       sortByDepth();
       return;
@@ -1363,7 +1391,7 @@ export function renderGraph3D(
     // Pasado el temblor esto ya es un arrastre: se corta el desplazamiento de la
     // pagina, y con el, el `click` que ya no toca.
     if (spin.travelled >= TAP_SLOP) event.preventDefault();
-    moved = true;
+    claimCamera();
     turn(dx, dy);
     paint();
     sortByDepth();
@@ -1426,7 +1454,7 @@ export function renderGraph3D(
       if (travelled < TAP_SLOP) return;
       // Girando no se senala: lo encendido se apaga, y vuelve al soltar.
       if (hovered !== null) { hovered = null; lit = new Set(); }
-      moved = true;
+      claimCamera();
       /*
        * Con Shift, o con el botón de en medio, arrastrar corre el mapa en vez de
        * girarlo.
@@ -1454,7 +1482,7 @@ export function renderGraph3D(
 
   const onWheel = (event: WheelEvent): void => {
     event.preventDefault();
-    moved = true;
+    claimCamera();
 
     /*
      * El pellizco de un trackpad llega como rueda con Ctrl pulsado.
@@ -1534,7 +1562,7 @@ export function renderGraph3D(
   /** Llevar la órbita a un nodo, conservando desde dónde y a qué distancia se mira. */
   const orbitAround = (d: Drawn): void => {
     const n = d.node as GraphNode & Partial<Point>;
-    moved = true;
+    claimCamera();
     glideTo({ x: n.x ?? 0, y: n.y ?? 0, z: n.z ?? 0 });
   };
 
@@ -1639,7 +1667,7 @@ export function renderGraph3D(
   // Los controles de fuera: acercar, alejar, centrar.
   // ---------------------------------------------------------------------
   const onZoom = ((event: CustomEvent<"in" | "out">) => {
-    moved = true;
+    claimCamera();
     orbit = zoomBy(orbit, event.detail === "in" ? 0.67 : 1.5);
     heldOrbit = orbit;
     paint();
@@ -1650,6 +1678,7 @@ export function renderGraph3D(
   const onCentre = (() => {
     moved = false;
     heldOrbit = null;
+    if (claimedFor === (thread?.page ?? focusId)) claimedFor = null;
     fit();
     paint();
     sortByDepth();

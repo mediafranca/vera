@@ -102,8 +102,21 @@ describe('superficies especiales', () => {
     assert.match(embeddedMap, /stage=enrichment/);
     assert.match(embeddedMap, /threadSettings\(page, delivered\.trail \?\? null\)/);
     assert.match(embeddedMap, /present\(graphOfThread\(data, thread\), reach, thread\)/);
-    assert.match(graph3d, /embedded === null && thread !== null && thread\.page !== framed/);
+    assert.match(
+      graph3d,
+      /embedded === null[\s\S]*?thread !== null[\s\S]*?thread\.page !== framed[\s\S]*?thread\.page !== claimedFor/,
+    );
     assert.match(graph3d, /embedded === null && remembered && heldOrbit !== null/);
+  });
+
+  it('un gesto de cámara cancela el autoencuadre tardío del recorrido', () => {
+    assert.match(graph3d, /claimedFor = thread\?\.page \?\? focusId/);
+    assert.match(graph3d, /const claimedHere = claimedFor !== null && claimedFor === settings\.thread\?\.page/);
+    assert.match(graph3d, /heldFor !== signature && !claimedHere/);
+    assert.match(graph3d, /!remembered && !claimedHere/);
+    assert.match(graph3d, /thread\.page !== claimedFor/);
+    assert.match(graph3d, /const onWheel[\s\S]*?claimCamera\(\)/);
+    assert.match(graph3d, /const onCentre[\s\S]*?claimedFor = null[\s\S]*?fit\(\)/);
   });
 
   it('presta a cada mapa incrustado los tokens efectivos sin volver a pedir el grafo', () => {
