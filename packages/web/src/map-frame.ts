@@ -1,9 +1,16 @@
 import './styles.css';
 
-import { embeddedMapCamera, embeddedMapHeight, type EmbeddedMapConfig } from '@vera/core';
+import {
+  embeddedMapCamera,
+  embeddedMapHeight,
+  type EmbeddedMapConfig,
+  type Trail,
+} from '@vera/core';
 import { renderGraph } from './graph/render.ts';
 import { renderGraph3D } from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
+import { graphOfThread, threadSettings } from './graph/thread.ts';
+import type { ThreadSettings } from './graph/render.ts';
 import type { GraphData } from './graph/types.ts';
 
 const APPEARANCE = 'vera-embedded-map-appearance';
@@ -42,6 +49,23 @@ async function pageIdentity(said: string): Promise<string> {
   return page.id;
 }
 
+/**
+ * Un mapa incrustado sigue abriendo la página que declara, no una fotografía
+ * empobrecida de su vecindario.
+ *
+ * El propio grafo avisa si la página central es un recorrido. Sólo entonces se
+ * pide su derivación completa: las páginas corrientes no pagan otra lectura y
+ * los recorridos no vuelven a convertirse en un nodo con muchas aristas por
+ * estar dentro de un iframe.
+ */
+async function embeddedThread(page: string, data: GraphData): Promise<ThreadSettings | null> {
+  if (!data.nodes.some((node) => node.id === page && node.trail === true)) return null;
+  const response = await fetch(`/pages/${encodeURIComponent(page)}?stage=enrichment`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const delivered = await response.json() as { trail?: Trail | null };
+  return threadSettings(page, delivered.trail ?? null);
+}
+
 const config = configuration();
 const root = document.getElementById('vera-root');
 const map = document.getElementById('map');
@@ -57,9 +81,15 @@ if (config === null || root === null || map === null || status === null) {
   let dark = matchMedia('(prefers-color-scheme: dark)').matches;
   let turn = 0;
   const identity = pageIdentity(config.page);
-  let shown: { data: GraphData; reach: number } | null = null;
+  let route: Promise<ThreadSettings | null> | null = null;
+  let shown: { data: GraphData; reach: number; thread: ThreadSettings | null } | null = null;
 
-  const present = (data: GraphData, reach: number, appearanceChange = false): void => {
+  const present = (
+    data: GraphData,
+    reach: number,
+    thread: ThreadSettings | null,
+    appearanceChange = false,
+  ): void => {
     const settings = {
       dark,
       showEdges: true,
@@ -67,12 +97,13 @@ if (config === null || root === null || map === null || status === null) {
       nodeStyle: 'title' as const,
       autoRotate: config.view === '3d' && config.rotate,
       preserveDirection: reach > 1 || appearanceChange,
+      thread,
       ...(config.camera === undefined ? {} : { camera: config.camera }),
     };
     if (config.view === '3d') renderGraph3D(map, data, open, settings);
     else if (config.view === 'd4') renderGraphD4(map, data, open, settings);
     else renderGraph(map, data, open, settings);
-    shown = { data, reach };
+    shown = { data, reach, thread };
   };
 
   addEventListener('message', (event: MessageEvent<unknown>) => {
@@ -89,15 +120,18 @@ if (config === null || root === null || map === null || status === null) {
     dark = message.appearance?.scheme === 'dark';
     document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-    if (shown !== null) present(shown.data, shown.reach, true);
+    if (shown !== null) present(shown.data, shown.reach, shown.thread, true);
   });
 
   const draw = async (reach: number): Promise<void> => {
     const current = ++turn;
     try {
-      const data = await neighbourhood(await identity, reach);
+      const page = await identity;
+      const data = await neighbourhood(page, reach);
+      route ??= embeddedThread(page, data);
+      const thread = await route;
       if (current !== turn) return;
-      present(data, reach);
+      present(graphOfThread(data, thread), reach, thread);
       status.textContent = reach < config.reach ? `Ampliando a alcance ${reach + 1}…` : '';
       if (reach < config.reach) requestAnimationFrame(() => void draw(reach + 1));
     } catch {

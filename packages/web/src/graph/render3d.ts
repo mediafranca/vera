@@ -659,17 +659,17 @@ export function renderGraph3D(
   });
 
   const embedded = settings.camera?.kind === '3d' ? settings.camera : null;
-  let orbit: Orbit = heldOrbit ?? (embedded === null ? {
-    centre: { x: 0, y: 0, z: 0 },
-    distance: 400,
-    azimuth: previousDirection?.azimuth ?? 0,
-    elevation: previousDirection?.elevation ?? 0,
-  } : {
+  let orbit: Orbit = embedded !== null ? {
     centre: { ...embedded.centre },
     distance: embedded.distance,
     azimuth: embedded.azimuth,
     elevation: embedded.elevation,
-  });
+  } : heldOrbit ?? {
+    centre: { x: 0, y: 0, z: 0 },
+    distance: 400,
+    azimuth: previousDirection?.azimuth ?? 0,
+    elevation: previousDirection?.elevation ?? 0,
+  };
   /** Si alguien ya decidió desde dónde mira. Encuadrar por encima sería quitarle el mapa. */
   let moved = heldOrbit !== null || embedded !== null;
 
@@ -785,7 +785,7 @@ export function renderGraph3D(
      * el encuadre no llegara, el hilo estaría dibujado en una esquina y lo que
      * se prometió —la forma— no se vería.
      */
-    if (thread !== null && thread.page !== framed) {
+    if (embedded === null && thread !== null && thread.page !== framed) {
       const mine = threadBox();
       if (mine !== null) {
         orbit = frameAround(mine.box, mine.centre, lensNow(), orbit.azimuth, orbit.elevation);
@@ -1089,7 +1089,7 @@ export function renderGraph3D(
    * `const`— y el mapa entero desaparecía. TypeScript no lo ve porque la llamada
    * pasa por dentro de otra función.
    */
-  if (remembered && heldOrbit !== null) {
+  if (embedded === null && remembered && heldOrbit !== null) {
     const yo = focus();
     if (
       yo !== null &&

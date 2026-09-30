@@ -98,13 +98,24 @@ describe('superficies especiales', () => {
     assert.match(embeddedMap, /preserveDirection: reach > 1/);
   });
 
+  it('proyecta un recorrido incrustado como hilo y conserva la cámara declarada', () => {
+    assert.match(embeddedMap, /stage=enrichment/);
+    assert.match(embeddedMap, /threadSettings\(page, delivered\.trail \?\? null\)/);
+    assert.match(embeddedMap, /present\(graphOfThread\(data, thread\), reach, thread\)/);
+    assert.match(graph3d, /embedded === null && thread !== null && thread\.page !== framed/);
+    assert.match(graph3d, /embedded === null && remembered && heldOrbit !== null/);
+  });
+
   it('presta a cada mapa incrustado los tokens efectivos sin volver a pedir el grafo', () => {
     assert.match(executableFrames, /DEFAULT_TOKENS/);
     assert.match(executableFrames, /vera-embedded-map-appearance/);
     assert.match(executableFrames, /sendMapAppearance\(frame\)/);
     assert.match(embeddedMap, /message\?\.type !== APPEARANCE/);
     assert.match(embeddedMap, /document\.documentElement\.style\.setProperty\(name, value\)/);
-    assert.match(embeddedMap, /if \(shown !== null\) present\(shown\.data, shown\.reach, true\)/);
+    assert.match(
+      embeddedMap,
+      /if \(shown !== null\) present\(shown\.data, shown\.reach, shown\.thread, true\)/,
+    );
     const appearanceHandler = embeddedMap.match(/addEventListener\('message',[\s\S]*?\n  \}\);/)?.[0] ?? '';
     assert.doesNotMatch(appearanceHandler, /neighbourhood|fetch/);
   });
