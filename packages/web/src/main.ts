@@ -52,7 +52,7 @@ import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
-import { graphOfThread } from './graph/thread.ts';
+import { graphOfThread, threadSettings } from './graph/thread.ts';
 import {
   renderGraph3D,
   cleanupGraph3D,
@@ -1074,14 +1074,15 @@ async function openPage(
   // La identidad manda a partir de aquí: la URL pudo nombrarla por su título.
   workspace.activePage = page.id;
   id = page.id;
-  openTrail =
-    page.trail == null || page.trail.route.length < 2
-      ? null
-      : {
-          page: page.id,
-          stops: page.trail.route.map((one) => ({ page: one.page, ordinal: one.ordinal })),
-          kinds: page.trail.crossings.map((one) => one.kind),
-        };
+  const deliveredThread = threadSettings(page.id, page.trail ?? null);
+  /*
+   * Una entrega legible omite deliberadamente las derivaciones costosas. Si es
+   * un redibujado de la misma página, eso no autoriza a apagar durante unos
+   * instantes el hilo que ya conocíamos; el enriquecimiento decidirá si sigue.
+   * Al navegar a otra página sí se descarta, porque el hilo pertenece a la obra
+   * abierta y no puede heredarse.
+   */
+  if (!staying || deliveredThread !== null) openTrail = deliveredThread;
   nameWindow(page.title);
 
   // La dirección sigue a la página, salvo cuando es la dirección la que trajo
@@ -1258,7 +1259,20 @@ async function openPage(
       openView.crossingsOut = complete.crossingsOut;
       openView.crossingsIn = complete.crossingsIn;
       openView.trail = complete.trail ?? null;
+      const hadThread = openTrail !== null;
+      openTrail = threadSettings(complete.id, openView.trail);
       if (!isAnybody()) void held.keepPage(openView);
+
+      /*
+       * La primera entrega dejó el mapa utilizable antes de calcular el
+       * recorrido. En cuanto llega esa lectura, la misma página debe cambiar de
+       * nodo corriente a hilo sin que haga falta volver, recargar o entrar por
+       * una ruta afortunada. Una segunda llamada gana a cualquier dibujo anterior
+       * mediante graphTurn, igual que los otros cambios de vista.
+       */
+      if ((hadThread || openTrail !== null) && $('#vera-root').dataset['layout'] !== 'text_only') {
+        void drawGraph();
+      }
 
       const finish = (): void => {
         if (opening !== thisOpening || workspace.activePage !== complete.id || openView === null) return;

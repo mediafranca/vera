@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { firstReadable } from '../src/page-delivery.ts';
+
+const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -37,5 +40,12 @@ describe('entrega legible de una página', () => {
     assert.equal(delivered.page, 'aparato');
     assert.equal(delivered.source, 'retained');
     await assert.rejects(delivered.validation, /sin red/);
+  });
+
+  it('enciende el hilo cuando el enriquecimiento revela que la página es un recorrido', () => {
+    const enrichment = main.match(/void api\.pageEnrichment[\s\S]*?\n  }\n\n  \/\/ Un día/)?.[0] ?? '';
+    assert.match(enrichment, /openView\.trail = complete\.trail \?\? null;/);
+    assert.match(enrichment, /openTrail = threadSettings\(complete\.id, openView\.trail\);/);
+    assert.match(enrichment, /hadThread \|\| openTrail !== null[\s\S]*?void drawGraph\(\);/);
   });
 });
