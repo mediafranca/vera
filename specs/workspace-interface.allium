@@ -227,6 +227,14 @@ contract BlockBehaviourPresentation {
         -- complete source is a Markdown table. It remains portable Markdown and
         -- changing it back to ordinary prose needs no conversion or lost data.
 
+    @invariant TableColumnsRemainLegible
+        -- Ordinary words in a rendered Markdown table are never broken between
+        -- arbitrary letters merely to keep the table inside the reading column.
+        -- Every column keeps a readable minimum width; when those minima no
+        -- longer fit, the table scrolls horizontally inside its own frame rather
+        -- than squeezing one or more columns into vertical strings of letters.
+        -- This presentation adds no width syntax to the portable Markdown.
+
     @invariant SpecialisedBlocksKeepTheirOwnEditor
         -- Editing opens the source, canvas or media controls appropriate to the
         -- derived behaviour. It never sends drawing coordinates, executable

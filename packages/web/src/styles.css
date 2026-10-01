@@ -4014,6 +4014,9 @@ pre.copyable-code {
 
 .body table {
   border-collapse: collapse;
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
   font-family: var(--font-ui);
   font-size: 0.88rem;
 }
@@ -4024,6 +4027,14 @@ pre.copyable-code {
   padding: 0.3rem 0.55rem;
   text-align: left;
   vertical-align: top;
+  /* `.body` parte cualquier token para que una URL no ensanche la página. Una
+     tabla necesita la regla contraria: primero preserva las palabras y el ancho
+     mínimo de cada columna; si el conjunto ya no cabe, `.table-scroll` absorbe
+     el desborde. Así una matriz ancha se desplaza, pero nunca convierte un
+     encabezado o una palabra corriente en una columna de letras sueltas. */
+  min-width: 7rem;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .body th {
