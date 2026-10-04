@@ -7,7 +7,9 @@ const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 describe('el rastro hecho librillo', () => {
   it('pone el libro inmediatamente antes de limpiar y conserva el orden de las páginas', () => {
     assert.match(main, /className = 'trail-booklet'[\s\S]*?trail\.append\(booklet\);[\s\S]*?className = 'trail-clear'/);
-    assert.match(main, /booklet\.innerHTML = icon\('book'\)/);
+    assert.match(main, /booklet\.innerHTML = icon\('book-down'\)/);
+    assert.match(main, /keep\.innerHTML = icon\('feather'\)/);
+    assert.match(main, /clear\.innerHTML = icon\('circle-x'\)/);
     assert.match(main, /workspace\.trace\.map\(\(step\) => step\.page\)/);
     assert.match(main, /query\.append\('page', id\)/);
     assert.match(main, /const endpoint = `\/booklet\/pdf\?\$\{query\.toString\(\)\}`/);
@@ -21,5 +23,12 @@ describe('el rastro hecho librillo', () => {
   it('conserva el toque del libro dentro de la capa sorda del mapa', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     assert.match(styles, /\.trail-keep,\s*\.trail-booklet,\s*\.trail-clear\s*\{[\s\S]*?pointer-events: auto/);
+  });
+
+  it('dibuja cada breadcrumb como una unidad que contiene sus dos acciones', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /\.trail-step \{[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--text-dim\) 58%, transparent\);/);
+    assert.match(styles, /\.trail-step \.trail-pill \{[\s\S]*?border: 0;/);
+    assert.match(main, /item\.append\(grip, pill, remove\)/);
   });
 });

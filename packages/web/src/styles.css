@@ -1517,10 +1517,14 @@ button { touch-action: manipulation; }
   min-width: 0;
   height: 1.4rem;
   box-sizing: border-box;
-  border: 1px solid var(--rule);
+  /* El borde abraza asa, nombre y eliminación como una sola unidad. `--rule`
+     era demasiado tenue sobre el mapa oscuro y los tres gestos parecían piezas
+     sueltas. */
+  border: 1px solid color-mix(in srgb, var(--text-dim) 58%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   overflow: hidden;
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--bg) 55%, transparent);
 }
 
 .trail-step:hover,

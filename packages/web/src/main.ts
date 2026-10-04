@@ -52,7 +52,7 @@ import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
-import { graphOfThread, threadSettings } from './graph/thread.ts';
+import { threadSettings } from './graph/thread.ts';
 import {
   renderGraph3D,
   cleanupGraph3D,
@@ -2467,7 +2467,6 @@ async function drawGraph(reach = 1): Promise<void> {
       delivery.signal,
     );
     data = journalsInMap(data, workspace.activePage, workspace.graphJournals);
-    data = graphOfThread(data, openTrail);
   } catch {
     if (delivery.signal.aborted) return;
     /*
@@ -2762,7 +2761,7 @@ function drawTrail(): void {
     // El icono y no la palabra: la fila del rastro son nombres de páginas, y un
     // botón con texto ahí dentro compite con ellos por lo mismo que uno viene a
     // leer. Lo que dice la palabra va en el título, donde no estorba.
-    keep.innerHTML = icon('steps-1');
+    keep.innerHTML = icon('feather');
     keep.title = 'abrir una mesa de trabajo con todo lo andado';
     keep.setAttribute('aria-label', 'crear una preparación argumental');
     keep.addEventListener('click', () => void promoteTrace(null));
@@ -2773,7 +2772,7 @@ function drawTrail(): void {
     const booklet = document.createElement('button');
     booklet.type = 'button';
     booklet.className = 'trail-booklet';
-    booklet.innerHTML = icon('book');
+    booklet.innerHTML = icon('book-down');
     booklet.title = 'exportar lo andado como un solo PDF en formato librillo';
     booklet.setAttribute('aria-label', 'exportar el rastro como librillo PDF');
     booklet.addEventListener('click', () => void exportTraceBooklet());
@@ -2782,7 +2781,7 @@ function drawTrail(): void {
     const clear = document.createElement('button');
     clear.type = 'button';
     clear.className = 'trail-clear';
-    clear.innerHTML = icon('wash-dryclean-off');
+    clear.innerHTML = icon('circle-x');
     clear.title = 'limpiar rastro';
     clear.setAttribute('aria-label', 'limpiar rastro');
     clear.addEventListener('click', () => {

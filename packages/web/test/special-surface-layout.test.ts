@@ -98,15 +98,22 @@ describe('superficies especiales', () => {
     assert.match(embeddedMap, /preserveDirection: reach > 1/);
   });
 
-  it('proyecta un recorrido incrustado como hilo y conserva la cámara declarada', () => {
+  it('superpone un recorrido incrustado al vecindario y conserva la cámara declarada', () => {
     assert.match(embeddedMap, /stage=enrichment/);
     assert.match(embeddedMap, /threadSettings\(page, delivered\.trail \?\? null\)/);
-    assert.match(embeddedMap, /present\(graphOfThread\(data, thread\), reach, thread\)/);
+    assert.match(embeddedMap, /present\(data, reach, thread\)/);
     assert.match(
       graph3d,
       /embedded === null[\s\S]*?thread !== null[\s\S]*?thread\.page !== framed[\s\S]*?thread\.page !== claimedFor/,
     );
+    assert.match(graph3d, /const box = graphBox\(\);[\s\S]*?frameAround\(/);
+    assert.doesNotMatch(graph3d, /const threadBox/);
     assert.match(graph3d, /embedded === null && remembered && heldOrbit !== null/);
+  });
+
+  it('no descarta el vecindario cuando la página abierta lleva un hilo', () => {
+    assert.doesNotMatch(main, /graphOfThread/);
+    assert.doesNotMatch(embeddedMap, /graphOfThread/);
   });
 
   it('un gesto de cámara cancela el autoencuadre tardío del recorrido', () => {
