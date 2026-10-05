@@ -536,6 +536,11 @@ contract PageFrontMatter {
         -- hides the complete property sheet without changing the page. The same
         -- control and state are used in private and public reading surfaces.
 
+    @invariant PageActionsShareOneHeaderLine
+        -- The property disclosure, Presentar when available, and the page menu
+        -- form one aligned action row beside the title. None is independently
+        -- overlaid on the header or positioned by a separate vertical origin.
+
     @invariant EveryWrittenPropertyCanBeRemovedWhereItIsRead
         -- Every editable property row presents a visible removal control beside
         -- its value, including without pointer hover. Removing it submits the

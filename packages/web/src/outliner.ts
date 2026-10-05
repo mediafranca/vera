@@ -3853,7 +3853,9 @@ export function renderOutliner(
   }
   const heading = document.createElement('div');
   heading.className = 'page-heading';
-  heading.append(title);
+  const headingActions = document.createElement('div');
+  headingActions.className = 'page-heading-actions';
+  heading.append(title, headingActions);
 
   /*
    * Las propiedades acompañan al título, pero no tienen que competir con él.
@@ -3871,11 +3873,10 @@ export function renderOutliner(
   propertiesToggle.setAttribute('aria-label', 'Mostrar propiedades');
   propertiesToggle.setAttribute('aria-expanded', 'false');
   propertiesToggle.title = 'Mostrar propiedades';
-  heading.append(propertiesToggle);
+  headingActions.append(propertiesToggle);
   const declaredPresentation = canPresentPage(page.properties, corpusNames().kind);
   {
     // @guarantee DeclaredPresentationsOfferPresentationProminently
-    heading.classList.toggle('has-presentation', declaredPresentation);
     const present = document.createElement('button');
     present.type = 'button';
     present.className = 'present-page';
@@ -3890,7 +3891,7 @@ export function renderOutliner(
       });
       delete present.dataset['initialBlock'];
     });
-    heading.append(present);
+    headingActions.append(present);
   }
   const presentationActions: MenuAction[] = declaredPresentation ? [{
     label: 'Presentar',
@@ -4605,6 +4606,7 @@ export function renderOutliner(
   more.setAttribute('aria-haspopup', 'menu');
   more.title = 'Más de esta página';
   more.innerHTML = icon('more-vertical');
+  headingActions.append(more);
   more.addEventListener('click', (event) => {
     event.stopPropagation();
     if (readOnly) {
@@ -4748,8 +4750,6 @@ export function renderOutliner(
       ],
     ]);
   });
-  header.append(more);
-
   container.append(header);
 
   const workbench = renderArgumentWorkbenchBand(

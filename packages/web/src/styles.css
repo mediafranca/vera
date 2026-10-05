@@ -1821,7 +1821,7 @@ button { touch-action: manipulation; }
   padding: 2rem 2.5rem 6rem;
 }
 
-/* El menú de la página se ancla a la esquina de la cabecera. */
+/* El encabezado reúne el título y una sola hilera de acciones de página. */
 .page-header {
   position: relative;
 }
@@ -1831,18 +1831,21 @@ button { touch-action: manipulation; }
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.45rem;
-  padding-right: 2rem;
 }
 
-.page-heading.has-presentation {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+.page-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: start;
+  gap: 0.15rem;
+  padding-top: 0.1rem;
 }
 
 .present-page {
   display: inline-grid;
   place-items: center;
-  align-self: center;
-  margin-top: -0.15rem;
+  margin: 0;
   width: 2rem;
   height: 2rem;
   padding: 0.4rem;
@@ -2265,7 +2268,7 @@ html.presenting body {
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
-  margin-top: -0.15rem;
+  margin: 0;
   padding: 0.28rem;
   border: 0;
   border-radius: 50%;
@@ -4667,15 +4670,10 @@ body:has(.embedded-map-frame) {
 
   .page-heading {
     align-items: start;
-    padding-right: 1.65rem;
   }
 
   .page-header h1 {
     font-size: clamp(1.65rem, 9vw, 2.2rem);
-  }
-
-  .properties-toggle {
-    margin-top: 0.05rem;
   }
 
   /* Ya no es una fila aparte: son tres botones más de la única que hay. */
@@ -5250,13 +5248,17 @@ body.settings-open #text {
  * lo que la página dice.
  */
 .page-more {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
+  position: static;
+  display: inline-flex;
   align-items: center;
-  padding: 0.25rem;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0;
+  padding: 0.28rem;
   border: 0;
+  border-radius: 50%;
   background: none;
   color: var(--text-dim);
   cursor: pointer;
