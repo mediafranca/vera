@@ -1541,9 +1541,14 @@ button { touch-action: manipulation; }
   border-radius: 0;
   background: none;
   padding-inline: 0.25rem;
-  /* Plex se posa ópticamente bajo dentro de una cápsula tan baja. Se conserva
-     la altura pulsable y sólo se eleva el rótulo un píxel. */
-  transform: translateY(-0.06rem);
+}
+
+/* Plex se posa ópticamente bajo dentro de una cápsula tan baja. El botón y su
+   área pulsable permanecen centrados; sólo la tinta del rótulo asciende dos
+   píxeles para equilibrarse con la x, que ya ocupa el centro correcto. */
+.trail-step .trail-label {
+  display: inline-block;
+  transform: translateY(-0.12rem);
 }
 
 /* El arrastre marca el intersticio donde caerá la parada. No colorea una

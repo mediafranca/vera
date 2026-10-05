@@ -2750,7 +2750,10 @@ function drawTrail(): void {
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.className = id === workspace.activePage ? 'trail-pill here' : 'trail-pill';
-    pill.textContent = page?.title ?? id;
+    const label = document.createElement('span');
+    label.className = 'trail-label';
+    label.textContent = page?.title ?? id;
+    pill.append(label);
     pill.addEventListener('click', () => void openPage(id));
     /*
      * Y desde cualquier parada, sembrar con el tramo que va de ahí hasta aquí.

@@ -37,6 +37,8 @@ describe('el rastro hecho librillo', () => {
     assert.match(main, /classList\.add\(side === 'before' \? 'drop-before' : 'drop-after'\)/);
     assert.match(main, /movedBeside\(workspace\.trace, from, target, side\)/);
     assert.match(styles, /\.trail-step\.drop-before::before,[\s\S]*?\.trail-step\.drop-after::after[\s\S]*?background: var\(--accent\)/);
-    assert.match(styles, /\.trail-step \.trail-pill \{[\s\S]*?transform: translateY\(-0\.06rem\)/);
+    assert.match(main, /label\.className = 'trail-label'[\s\S]*?pill\.append\(label\)/);
+    assert.match(styles, /\.trail-step \.trail-label \{[\s\S]*?transform: translateY\(-0\.12rem\)/);
+    assert.doesNotMatch(styles, /\.trail-step \.trail-pill \{[^}]*transform:/);
   });
 });
