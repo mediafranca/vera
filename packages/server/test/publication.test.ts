@@ -270,6 +270,9 @@ describe('publicación del sitio personal', () => {
     assert.equal(canonicalHealth.access, 'anybody');
     assert.equal(canonicalHealth.canViewOwner, false);
     assert.equal(canonicalHealth.pages, 1);
+    const freshShell = await throughCanonical('/index.html?fresh=1');
+    assert.equal(freshShell.status, 200, 'la PWA pública puede comprobar si cambió el build');
+    assert.match(freshShell.body, /La misma Vera/);
     assert.equal((await throughCanonical('/p/Vera')).status, 404);
     assert.equal(
       (await throughCanonical('/operations', 'POST')).status,
@@ -339,5 +342,58 @@ describe('publicación del sitio personal', () => {
 
     const privateNow = await write({ kind: 'set_page_visibility', page, visibility: 'private' });
     assert.equal(privateNow.httpStatus, 201);
+  });
+
+  it('entrega el recorrido publicado sin revelar las paradas privadas', async () => {
+    const makePage = async (title: string, visibility: 'public' | 'private') => (
+      await write({ kind: 'create_page', title, visibility })
+    ).subjectId;
+    const argument = await makePage('Argumento público', 'public');
+    const first = await makePage('Primera parada pública', 'public');
+    const hidden = await makePage('Parada privada', 'private');
+    const last = await makePage('Última parada pública', 'public');
+    await write({
+      kind: 'set_property', page: argument, propertyKey: 'tipo', propertyValue: 'argumento',
+    });
+    await write({
+      kind: 'create_block', page: argument, parent: null, position: 0,
+      content: '[[Primera parada pública]] atraviesa [[Parada privada]] y llega a [[Última parada pública]]',
+    });
+    for (const [page, path] of [[argument, 'argumento'], [first, 'primera'], [last, 'ultima']] as const) {
+      const response = await fetch(`${base}/publications/${encodeURIComponent(page)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path, entryPoint: false }),
+      });
+      assert.equal(response.status, 201);
+    }
+
+    const publicPage = await fetch(
+      `http://localhost:${PREVIEW_PORT}/pages/${encodeURIComponent(argument)}`,
+    ).then((response) => response.json()) as {
+      trail: {
+        route: { page: string | null; ordinal: number; title: string }[];
+        crossings: { kind: string; connective: string; citation: unknown }[];
+      } | null;
+    };
+    assert.notEqual(publicPage.trail, null);
+    assert.deepEqual(publicPage.trail?.route.map((stop) => stop.page), [first, null, last]);
+    assert.deepEqual(publicPage.trail?.route.map((stop) => stop.ordinal), [1, 2, 3]);
+    assert.equal(publicPage.trail?.route[1]?.title, 'Parada privada');
+    assert.deepEqual(
+      publicPage.trail?.crossings.map((crossing) => crossing.kind),
+      ['across_open_ground', 'across_open_ground'],
+    );
+    assert.ok(publicPage.trail?.crossings.every(
+      (crossing) => crossing.connective === '' && crossing.citation === null,
+    ));
+    const publicGraph = await fetch(
+      `http://localhost:${PREVIEW_PORT}/graph/${encodeURIComponent(argument)}?depth=2`,
+    ).then((response) => response.json()) as { nodes: { id: string }[] };
+    assert.deepEqual(
+      new Set(publicGraph.nodes.map((node) => node.id)),
+      new Set([argument, first, last]),
+    );
+    assert.ok(!publicGraph.nodes.some((node) => node.id === hidden));
   });
 });

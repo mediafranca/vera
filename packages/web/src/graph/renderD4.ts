@@ -663,7 +663,6 @@ export function renderGraphD4(
     return Number(endpoints.has(a.id)) - Number(endpoints.has(b.id));
   });
   for (const node of nodesToDraw) {
-    if (thread !== null && node.id === thread.page) continue;
     const pos = held.get(node.id)!;
     const dim = dims.get(node.id)!;
     const foreign = svg.append('foreignObject')

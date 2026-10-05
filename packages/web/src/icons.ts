@@ -57,6 +57,12 @@ const SHAPES = {
     '<path d="M4 18v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2"/>' +
     '<path d="M4 9h16"/><path d="M10 14l2 2l2 -2"/>',
 
+  // Lucide `presentation`: la misma acción en el encabezado y en los menús.
+  presentation:
+    '<path d="M2 3h20"/>' +
+    '<path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/>' +
+    '<path d="m7 21 5-5 5 5"/>',
+
   sun:
     '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>' +
     '<line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>' +
@@ -117,9 +123,10 @@ const SHAPES = {
     '<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/>' +
     '<path d="M20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>',
 
-  // La pluma: explicar por qué esta página y aquélla se tocan es escribir.
+  // Lucide feather: componer un argumento es empezar a escribirlo.
   feather:
-    '<path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><line x1="16" y1="8" x2="2" y2="22"/><line x1="17.5" y1="15" x2="9" y2="15"/>',
+    '<path d="M14.086 18.412A2 2 0 0 1 12.67 19H5v-7.672a2 2 0 0 1 .586-1.414L11.75 3.75a6 6 0 1 1 8.49 8.49z"/>' +
+    '<path d="M16 8 2 22"/><path d="M17.488 15H9"/>',
 
   // Verticales y no horizontales: el menú cae hacia abajo, y tres puntos en
   // columna dicen hacia dónde se abre lo que hay detrás.
@@ -183,6 +190,12 @@ const SHAPES = {
     '<path d="M3 19v-14a2 2 0 0 1 2 -2h14v18"/>' +
     '<path d="M13 13h4M13 17h4"/>',
 
+  // Lucide book-down: el conjunto sale del rastro como un librillo PDF.
+  'book-down':
+    '<path d="M12 13V7"/>' +
+    '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>' +
+    '<path d="m9 10 3 3 3-3"/>',
+
   // Salir hacia allá. En el mapa, la flecha que aparece al lado de un nombre:
   // señalar un nodo es mirarlo, y esto es lo que hay que pulsar para entrar.
   'arrow-up-right':
@@ -198,6 +211,11 @@ const SHAPES = {
   'wash-dryclean-off':
     '<path d="M20.048 16.033a9 9 0 0 0 -12.094 -12.075m-2.321 1.682a9 9 0 0 0 12.733 12.723"/>' +
     '<path d="M3 3l18 18"/>',
+
+  // Lucide circle-x: retirar de una vez todos los breadcrumbs del dispositivo.
+  'circle-x':
+    '<circle cx="12" cy="12" r="10"/>' +
+    '<path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
 
   'align-left':
     '<line x1="5" y1="6" x2="19" y2="6"/>' +

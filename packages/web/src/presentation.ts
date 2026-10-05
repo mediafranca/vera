@@ -74,7 +74,7 @@ async function presentationStyles(page: PageView): Promise<LoadedPresentationSty
   };
 }
 
-export function isPresentation(
+export function canPresentPage(
   properties: readonly { key: string; value: string }[],
   kindProperty: string,
 ): boolean {
@@ -84,7 +84,7 @@ export function isPresentation(
   const kind = properties
     .find((property) => property.key.trim().toLowerCase() === kindProperty.trim().toLowerCase())
     ?.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-  return kind === 'presentacion';
+  return kind === 'presentacion' || kind === 'argumento';
 }
 
 function treeOf(blocks: readonly BlockView[]): PresentationNode[] {

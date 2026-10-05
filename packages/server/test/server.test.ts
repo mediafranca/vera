@@ -736,7 +736,7 @@ describe('lecturas', () => {
     });
 
     const data = (await get(`/graph/${encodeURIComponent(a)}?depth=1`)) as {
-      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number }[];
+      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number; lines?: unknown[] }[];
       links: {
         source: string; target: string; kind?: string; crossing?: string;
         blocks?: { stableId: string; parent: string | null; position: number; content: string }[];
@@ -758,6 +758,7 @@ describe('lecturas', () => {
     for (const node of data.nodes) {
       assert.equal(typeof node.degree, 'number');
       assert.equal(typeof node.blockCount, 'number');
+      assert.equal(node.lines, undefined, '2D/3D no cargan las frases que sólo D4 dibuja');
     }
   });
 
@@ -797,7 +798,7 @@ describe('lecturas', () => {
       targetBlock: sourceBlock,
     }]);
 
-    const data = await get(`/graph/${encodeURIComponent(workbench)}?depth=0`) as {
+    const data = await get(`/graph/${encodeURIComponent(workbench)}?depth=0&detail=d4`) as {
       nodes: { id: string; lines: { block: string }[] }[];
     };
     assert.ok(data.nodes.some((node) => node.id === source));

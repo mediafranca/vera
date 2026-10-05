@@ -732,51 +732,6 @@ export function renderGraph3D(
   };
 
   /**
-   * La caja de un recorrido: sólo sus paradas, y no el vecindario entero.
-   *
-   * @guarantee TheWholeShapeAtOnce. Un hilo con la primera parada fuera de
-   * cuadro no enseña una forma, enseña un trozo, y la forma del argumento —un
-   * tramo recto, un rodeo que vuelve, una estrella desde un solo sitio— es lo
-   * que hace que un recorrido se recuerde: por su dibujo, como se recuerda una
-   * región del mapa.
-   */
-  const threadBox = (): { box: Box; centre: Point } | null => {
-    if (thread === null) return null;
-    const wanted = new Set(thread.stops.map((one) => one.page).filter((one) => one !== null));
-    let any = false;
-    const min = { x: Infinity, y: Infinity, z: Infinity };
-    const max = { x: -Infinity, y: -Infinity, z: -Infinity };
-    for (const d of drawn) {
-      if (!wanted.has(d.node.id)) continue;
-      const { x, y, z } = d.node as GraphNode & Partial<Point>;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-      min.x = Math.min(min.x, (x as number) - d.halfWidth);
-      max.x = Math.max(max.x, (x as number) + d.halfWidth);
-      min.y = Math.min(min.y, (y as number) - d.halfHeight);
-      max.y = Math.max(max.y, (y as number) + d.halfHeight);
-      min.z = Math.min(min.z, z as number);
-      max.z = Math.max(max.z, z as number);
-      any = true;
-    }
-    if (!any) return null;
-    /*
-     * Se gira en torno al medio del recorrido y no a la página abierta.
-     *
-     * La página abierta es la del recorrido, y es justo la que no se dibuja: un
-     * argumento no está al lado de sus premisas sino entre ellas, así que girar
-     * en torno a ella sería girar en torno a un sitio vacío.
-     */
-    return {
-      box: { min, max },
-      centre: {
-        x: (min.x + max.x) / 2,
-        y: (min.y + max.y) / 2,
-        z: (min.z + max.z) / 2,
-      },
-    };
-  };
-
-  /**
    * La página que se está leyendo, que es en torno a lo que gira el mapa.
    *
    * El servidor marca como `central` el centro del vecindario, que es la página
@@ -804,9 +759,9 @@ export function renderGraph3D(
   const fit = (): void => {
     /*
      * Un recorrido recién abierto se encuadra aunque alguien haya movido la
-     * cámara antes, y una sola vez. Abrir un argumento es pedir verlo entero; si
-     * el encuadre no llegara, el hilo estaría dibujado en una esquina y lo que
-     * se prometió —la forma— no se vería.
+     * cámara antes, y una sola vez. Se encuadra el vecindario entero: el hilo ya
+     * se distingue por color, numeración y tipo de trazo, y aislarlo convertiría
+     * el control de alcance en una promesa sin efecto.
      */
     if (
       embedded === null &&
@@ -814,9 +769,19 @@ export function renderGraph3D(
       thread.page !== framed &&
       thread.page !== claimedFor
     ) {
-      const mine = threadBox();
-      if (mine !== null) {
-        orbit = frameAround(mine.box, mine.centre, lensNow(), orbit.azimuth, orbit.elevation);
+      const box = graphBox();
+      if (box !== null) {
+        const yo = focus();
+        orbit =
+          yo === null || !Number.isFinite(yo.x) || !Number.isFinite(yo.y) || !Number.isFinite(yo.z)
+            ? frameBox(box, lensNow(), orbit.azimuth, orbit.elevation)
+            : frameAround(
+                box,
+                { x: yo.x as number, y: yo.y as number, z: yo.z as number },
+                lensNow(),
+                orbit.azimuth,
+                orbit.elevation,
+              );
         framed = thread.page;
         moved = true;
         return;

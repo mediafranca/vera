@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 
-import { isPresentation, presentationLocation, presentationRevision } from '../src/presentation.ts';
+import { canPresentPage, presentationLocation, presentationRevision } from '../src/presentation.ts';
 import {
   presentationThemeTitle,
   scopedPresentationStylesheet,
@@ -11,13 +11,24 @@ import {
 
 describe('páginas que se pueden presentar', () => {
   it('reconoce el tipo gobernado aunque cambien mayúsculas o acentos', () => {
-    assert.equal(isPresentation([{ key: 'tipo', value: 'Presentación' }], 'tipo'), true);
-    assert.equal(isPresentation([{ key: 'TIPO', value: 'presentacion' }], 'tipo'), true);
+    assert.equal(canPresentPage([{ key: 'tipo', value: 'Presentación' }], 'tipo'), true);
+    assert.equal(canPresentPage([{ key: 'TIPO', value: 'presentacion' }], 'tipo'), true);
+    assert.equal(canPresentPage([{ key: 'tipo', value: 'argumento' }], 'tipo'), true);
   });
 
-  it('no convierte una página ordinaria en presentación', () => {
-    assert.equal(isPresentation([{ key: 'tipo', value: 'Concepto' }], 'tipo'), false);
-    assert.equal(isPresentation([], 'tipo'), false);
+  it('no presenta una preparación ni una página ordinaria', () => {
+    assert.equal(canPresentPage([{ key: 'tipo', value: 'preparación argumental' }], 'tipo'), false);
+    assert.equal(canPresentPage([{ key: 'tipo', value: 'Concepto' }], 'tipo'), false);
+    assert.equal(canPresentPage([], 'tipo'), false);
+  });
+
+  it('usa el icono Lucide Presentation en toda entrada al visor', () => {
+    const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const icons = readFileSync(new URL('../src/icons.ts', import.meta.url), 'utf8');
+    assert.match(outliner, /present\.innerHTML = icon\('presentation'\)/);
+    assert.match(outliner, /label: 'Presentar',\s*\n\s*icon: 'presentation'/);
+    assert.match(outliner, /present\.setAttribute\('aria-label', 'Presentar'\)/);
+    assert.match(icons, /presentation:\s*\n\s*'<path d="M2 3h20"\/>'/);
   });
 
   it('da a cada lámina una dirección estable y vuelve a la fuente señalada', () => {

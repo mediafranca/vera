@@ -1288,9 +1288,16 @@ export const api = {
       body: JSON.stringify({ block, folded }),
     }),
 
-  graph: (centre: string, depth: number, published = false, signal?: AbortSignal) =>
+  graph: (
+    centre: string,
+    depth: number,
+    published = false,
+    detail: 'spatial' | 'd4' = 'spatial',
+    signal?: AbortSignal,
+  ) =>
     json<GraphData>(
-      `/graph/${encodeURIComponent(centre)}?depth=${depth}${published ? '&published=1' : ''}`,
+      `/graph/${encodeURIComponent(centre)}?depth=${depth}${published ? '&published=1' : ''}` +
+        `${detail === 'd4' ? '&detail=d4' : ''}`,
       signal === undefined ? undefined : { signal },
     ),
 

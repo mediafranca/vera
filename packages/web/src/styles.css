@@ -1512,15 +1512,20 @@ button { touch-action: manipulation; }
 
 .trail-step {
   pointer-events: auto;
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-width: 0;
   height: 1.4rem;
   box-sizing: border-box;
-  border: 1px solid var(--rule);
+  /* El borde abraza asa, nombre y eliminación como una sola unidad. `--rule`
+     era demasiado tenue sobre el mapa oscuro y los tres gestos parecían piezas
+     sueltas. */
+  border: 1px solid color-mix(in srgb, var(--text-dim) 58%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
-  overflow: hidden;
+  overflow: visible;
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--bg) 55%, transparent);
 }
 
 .trail-step:hover,
@@ -1537,6 +1542,33 @@ button { touch-action: manipulation; }
   background: none;
   padding-inline: 0.25rem;
 }
+
+/* Plex se posa ópticamente bajo dentro de una cápsula tan baja. El botón y su
+   área pulsable permanecen centrados; sólo la tinta del rótulo asciende dos
+   píxeles para equilibrarse con la x, que ya ocupa el centro correcto. */
+.trail-step .trail-label {
+  display: inline-block;
+  transform: translateY(-0.12rem);
+}
+
+/* El arrastre marca el intersticio donde caerá la parada. No colorea una
+   pastilla completa: la decisión es «antes/después», no «sobre». */
+.trail-step.drop-before::before,
+.trail-step.drop-after::after {
+  content: '';
+  position: absolute;
+  top: -0.18rem;
+  bottom: -0.18rem;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0.35rem color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.trail-step.drop-before::before { left: -0.2rem; }
+.trail-step.drop-after::after { right: -0.2rem; }
 
 .trail-step.moving {
   opacity: 0.55;
@@ -1789,7 +1821,7 @@ button { touch-action: manipulation; }
   padding: 2rem 2.5rem 6rem;
 }
 
-/* El menú de la página se ancla a la esquina de la cabecera. */
+/* El encabezado reúne el título y una sola hilera de acciones de página. */
 .page-header {
   position: relative;
 }
@@ -1799,23 +1831,35 @@ button { touch-action: manipulation; }
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.45rem;
-  padding-right: 2rem;
 }
 
-.page-heading.has-presentation {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+.page-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: start;
+  gap: 0.15rem;
+  padding-top: 0.1rem;
 }
 
 .present-page {
-  align-self: center;
-  margin-top: -0.15rem;
-  padding: 0.42rem 0.8rem;
+  display: inline-grid;
+  place-items: center;
+  margin: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.4rem;
   border: 1px solid var(--accent);
   border-radius: 999px;
   background: var(--accent);
   color: var(--bg);
   font: 600 0.78rem/1 var(--font-ui);
   cursor: pointer;
+}
+
+.present-page .icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .present-page:hover,
@@ -2224,7 +2268,7 @@ html.presenting body {
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
-  margin-top: -0.15rem;
+  margin: 0;
   padding: 0.28rem;
   border: 0;
   border-radius: 50%;
@@ -3713,15 +3757,28 @@ html.presenting body {
  * excluyéndolos uno a uno a golpe de especificidad.
  */
 .wiki,
-.body a[href]:not([class]) {
+.body a[href]:not([class]),
+.external-link {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* Visitado tampoco lo cambia: el morado del navegador es del navegador. */
-.body a[href]:not([class]):visited {
+.body a[href]:not([class]):visited,
+.external-link:visited {
   color: var(--accent);
+}
+
+/* La salida se distingue por dirección, no por una segunda paleta. El pequeño
+   Lucide permanece unido al último fragmento del rótulo y no altera la altura
+   de la línea ni la pronunciación del enlace. */
+.external-link .external-link-mark {
+  display: inline-block;
+  width: 0.78em;
+  height: 0.78em;
+  margin-inline-start: 0.24em;
+  vertical-align: -0.06em;
 }
 
 /*
@@ -3748,7 +3805,8 @@ html.presenting body {
 }
 
 .wiki:hover,
-.body a[href]:not([class]):hover {
+.body a[href]:not([class]):hover,
+.external-link:hover {
   border-bottom-color: var(--accent);
 }
 
@@ -4014,6 +4072,9 @@ pre.copyable-code {
 
 .body table {
   border-collapse: collapse;
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
   font-family: var(--font-ui);
   font-size: 0.88rem;
 }
@@ -4024,6 +4085,14 @@ pre.copyable-code {
   padding: 0.3rem 0.55rem;
   text-align: left;
   vertical-align: top;
+  /* `.body` parte cualquier token para que una URL no ensanche la página. Una
+     tabla necesita la regla contraria: primero preserva las palabras y el ancho
+     mínimo de cada columna; si el conjunto ya no cabe, `.table-scroll` absorbe
+     el desborde. Así una matriz ancha se desplaza, pero nunca convierte un
+     encabezado o una palabra corriente en una columna de letras sueltas. */
+  min-width: 7rem;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .body th {
@@ -4601,15 +4670,10 @@ body:has(.embedded-map-frame) {
 
   .page-heading {
     align-items: start;
-    padding-right: 1.65rem;
   }
 
   .page-header h1 {
     font-size: clamp(1.65rem, 9vw, 2.2rem);
-  }
-
-  .properties-toggle {
-    margin-top: 0.05rem;
   }
 
   /* Ya no es una fila aparte: son tres botones más de la única que hay. */
@@ -5184,13 +5248,17 @@ body.settings-open #text {
  * lo que la página dice.
  */
 .page-more {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
+  position: static;
+  display: inline-flex;
   align-items: center;
-  padding: 0.25rem;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0;
+  padding: 0.28rem;
   border: 0;
+  border-radius: 50%;
   background: none;
   color: var(--text-dim);
   cursor: pointer;
