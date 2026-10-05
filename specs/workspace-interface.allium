@@ -633,6 +633,12 @@ contract InstallableWebApplication {
         -- missing assets from a newer build and never turns an update into a blank
         -- installed application.
 
+    @invariant RunningShellCanDiscoverANewerBuild
+        -- The public and private origins both expose the uncached application
+        -- document used to compare build fingerprints. A window or installed
+        -- PWA that stayed open can therefore discover a newer script or style
+        -- and reload instead of remaining silently on an obsolete client.
+
     @invariant OfflineReadingAndWriting
         -- An authenticated participant can read available graph content and
         -- create or edit pages and blocks while the device has no connection.
@@ -1459,6 +1465,13 @@ surface VeraWorkspace {
         -- line and every reference leaves from the baseline of the sentence or
         -- gloss that wrote it, with predominantly horizontal Bézier tangents.
         -- Markdown remains rendered rather than becoming source notation.
+
+    @guarantee SpatialMapsDoNotCarryHiddenProse
+        -- 2D and 3D receive node geometry and relationships without the page
+        -- lines that only D4 can display. Entering D4 requests those lines for
+        -- the current reach; returning to a spatial map returns to the lighter
+        -- projection. The public map may begin fetching as soon as its canonical
+        -- focus is known, in parallel with the page index and readable text.
 
     @guarantee D4CompactsWithoutDiscarding
         -- A page projects only the sentences that originate a reference, gloss

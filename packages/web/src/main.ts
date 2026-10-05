@@ -2464,6 +2464,7 @@ async function drawGraph(reach = 1): Promise<void> {
       workspace.activePage,
       requestedDepth,
       workspace.mapScope === 'published',
+      workspace.graphView === 'graph_d4' ? 'd4' : 'spatial',
       delivery.signal,
     );
     data = journalsInMap(data, workspace.activePage, workspace.graphJournals);
@@ -3899,9 +3900,50 @@ async function start(): Promise<void> {
     });
   }
 
+  /*
+   * En el sitio público el centro del primer mapa ya se conoce antes del índice:
+   * es la página nombrada por la ruta canónica o la portada declarada por el
+   * sitio. Pedir el grafo ahora deja que viaje a la vez que `/pages` y la página
+   * legible. Esperar esas dos respuestas en serie hacía que el mapa comenzara
+   * varios segundos después de que el navegador ya supiera qué debía mostrar.
+   *
+   * Una ruta amistosa necesita el índice para resolverse y no se adivina. En ese
+   * caso se conserva el arranque ordinario.
+   */
+  const initialRoute = parseRoute(new URL(window.location.href));
+  const eagerPublicCentre = isAnybody()
+    ? (initialRoute.page ?? (window.location.pathname === '/' ? corpus?.entryPoint ?? null : null))
+    : null;
+  if (eagerPublicCentre !== null) {
+    workspace.activePage = eagerPublicCentre;
+    applyLayout();
+  }
+
   await loadPages();
 
-  applyLayout();
+  /*
+   * Una dirección pública amistosa (`/vera/`) sólo se puede resolver cuando
+   * llega el índice. Aun así no hay razón para esperar después la página
+   * legible: en cuanto el índice traduce la ruta se inicia el mapa, y ambos
+   * viajes continúan en paralelo.
+   */
+  let resolvedPublicCentre = eagerPublicCentre;
+  if (resolvedPublicCentre === null && isAnybody()) {
+    const here = new URL(window.location.href);
+    const route = parseRoute(here);
+    if (route.page !== null) resolvedPublicCentre = route.page;
+    else if (here.pathname !== '/') {
+      let asked = '';
+      try {
+        asked = decodeURIComponent(here.pathname).replace(/^\/+|\/+$/g, '');
+      } catch {
+        asked = '';
+      }
+      resolvedPublicCentre = pages.find((page) => page.publicationPath === asked)?.id ?? null;
+    }
+    if (resolvedPublicCentre !== null) workspace.activePage = resolvedPublicCentre;
+  }
+  if (eagerPublicCentre === null) applyLayout();
   await applyRoute();
   offerPasskeyEnrollment();
 

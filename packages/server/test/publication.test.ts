@@ -270,6 +270,9 @@ describe('publicación del sitio personal', () => {
     assert.equal(canonicalHealth.access, 'anybody');
     assert.equal(canonicalHealth.canViewOwner, false);
     assert.equal(canonicalHealth.pages, 1);
+    const freshShell = await throughCanonical('/index.html?fresh=1');
+    assert.equal(freshShell.status, 200, 'la PWA pública puede comprobar si cambió el build');
+    assert.match(freshShell.body, /La misma Vera/);
     assert.equal((await throughCanonical('/p/Vera')).status, 404);
     assert.equal(
       (await throughCanonical('/operations', 'POST')).status,

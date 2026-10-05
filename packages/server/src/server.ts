@@ -1467,6 +1467,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const publicSharedPath = publicSharedSpace !== null && canReadScopedSpace;
       const safe =
         path === '/' ||
+        path === '/index.html' ||
         path === '/health' ||
         path === '/pages' ||
         path === '/buscar' ||
@@ -6824,6 +6825,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (path.startsWith('/graph/')) {
         const centre = decodeURIComponent(path.slice('/graph/'.length));
         const depth = Number(url.searchParams.get('depth') ?? '2');
+        // 2D y 3D sólo necesitan geometría. Las frases que D4 convierte en
+        // hojas se entregan únicamente cuando esa vista las pide; enviarlas en
+        // cada mapa público hacía viajar cientos de kilobytes invisibles.
+        const d4 = url.searchParams.get('detail') === 'd4';
         // El dueño puede mirar el mismo subgrafo publicado sin dejar de ser
         // dueño. Esto filtra sólo el mapa; no cambia la autoridad de la petición.
         const publishedMap = publicAccess || url.searchParams.get('published') === '1';
@@ -6893,11 +6898,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               trail: trailOf(id) !== null,
               degree: neighbours.get(id)?.size ?? 0,
               blockCount: graph.blocksOf(id).length,
-              lines: graph.blocksOf(id).map((block) => ({
-                block: block.stableId,
-                content: block.content,
-                gloss: graph.gloss(block.stableId)?.content ?? null,
-              })),
+              ...(d4 ? {
+                lines: graph.blocksOf(id).map((block) => ({
+                  block: block.stableId,
+                  content: block.content,
+                  gloss: graph.gloss(block.stableId)?.content ?? null,
+                })),
+              } : {}),
             })),
             links,
           });
@@ -6995,13 +7002,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             trail: trailOf(node.page) !== null,
             degree: node.degree,
             blockCount: node.blockCount,
-            lines: graph.blocksOf(node.page)
-              .filter((block) => neededBlocks.has(block.stableId))
-              .map((block) => ({
-                block: block.stableId,
-                content: block.content,
-                gloss: graph.gloss(block.stableId)?.content ?? null,
-              })),
+            ...(d4 ? {
+              lines: graph.blocksOf(node.page)
+                .filter((block) => neededBlocks.has(block.stableId))
+                .map((block) => ({
+                  block: block.stableId,
+                  content: block.content,
+                  gloss: graph.gloss(block.stableId)?.content ?? null,
+                })),
+            } : {}),
           })),
           links: responseLinks,
         });
