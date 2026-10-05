@@ -3754,15 +3754,28 @@ html.presenting body {
  * excluyéndolos uno a uno a golpe de especificidad.
  */
 .wiki,
-.body a[href]:not([class]) {
+.body a[href]:not([class]),
+.external-link {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* Visitado tampoco lo cambia: el morado del navegador es del navegador. */
-.body a[href]:not([class]):visited {
+.body a[href]:not([class]):visited,
+.external-link:visited {
   color: var(--accent);
+}
+
+/* La salida se distingue por dirección, no por una segunda paleta. El pequeño
+   Lucide permanece unido al último fragmento del rótulo y no altera la altura
+   de la línea ni la pronunciación del enlace. */
+.external-link .external-link-mark {
+  display: inline-block;
+  width: 0.78em;
+  height: 0.78em;
+  margin-inline-start: 0.24em;
+  vertical-align: -0.06em;
 }
 
 /*
@@ -3789,7 +3802,8 @@ html.presenting body {
 }
 
 .wiki:hover,
-.body a[href]:not([class]):hover {
+.body a[href]:not([class]):hover,
+.external-link:hover {
   border-bottom-color: var(--accent);
 }
 

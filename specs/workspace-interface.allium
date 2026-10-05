@@ -63,6 +63,12 @@ contract NativeMarkdownEditing {
         -- bridge, opening delegates to the operating system's default browser;
         -- cancelling leaves the current page and its editing state untouched.
 
+    @invariant ExternalLinksBelongToTheSameReadingLanguage
+        -- Internal and external links use the same governed link colour in page
+        -- bodies, excerpts, concept listings and properties. A web destination
+        -- is distinguished by the decorative Lucide `external-link` mark placed
+        -- inline at the end of its label, not by browser blue or visited purple.
+
     @invariant SourceRemainsMarkdown
         -- Editing produces portable Markdown rather than an opaque editor format.
 

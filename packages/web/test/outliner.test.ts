@@ -5,6 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   buildNeighbourhoods,
@@ -85,6 +86,15 @@ describe('enlaces salientes', () => {
     assert.equal(externalDestination('/p/Otra', here), null);
     assert.equal(externalDestination('#seccion', here), null);
     assert.equal(externalDestination('mailto:alguien@ejemplo.cl', here), null);
+  });
+
+  it('los marca con Lucide sin introducir otro color de enlace', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /link\.classList\.add\('external-link'\)/);
+    assert.match(source, /icon\('external-link', \{ className: 'external-link-mark' \}\)/);
+    assert.match(styles, /\.wiki,[\s\S]*?\.external-link \{[\s\S]*?color: var\(--accent\);/);
+    assert.match(styles, /\.external-link \.external-link-mark \{[\s\S]*?display: inline-block;/);
   });
 });
 

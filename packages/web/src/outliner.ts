@@ -223,8 +223,35 @@ function openExternalLink(url: string): void {
   dialog.showModal();
 }
 
+/** Marca los enlaces web salientes que ya existen dentro de una composición. */
+function decorateExternalLinks(container: ParentNode): void {
+  /*
+   * El destino no cambia la familia tipográfica del vínculo.
+   *
+   * `renderMarkdown` también se usa en extractos y listas derivadas que no
+   * viven bajo `.body`. Marcar aquí el enlace —cuando ya conocemos el origen
+   * efectivo— evita que esas superficies caigan al azul del navegador. El
+   * icono va dentro del ancla: pertenece al mismo gesto y queda al final aunque
+   * el rótulo se parta en varias líneas.
+   */
+  for (const link of container.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    if (externalDestination(link.getAttribute('href') ?? '') === null) continue;
+    link.classList.add('external-link');
+    if (link.querySelector('.external-link-mark') !== null) continue;
+    if (link.textContent?.trim() === '' && link.querySelector('img, video, picture, iframe') !== null) {
+      continue;
+    }
+    link.insertAdjacentHTML(
+      'beforeend',
+      icon('external-link', { className: 'external-link-mark' }),
+    );
+  }
+}
+
 /** Intercepta sólo enlaces web salientes; páginas, anclas y archivos siguen igual. */
 function wireExternalLinks(container: HTMLElement): void {
+  decorateExternalLinks(container);
+
   container.addEventListener('click', (event) => {
     if (event.defaultPrevented || event.button !== 0) return;
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
@@ -6530,6 +6557,10 @@ export function renderOutliner(
       // Los diagramas del lote visible pueden empezar ahora; no esperan a que
       // cientos de bloques posteriores terminen de entrar al documento.
       renderMermaidProgressively(list);
+      // Una página larga entra por lotes. El decorador general ya pasó por los
+      // enlaces anteriores, pero éstos acaban de nacer y deben recibir la misma
+      // señal de salida sin esperar una segunda apertura de la página.
+      decorateExternalLinks(list);
       first = false;
       progress.textContent = `Componiendo la página… ${at} de ${entries.length} bloques`;
       if (at < entries.length) {
@@ -6771,6 +6802,10 @@ export function renderOutliner(
         }
         results.append(row);
       }
+      // Buscar recompone la lista y con ella sus extractos. Se marca después de
+      // cada composición para que un enlace que aparece por el filtro no vuelva
+      // al azul del navegador ni pierda su signo de salida.
+      decorateExternalLinks(results);
     };
     search.addEventListener('input', draw);
     draw();
