@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DEFAULT_PROPERTY_NAMES } from '../src/property-names.ts';
-import { isTrail, readTrail, readingOrder, type TrailBlock } from '../src/trail.ts';
+import { isTrail, projectTrail, readTrail, readingOrder, type TrailBlock } from '../src/trail.ts';
 
 let n = 0;
 const block = (
@@ -267,5 +267,42 @@ describe('las dos caras del cruce', () => {
   it('con una sola conectiva escrita, el recorrido ya afirma algo', () => {
     const trail = readTrail(reading([block('[[Uno]] contradice a [[Dos]]')], { pages: PAGES }));
     assert.equal(trail.argues, true);
+  });
+});
+
+describe('la proyección pública de un recorrido', () => {
+  it('conserva la figura sin revelar ni saltarse una parada fuera del ámbito', () => {
+    const trail = readTrail(reading(
+      [block('[[Uno]] explica [[Dos]] y conduce a [[Tres]]')],
+      {
+        pages: PAGES,
+        edges: [['page:1', 'page:2'], ['page:2', 'page:3']],
+        relations: {
+          'page:1->page:2': { id: 'crossing:private', revision: 'revision:private', content: 'secreto' },
+        },
+      },
+    ));
+    const projected = projectTrail(trail, (page) => page !== 'page:2');
+
+    assert.deepEqual(projected.route.map((node) => node.page), ['page:1', null, 'page:3']);
+    assert.deepEqual(projected.route.map((node) => node.ordinal), [1, 2, 3]);
+    assert.equal(projected.broken[0]?.title, 'Dos');
+    assert.equal(projected.crossings[0]?.kind, 'across_open_ground');
+    assert.equal(projected.crossings[0]?.connective, '');
+    assert.equal(projected.crossings[0]?.citation, null);
+    assert.equal(projected.crossings[1]?.kind, 'across_open_ground');
+    assert.equal(projected.crossings.length, 2, 'no fabrica un tramo Uno → Tres');
+  });
+
+  it('conserva los tramos cuyas dos paradas pertenecen al ámbito', () => {
+    const trail = readTrail(reading(
+      [block('[[Uno]] sostiene [[Dos]]')],
+      { pages: PAGES, edges: [['page:1', 'page:2']] },
+    ));
+    const projected = projectTrail(trail, () => true);
+
+    assert.deepEqual(projected.route.map((node) => node.page), ['page:1', 'page:2']);
+    assert.equal(projected.crossings[0]?.kind, 'by_path');
+    assert.equal(projected.crossings[0]?.connective, 'sostiene');
   });
 });

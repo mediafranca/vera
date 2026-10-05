@@ -73,7 +73,7 @@ import {
 import { renderTrailBand, trailMarks, type TrailMark } from './trail-page.ts';
 import { pendingLine, saySeconds } from './waiting.ts';
 import { createPage } from './pages.ts';
-import { isPresentation, presentPage } from './presentation.ts';
+import { canPresentPage, presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
 import {
@@ -3845,14 +3845,16 @@ export function renderOutliner(
   propertiesToggle.setAttribute('aria-expanded', 'false');
   propertiesToggle.title = 'Mostrar propiedades';
   heading.append(propertiesToggle);
-  const declaredPresentation = isPresentation(page.properties, corpusNames().kind);
+  const declaredPresentation = canPresentPage(page.properties, corpusNames().kind);
   {
     // @guarantee DeclaredPresentationsOfferPresentationProminently
     heading.classList.toggle('has-presentation', declaredPresentation);
     const present = document.createElement('button');
     present.type = 'button';
     present.className = 'present-page';
-    present.textContent = 'Presentar';
+    present.innerHTML = icon('presentation');
+    present.setAttribute('aria-label', 'Presentar');
+    present.title = 'Presentar';
     present.hidden = !declaredPresentation;
     present.addEventListener('click', () => {
       void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null, {
@@ -3865,7 +3867,7 @@ export function renderOutliner(
   }
   const presentationActions: MenuAction[] = declaredPresentation ? [{
     label: 'Presentar',
-    icon: 'eye',
+    icon: 'presentation',
     run: () => void presentPage(page, options, callbacks.onNavigate, null, {
       scheme: callbacks.scheme,
       onScheme: callbacks.onScheme,

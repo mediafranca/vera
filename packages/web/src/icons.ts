@@ -57,6 +57,12 @@ const SHAPES = {
     '<path d="M4 18v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2"/>' +
     '<path d="M4 9h16"/><path d="M10 14l2 2l2 -2"/>',
 
+  // Lucide `presentation`: la misma acción en el encabezado y en los menús.
+  presentation:
+    '<path d="M2 3h20"/>' +
+    '<path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/>' +
+    '<path d="m7 21 5-5 5 5"/>',
+
   sun:
     '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>' +
     '<line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>' +

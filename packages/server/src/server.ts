@@ -15,6 +15,7 @@ import {
   TESTIMONY_KEY,
   VeraGraph,
   isArgumentWork,
+  projectTrail,
   readTrail,
   type Trail,
   answersIn,
@@ -6412,9 +6413,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            * su hilo llegaran en momentos distintos y la página parpadeara al
            * abrirse. Cuando la página no lo declara, viaja nulo y no cuesta nada.
            */
-          // Un recorrido puede atravesar páginas que no pertenecen al sitio.
-          // Hasta tener una proyección parcial honesta, no se entrega a anybody.
-          trail: publicAccess ? null : trailOf(page.id),
+          // El argumento publicado conserva su figura sin ensanchar el sitio:
+          // una parada fuera del ámbito permanece como corte opaco, en vez de
+          // desaparecer y fabricar una continuidad que el autor nunca escribió.
+          trail: (() => {
+            const trail = trailOf(page.id);
+            return trail === null || !publicAccess
+              ? trail
+              : projectTrail(trail, isPublicPage);
+          })(),
           visibility: page.visibility,
           publication: publicationView(page.id),
           createdAt: page.createdAt,
