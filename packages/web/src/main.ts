@@ -79,7 +79,7 @@ import {
   clearTrace,
   dropped,
   loadTrace,
-  movedTo,
+  movedBeside,
   retainingPages,
   pagesOf,
   saveTrace,
@@ -2655,9 +2655,27 @@ function drawTrail(): void {
   const trail = $('#map-trail');
   trail.innerHTML = '';
   let draggedFrom: number | null = null;
+  let dropTarget: { index: number; side: 'before' | 'after' } | null = null;
 
-  const reorder = (from: number, to: number): void => {
-    workspace.trace = movedTo(workspace.trace, from, to);
+  const clearDropMark = (): void => {
+    for (const marked of trail.querySelectorAll('.drop-before, .drop-after')) {
+      marked.classList.remove('drop-before', 'drop-after');
+    }
+    dropTarget = null;
+  };
+
+  const markDrop = (target: HTMLElement, event: { clientX: number }): void => {
+    clearDropMark();
+    const index = Number(target.dataset['traceIndex']);
+    if (!Number.isInteger(index)) return;
+    const box = target.getBoundingClientRect();
+    const side = event.clientX < box.left + box.width / 2 ? 'before' : 'after';
+    target.classList.add(side === 'before' ? 'drop-before' : 'drop-after');
+    dropTarget = { index, side };
+  };
+
+  const reorder = (from: number, target: number, side: 'before' | 'after'): void => {
+    workspace.trace = movedBeside(workspace.trace, from, target, side);
     saveTrace(workspace.trace);
     drawTrail();
   };
@@ -2676,23 +2694,28 @@ function drawTrail(): void {
     grip.title = `mover ${page?.title ?? id}`;
     grip.setAttribute('aria-label', `mover ${page?.title ?? id}`);
 
-    let pointerTarget = index;
     grip.addEventListener('pointerdown', (event) => {
-      pointerTarget = index;
       grip.setPointerCapture(event.pointerId);
       item.classList.add('moving');
     });
     grip.addEventListener('pointermove', (event) => {
       if (!grip.hasPointerCapture(event.pointerId)) return;
-      const under = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.trail-step');
-      const target = Number(under?.dataset['traceIndex']);
-      if (Number.isInteger(target)) pointerTarget = target;
+      const hit = document.elementFromPoint(event.clientX, event.clientY);
+      const under = hit instanceof Element ? hit.closest<HTMLElement>('.trail-step') : null;
+      if (under !== null) markDrop(under, event);
+      else clearDropMark();
     });
     grip.addEventListener('pointerup', (event) => {
       if (!grip.hasPointerCapture(event.pointerId)) return;
       grip.releasePointerCapture(event.pointerId);
       item.classList.remove('moving');
-      if (pointerTarget !== index) reorder(index, pointerTarget);
+      const destination = dropTarget;
+      clearDropMark();
+      if (destination !== null) reorder(index, destination.index, destination.side);
+    });
+    grip.addEventListener('pointercancel', () => {
+      item.classList.remove('moving');
+      clearDropMark();
     });
 
     item.draggable = true;
@@ -2704,12 +2727,24 @@ function drawTrail(): void {
     item.addEventListener('dragend', () => {
       draggedFrom = null;
       item.classList.remove('moving');
+      clearDropMark();
     });
-    item.addEventListener('dragover', (event) => event.preventDefault());
+    item.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      markDrop(item, event);
+      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
+    });
+    item.addEventListener('dragleave', (event) => {
+      if (!(event.relatedTarget instanceof Node) || !item.contains(event.relatedTarget)) clearDropMark();
+    });
     item.addEventListener('drop', (event) => {
       event.preventDefault();
       const from = draggedFrom ?? Number(event.dataTransfer?.getData('text/plain'));
-      if (Number.isInteger(from) && from !== index) reorder(from, index);
+      const destination = dropTarget;
+      clearDropMark();
+      if (Number.isInteger(from) && destination !== null) {
+        reorder(from, destination.index, destination.side);
+      }
     });
 
     const pill = document.createElement('button');
@@ -2754,20 +2789,6 @@ function drawTrail(): void {
    * entero; para empezar más tarde se pulsa con el botón derecho en la parada
    * por donde se quiere empezar.
    */
-  if (workspace.trace.length >= 2) {
-    const keep = document.createElement('button');
-    keep.type = 'button';
-    keep.className = 'trail-keep';
-    // El icono y no la palabra: la fila del rastro son nombres de páginas, y un
-    // botón con texto ahí dentro compite con ellos por lo mismo que uno viene a
-    // leer. Lo que dice la palabra va en el título, donde no estorba.
-    keep.innerHTML = icon('feather');
-    keep.title = 'abrir una mesa de trabajo con todo lo andado';
-    keep.setAttribute('aria-label', 'crear una preparación argumental');
-    keep.addEventListener('click', () => void promoteTrace(null));
-    trail.append(keep);
-  }
-
   if (workspace.trace.length > 0) {
     const booklet = document.createElement('button');
     booklet.type = 'button';
@@ -2777,6 +2798,20 @@ function drawTrail(): void {
     booklet.setAttribute('aria-label', 'exportar el rastro como librillo PDF');
     booklet.addEventListener('click', () => void exportTraceBooklet());
     trail.append(booklet);
+
+    if (workspace.trace.length >= 2) {
+      const keep = document.createElement('button');
+      keep.type = 'button';
+      keep.className = 'trail-keep';
+      // El icono y no la palabra: la fila del rastro son nombres de páginas, y
+      // un botón con texto ahí dentro compite con ellos por lo mismo que uno
+      // viene a leer. Lo que dice la palabra va en el título, donde no estorba.
+      keep.innerHTML = icon('feather');
+      keep.title = 'abrir una mesa de trabajo con todo lo andado';
+      keep.setAttribute('aria-label', 'crear una preparación argumental');
+      keep.addEventListener('click', () => void promoteTrace(null));
+      trail.append(keep);
+    }
 
     const clear = document.createElement('button');
     clear.type = 'button';

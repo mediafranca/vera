@@ -1537,6 +1537,11 @@ surface VeraWorkspace {
         -- Ordenar el rastro es la primera mitad de componer un argumento y ocurre
         -- antes de que nadie haya decidido componer ninguno. Por eso vive aquí y
         -- no en trail.allium: es una cosa que se hace mientras se lee.
+        --
+        -- Mientras se arrastra, una línea vertical de acento ocupa el intersticio
+        -- anterior o posterior donde caerá el paso. La marca desaparece al
+        -- soltar o cancelar y el orden resultante coincide con ese intersticio:
+        -- se señala una posición de inserción, no una pastilla receptora.
 
     @guarantee TheTraceSurvivesRefresh
         -- El rastro completo sobrevive a recargar o cerrar la interfaz. La última

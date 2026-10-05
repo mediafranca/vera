@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
 describe('el rastro hecho librillo', () => {
-  it('pone el libro inmediatamente antes de limpiar y conserva el orden de las páginas', () => {
-    assert.match(main, /className = 'trail-booklet'[\s\S]*?trail\.append\(booklet\);[\s\S]*?className = 'trail-clear'/);
+  it('ordena las acciones como PDF, argumento y limpiar, y conserva el orden de las páginas', () => {
+    assert.match(main, /className = 'trail-booklet'[\s\S]*?trail\.append\(booklet\);[\s\S]*?className = 'trail-keep'[\s\S]*?trail\.append\(keep\);[\s\S]*?className = 'trail-clear'/);
     assert.match(main, /booklet\.innerHTML = icon\('book-down'\)/);
     assert.match(main, /keep\.innerHTML = icon\('feather'\)/);
     assert.match(main, /clear\.innerHTML = icon\('circle-x'\)/);
@@ -30,5 +30,13 @@ describe('el rastro hecho librillo', () => {
     assert.match(styles, /\.trail-step \{[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--text-dim\) 58%, transparent\);/);
     assert.match(styles, /\.trail-step \.trail-pill \{[\s\S]*?border: 0;/);
     assert.match(main, /item\.append\(grip, pill, remove\)/);
+  });
+
+  it('marca el intersticio de inserción y eleva ópticamente el rótulo', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(main, /classList\.add\(side === 'before' \? 'drop-before' : 'drop-after'\)/);
+    assert.match(main, /movedBeside\(workspace\.trace, from, target, side\)/);
+    assert.match(styles, /\.trail-step\.drop-before::before,[\s\S]*?\.trail-step\.drop-after::after[\s\S]*?background: var\(--accent\)/);
+    assert.match(styles, /\.trail-step \.trail-pill \{[\s\S]*?transform: translateY\(-0\.06rem\)/);
   });
 });

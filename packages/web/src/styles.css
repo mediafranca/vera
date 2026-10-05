@@ -1512,6 +1512,7 @@ button { touch-action: manipulation; }
 
 .trail-step {
   pointer-events: auto;
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-width: 0;
@@ -1523,7 +1524,7 @@ button { touch-action: manipulation; }
   border: 1px solid color-mix(in srgb, var(--text-dim) 58%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--bg) 55%, transparent);
 }
 
@@ -1540,7 +1541,29 @@ button { touch-action: manipulation; }
   border-radius: 0;
   background: none;
   padding-inline: 0.25rem;
+  /* Plex se posa ópticamente bajo dentro de una cápsula tan baja. Se conserva
+     la altura pulsable y sólo se eleva el rótulo un píxel. */
+  transform: translateY(-0.06rem);
 }
+
+/* El arrastre marca el intersticio donde caerá la parada. No colorea una
+   pastilla completa: la decisión es «antes/después», no «sobre». */
+.trail-step.drop-before::before,
+.trail-step.drop-after::after {
+  content: '';
+  position: absolute;
+  top: -0.18rem;
+  bottom: -0.18rem;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0.35rem color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.trail-step.drop-before::before { left: -0.2rem; }
+.trail-step.drop-after::after { right: -0.2rem; }
 
 .trail-step.moving {
   opacity: 0.55;

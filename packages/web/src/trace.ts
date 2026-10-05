@@ -191,6 +191,26 @@ export function movedTo(trace: readonly TraceStep[], index: number, position: nu
   return next;
 }
 
+/**
+ * Inserta un paso antes o después de otro.
+ *
+ * La marca visual del rastro señala un intersticio, no la pastilla que será
+ * reemplazada. Al quitar primero el paso arrastrado, los intersticios que están
+ * a su derecha retroceden una posición; esta función conserva esa semántica en
+ * un único lugar para ratón, tacto y drag-and-drop nativo.
+ */
+export function movedBeside(
+  trace: readonly TraceStep[],
+  index: number,
+  target: number,
+  side: 'before' | 'after',
+): TraceStep[] {
+  if (index < 0 || index >= trace.length || target < 0 || target >= trace.length) return [...trace];
+  const boundary = target + (side === 'after' ? 1 : 0);
+  const position = boundary > index ? boundary - 1 : boundary;
+  return movedTo(trace, index, position);
+}
+
 /** Las páginas por las que se pasó, en orden. Lo que el mapa necesita del rastro. */
 export function pagesOf(trace: readonly TraceStep[]): string[] {
   return trace.map((step) => step.page);
