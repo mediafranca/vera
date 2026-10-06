@@ -512,8 +512,11 @@ Dicho aparte para no confundir lo construido con lo previsto.
   complementario [Vera Conecta](https://vera.mediafranca.net/vera-conecta/)
   construye ese mismo camino sin abrir puertos, sin IP pública y sin instalar
   Tailscale. Será la opción predeterminada para quien no quiere operar su propio
-  túnel. El relay y la interfaz Desktop están probados localmente; no hay todavía
-  un ambiente público desplegado.
+  túnel. El relay comunitario opera en
+  [`https://conecta.mediafranca.net`](https://conecta.mediafranca.net) y el
+  recorrido Desktop → relay → MCP local está probado extremo a extremo. Cada
+  cliente recibe una credencial propia y revocable; conocer la URL pública de
+  una instalación no concede acceso.
 
 ---
 
