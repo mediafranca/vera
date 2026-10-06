@@ -23,6 +23,11 @@ entity ConexionDeDesktop {
 }
 
 contract CustodiaDelEnlace {
+    @invariant ElGobiernoPrecedeAlEnlace
+        -- Una instalación nueva ya ofrece la superficie que gobierna conexiones
+        -- antes de emparejarse. Activar Vera Conecta no crea gobierno a
+        -- posteriori ni convierte la red en requisito para habitar la memoria.
+
     @invariant ElSecretoNoViveEnElCorpus
         -- El secreto del enlace nunca se escribe en una página, propiedad,
         -- archivo de configuración legible, registro ni respuesta del servidor web.
