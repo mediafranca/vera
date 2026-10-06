@@ -27,7 +27,8 @@ use "./block-gloss.allium" as gloss
 -- Contracts
 ------------------------------------------------------------
 
--- A presentation is another way of reading the page, never another copy of it.
+-- A presentation is another way of reading a declared presentation or finished
+-- argument, never another copy of it.
 contract PagePresentationProjection {
     project: (page: core/Page) -> PresentationDeck
 
@@ -173,7 +174,7 @@ rule EnterADeclaredPresentationPage {
 
     requires: exists membership
     requires: membership.status = active
-    requires: semantic_type(page) = "presentación"
+    requires: semantic_type(page) = "presentación" or semantic_type(page) = "argumento"
     requires: first_level_blocks(page).count > 0
 
     ensures:
@@ -201,7 +202,7 @@ rule RefuseAnEmptyDeclaredPresentation {
 
     requires: exists membership
     requires: membership.status = active
-    requires: semantic_type(page) = "presentación"
+    requires: semantic_type(page) = "presentación" or semantic_type(page) = "argumento"
     requires: first_level_blocks(page).count = 0
 
     ensures: PresentationRefusal.created(
@@ -434,14 +435,15 @@ surface PresentationViewer {
         fulfils PresentationNavigation
 
     @guarantee DeclaredPresentationsOfferPresentationProminently
-        -- A page whose semantic type is `presentación` exposes Presentar as a
-        -- primary page action. The participant need not know a URL convention or
-        -- edit source markup to enter the viewer.
+        -- A page whose semantic type is `presentación` or the finished state
+        -- `argumento` exposes Presentar as a primary page action. A preparation
+        -- remains in its workbench until its author declares it an argument.
 
     @guarantee OrdinaryPagesDoNotOfferPresentation
         -- Presentar aparece sólo cuando el tipo semántico de la página es
-        -- `presentación`. Una nota, jornada o página administrativa corriente no
-        -- ofrece una acción que contradiga lo que la propia página dice que es.
+        -- `presentación` o `argumento`. Una preparación, nota, jornada o página
+        -- administrativa corriente no ofrece una acción que contradiga lo que la
+        -- propia página dice que es.
 
     @guarantee TheViewerUsesTheWholeAvailableStage
         -- The viewer itself is the maximised presentation mode: the active slide
@@ -491,9 +493,10 @@ surface PresentationViewer {
         -- may forget them; changing them creates no graph operation.
 
     @guarantee PublicPresentationsRemainPages
-        -- A public canonical URL opens the ordinary published page. Presentar or
-        -- a presentation deep link opens the same published revision in the
-        -- viewer, with private glosas omitted from every public response.
+        -- A public canonical URL for a presentation or argument opens the
+        -- ordinary published page. Presentar or a presentation deep link opens
+        -- that same published revision in the viewer, with private glosas omitted
+        -- from every public response.
 
     @guarantee ReadingNeedsSurviveTheChangeOfMode
         -- The viewer preserves meaningful heading, list, link and media semantics,

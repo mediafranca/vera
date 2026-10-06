@@ -219,6 +219,7 @@ export {
   TRAIL_KIND,
   isTrail,
   readTrail,
+  projectTrail,
   readingOrder,
   type CrossingKind,
   type Trail,

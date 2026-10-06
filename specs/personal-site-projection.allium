@@ -117,6 +117,14 @@ contract PersonalWebsiteProjection {
         -- private, unassigned or nonexistent page creates no public node, edge
         -- or evidence that distinguishes those three cases.
 
+    @invariant PublishedArgumentsKeepTheirPublicThread
+        -- A published argument keeps its ordered thread over the public map.
+        -- Published stops retain their authored ordinals and crossings; every
+        -- stop outside the site's publications becomes the same opaque broken
+        -- bridge as an unresolved reference. The projection never removes that
+        -- gap and falsely joins its public neighbours, nor exposes private
+        -- relation, testimony or crossing metadata through it.
+
     @invariant SafeControlsRemainUseful
         -- `anybody` can use page navigation, search, text/graph/split views, 2D
         -- and 3D maps, reach, folding, light/dark presentation, local design

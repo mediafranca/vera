@@ -52,7 +52,7 @@ import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
 import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
-import { graphOfThread, threadSettings } from './graph/thread.ts';
+import { threadSettings } from './graph/thread.ts';
 import {
   renderGraph3D,
   cleanupGraph3D,
@@ -79,7 +79,7 @@ import {
   clearTrace,
   dropped,
   loadTrace,
-  movedTo,
+  movedBeside,
   retainingPages,
   pagesOf,
   saveTrace,
@@ -2464,10 +2464,10 @@ async function drawGraph(reach = 1): Promise<void> {
       workspace.activePage,
       requestedDepth,
       workspace.mapScope === 'published',
+      workspace.graphView === 'graph_d4' ? 'd4' : 'spatial',
       delivery.signal,
     );
     data = journalsInMap(data, workspace.activePage, workspace.graphJournals);
-    data = graphOfThread(data, openTrail);
   } catch {
     if (delivery.signal.aborted) return;
     /*
@@ -2656,9 +2656,27 @@ function drawTrail(): void {
   const trail = $('#map-trail');
   trail.innerHTML = '';
   let draggedFrom: number | null = null;
+  let dropTarget: { index: number; side: 'before' | 'after' } | null = null;
 
-  const reorder = (from: number, to: number): void => {
-    workspace.trace = movedTo(workspace.trace, from, to);
+  const clearDropMark = (): void => {
+    for (const marked of trail.querySelectorAll('.drop-before, .drop-after')) {
+      marked.classList.remove('drop-before', 'drop-after');
+    }
+    dropTarget = null;
+  };
+
+  const markDrop = (target: HTMLElement, event: { clientX: number }): void => {
+    clearDropMark();
+    const index = Number(target.dataset['traceIndex']);
+    if (!Number.isInteger(index)) return;
+    const box = target.getBoundingClientRect();
+    const side = event.clientX < box.left + box.width / 2 ? 'before' : 'after';
+    target.classList.add(side === 'before' ? 'drop-before' : 'drop-after');
+    dropTarget = { index, side };
+  };
+
+  const reorder = (from: number, target: number, side: 'before' | 'after'): void => {
+    workspace.trace = movedBeside(workspace.trace, from, target, side);
     saveTrace(workspace.trace);
     drawTrail();
   };
@@ -2677,23 +2695,28 @@ function drawTrail(): void {
     grip.title = `mover ${page?.title ?? id}`;
     grip.setAttribute('aria-label', `mover ${page?.title ?? id}`);
 
-    let pointerTarget = index;
     grip.addEventListener('pointerdown', (event) => {
-      pointerTarget = index;
       grip.setPointerCapture(event.pointerId);
       item.classList.add('moving');
     });
     grip.addEventListener('pointermove', (event) => {
       if (!grip.hasPointerCapture(event.pointerId)) return;
-      const under = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.trail-step');
-      const target = Number(under?.dataset['traceIndex']);
-      if (Number.isInteger(target)) pointerTarget = target;
+      const hit = document.elementFromPoint(event.clientX, event.clientY);
+      const under = hit instanceof Element ? hit.closest<HTMLElement>('.trail-step') : null;
+      if (under !== null) markDrop(under, event);
+      else clearDropMark();
     });
     grip.addEventListener('pointerup', (event) => {
       if (!grip.hasPointerCapture(event.pointerId)) return;
       grip.releasePointerCapture(event.pointerId);
       item.classList.remove('moving');
-      if (pointerTarget !== index) reorder(index, pointerTarget);
+      const destination = dropTarget;
+      clearDropMark();
+      if (destination !== null) reorder(index, destination.index, destination.side);
+    });
+    grip.addEventListener('pointercancel', () => {
+      item.classList.remove('moving');
+      clearDropMark();
     });
 
     item.draggable = true;
@@ -2705,18 +2728,33 @@ function drawTrail(): void {
     item.addEventListener('dragend', () => {
       draggedFrom = null;
       item.classList.remove('moving');
+      clearDropMark();
     });
-    item.addEventListener('dragover', (event) => event.preventDefault());
+    item.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      markDrop(item, event);
+      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
+    });
+    item.addEventListener('dragleave', (event) => {
+      if (!(event.relatedTarget instanceof Node) || !item.contains(event.relatedTarget)) clearDropMark();
+    });
     item.addEventListener('drop', (event) => {
       event.preventDefault();
       const from = draggedFrom ?? Number(event.dataTransfer?.getData('text/plain'));
-      if (Number.isInteger(from) && from !== index) reorder(from, index);
+      const destination = dropTarget;
+      clearDropMark();
+      if (Number.isInteger(from) && destination !== null) {
+        reorder(from, destination.index, destination.side);
+      }
     });
 
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.className = id === workspace.activePage ? 'trail-pill here' : 'trail-pill';
-    pill.textContent = page?.title ?? id;
+    const label = document.createElement('span');
+    label.className = 'trail-label';
+    label.textContent = page?.title ?? id;
+    pill.append(label);
     pill.addEventListener('click', () => void openPage(id));
     /*
      * Y desde cualquier parada, sembrar con el tramo que va de ahí hasta aquí.
@@ -2755,34 +2793,34 @@ function drawTrail(): void {
    * entero; para empezar más tarde se pulsa con el botón derecho en la parada
    * por donde se quiere empezar.
    */
-  if (workspace.trace.length >= 2) {
-    const keep = document.createElement('button');
-    keep.type = 'button';
-    keep.className = 'trail-keep';
-    // El icono y no la palabra: la fila del rastro son nombres de páginas, y un
-    // botón con texto ahí dentro compite con ellos por lo mismo que uno viene a
-    // leer. Lo que dice la palabra va en el título, donde no estorba.
-    keep.innerHTML = icon('steps-1');
-    keep.title = 'abrir una mesa de trabajo con todo lo andado';
-    keep.setAttribute('aria-label', 'crear una preparación argumental');
-    keep.addEventListener('click', () => void promoteTrace(null));
-    trail.append(keep);
-  }
-
   if (workspace.trace.length > 0) {
     const booklet = document.createElement('button');
     booklet.type = 'button';
     booklet.className = 'trail-booklet';
-    booklet.innerHTML = icon('book');
+    booklet.innerHTML = icon('book-down');
     booklet.title = 'exportar lo andado como un solo PDF en formato librillo';
     booklet.setAttribute('aria-label', 'exportar el rastro como librillo PDF');
     booklet.addEventListener('click', () => void exportTraceBooklet());
     trail.append(booklet);
 
+    if (workspace.trace.length >= 2) {
+      const keep = document.createElement('button');
+      keep.type = 'button';
+      keep.className = 'trail-keep';
+      // El icono y no la palabra: la fila del rastro son nombres de páginas, y
+      // un botón con texto ahí dentro compite con ellos por lo mismo que uno
+      // viene a leer. Lo que dice la palabra va en el título, donde no estorba.
+      keep.innerHTML = icon('feather');
+      keep.title = 'abrir una mesa de trabajo con todo lo andado';
+      keep.setAttribute('aria-label', 'crear una preparación argumental');
+      keep.addEventListener('click', () => void promoteTrace(null));
+      trail.append(keep);
+    }
+
     const clear = document.createElement('button');
     clear.type = 'button';
     clear.className = 'trail-clear';
-    clear.innerHTML = icon('wash-dryclean-off');
+    clear.innerHTML = icon('circle-x');
     clear.title = 'limpiar rastro';
     clear.setAttribute('aria-label', 'limpiar rastro');
     clear.addEventListener('click', () => {
@@ -3862,9 +3900,50 @@ async function start(): Promise<void> {
     });
   }
 
+  /*
+   * En el sitio público el centro del primer mapa ya se conoce antes del índice:
+   * es la página nombrada por la ruta canónica o la portada declarada por el
+   * sitio. Pedir el grafo ahora deja que viaje a la vez que `/pages` y la página
+   * legible. Esperar esas dos respuestas en serie hacía que el mapa comenzara
+   * varios segundos después de que el navegador ya supiera qué debía mostrar.
+   *
+   * Una ruta amistosa necesita el índice para resolverse y no se adivina. En ese
+   * caso se conserva el arranque ordinario.
+   */
+  const initialRoute = parseRoute(new URL(window.location.href));
+  const eagerPublicCentre = isAnybody()
+    ? (initialRoute.page ?? (window.location.pathname === '/' ? corpus?.entryPoint ?? null : null))
+    : null;
+  if (eagerPublicCentre !== null) {
+    workspace.activePage = eagerPublicCentre;
+    applyLayout();
+  }
+
   await loadPages();
 
-  applyLayout();
+  /*
+   * Una dirección pública amistosa (`/vera/`) sólo se puede resolver cuando
+   * llega el índice. Aun así no hay razón para esperar después la página
+   * legible: en cuanto el índice traduce la ruta se inicia el mapa, y ambos
+   * viajes continúan en paralelo.
+   */
+  let resolvedPublicCentre = eagerPublicCentre;
+  if (resolvedPublicCentre === null && isAnybody()) {
+    const here = new URL(window.location.href);
+    const route = parseRoute(here);
+    if (route.page !== null) resolvedPublicCentre = route.page;
+    else if (here.pathname !== '/') {
+      let asked = '';
+      try {
+        asked = decodeURIComponent(here.pathname).replace(/^\/+|\/+$/g, '');
+      } catch {
+        asked = '';
+      }
+      resolvedPublicCentre = pages.find((page) => page.publicationPath === asked)?.id ?? null;
+    }
+    if (resolvedPublicCentre !== null) workspace.activePage = resolvedPublicCentre;
+  }
+  if (eagerPublicCentre === null) applyLayout();
   await applyRoute();
   offerPasskeyEnrollment();
 

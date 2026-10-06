@@ -15,6 +15,7 @@ import {
   TESTIMONY_KEY,
   VeraGraph,
   isArgumentWork,
+  projectTrail,
   readTrail,
   type Trail,
   answersIn,
@@ -296,6 +297,8 @@ export interface ServerOptions {
   publicSite?: { title: string; canonicalDomain: string };
   /** Origen loopback de la única ruta MCP expuesta por el dominio público. */
   publicMcpOrigin?: string;
+  /** Puerta MCP autenticada embebida por Vera Desktop para el relay saliente. */
+  localMcpHandler?: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>;
   /** Directorio estable que Tailscale Serve o el alojamiento público sirven. */
   publicOutput?: string;
   /** Iconos y manifiesto que acompañan a la proyección pública. */
@@ -1343,6 +1346,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const publicAccess = publicOrigin;
 
     /*
+     * Vera Desktop recibe sobres MCP por su WebSocket saliente y los deposita
+     * aquí. La página GET /mcp sigue describiendo conexiones; sólo POST habla
+     * protocolo. El manejador vuelve a autenticar el bearer antes de enumerar
+     * herramientas o leer el corpus.
+     */
+    if (!publicOrigin && request.method === 'POST' && path === '/mcp' && options.localMcpHandler !== undefined) {
+      await options.localMcpHandler(request, response);
+      return;
+    }
+
+    /*
      * La puerta pública es una sola grieta deliberada en el origen público.
      *
      * Se reenvía antes del guard de `anybody`, porque éste rechaza todo POST;
@@ -1466,6 +1480,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const publicSharedPath = publicSharedSpace !== null && canReadScopedSpace;
       const safe =
         path === '/' ||
+        path === '/index.html' ||
         path === '/health' ||
         path === '/pages' ||
         path === '/buscar' ||
@@ -6412,9 +6427,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            * su hilo llegaran en momentos distintos y la página parpadeara al
            * abrirse. Cuando la página no lo declara, viaja nulo y no cuesta nada.
            */
-          // Un recorrido puede atravesar páginas que no pertenecen al sitio.
-          // Hasta tener una proyección parcial honesta, no se entrega a anybody.
-          trail: publicAccess ? null : trailOf(page.id),
+          // El argumento publicado conserva su figura sin ensanchar el sitio:
+          // una parada fuera del ámbito permanece como corte opaco, en vez de
+          // desaparecer y fabricar una continuidad que el autor nunca escribió.
+          trail: (() => {
+            const trail = trailOf(page.id);
+            return trail === null || !publicAccess
+              ? trail
+              : projectTrail(trail, isPublicPage);
+          })(),
           visibility: page.visibility,
           publication: publicationView(page.id),
           createdAt: page.createdAt,
@@ -6817,6 +6838,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (path.startsWith('/graph/')) {
         const centre = decodeURIComponent(path.slice('/graph/'.length));
         const depth = Number(url.searchParams.get('depth') ?? '2');
+        // 2D y 3D sólo necesitan geometría. Las frases que D4 convierte en
+        // hojas se entregan únicamente cuando esa vista las pide; enviarlas en
+        // cada mapa público hacía viajar cientos de kilobytes invisibles.
+        const d4 = url.searchParams.get('detail') === 'd4';
         // El dueño puede mirar el mismo subgrafo publicado sin dejar de ser
         // dueño. Esto filtra sólo el mapa; no cambia la autoridad de la petición.
         const publishedMap = publicAccess || url.searchParams.get('published') === '1';
@@ -6886,11 +6911,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               trail: trailOf(id) !== null,
               degree: neighbours.get(id)?.size ?? 0,
               blockCount: graph.blocksOf(id).length,
-              lines: graph.blocksOf(id).map((block) => ({
-                block: block.stableId,
-                content: block.content,
-                gloss: graph.gloss(block.stableId)?.content ?? null,
-              })),
+              ...(d4 ? {
+                lines: graph.blocksOf(id).map((block) => ({
+                  block: block.stableId,
+                  content: block.content,
+                  gloss: graph.gloss(block.stableId)?.content ?? null,
+                })),
+              } : {}),
             })),
             links,
           });
@@ -6988,13 +7015,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             trail: trailOf(node.page) !== null,
             degree: node.degree,
             blockCount: node.blockCount,
-            lines: graph.blocksOf(node.page)
-              .filter((block) => neededBlocks.has(block.stableId))
-              .map((block) => ({
-                block: block.stableId,
-                content: block.content,
-                gloss: graph.gloss(block.stableId)?.content ?? null,
-              })),
+            ...(d4 ? {
+              lines: graph.blocksOf(node.page)
+                .filter((block) => neededBlocks.has(block.stableId))
+                .map((block) => ({
+                  block: block.stableId,
+                  content: block.content,
+                  gloss: graph.gloss(block.stableId)?.content ?? null,
+                })),
+            } : {}),
           })),
           links: responseLinks,
         });

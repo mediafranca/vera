@@ -34,6 +34,143 @@ export function isConnectionsPage(properties: readonly { key: string; value: str
 
 export type Write = (change: Change) => Promise<boolean>;
 
+interface DesktopConectaClient {
+  principalId: string;
+  label: string;
+  status: string;
+  scopes: string[];
+  expiresAt: string | null;
+}
+
+interface DesktopConectaInvitation {
+  principalId: string;
+  label: string;
+  mcpUrl: string;
+  token: string;
+  scopes: string[];
+  expiresAt: string;
+}
+
+interface DesktopConectaBridge {
+  status(): Promise<{ status: string; installationId: string | null; secureStorage: boolean; error?: string }>;
+  pair(url: string): Promise<{ installationId: string }>;
+  forget(): Promise<void>;
+  clients(): Promise<DesktopConectaClient[]>;
+  authorizeClient(label: string, scopes: string[]): Promise<DesktopConectaInvitation>;
+  revokeClient(principalId: string): Promise<void>;
+}
+
+async function conectaClientsSection(
+  host: HTMLElement,
+  bridge: DesktopConectaBridge,
+  notify: (message: string) => void,
+): Promise<void> {
+  const heading = document.createElement('h3');
+  heading.className = 'governing-title';
+  heading.textContent = 'Autorizar una IA remota';
+  const note = document.createElement('p');
+  note.className = 'governing-note';
+  note.textContent =
+    'Esta invitación funciona con clientes que admiten una cabecera Bearer, como Claude. ' +
+    'El secreto se muestra una sola vez y puede revocarse aquí sin desconectar las demás IAs.';
+  const form = document.createElement('div');
+  form.className = 'connect-new';
+  const label = document.createElement('label');
+  label.className = 'connect-field';
+  const labelCaption = document.createElement('span');
+  labelCaption.textContent = 'Nombre reconocible';
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.placeholder = 'Claude en mi cuenta';
+  label.append(labelCaption, name);
+  const scopes = ['read', 'write', 'delete'].map((scope) => {
+    const choice = document.createElement('label');
+    choice.className = 'conecta-scope';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = scope;
+    input.checked = scope === 'read';
+    choice.append(input, scope === 'read' ? 'leer' : scope === 'write' ? 'escribir' : 'borrar lo propio');
+    return { scope, choice, input };
+  });
+  const authorize = document.createElement('button');
+  authorize.type = 'button';
+  authorize.className = 'connect-copy';
+  authorize.textContent = 'autorizar';
+  form.append(label, ...scopes.map((one) => one.choice), authorize);
+  const born = document.createElement('div');
+  born.className = 'connect-born';
+  const listing = document.createElement('div');
+  listing.className = 'conecta-clients';
+  host.append(heading, note, form, born, listing);
+
+  const renderList = async (): Promise<void> => {
+    const clients = await bridge.clients();
+    listing.replaceChildren();
+    const title = document.createElement('h4');
+    title.textContent = 'Accesos remotos';
+    listing.append(title);
+    if (clients.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'governing-note';
+      empty.textContent = 'Todavía no hay IAs autorizadas por Conecta.';
+      listing.append(empty);
+      return;
+    }
+    for (const client of clients) {
+      const row = document.createElement('div');
+      row.className = 'conecta-client-row';
+      const identity = document.createElement('span');
+      identity.textContent = `${client.label} · ${client.scopes.join(', ')} · ${client.status}`;
+      const revoke = document.createElement('button');
+      revoke.type = 'button';
+      revoke.className = 'connect-copy';
+      revoke.textContent = 'revocar';
+      revoke.disabled = !['pendiente', 'autorizado', 'credencial_vencida'].includes(client.status);
+      revoke.addEventListener('click', () => {
+        revoke.disabled = true;
+        void bridge.revokeClient(client.principalId).then(
+          () => renderList(),
+          (error: Error) => { revoke.disabled = false; notify(error.message); },
+        );
+      });
+      row.append(identity, revoke);
+      listing.append(row);
+    }
+  };
+
+  authorize.addEventListener('click', () => {
+    const granted = scopes.filter((one) => one.input.checked).map((one) => one.scope);
+    authorize.disabled = true;
+    void bridge.authorizeClient(name.value, granted).then(
+      (invitation) => {
+        born.replaceChildren();
+        const warning = document.createElement('p');
+        warning.className = 'governing-note';
+        warning.textContent = `Copia ahora la conexión de «${invitation.label}». El bearer no volverá a mostrarse.`;
+        const value = document.createElement('pre');
+        value.className = 'connect-json';
+        const code = document.createElement('code');
+        code.textContent = `${invitation.mcpUrl}\nAuthorization: Bearer ${invitation.token}`;
+        value.append(code);
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'connect-copy';
+        copy.textContent = 'copiar';
+        copy.addEventListener('click', () => {
+          void navigator.clipboard?.writeText(code.textContent ?? '').then(() => (copy.textContent = 'copiado'));
+        });
+        born.append(warning, value, copy);
+        authorize.disabled = false;
+        void renderList();
+      },
+      (error: Error) => { authorize.disabled = false; notify(error.message); },
+    );
+  });
+
+  await renderList();
+}
+
 /** Cuánta memoria se llevó, en unidades que una persona puede pesar. */
 function weigh(characters: number): string {
   if (characters <= 0) return '—';
@@ -599,11 +736,7 @@ export async function renderConnections(
   relay.textContent = 'Vera Conecta';
   const relayNote = document.createElement('p');
   relayNote.className = 'governing-note';
-  const desktopConecta = (window as unknown as { veraConecta?: {
-    status(): Promise<{ status: string; installationId: string | null; secureStorage: boolean; error?: string }>;
-    pair(url: string): Promise<{ installationId: string }>;
-    forget(): Promise<void>;
-  } }).veraConecta;
+  const desktopConecta = (window as unknown as { veraConecta?: DesktopConectaBridge }).veraConecta;
   if (desktopConecta === undefined) {
     relayNote.textContent = 'El enlace remoto se administra desde Vera Desktop.';
   } else {
@@ -633,6 +766,20 @@ export async function renderConnections(
     }
   }
 
+  const remoteClients = document.createElement('div');
+  remoteClients.className = 'conecta-remote-clients';
+  if (desktopConecta !== undefined) {
+    const state = await desktopConecta.status();
+    if (state.installationId !== null) {
+      await conectaClientsSection(remoteClients, desktopConecta, notify).catch((error: Error) => {
+        const failed = document.createElement('p');
+        failed.className = 'governing-note';
+        failed.textContent = error.message;
+        remoteClients.append(failed);
+      });
+    }
+  }
+
   const captures = document.createElement('h2');
   captures.textContent = 'Capturas';
   const capturesNote = document.createElement('p');
@@ -640,7 +787,7 @@ export async function renderConnections(
   capturesNote.textContent =
     'Vera Clip y futuras entradas de captura aparecerán aquí con su alcance explícito; ' +
     'no heredan por omisión los permisos de una conexión conversacional.';
-  element.append(relay, relayNote, captures, capturesNote);
+  element.append(relay, relayNote, remoteClients, captures, capturesNote);
 
   if (declaring.size === 0 && door.undeclared.length === 0) return null;
   return { element, declaring };

@@ -1182,9 +1182,11 @@ surface TrailOnTheMap {
         -- sesión siga abierta; la madurez cambia, la disposición no se pierde.
 
     @guarantee TheWholeShapeAtOnce
-        -- El mapa del recorrido muestra exclusivamente sus paradas: no incluye la
-        -- página del recorrido ni el vecindario lateral de cada parada. Es una
-        -- proyección del argumento, no una consulta por proximidad sobre el corpus.
+        -- El mapa conserva la página del recorrido y todo el vecindario que
+        -- corresponde al alcance elegido. Sobre ese contexto enciende sus paradas
+        -- y tramos: el argumento se distingue por color, numeración y continuidad,
+        -- no porque Vera borre las páginas que lo rodean. Cambiar el alcance cambia
+        -- de verdad cuánto corpus se ve también mientras se lee un argumento.
         --
         -- Se encienden todas las paradas a la vez, no una a una según se lee. La
         -- forma del argumento —un tramo recto, un rodeo que vuelve, una estrella
@@ -1256,21 +1258,21 @@ surface TrailOnTheMap {
     @guarantee TheThreadStraightensWhileItIsRead
         -- Mientras el recorrido está abierto, y sólo entonces, sus paradas se
         -- disponen en su orden como una fila casi recta, con tramos de paso parejo.
-        -- La secuencia manda sobre la geometría del vecindario, que no forma parte
-        -- de esta proyección. Los distintos trazos conservan el color o estilo de
-        -- su clase para distinguir camino existente de campo través.
+        -- La secuencia manda sobre esas paradas sin retirar el vecindario que las
+        -- sitúa. Los distintos trazos conservan el color o estilo de su clase para
+        -- distinguir camino existente de campo través.
         --
         -- Los resortes no cruzan un puente cortado. Enderezar por encima del hueco
         -- afirmaría que las dos mitades van en línea, y de eso el recorrido no dice
         -- nada.
         --
-        -- Cerrado el recorrido, esta disposición no está: el mapa ordinario vuelve
-        -- a enseñar el vecindario y conserva sus propias posiciones.
+        -- Cerrado el recorrido, esta disposición no está: el mismo vecindario
+        -- conserva sus posiciones y deja de llevar el hilo superpuesto.
 
     @guarantee TheMapIsSeenToSettle
         -- Al abrir un recorrido sobre un mapa que ya estaba puesto, la transición
-        -- hacia su fila se ve ocurrir: queda claro que se cambió de la proyección
-        -- del vecindario a la proyección del argumento.
+        -- de sus paradas hacia la fila se ve ocurrir: queda claro que el argumento
+        -- se acomodó dentro del vecindario, no que éste haya sido sustituido.
 
     @guarantee ABrokenBridgeIsDrawnBroken
         -- Un nodo que no lleva a ningún sitio conserva su número y su tramo, y se

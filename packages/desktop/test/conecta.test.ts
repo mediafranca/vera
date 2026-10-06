@@ -83,6 +83,50 @@ describe('Vera Conecta dentro de Desktop', () => {
     assert.equal(conecta.status().status, 'desactivado');
   });
 
+  it('autoriza, lista y revoca una IA sin exponer el secreto de enlace a la web', async () => {
+    const store = new MemoryStore();
+    store.state = {
+      relayUrl: 'https://conecta.example', installationId: 'instalacion-1', linkSecret: 'secreto-enlace', credentials: {},
+    };
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.endsWith('/clients') && init?.method === 'POST') {
+        return Response.json({ principal_id: 'principal-1' }, { status: 201 });
+      }
+      if (url.endsWith('/principal-1/claim')) {
+        return Response.json({
+          secreto_de_cliente: 'bearer-remoto', alcances: ['read', 'write'], expira_en: '2027-01-03T00:00:00.000Z',
+        }, { status: 201 });
+      }
+      if (url.endsWith('/clients') && init?.method === undefined) {
+        return Response.json({ clientes: [{
+          principal_id: 'principal-1', etiqueta_de_aplicacion: 'Claude', estado: 'autorizado',
+          alcances: ['read', 'write'], expira_en: '2027-01-03T00:00:00.000Z',
+        }] });
+      }
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    const conecta = new DesktopConecta(store, 'http://127.0.0.1:4173');
+    const invitation = await conecta.authorizeClient('Claude', ['read', 'write']);
+    assert.deepEqual(invitation, {
+      principalId: 'principal-1', label: 'Claude',
+      mcpUrl: 'https://conecta.example/v/instalacion-1/mcp', token: 'bearer-remoto',
+      scopes: ['read', 'write'], expiresAt: '2027-01-03T00:00:00.000Z',
+    });
+    assert.match(String(calls[0]?.init?.body), /"prueba_de_secreto":"secreto-enlace"/);
+    assert.doesNotMatch(JSON.stringify(invitation), /secreto-enlace/);
+
+    const clients = await conecta.clients();
+    assert.equal(clients[0]?.label, 'Claude');
+    assert.equal((calls[2]?.init?.headers as Record<string, string>).authorization, 'Bearer secreto-enlace');
+
+    await conecta.revokeClient('principal-1');
+    assert.match(String(calls[3]?.init?.body), /"prueba_de_secreto":"secreto-enlace"/);
+  });
+
   it('entrega una captura del relay a la puerta estrecha local', async () => {
     const store = new MemoryStore();
     store.state = {
