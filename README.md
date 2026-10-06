@@ -174,9 +174,11 @@ Los reportes de seguridad siguen un canal privado descrito en
 compartido entre una instalación local de Vera y clientes MCP en Internet, sin
 abrir puertos, IP pública ni Tailscale. Vive en un repositorio propio porque
 es infraestructura de red con su propio ciclo de despliegue. El relay y su
-interfaz Desktop están probados localmente; el ambiente público aún no está
-desplegado. El [código y el contrato técnico](https://github.com/mediafranca/vera-conecta)
-permanecen abiertos.
+interfaz Desktop están probados extremo a extremo y el servicio comunitario
+opera en [conecta.mediafranca.net](https://conecta.mediafranca.net). El
+[código y el contrato técnico](https://github.com/mediafranca/vera-conecta)
+permanecen abiertos; cada instalación conserva localmente su corpus y autoriza
+por separado a cada cliente remoto.
 
 Vera se publica bajo [GNU AGPL-3.0-only](LICENSE). Consulta también
 [LICENCIA.md](LICENCIA.md), [AUTHORS.md](AUTHORS.md),
