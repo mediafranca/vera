@@ -8902,6 +8902,44 @@ html[data-working-slow='true']::after {
   outline: none;
 }
 
+.conecta-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.8rem;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+.conecta-scope input {
+  accent-color: var(--accent);
+}
+
+.conecta-clients {
+  margin: 0 0 1.4rem;
+}
+
+.conecta-clients h4 {
+  margin: 0 0 0.45rem;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.conecta-client-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--rule);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
 /* Lo que nace: el aviso, el bloque para pegar y el botón de copiar. */
 .connect-born:not(:empty) {
   border: 1px solid var(--accent);

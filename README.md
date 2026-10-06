@@ -149,13 +149,36 @@ conexión MCP, portabilidad, exposición, obligaciones de prueba y planes de
 trabajo. Las [especificaciones Allium](specs/) son la fuente de verdad del
 comportamiento.
 
+## Participar
+
+Vera necesita personas que prueben la aplicación, describan defectos, mejoren
+la documentación, contrasten las especificaciones y contribuyan código. No hace
+falta empezar programando:
+
+- usa [Discussions](https://github.com/mediafranca/vera/discussions) para
+  preguntas, propuestas tempranas y conversaciones de diseño;
+- abre un [issue](https://github.com/mediafranca/vera/issues/new/choose) cuando
+  haya un defecto reproducible o una tarea ya suficientemente definida;
+- lee [CONTRIBUTING.md](CONTRIBUTING.md) antes de abrir un pull request: todo PR
+  ordinario apunta a `dev` y debe preservar las garantías Allium;
+- consulta [GOVERNANCE.md](GOVERNANCE.md) para saber cómo se toman decisiones,
+  [SUPPORT.md](SUPPORT.md) para pedir ayuda y
+  [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) para las reglas de convivencia.
+
+Los reportes de seguridad siguen un canal privado descrito en
+[SECURITY.md](SECURITY.md).
+
 ## Proyectos relacionados
 
-[Vera Conecta](https://github.com/mediafranca/vera-conecta) es el puente
-opcional entre una instalación local de Vera y clientes MCP en Internet, sin
+[Vera Conecta](https://vera.mediafranca.net/vera-conecta/) es el puente
+compartido entre una instalación local de Vera y clientes MCP en Internet, sin
 abrir puertos, IP pública ni Tailscale. Vive en un repositorio propio porque
-es infraestructura de red con su propio ciclo de despliegue; hoy es un walking
-skeleton (M0/M1), sin ambiente desplegado.
+es infraestructura de red con su propio ciclo de despliegue. El relay y su
+interfaz Desktop están probados extremo a extremo y el servicio comunitario
+opera en [conecta.mediafranca.net](https://conecta.mediafranca.net). El
+[código y el contrato técnico](https://github.com/mediafranca/vera-conecta)
+permanecen abiertos; cada instalación conserva localmente su corpus y autoriza
+por separado a cada cliente remoto.
 
 Vera se publica bajo [GNU AGPL-3.0-only](LICENSE). Consulta también
 [LICENCIA.md](LICENCIA.md), [AUTHORS.md](AUTHORS.md),

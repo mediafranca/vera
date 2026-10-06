@@ -509,10 +509,14 @@ Dicho aparte para no confundir lo construido con lo previsto.
   propias no hace falta, así que no bloquea M5.
 - **Una puerta pública sin montar un túnel a mano.** El caso C de este documento
   asume un frente HTTPS ya configurado, como el de esta instancia. El producto
-  complementario [Vera Conecta](https://github.com/mediafranca/vera-conecta)
+  complementario [Vera Conecta](https://vera.mediafranca.net/vera-conecta/)
   construye ese mismo camino sin abrir puertos, sin IP pública y sin instalar
-  Tailscale, para quien no quiere montar su propio túnel. Hoy es un walking
-  skeleton (M0/M1): no hay ningún ambiente desplegado todavía.
+  Tailscale. Será la opción predeterminada para quien no quiere operar su propio
+  túnel. El relay comunitario opera en
+  [`https://conecta.mediafranca.net`](https://conecta.mediafranca.net) y el
+  recorrido Desktop → relay → MCP local está probado extremo a extremo. Cada
+  cliente recibe una credencial propia y revocable; conocer la URL pública de
+  una instalación no concede acceso.
 
 ---
 
@@ -527,5 +531,7 @@ Dicho aparte para no confundir lo construido con lo previsto.
   privado, público de lectura, público de acceso, y qué exige cada uno.
 - [`docs/portabilidad.md`](portabilidad.md) — levantar una instancia propia y
   exponerla con Tailscale.
-- [Vera Conecta](https://github.com/mediafranca/vera-conecta) — el puente
-  opcional para clientes MCP en Internet sin túnel propio. En desarrollo.
+- [Vera Conecta](https://vera.mediafranca.net/vera-conecta/) — explicación,
+  filosofía y guía del puente compartido para clientes MCP sin túnel propio.
+- [Repositorio Vera Conecta](https://github.com/mediafranca/vera-conecta) —
+  código, especificaciones y operación del relay. En desarrollo.

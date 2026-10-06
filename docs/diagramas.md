@@ -187,12 +187,12 @@ flowchart LR
 
 El conector pertenece a Desktop. Vera Conecta conserva el contrato y el estado
 mínimo del relay, pero nunca abre la biblioteca ni custodia credenciales de
-VERA. La página [[VERA: Conexiones]] es la superficie humana de este recorrido.
+VERA. La página [[MCP]] es la superficie humana de este recorrido.
 
 ```mermaid
 sequenceDiagram
     actor D as Dueño de la biblioteca
-    participant UI as VERA: Conexiones
+    participant UI as VERA: la puerta MCP
     participant Desktop as Vera Desktop
     participant Seguro as Almacén seguro del SO
     participant Relay as Vera Conecta

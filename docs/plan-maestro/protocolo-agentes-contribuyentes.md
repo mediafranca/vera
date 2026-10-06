@@ -16,7 +16,7 @@ fotografías fechadas, no páginas que cualquiera actualiza. El mecanismo de
 reclamo **es el mismo que ya existe para cualquier rama**:
 
 1. Antes de empezar, corre `git branch -a` (o revisa los PR abiertos hacia
-   `v0-implementacion`) y busca si alguien ya abrió una rama para esa unidad o
+   `dev`) y busca si alguien ya abrió una rama para esa unidad o
    una que toque los mismos archivos.
 2. Si está libre, ábrela con el nombre de la unidad, siguiendo la convención
    de `CONTRIBUTING.md §2`: `vN.M-tema-en-dos-o-tres-palabras`. Usa el
