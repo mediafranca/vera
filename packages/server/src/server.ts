@@ -297,6 +297,8 @@ export interface ServerOptions {
   publicSite?: { title: string; canonicalDomain: string };
   /** Origen loopback de la única ruta MCP expuesta por el dominio público. */
   publicMcpOrigin?: string;
+  /** Puerta MCP autenticada embebida por Vera Desktop para el relay saliente. */
+  localMcpHandler?: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>;
   /** Directorio estable que Tailscale Serve o el alojamiento público sirven. */
   publicOutput?: string;
   /** Iconos y manifiesto que acompañan a la proyección pública. */
@@ -1342,6 +1344,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
     const publicOrigin = forcedPublic || (canonicalHost !== '' && host === canonicalHost);
     const publicAccess = publicOrigin;
+
+    /*
+     * Vera Desktop recibe sobres MCP por su WebSocket saliente y los deposita
+     * aquí. La página GET /mcp sigue describiendo conexiones; sólo POST habla
+     * protocolo. El manejador vuelve a autenticar el bearer antes de enumerar
+     * herramientas o leer el corpus.
+     */
+    if (!publicOrigin && request.method === 'POST' && path === '/mcp' && options.localMcpHandler !== undefined) {
+      await options.localMcpHandler(request, response);
+      return;
+    }
 
     /*
      * La puerta pública es una sola grieta deliberada en el origen público.

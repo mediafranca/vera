@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
 import { DesktopConecta, type ConectaState, type SecureConectaStore } from './conecta.ts';
+import { createMCPHandler } from '../../mcp/src/http.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../..');
@@ -79,6 +80,7 @@ async function startVera(): Promise<void> {
       databasePath,
       objectsRoot,
       webRoot,
+      localMcpHandler: createMCPHandler(`http://127.0.0.1:${PORT}`),
     });
   }
   if (conecta === null) {

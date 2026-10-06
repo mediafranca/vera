@@ -34,6 +34,11 @@ contract CustodiaDelEnlace {
     @invariant LaConexionSiempreSaleDeDesktop
         -- Vera Conecta nunca inicia una conexión hacia la biblioteca ni exige
         -- abrir un puerto del equipo.
+
+    @invariant LasSolicitudesRemotasCruzanLaPuertaMCPLocal
+        -- Un sobre MCP recibido por Desktop se ejecuta en la puerta MCP local
+        -- autenticada. La ruta visual que describe conexiones no sustituye al
+        -- protocolo aunque comparta el nombre `/mcp`.
 }
 
 contract GobiernoDeClientesRemotos {
