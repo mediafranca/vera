@@ -228,6 +228,20 @@ ipcMain.handle('vera-conecta:pair', async (_event, relayUrl: unknown) => {
   return conecta.pair(relayUrl);
 });
 ipcMain.handle('vera-conecta:forget', () => conecta?.forget());
+ipcMain.handle('vera-conecta:clients', () => conecta?.clients() ?? []);
+ipcMain.handle('vera-conecta:authorize-client', async (_event, label: unknown, scopes: unknown) => {
+  if (typeof label !== 'string' || !Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string')) {
+    throw new Error('La autorización remota no es válida.');
+  }
+  if (conecta === null) throw new Error('Vera todavía no está iniciada.');
+  return conecta.authorizeClient(label, scopes);
+});
+ipcMain.handle('vera-conecta:revoke-client', async (_event, principalId: unknown) => {
+  if (typeof principalId !== 'string' || principalId === '') throw new Error('El cliente remoto no es válido.');
+  if (conecta === null) throw new Error('Vera todavía no está iniciada.');
+  await conecta.revokeClient(principalId);
+  return { ok: true };
+});
 
 app.whenReady().then(() => {
   createWindow();
