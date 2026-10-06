@@ -1,0 +1,37 @@
+name: Propuesta acotada
+description: Una capacidad o mejora suficientemente clara para evaluar.
+title: "propuesta: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema humano que resuelve
+      description: Describe la necesidad antes que la solución.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportamiento propuesto
+      description: Qué debería poder observar una persona.
+    validations:
+      required: true
+  - type: textarea
+    id: sovereignty
+    attributes:
+      label: Soberanía, procedencia y riesgos
+      description: Qué garantía podría afectar y cómo se preserva.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidencia o alternativas
+  - type: checkboxes
+    id: prior
+    attributes:
+      label: Conversación previa
+      options:
+        - label: Busqué issues y Discussions existentes.
+          required: true

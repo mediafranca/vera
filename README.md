@@ -149,6 +149,25 @@ conexión MCP, portabilidad, exposición, obligaciones de prueba y planes de
 trabajo. Las [especificaciones Allium](specs/) son la fuente de verdad del
 comportamiento.
 
+## Participar
+
+Vera necesita personas que prueben la aplicación, describan defectos, mejoren
+la documentación, contrasten las especificaciones y contribuyan código. No hace
+falta empezar programando:
+
+- usa [Discussions](https://github.com/mediafranca/vera/discussions) para
+  preguntas, propuestas tempranas y conversaciones de diseño;
+- abre un [issue](https://github.com/mediafranca/vera/issues/new/choose) cuando
+  haya un defecto reproducible o una tarea ya suficientemente definida;
+- lee [CONTRIBUTING.md](CONTRIBUTING.md) antes de abrir un pull request: todo PR
+  ordinario apunta a `dev` y debe preservar las garantías Allium;
+- consulta [GOVERNANCE.md](GOVERNANCE.md) para saber cómo se toman decisiones,
+  [SUPPORT.md](SUPPORT.md) para pedir ayuda y
+  [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) para las reglas de convivencia.
+
+Los reportes de seguridad siguen un canal privado descrito en
+[SECURITY.md](SECURITY.md).
+
 ## Proyectos relacionados
 
 [Vera Conecta](https://vera.mediafranca.net/vera-conecta/) es el puente
