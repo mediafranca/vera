@@ -25,6 +25,7 @@ desplegar y contribuir al programa.
 - [Vera en diagramas](diagramas.md)
 - [Anatomía de la interfaz](interfaz.md)
 - [Conectar una IA](conectar-una-ia.md)
+- [Vera Clip: capturar en la Vera local](vera-clip.md)
 - [Portabilidad](portabilidad.md)
 - [Instalación en Windows](instalacion-windows.md)
 - [Exponer Vera](exponer-vera.md)

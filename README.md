@@ -142,6 +142,16 @@ con su propia identidad y credencial. La guía completa, con los cinco valores
 de conexión y un caso por cada forma de desplegar el cliente, está en
 [Conectar una IA](docs/conectar-una-ia.md).
 
+## Capturar desde el navegador
+
+[Vera Clip](https://github.com/mediafranca/vera-clip) deposita selecciones y
+artículos directamente en la Vera local. Actúa como herramienta delegada de la
+persona propietaria —no como otro autor— mediante una capacidad revocable que
+sólo permite capturar. La ruta ordinaria usa `localhost` y no pasa por Internet;
+[Vera Conecta](https://vera.mediafranca.net/vera-conecta/) queda como respaldo
+cuando el navegador está en otro equipo. La guía está en
+[Vera Clip: capturar en la Vera local](docs/vera-clip.md).
+
 ## Documentación del código
 
 El [índice técnico](docs/README.md) reúne arquitectura de implementación,

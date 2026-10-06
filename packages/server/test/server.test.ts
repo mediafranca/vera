@@ -359,6 +359,40 @@ describe('POST /operations/batch', () => {
 });
 
 describe('POST /captures', () => {
+  let captureSecret: string;
+
+  before(async () => {
+    const door = await write({
+      kind: 'create_page',
+      title: 'Puerta de capturas',
+      visibility: 'private',
+    });
+    await write({
+      kind: 'set_property',
+      page: door,
+      propertyKey: 'special-kind',
+      propertyValue: 'connections',
+    });
+    const response = await fetch(`${base}/mcp/connections`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Vera Clip', client: 'vera-clip', deal: 'capturar' }),
+    });
+    const made = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 201, JSON.stringify(made));
+    assert.equal(made['participant'], OWNER);
+    captureSecret = made['secret'] as string;
+  });
+
+  it('no acepta una captura sin la capacidad delegada', async () => {
+    const response = await fetch(`${base}/captures`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 401);
+  });
+
   it('deposita en la bitácora y un reintento no duplica el subárbol', async () => {
     const capture = {
       kind: 'selection',
@@ -370,7 +404,13 @@ describe('POST /captures', () => {
     };
     const sendCapture = async () => {
       const response = await fetch(`${base}/captures`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(capture),
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${captureSecret}`,
+          'x-vera-client': 'vera-clip',
+        },
+        body: JSON.stringify(capture),
       });
       return { status: response.status, json: await response.json() as Record<string, unknown> };
     };
@@ -386,7 +426,11 @@ describe('POST /captures', () => {
 
   it('rechaza una captura demasiado grande antes de escribir', async () => {
     const response = await fetch(`${base}/captures`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${captureSecret}`,
+        'x-vera-client': 'vera-clip',
+      },
       body: JSON.stringify({
         kind: 'article', title: 'Grande', url: 'https://example.com',
         content: 'x'.repeat(2_000_001), capturedAt: '2026-09-16T12:00:00Z', idempotencyKey: 'too-large',

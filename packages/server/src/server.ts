@@ -1697,7 +1697,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * estables: perder la respuesta y reenviar nunca duplica el depósito.
      */
     if (request.method === 'POST' && path === '/captures') {
-      if (presentedCredential !== null && !presentedCredential.scopes.includes('capture')) {
+      if (presentedCredential === null) {
+        send(response, 401, { error: 'la captura requiere una credencial delegada por la persona propietaria' });
+        return;
+      }
+      if (!presentedCredential.scopes.includes('capture')) {
         send(response, 403, { error: 'la credencial no tiene alcance capture' });
         return;
       }
@@ -3268,14 +3272,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
 
         /*
-         * La identidad se deriva del nombre con que se declara el cliente.
-         *
-         * Pedirla aparte sería pedir dos veces lo mismo con dos formas distintas,
-         * y la forma exacta —`participant:chatgpt`— es una convención del
-         * almacén que no tiene por qué saberse para conectar una IA.
+         * Una IA habla como un participante propio. Una herramienta de captura
+         * no: demuestra qué cliente ejecutó el gesto, pero quien incorpora el
+         * material sigue siendo la persona propietaria y el canal será import.
          */
-        const participant = `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
-        if (graph.participant(participant) === undefined) {
+        const participant = deal === 'capturar'
+          ? owner
+          : `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
+        if (deal !== 'capturar' && graph.participant(participant) === undefined) {
           saveParticipant(store, { id: participant, name, kind: 'agent' });
           graph.addParticipant({ id: participant, name, kind: 'agent' });
           graph.admit(participant);
