@@ -21,6 +21,7 @@ import {
   isSpecialPage,
   matchingMovePages,
   needsProgressiveComposition,
+  nearestContinuityFocus,
   nodeMarkdown,
   pageReferenceRows,
   projectedReferenceText,
@@ -119,6 +120,40 @@ describe('redibujar después de escribir', () => {
 
   it('una relación vuelve al corpus porque no vive en la réplica de una página', () => {
     assert.deepEqual(reloadAfterDerivedWriting(), { fromCorpus: true });
+  });
+});
+
+describe('continuidad después de una acción estructural', () => {
+  const before = ['primero', 'padre', 'hijo', 'siguiente', 'último'];
+
+  it('permanece en el mismo bloque cuando sobrevive', () => {
+    assert.deepEqual(
+      nearestContinuityFocus(before, before, 'padre', 7),
+      { block: 'padre', at: 7 },
+    );
+  });
+
+  it('prefiere el siguiente bloque visible al eliminar un subárbol', () => {
+    assert.deepEqual(
+      nearestContinuityFocus(before, ['primero', 'siguiente', 'último'], 'padre', null),
+      { block: 'siguiente', at: null },
+    );
+  });
+
+  it('retrocede al anterior cuando no queda nada después', () => {
+    assert.deepEqual(
+      nearestContinuityFocus(before, ['primero', 'padre', 'hijo'], 'último', null),
+      { block: 'hijo', at: null },
+    );
+  });
+
+  it('no inventa un foco cuando la página quedó vacía', () => {
+    assert.equal(nearestContinuityFocus(['único'], [], 'único', null), null);
+  });
+
+  it('devuelve el foco a un control real y no al espaciador de una hoja', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /querySelector<HTMLButtonElement>\('button\.fold, button\.bullet'\)/);
   });
 });
 

@@ -487,9 +487,88 @@ export function speakInto(block: string, destination = 'este bloque'): void {
  */
 let openMenu: HTMLElement | null = null;
 
+interface ContinuityWitness {
+  block: string;
+  at: number | null;
+  visible: readonly string[];
+}
+
+/** El lugar de trabajo que representa el menú abierto y el que acaba de actuar. */
+let openMenuContinuity: ContinuityWitness | null = null;
+let pendingContinuity: ContinuityWitness | null = null;
+
+function continuityWitness(anchor: HTMLElement): ContinuityWitness | null {
+  const row = anchor.closest<HTMLElement>('.block[data-id]');
+  const block = row?.dataset['id'];
+  if (row === null || block === undefined) return null;
+  const page = row.closest<HTMLElement>('[data-page]') ?? row.parentElement;
+  const visible = [...(page?.querySelectorAll<HTMLElement>('.block[data-id]') ?? [])]
+    .map((candidate) => candidate.dataset['id'])
+    .filter((id): id is string => id !== undefined);
+  const editor = anchor instanceof HTMLTextAreaElement
+    ? anchor
+    : anchor.closest<HTMLTextAreaElement>('textarea.editor');
+  return { block, at: editor?.selectionStart ?? null, visible };
+}
+
+/**
+ * Escoge el lugar superviviente más próximo a una acción estructural.
+ *
+ * Si el bloque sigue existiendo, continúa allí. Si desapareció, avanza primero
+ * hacia el siguiente bloque visible y sólo entonces retrocede al anterior. La
+ * búsqueda usa el orden anterior al cambio: el bloque retirado sigue diciendo
+ * dónde estaba aunque ya no pertenezca al modelo nuevo.
+ */
+export function nearestContinuityFocus(
+  visibleBefore: readonly string[],
+  surviving: readonly string[],
+  origin: string,
+  at: number | null,
+): { block: string; at: number | null } | null {
+  const alive = new Set(surviving);
+  if (alive.has(origin)) return { block: origin, at };
+  const here = visibleBefore.indexOf(origin);
+  if (here === -1) return null;
+  for (let index = here + 1; index < visibleBefore.length; index += 1) {
+    const candidate = visibleBefore[index];
+    if (candidate !== undefined && alive.has(candidate)) return { block: candidate, at: null };
+  }
+  for (let index = here - 1; index >= 0; index -= 1) {
+    const candidate = visibleBefore[index];
+    if (candidate !== undefined && alive.has(candidate)) return { block: candidate, at: null };
+  }
+  return null;
+}
+
+/**
+ * Resuelve el foco de un repintado. Un destino explícito manda; de lo contrario
+ * se conserva el editor activo o el bloque cuyo menú originó la acción.
+ */
+export function focusAfterChange(
+  blocks: readonly BlockView[],
+  explicit: { block: string; at: number | null } | null,
+): { block: string; at: number | null } | null {
+  if (explicit !== null) {
+    pendingContinuity = null;
+    return explicit;
+  }
+  const active = typeof document === 'undefined' ? null : document.activeElement;
+  const direct = active instanceof HTMLElement ? continuityWitness(active) : null;
+  const witness = direct ?? pendingContinuity;
+  pendingContinuity = null;
+  if (witness === null) return null;
+  return nearestContinuityFocus(
+    witness.visible,
+    blocks.map((block) => block.stableId),
+    witness.block,
+    witness.at,
+  );
+}
+
 function closeMenu(): void {
   openMenu?.remove();
   openMenu = null;
+  openMenuContinuity = null;
 }
 
 let dismissalBound = false;
@@ -544,7 +623,9 @@ export function invokeMenuAction(
   action: Pick<MenuAction, 'run'>,
 ): void {
   event.stopPropagation();
+  const witness = openMenuContinuity;
   closeMenu();
+  pendingContinuity = witness;
   void action.run();
 }
 
@@ -559,6 +640,7 @@ export function invokeMenuAction(
 function openBlockMenu(anchor: HTMLElement, groups: MenuAction[][]): void {
   bindDismissal();
   closeMenu();
+  openMenuContinuity = continuityWitness(anchor);
 
   const menu = document.createElement('div');
   menu.className = 'block-menu';
@@ -6648,7 +6730,13 @@ export function renderOutliner(
     const seat = editors.get(focus.block);
     if (seat !== undefined) {
       const row = seat.body.closest<HTMLElement>('.block');
-      if (focus.at === null) row?.querySelector<HTMLButtonElement>('.fold')?.focus({ preventScroll: true });
+      if (focus.at === null) {
+        // Las hojas tienen un `span.fold.empty` para conservar la columna. No
+        // puede ganar esta búsqueda: acepta `focus()` sin volverse el elemento
+        // activo y la continuidad se pierde en silencio. Sólo controles reales.
+        row?.querySelector<HTMLButtonElement>('button.fold, button.bullet')?.focus({ preventScroll: true });
+        row?.scrollIntoView({ block: 'nearest' });
+      }
       else {
         row?.scrollIntoView({ block: 'nearest' });
         openEditor(seat.node, seat.body, focus.at);
