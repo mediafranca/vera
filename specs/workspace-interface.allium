@@ -1567,6 +1567,12 @@ surface VeraWorkspace {
         -- soltar o cancelar y el orden resultante coincide con ese intersticio:
         -- se señala una posición de inserción, no una pastilla receptora.
 
+    @guarantee EveryTraceStepKeepsItsNameLegible
+        -- El asa de arrastre, el título y la eliminación se leen como una sola
+        -- unidad compacta. El asa queda próxima al nombre sin perder su blanco
+        -- interactivo; cuando el espacio no alcanza, el título termina en una
+        -- elipsis visible en vez de quedar cortado como si faltara contenido.
+
     @guarantee TheTraceSurvivesRefresh
         -- El rastro completo sobrevive a recargar o cerrar la interfaz. La última
         -- parada sigue siendo donde el participante está. Regresar al taller

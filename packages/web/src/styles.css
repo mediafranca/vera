@@ -1536,18 +1536,29 @@ button { touch-action: manipulation; }
 /* Dentro del salchichón hay tres gestos, pero una sola figura. El nombre deja
    de traer su propia pastilla: el borde pertenece al conjunto entero. */
 .trail-step .trail-pill {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
   height: 100%;
   border: 0;
   border-radius: 0;
   background: none;
-  padding-inline: 0.25rem;
+  /* El asa conserva todo su blanco táctil. El título ocupa parte del aire que
+     antes se sumaba a su costado derecho: aproximadamente 0,7ex menos sin
+     superponer controles ni encoger el blanco de arrastre. */
+  padding-left: max(0px, calc(0.25rem - 0.7ex));
+  padding-right: 0.25rem;
 }
 
 /* Plex se posa ópticamente bajo dentro de una cápsula tan baja. El botón y su
    área pulsable permanecen centrados; sólo la tinta del rótulo asciende dos
    píxeles para equilibrarse con la x, que ya ocupa el centro correcto. */
 .trail-step .trail-label {
-  display: inline-block;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transform: translateY(-0.12rem);
 }
 
