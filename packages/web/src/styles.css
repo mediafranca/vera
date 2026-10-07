@@ -1536,8 +1536,6 @@ button { touch-action: manipulation; }
 /* Dentro del salchichón hay tres gestos, pero una sola figura. El nombre deja
    de traer su propia pastilla: el borde pertenece al conjunto entero. */
 .trail-step .trail-pill {
-  display: inline-flex;
-  align-items: center;
   min-width: 0;
   height: 100%;
   border: 0;
@@ -1554,8 +1552,8 @@ button { touch-action: manipulation; }
    área pulsable permanecen centrados; sólo la tinta del rótulo asciende dos
    píxeles para equilibrarse con la x, que ya ocupa el centro correcto. */
 .trail-step .trail-label {
-  display: block;
-  min-width: 0;
+  display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

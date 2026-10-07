@@ -45,6 +45,7 @@ describe('el rastro hecho librillo', () => {
   it('acerca el asa al título y hace visible todo truncamiento como elipsis', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     assert.match(styles, /\.trail-step \.trail-pill \{[\s\S]*?padding-left: max\(0px, calc\(0\.25rem - 0\.7ex\)\)/);
-    assert.match(styles, /\.trail-step \.trail-label \{[\s\S]*?min-width: 0;[\s\S]*?overflow: hidden;[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/);
+    assert.match(styles, /\.trail-step \.trail-label \{[\s\S]*?display: inline-block;[\s\S]*?max-width: 100%;[\s\S]*?overflow: hidden;[\s\S]*?text-overflow: ellipsis;[\s\S]*?white-space: nowrap;/);
+    assert.doesNotMatch(styles, /\.trail-step \.trail-pill \{[^}]*align-items:/);
   });
 });
