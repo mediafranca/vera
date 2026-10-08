@@ -185,13 +185,13 @@ contract BlockBehaviourPresentation {
 
     @invariant TheCurrentBlockBehavioursAreNamed
         -- Vera distinguishes standard Markdown, explicit executable HTML, audio,
-        -- video, YouTube clip, embedded map, hand drawing, p5.js, SVG, query,
-        -- Mermaid and Markdown table blocks.
+        -- video, YouTube clip, Google Maps address, embedded map, hand drawing,
+        -- p5.js, SVG, query, Mermaid and Markdown table blocks.
         -- Each is presented and edited according to its own behaviour.
 
     @invariant BehaviourIsDerivedRatherThanDuplicated
-        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, embedded
-        -- maps, HTML, p5.js and SVG are recognised from their complete preserved
+        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, Google
+        -- Maps addresses, embedded maps, HTML, p5.js and SVG are recognised from their complete preserved
         -- source; audio and video are recognised from their native attachment.
         -- Vera does not keep a second mutable type label that can disagree with
         -- the content.
@@ -1566,6 +1566,12 @@ surface VeraWorkspace {
         -- anterior o posterior donde caerá el paso. La marca desaparece al
         -- soltar o cancelar y el orden resultante coincide con ese intersticio:
         -- se señala una posición de inserción, no una pastilla receptora.
+
+    @guarantee EveryTraceStepKeepsItsNameLegible
+        -- El asa de arrastre, el título y la eliminación se leen como una sola
+        -- unidad compacta. El asa queda próxima al nombre sin perder su blanco
+        -- interactivo; cuando el espacio no alcanza, el título termina en una
+        -- elipsis visible en vez de quedar cortado como si faltara contenido.
 
     @guarantee TheTraceSurvivesRefresh
         -- El rastro completo sobrevive a recargar o cerrar la interfaz. La última

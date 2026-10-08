@@ -1,0 +1,180 @@
+-- allium: 3
+-- browser-capture.allium
+
+-- Scope: autorizar a una instalación de Vera Clip para depositar material en
+--   la Vera local de su persona propietaria.
+-- Includes: capacidad capture, identidad humana conservada, canal import,
+--   revocación y prioridad del transporte local.
+-- Excludes:
+--   - extracción y previsualización dentro del navegador;
+--   - transporte remoto mediante Vera Conecta;
+--   - clasificación posterior del material capturado;
+--   - credenciales de agentes y generación mediante IA.
+-- Dependencies: Participant, Graph y ContributionChannel los gobierna
+--   core.allium.
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity CapturaWeb {
+    fuente: String
+    contenido: String
+    identificador_de_idempotencia: String
+    capturada_en: Timestamp
+}
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract DepositoDelegadoDeCapturas {
+    autorizar: (owner: core/Participant, client_id: String, label: String) -> ClienteDeCaptura
+    depositar: (client: ClienteDeCaptura, capture: CapturaWeb) -> Boolean
+    revocar: (owner: core/Participant, client: ClienteDeCaptura) -> ClienteDeCaptura
+
+    @invariant LaPersonaSigueSiendoQuienIncorpora
+        -- Vera Clip demuestra qué herramienta ejecutó el gesto, pero no se
+        -- convierte en autora ni en un participante separado. Las operaciones
+        -- quedan atribuidas a la persona propietaria que concedió el acceso.
+
+    @invariant ElCanalEsImport
+        -- Las palabras vienen de la fuente capturada. Transportarlas mediante
+        -- una extensión no las transforma en texto escrito por la persona ni
+        -- en generación de un agente.
+
+    @invariant CaptureNoAbreElCorpus
+        -- La capacidad sólo deposita capturas por la puerta estrecha. No lee,
+        -- busca, edita, mueve, borra ni invoca operaciones generales.
+
+    @invariant LaRutaLocalNoSaleAInternet
+        -- Si Vera Clip y Vera Desktop comparten equipo, la captura se entrega
+        -- por loopback. Vera Conecta sólo es transporte alternativo cuando la
+        -- Vera destino está en otro equipo o no está disponible localmente.
+
+    @invariant RevocarNoReescribeLaHistoria
+        -- Retirar una instalación impide su próxima captura y conserva lo que
+        -- la persona ya incorporó, con su fuente e idempotencia originales.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum EstadoDelClienteDeCaptura { active | revoked }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity ClienteDeCaptura {
+    graph: core/Graph
+    owner: core/Participant
+    client_id: String
+    label: String
+    estado: EstadoDelClienteDeCaptura
+    autorizado_en: Timestamp
+    revocado_en: Timestamp?
+
+    transitions estado {
+        active -> revoked
+        terminal: revoked
+    }
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule PropietarioAutorizaVeraClip {
+    when: AutorizarVeraClip(owner, graph, client_id, label)
+
+    requires: owner.kind = human
+    requires: client_id != ""
+    requires: label != ""
+
+    ensures: ClienteDeCaptura.created(
+        graph: graph,
+        owner: owner,
+        client_id: client_id,
+        label: label,
+        estado: active,
+        autorizado_en: now,
+        revocado_en: null
+    )
+}
+
+rule VeraClipDepositaComoSuPropietario {
+    when: DepositarCaptura(client, capture)
+
+    requires: client.estado = active
+    requires: client.owner.kind = human
+
+    ensures: CapturaDepositada(
+        client.graph,
+        client.owner,
+        capture,
+        import
+    )
+}
+
+rule PropietarioRevocaVeraClip {
+    when: RevocarVeraClip(owner, client)
+
+    requires: client.owner = owner
+    requires: client.estado = active
+
+    ensures:
+        client.estado = revoked
+        client.revocado_en = now
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor PersonaPropietaria {
+    identified_by: ClienteDeCaptura
+}
+
+actor VeraClip {
+    identified_by: ClienteDeCaptura
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface GobiernoDeVeraClip {
+    facing owner: PersonaPropietaria
+
+    contracts:
+        fulfils DepositoDelegadoDeCapturas
+
+    provides:
+        AutorizarVeraClip(owner, graph, client_id, label)
+        RevocarVeraClip(owner, client)
+
+    exposes:
+        ClientesDeCaptura
+
+    @guarantee ElSecretoSeMuestraUnaVez
+        -- La capacidad se entrega una vez para guardarla en el almacén privado
+        -- de la extensión. Después sólo se ve su estado y puede revocarse.
+}
+
+surface EntradaDeCapturas {
+    facing clip: VeraClip
+
+    contracts:
+        demands DepositoDelegadoDeCapturas
+
+    provides:
+        DepositarCaptura(client, capture)
+
+    @guarantee IdempotenciaDeExtremoAExtremo
+        -- Repetir la misma captura con el mismo identificador devuelve el
+        -- depósito existente y nunca crea otro subárbol.
+}

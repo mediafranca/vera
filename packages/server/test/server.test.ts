@@ -56,6 +56,38 @@ async function get(path: string): Promise<unknown> {
   return response.json();
 }
 
+describe('mapas de Google pegados', () => {
+  it('redirige una dirección completa al visor sin clave sólo cuando el corpus lo autorizó', async () => {
+    const governing = await write({
+      kind: 'create_page',
+      stableId: 'page:test-embeddings-governing',
+      title: 'VERA: Incrustaciones',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'special-kind', propertyValue: 'embeddings' });
+    const google = await write({
+      kind: 'create_block',
+      stableId: 'block:test-embeddings-google',
+      page: governing,
+      parent: null,
+      position: 0,
+      content: 'Google Maps',
+    });
+    await write({ kind: 'set_property', block: google, propertyKey: 'servidor', propertyValue: 'google.com' });
+
+    const source = 'https://www.google.com/maps/place/x/@-32.9696873,-71.3848611,14z/data=!3m1!1e3';
+    const response = await fetch(`${base}/embeds/google-map?url=${encodeURIComponent(source)}`, {
+      redirect: 'manual',
+    });
+    assert.equal(response.status, 302);
+    const destination = new URL(response.headers.get('location') ?? '');
+    assert.equal(destination.origin + destination.pathname, 'https://www.google.com/maps');
+    assert.equal(destination.searchParams.get('q'), '-32.9696873,-71.3848611');
+    assert.equal(destination.searchParams.get('output'), 'embed');
+    assert.equal(destination.searchParams.has('key'), false);
+  });
+});
+
 describe('ontología rectora de relaciones', () => {
   it('lee tipos estructurados desde VERA: Relaciones sin exigir restricciones', async () => {
     const page = await write({
@@ -359,6 +391,40 @@ describe('POST /operations/batch', () => {
 });
 
 describe('POST /captures', () => {
+  let captureSecret: string;
+
+  before(async () => {
+    const door = await write({
+      kind: 'create_page',
+      title: 'Puerta de capturas',
+      visibility: 'private',
+    });
+    await write({
+      kind: 'set_property',
+      page: door,
+      propertyKey: 'special-kind',
+      propertyValue: 'connections',
+    });
+    const response = await fetch(`${base}/mcp/connections`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Vera Clip', client: 'vera-clip', deal: 'capturar' }),
+    });
+    const made = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 201, JSON.stringify(made));
+    assert.equal(made['participant'], OWNER);
+    captureSecret = made['secret'] as string;
+  });
+
+  it('no acepta una captura sin la capacidad delegada', async () => {
+    const response = await fetch(`${base}/captures`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 401);
+  });
+
   it('deposita en la bitácora y un reintento no duplica el subárbol', async () => {
     const capture = {
       kind: 'selection',
@@ -370,7 +436,13 @@ describe('POST /captures', () => {
     };
     const sendCapture = async () => {
       const response = await fetch(`${base}/captures`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(capture),
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${captureSecret}`,
+          'x-vera-client': 'vera-clip',
+        },
+        body: JSON.stringify(capture),
       });
       return { status: response.status, json: await response.json() as Record<string, unknown> };
     };
@@ -386,7 +458,11 @@ describe('POST /captures', () => {
 
   it('rechaza una captura demasiado grande antes de escribir', async () => {
     const response = await fetch(`${base}/captures`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${captureSecret}`,
+        'x-vera-client': 'vera-clip',
+      },
       body: JSON.stringify({
         kind: 'article', title: 'Grande', url: 'https://example.com',
         content: 'x'.repeat(2_000_001), capturedAt: '2026-09-16T12:00:00Z', idempotencyKey: 'too-large',

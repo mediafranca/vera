@@ -941,7 +941,7 @@ export const api = {
   connect: (said: {
     name: string;
     client: string;
-    deal: 'leer' | 'propio' | 'todo';
+    deal: 'leer' | 'propio' | 'todo' | 'capturar';
     kind?: string;
     source?: string;
     says?: string;

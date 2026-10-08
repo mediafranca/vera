@@ -28,6 +28,7 @@ import {
 import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
 import {
   allowEmbedsFrom,
+  focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
   renderOutliner,
@@ -1509,7 +1510,8 @@ function callbacksForJournalSlice(page: PageView, slice: HTMLElement): OutlinerC
       if (!slice.isConnected) return;
       const text = $('#text');
       const viewport = holdTextViewport(text);
-      renderOutliner(slice, fresh, callbacksForJournalSlice(fresh, slice), focus, null, isReadOnly(),
+      const continued = focusAfterChange(fresh.blocks, focus);
+      renderOutliner(slice, fresh, callbacksForJournalSlice(fresh, slice), continued, null, isReadOnly(),
         isAnybody() && corpus?.transparentBlockTraceability === true);
       restoreTextViewport(text, viewport);
     }).catch((error) => {
@@ -1631,6 +1633,10 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
     onReload: (focus, options) => {
       const text = $('#text');
       const viewport = holdTextViewport(text);
+      const nextBlocks = replica !== null && openView !== null && workspace.activePage === replica.page
+        ? blocksOf(replica)
+        : openView?.blocks ?? page.blocks;
+      const continued = focusAfterChange(nextBlocks, focus);
       /*
        * Renombrar es el único cambio corriente que la réplica de una página
        * difiere a propósito: también reescribe referencias del resto del grafo.
@@ -1644,7 +1650,7 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
           void (async () => {
             await openPage(
               active,
-              focus,
+              continued,
               options.replaceRoute === true ? { replaceRoute: true } : {},
             );
             // Volver al corpus puede insertar o retirar aparatos derivados por
@@ -1661,13 +1667,13 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
         openView.blockProperties = blockPropertiesOf(replica);
         openView.properties = pagePropertiesOf(replica);
         openView.visibility = replica.graph.page(replica.page)?.visibility ?? openView.visibility;
-        renderOutliner(text, openView, callbacksFor(openView), focus, workspace.focusRoot, isReadOnly(),
+        renderOutliner(text, openView, callbacksFor(openView), continued, workspace.focusRoot, isReadOnly(),
           isAnybody() && corpus?.transparentBlockTraceability === true);
         restoreTextViewport(text, viewport);
         catchUp();
         return;
       }
-      if (workspace.activePage !== null) void openPage(workspace.activePage, focus);
+      if (workspace.activePage !== null) void openPage(workspace.activePage, continued);
     },
     // @invariant FocusBoundsTheStructure: con la vista enraizada en un bloque,
     // sólo se dibuja su subárbol, así que desindentar, fusionar y mover se
