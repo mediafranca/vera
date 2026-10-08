@@ -622,6 +622,22 @@ describe('incrustaciones', () => {
     assert.match(html, /data-youtube-source="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
   });
 
+  it('una URL corta de Google Maps pegada sola se vuelve un mapa sin perder su fuente', () => {
+    const source = 'https://maps.app.goo.gl/c3QtQWekv2Uu6CxYA';
+    const html = renderMarkdown(source, { embedHosts: ['google.com'] });
+    assert.match(html, /class="embed google-map"/);
+    assert.match(html, /src="\/embeds\/google-map\?url=https%3A%2F%2Fmaps\.app\.goo\.gl%2F/);
+    assert.match(html, /loading="lazy"/);
+    assert.match(html, /referrerpolicy="no-referrer"/);
+    assert.match(html, new RegExp(`href="${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+  });
+
+  it('Google Maps no se incrusta sin autorización ni dentro de una frase', () => {
+    const source = 'https://maps.app.goo.gl/c3QtQWekv2Uu6CxYA';
+    assert.ok(!renderMarkdown(source).includes('<iframe'));
+    assert.ok(!renderMarkdown(`lugar: ${source}`, { embedHosts: ['google.com'] }).includes('<iframe'));
+  });
+
   it('un clip de YouTube conserva la fuente y limita la reproducción', () => {
     const source = 'https://youtu.be/dQw4w9WgXcQ\ndesde: 01:20\nhasta: 02:05';
     const html = renderMarkdown(`\`\`\`clip\n${source}\n\`\`\``, allowed);

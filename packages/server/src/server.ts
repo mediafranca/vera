@@ -82,6 +82,7 @@ import {
   type Store,
 } from '@vera/store';
 import { composeBooklet, composePaper, toPdf } from './paper.ts';
+import { googleMapEmbedUrl, resolveGoogleMapPoint } from './google-map.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
@@ -1487,6 +1488,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/search' ||
         path === '/search/pages' ||
         path === '/query' ||
+        path === '/embeds/google-map' ||
         path === '/p5-frame.html' ||
         path === '/p5.min.js' ||
         path.startsWith('/pages/') ||
@@ -5986,6 +5988,34 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const participant = publicAccess ? ANYBODY : (url.searchParams.get('participant') ?? owner.id);
 
     try {
+      if (path === '/embeds/google-map') {
+        const authorised = embedHosts().some((host) => {
+          const named = host.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          return named !== '' && ('google.com' === named || 'google.com'.endsWith(`.${named}`));
+        });
+        if (!authorised) {
+          send(response, 404, { error: 'Google Maps no está autorizado como incrustación' });
+          return;
+        }
+        try {
+          const point = await resolveGoogleMapPoint(url.searchParams.get('url') ?? '');
+          if (point === null) {
+            send(response, 422, { error: 'la dirección no contiene un lugar reconocible' });
+            return;
+          }
+          response.writeHead(302, {
+            location: googleMapEmbedUrl(point),
+            'cache-control': 'private, max-age=86400',
+            'referrer-policy': 'no-referrer',
+            'x-content-type-options': 'nosniff',
+          });
+          response.end();
+        } catch {
+          send(response, 502, { error: 'Google Maps no respondió' });
+        }
+        return;
+      }
+
       if (path === '/health') {
         const visiblePages = publicAccess
           ? graph.pages().filter((page) => isPublicPage(page.id))

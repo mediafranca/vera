@@ -56,6 +56,38 @@ async function get(path: string): Promise<unknown> {
   return response.json();
 }
 
+describe('mapas de Google pegados', () => {
+  it('redirige una dirección completa al visor sin clave sólo cuando el corpus lo autorizó', async () => {
+    const governing = await write({
+      kind: 'create_page',
+      stableId: 'page:test-embeddings-governing',
+      title: 'VERA: Incrustaciones',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'special-kind', propertyValue: 'embeddings' });
+    const google = await write({
+      kind: 'create_block',
+      stableId: 'block:test-embeddings-google',
+      page: governing,
+      parent: null,
+      position: 0,
+      content: 'Google Maps',
+    });
+    await write({ kind: 'set_property', block: google, propertyKey: 'servidor', propertyValue: 'google.com' });
+
+    const source = 'https://www.google.com/maps/place/x/@-32.9696873,-71.3848611,14z/data=!3m1!1e3';
+    const response = await fetch(`${base}/embeds/google-map?url=${encodeURIComponent(source)}`, {
+      redirect: 'manual',
+    });
+    assert.equal(response.status, 302);
+    const destination = new URL(response.headers.get('location') ?? '');
+    assert.equal(destination.origin + destination.pathname, 'https://www.google.com/maps');
+    assert.equal(destination.searchParams.get('q'), '-32.9696873,-71.3848611');
+    assert.equal(destination.searchParams.get('output'), 'embed');
+    assert.equal(destination.searchParams.has('key'), false);
+  });
+});
+
 describe('ontología rectora de relaciones', () => {
   it('lee tipos estructurados desde VERA: Relaciones sin exigir restricciones', async () => {
     const page = await write({

@@ -185,13 +185,13 @@ contract BlockBehaviourPresentation {
 
     @invariant TheCurrentBlockBehavioursAreNamed
         -- Vera distinguishes standard Markdown, explicit executable HTML, audio,
-        -- video, YouTube clip, embedded map, hand drawing, p5.js, SVG, query,
-        -- Mermaid and Markdown table blocks.
+        -- video, YouTube clip, Google Maps address, embedded map, hand drawing,
+        -- p5.js, SVG, query, Mermaid and Markdown table blocks.
         -- Each is presented and edited according to its own behaviour.
 
     @invariant BehaviourIsDerivedRatherThanDuplicated
-        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, embedded
-        -- maps, HTML, p5.js and SVG are recognised from their complete preserved
+        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, Google
+        -- Maps addresses, embedded maps, HTML, p5.js and SVG are recognised from their complete preserved
         -- source; audio and video are recognised from their native attachment.
         -- Vera does not keep a second mutable type label that can disagree with
         -- the content.
