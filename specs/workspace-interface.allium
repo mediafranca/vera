@@ -572,6 +572,7 @@ contract ResponsiveWorkspace {
 -- después y Vera dice qué está haciendo mientras tanto.
 contract ProgressivePageReading {
     open: (page: core/Page) -> core/Page
+    refresh: (page: core/Page) -> core/Page
 
     @invariant AUsablePageArrivesBeforeItsEnrichment
         -- As soon as the page title, properties and blocks are available, Vera
@@ -584,6 +585,14 @@ contract ProgressivePageReading {
         -- content, editing state and reading position already on screen. The
         -- page does not disappear, return to its beginning or pretend to have
         -- been opened a second time.
+
+    @invariant PullingFromTheBeginningRequestsTheCanonicalPage
+        -- On a touch reading surface, pulling downward from the beginning makes
+        -- the refresh intention and its threshold visible. Releasing beyond the
+        -- threshold requests the current canonical page and presents that
+        -- revision without adding a navigation step. A pull begun after the
+        -- beginning remains ordinary scrolling; a failed request preserves the
+        -- readable page already on screen and reports the failure.
 
     @invariant BackgroundWorkExplainsItself
         -- While derived information is still being prepared, a discreet status

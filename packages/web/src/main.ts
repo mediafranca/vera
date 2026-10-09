@@ -97,6 +97,7 @@ import {
 } from './promote.ts';
 import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
+import { wirePullToRefresh } from './pull-to-refresh.ts';
 
 const PHONE = 640;
 
@@ -1874,6 +1875,37 @@ function revealBlock(stableId: string, page: string): void {
 /** Un aviso a la vez, en texto plano: el corpus no dicta marcado. */
 function notice(message: string): void {
   systemNotice(message);
+}
+
+/**
+ * Pedir expresamente la versión canónica de lo que se está leyendo.
+ *
+ * No basta con redibujar la réplica: el gesto significa «mira otra vez en el
+ * corpus». La entrega se obtiene antes de tocar el documento, así que una caída
+ * de red conserva intacta la versión visible en vez de sustituirla por una copia
+ * y fingir que se actualizó.
+ */
+async function refreshVisiblePage(): Promise<void> {
+  const target = openView;
+  if (target === null || workspace.activePage !== target.id) return;
+
+  const active = document.activeElement;
+  const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
+    (active instanceof HTMLElement && active.isContentEditable);
+  if (writing) throw new Error('termina la edición antes de actualizar');
+
+  if (!isAnybody()) {
+    await catchUpWithCorpus();
+    await api.drain();
+  }
+  const canonical = await canonicalPage(target);
+  // La red puede tardar: nunca hacer volver a quien ya navegó a otra página.
+  if (workspace.activePage !== target.id) return;
+  await openPage(canonical.id, null, {
+    fromUrl: true,
+    replaceRoute: true,
+    delivered: canonical,
+  });
 }
 
 /**
@@ -4020,6 +4052,16 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 });
 
 if (!handlesSharedAccess()) void boot();
+
+const pullRefresh = $('#pull-refresh');
+pullRefresh.querySelector<HTMLElement>('.pull-refresh-icon')!.innerHTML = icon('refresh-cw');
+wirePullToRefresh({
+  container: $('#text'),
+  indicator: pullRefresh,
+  canRefresh: () => openView !== null && workspace.activePage === openView.id,
+  refresh: refreshVisiblePage,
+  failed: (message) => notice(`No se pudo actualizar la página: ${message}.`),
+});
 
 /*
  * Registrar el service worker, y además ocuparse de que se renueve.
