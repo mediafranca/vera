@@ -5,37 +5,77 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 export interface SpokenAudio { bytes: Buffer; mediaType: 'audio/wav'; cached: boolean }
-export interface SpeechSynthesizer { speak(text: string): Promise<SpokenAudio>; close(): void }
+export interface SpeechSynthesizer {
+  speak(text: string, signal?: AbortSignal): Promise<SpokenAudio>;
+  close(): void;
+}
 
 export interface LocalSpeechOptions {
   cacheRoot: string;
   python: string;
   worker: string;
-  source: string;
-  prompt: string;
+  modelRoot: string;
+  voice?: string;
   threads?: number;
 }
 
-interface Pending { path: string; resolve: (audio: SpokenAudio) => void; reject: (error: Error) => void }
+interface Job {
+  id: string;
+  path: string;
+  text: string;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+  settled: boolean;
+  resolve: (audio: SpokenAudio) => void;
+  reject: (error: Error) => void;
+}
+
+function interrupted(message = 'la lectura fue detenida'): Error {
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
+}
 
 export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesizer {
   const cacheRoot = resolve(options.cacheRoot);
   mkdirSync(cacheRoot, { recursive: true });
   let child: ChildProcessWithoutNullStreams | null = null;
   let ready: Promise<void> | null = null;
-  const pending = new Map<string, Pending>();
+  let active: Job | null = null;
+  let queued: Job | null = null;
 
-  const failAll = (message: string): void => {
-    for (const waiting of pending.values()) waiting.reject(new Error(message));
-    pending.clear();
+  const detach = (job: Job): void => {
+    if (job.signal !== undefined && job.onAbort !== undefined) {
+      job.signal.removeEventListener('abort', job.onAbort);
+    }
+  };
+  const reject = (job: Job, error: Error): void => {
+    if (job.settled) return;
+    job.settled = true;
+    detach(job);
+    job.reject(error);
+  };
+  const fulfil = (job: Job, audio: SpokenAudio): void => {
+    if (job.settled) return;
+    job.settled = true;
+    detach(job);
+    job.resolve(audio);
+  };
+
+  const failProcess = (process: ChildProcessWithoutNullStreams, message: string): void => {
+    if (child !== process) return;
     child = null;
     ready = null;
+    if (active !== null) reject(active, new Error(message));
+    if (queued !== null) reject(queued, new Error(message));
+    active = null;
+    queued = null;
   };
 
   const start = (): Promise<void> => {
     if (ready !== null) return ready;
     ready = new Promise<void>((resolveReady, rejectReady) => {
-      if (!existsSync(options.python) || !existsSync(options.worker) || !existsSync(options.prompt)) {
+      if (!existsSync(options.python) || !existsSync(options.worker) || !existsSync(options.modelRoot)) {
         rejectReady(new Error('la voz local no está instalada; ejecuta scripts/setup-local-tts.sh'));
         ready = null;
         return;
@@ -43,8 +83,8 @@ export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesize
       const process = spawn(options.python, [options.worker], {
         env: {
           ...globalThis.process.env,
-          VERA_TTS_SOURCE: options.source,
-          VERA_TTS_PROMPT: options.prompt,
+          VERA_TTS_MODEL_ROOT: options.modelRoot,
+          VERA_TTS_VOICE: options.voice ?? 'ef_dora',
           VERA_TTS_THREADS: String(options.threads ?? 3),
         },
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -60,49 +100,97 @@ export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesize
           resolveReady();
           return;
         }
-        if (message.id === undefined) return;
-        const waiting = pending.get(message.id);
-        if (waiting === undefined) return;
-        pending.delete(message.id);
-        if (message.ok === true && existsSync(waiting.path)) {
-          waiting.resolve({ bytes: readFileSync(waiting.path), mediaType: 'audio/wav', cached: false });
+        if (message.id === undefined || active?.id !== message.id) return;
+        const finished = active;
+        active = null;
+        if (message.ok === true && existsSync(finished.path)) {
+          fulfil(finished, { bytes: readFileSync(finished.path), mediaType: 'audio/wav', cached: false });
         } else {
-          waiting.reject(new Error(message.error ?? 'la voz local no produjo audio'));
+          reject(finished, new Error(message.error ?? 'la voz local no produjo audio'));
         }
+        const next = queued;
+        queued = null;
+        if (next !== null) void dispatch(next);
       });
       process.stderr.on('data', () => undefined);
       process.on('error', (error) => {
         if (!becameReady) rejectReady(error);
-        failAll(error.message);
+        failProcess(process, error.message);
       });
       process.on('exit', (code) => {
         const message = `el proceso de voz terminó${code === null ? '' : ` (${code})`}`;
         if (!becameReady) rejectReady(new Error(message));
-        failAll(message);
+        failProcess(process, message);
       });
     });
     return ready;
   };
 
+  const dispatch = async (job: Job): Promise<void> => {
+    const wasAborted = (): boolean => job.signal?.aborted ?? false;
+    if (wasAborted()) {
+      reject(job, interrupted());
+      return;
+    }
+    active = job;
+    try {
+      await start();
+      if (wasAborted()) {
+        reject(job, interrupted());
+        active = null;
+        const next = queued;
+        queued = null;
+        if (next !== null) void dispatch(next);
+        return;
+      }
+      child?.stdin.write(`${JSON.stringify({ id: job.id, text: job.text, output: job.path })}\n`);
+    } catch (problem) {
+      if (active === job) active = null;
+      const error = problem instanceof Error ? problem : new Error('la voz local no pudo iniciar');
+      reject(job, error);
+      if (queued !== null) reject(queued, error);
+      queued = null;
+    }
+  };
+
   return {
-    async speak(raw) {
+    async speak(raw, signal) {
       const text = raw.trim().replace(/\s+/g, ' ');
       if (text.length === 0 || text.length > 300) {
         throw new Error('el fragmento debe tener entre 1 y 300 caracteres');
       }
-      const key = createHash('sha256').update(`chatterbox-es-mx-f1-v1\0${text}`).digest('hex');
+      if (signal?.aborted === true) throw interrupted();
+      const key = createHash('sha256').update(`kokoro-es-ef-dora-v1\0${text}`).digest('hex');
       const path = join(cacheRoot, `${key}.wav`);
       if (existsSync(path)) return { bytes: readFileSync(path), mediaType: 'audio/wav', cached: true };
-      await start();
-      const id = randomUUID();
       return new Promise<SpokenAudio>((resolveAudio, rejectAudio) => {
-        pending.set(id, { path, resolve: resolveAudio, reject: rejectAudio });
-        child?.stdin.write(`${JSON.stringify({ id, text, output: path })}\n`);
+        const job: Job = {
+          id: randomUUID(), path, text, settled: false,
+          resolve: resolveAudio, reject: rejectAudio,
+          ...(signal === undefined ? {} : { signal }),
+        };
+        job.onAbort = () => {
+          reject(job, interrupted());
+          if (queued === job) queued = null;
+        };
+        signal?.addEventListener('abort', job.onAbort, { once: true });
+        if (active === null) {
+          void dispatch(job);
+          return;
+        }
+        if (queued !== null) reject(queued, interrupted('la lectura fue reemplazada por otra más reciente'));
+        queued = job;
       });
     },
     close() {
-      child?.kill('SIGTERM');
-      failAll('la voz local se detuvo');
+      if (active !== null) reject(active, interrupted('la voz local se detuvo'));
+      if (queued !== null) reject(queued, interrupted('la voz local se detuvo'));
+      active = null;
+      queued = null;
+      const process = child;
+      child = null;
+      ready = null;
+      process?.kill('SIGTERM');
     },
   };
 }

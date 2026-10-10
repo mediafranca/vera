@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Persistent local Chatterbox worker for Vera.
+"""Persistent local Kokoro worker for Vera.
 
-One process keeps the model in memory and accepts newline-delimited JSON jobs:
+The process keeps the small model in memory and accepts newline-delimited jobs:
 {"id":"…","text":"…","output":"/absolute/cache.wav"}.
-Only the resulting path and status are written to stdout; library diagnostics go
-to stderr so they cannot corrupt the protocol.
+Only protocol messages use stdout; model diagnostics stay on stderr.
 """
 
 from __future__ import annotations
@@ -21,10 +20,9 @@ def reply(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
-def write_pcm(path: Path, wav, sample_rate: int) -> None:
+def write_pcm(path: Path, samples, sample_rate: int) -> None:
     import numpy as np
 
-    samples = wav.squeeze(0).detach().cpu().numpy()
     pcm = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
     temporary = path.with_suffix(path.suffix + ".part")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,24 +34,35 @@ def write_pcm(path: Path, wav, sample_rate: int) -> None:
     os.replace(temporary, path)
 
 
-source = os.environ.get("VERA_TTS_SOURCE")
-if source:
-    sys.path.insert(0, source)
+root = Path(os.environ.get("VERA_TTS_MODEL_ROOT", ""))
+voice_name = os.environ.get("VERA_TTS_VOICE", "ef_dora")
+config = root / "config.json"
+weights = root / "kokoro-v1_0.pth"
+voice = root / "voices" / f"{voice_name}.pt"
+for required in (config, weights, voice):
+    if not required.is_file():
+        raise RuntimeError(f"falta el recurso local de voz: {required}")
 
-# Some dependencies print progress to stdout while loading. Keep stdout reserved
-# for the protocol Vera reads.
 with contextlib.redirect_stdout(sys.stderr):
+    import numpy as np
     import torch
-    from chatterbox.tts import ChatterboxTTS
+    from kokoro import KModel, KPipeline
 
     torch.set_num_threads(max(1, int(os.environ.get("VERA_TTS_THREADS", "3"))))
-    model = ChatterboxTTS.from_pretrained("cpu")
+    model = KModel(
+        repo_id="hexgrad/Kokoro-82M",
+        config=str(config),
+        model=str(weights),
+    ).to("cpu").eval()
+    pipeline = KPipeline(
+        lang_code="e",
+        repo_id="hexgrad/Kokoro-82M",
+        model=model,
+        device="cpu",
+    )
 
-prompt = os.environ.get("VERA_TTS_PROMPT")
-if not prompt or not Path(prompt).is_file():
-    raise RuntimeError("falta VERA_TTS_PROMPT con una muestra local de voz")
-
-reply({"ready": True, "sample_rate": model.sr})
+sample_rate = 24_000
+reply({"ready": True, "sample_rate": sample_rate})
 
 for line in sys.stdin:
     try:
@@ -64,16 +73,14 @@ for line in sys.stdin:
         if not text or len(text) > 300:
             raise ValueError("el fragmento debe tener entre 1 y 300 caracteres")
         with contextlib.redirect_stdout(sys.stderr):
-            torch.manual_seed(7)
-            wav = model.generate(
-                text,
-                language_id="es",
-                audio_prompt_path=prompt,
-                exaggeration=0.5,
-                temperature=0.8,
-                cfg_weight=0.5,
-            )
-        write_pcm(output, wav, model.sr)
+            generated = [
+                result.audio.detach().cpu().numpy()
+                for result in pipeline(text, voice=str(voice), speed=1.0)
+                if result.audio is not None
+            ]
+        if not generated:
+            raise RuntimeError("Kokoro no produjo audio")
+        write_pcm(output, np.concatenate(generated), sample_rate)
         reply({"id": job_id, "ok": True})
     except Exception as problem:
         reply({"id": locals().get("job_id", ""), "ok": False, "error": str(problem)})

@@ -143,7 +143,12 @@ export function wireReadingButton(
           if (token !== generation) return;
           reading.key = part.key;
           label(button, 'waiting');
-          reading.count = countInto(button, 'Preparando voz…', 'speech:chatterbox');
+          const wait = document.createElement('span');
+          wait.className = 'speech-wait';
+          wait.setAttribute('role', 'status');
+          wait.setAttribute('aria-live', 'polite');
+          button.append(wait);
+          reading.count = countInto(wait, 'Preparando voz…', 'speech:kokoro');
           const blob = await api.speak(part.text, reading.controller.signal);
           reading.count.close();
           reading.count = null;

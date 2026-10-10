@@ -270,11 +270,17 @@ contract SpokenReading {
         -- cached audio is derived from the exact text rather than stored as a
         -- second mutable source.
 
-    @invariant ASlowVoiceSaysThatItIsPreparing
-        -- While the local model has not produced playable audio, the initiating
-        -- control remains the visible place of the wait and can stop it. A
-        -- failure leaves the written page intact and tells the reader what
-        -- could not be heard.
+    @invariant PreparingSpeechDoesNotMoveTheWriting
+        -- While the local model has not produced playable audio, a status stays
+        -- anchored to the initiating control without changing the block's
+        -- measure or moving its text. The control can still stop the wait; a
+        -- failure leaves the written page intact and says what could not be heard.
+
+    @invariant RepeatedGesturesDoNotBecomeAHiddenQueue
+        -- At most one fragment is being synthesized and at most the latest
+        -- requested fragment may wait behind it. Stopping or replacing a read
+        -- rejects obsolete requests rather than accumulating work the reader can
+        -- no longer see.
 }
 
 contract BlockManipulation {

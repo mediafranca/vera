@@ -1714,7 +1714,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 422, { error: 'el fragmento debe tener entre 1 y 300 caracteres' });
         return;
       }
-      const spoken = await options.speech.speak(text);
+      const controller = new AbortController();
+      const stop = (): void => controller.abort();
+      request.once('aborted', stop);
+      response.once('close', stop);
+      let spoken: Awaited<ReturnType<SpeechSynthesizer['speak']>>;
+      try {
+        spoken = await options.speech.speak(text, controller.signal);
+      } catch (problem) {
+        if (controller.signal.aborted || (problem instanceof Error && problem.name === 'AbortError')) return;
+        throw problem;
+      } finally {
+        request.off('aborted', stop);
+        response.off('close', stop);
+      }
+      if (controller.signal.aborted || response.destroyed) return;
       response.writeHead(200, {
         'content-type': spoken.mediaType,
         'content-length': spoken.bytes.byteLength,
