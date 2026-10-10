@@ -210,6 +210,19 @@ describe('inlineMarkdown', () => {
       assert.ok(!html.includes('<img'), `un PDF no es una imagen: ${html}`);
     });
 
+    it('un audio incrustado conserva el reproductor dentro del bloque', () => {
+      const html = inlineMarkdown('![escuchar](../assets/voz.ogg)', {
+        resolveAsset: (path) =>
+          path === '../assets/voz.ogg'
+            ? { url: '/media/' + 'c'.repeat(64), mediaType: 'audio/ogg' }
+            : null,
+      });
+      assert.equal(
+        html,
+        `<audio class="media-audio" src="/media/${'c'.repeat(64)}" controls preload="metadata"></audio>`,
+      );
+    });
+
     it('una ruta que Vera no tiene se emite tal cual y degrada sola', () => {
       const html = inlineMarkdown('![x](../assets/ausente.png)', resolver);
       assert.match(html, /<img src="\.\.\/assets\/ausente\.png"/);

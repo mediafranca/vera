@@ -9529,7 +9529,7 @@ html[data-working-slow='true']::after {
   width: min(100%, 32rem);
   margin: 0.4rem 0;
 }
-.media-catalogued { cursor: pointer; }
+.media-catalogued:not(audio, video) { cursor: pointer; }
 
 .page-compose-progress {
   position: sticky;

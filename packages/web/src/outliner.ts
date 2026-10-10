@@ -3369,9 +3369,12 @@ function wireCataloguedMedia(container: HTMLElement, page: PageView): void {
       `[src="${CSS.escape(asset.url)}"], [href="${CSS.escape(asset.url)}"]`,
     )) {
       if (element.classList.contains('media-catalogued')) continue;
+      const playable = element instanceof HTMLAudioElement || element instanceof HTMLVideoElement;
       element.classList.add('media-catalogued');
-      element.title = 'Previsualizar y editar metadatos';
-      element.addEventListener('click', (event) => {
+      element.title = playable
+        ? 'Doble clic para previsualizar y editar metadatos'
+        : 'Previsualizar y editar metadatos';
+      element.addEventListener(playable ? 'dblclick' : 'click', (event) => {
         event.preventDefault();
         openMediaDetails(asset);
       });
