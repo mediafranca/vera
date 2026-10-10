@@ -72,6 +72,7 @@ import {
 } from '@vera/core';
 import { renderTrailBand, trailMarks, type TrailMark } from './trail-page.ts';
 import { pendingLine, saySeconds } from './waiting.ts';
+import { speechParts, speechText, stopReading, wireReadingButton } from './read-aloud.ts';
 import { createPage } from './pages.ts';
 import { canPresentPage, presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
@@ -3391,6 +3392,7 @@ export function renderOutliner(
   readOnly = false,
   transparentBlockTraceability = false,
 ): void {
+  stopReading();
   if (historyPage !== null && historyPage !== page.id) closeHistoryInspector(false);
   document.querySelector('.librarian-activity')?.remove();
   const librarianDialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
@@ -3959,6 +3961,21 @@ export function renderOutliner(
   propertiesToggle.setAttribute('aria-expanded', 'false');
   propertiesToggle.title = 'Mostrar propiedades';
   headingActions.append(propertiesToggle);
+  const readPage = document.createElement('button');
+  readPage.type = 'button';
+  readPage.className = 'read-page';
+  readPage.hidden = readOnly;
+  wireReadingButton(
+    readPage,
+    () => [
+      ...speechParts(`page:${page.id}:title`, page.title),
+      ...page.blocks.flatMap((block) =>
+        speechParts(`block:${block.stableId}`, speechText(block.content, options)),
+      ),
+    ],
+    toast,
+  );
+  headingActions.append(readPage);
   const declaredPresentation = canPresentPage(page.properties, corpusNames().kind);
   {
     // @guarantee DeclaredPresentationsOfferPresentationProminently
@@ -6117,6 +6134,15 @@ export function renderOutliner(
     }
 
     row.classList.toggle('wide-content', hasWideContent(body));
+    const readBlock = document.createElement('button');
+    readBlock.type = 'button';
+    readBlock.className = 'read-block';
+    readBlock.hidden = readOnly;
+    wireReadingButton(
+      readBlock,
+      () => speechParts(`block:${node.block.stableId}`, speechText(node.block.content, options)),
+      toast,
+    );
     // Dos carriles distintos, y no una fila accidental de controles.
     //
     // El chevron —o su hueco— ya es el primer hijo. La viñeta y el cuerpo se
@@ -6124,7 +6150,7 @@ export function renderOutliner(
     // `renderGloss` añadió al extremo derecho. `append` dejaba esa marca entre
     // el chevron y la viñeta: visualmente parecía otro mando del outline cuando
     // en realidad abre una lectura lateral.
-    row.firstElementChild?.after(bullet, body);
+    row.firstElementChild?.after(bullet, body, readBlock);
     if (threads !== null) row.append(threads);
     list.append(row);
     editors.set(node.block.stableId, { node, body });

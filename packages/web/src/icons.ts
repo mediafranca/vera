@@ -76,6 +76,12 @@ const SHAPES = {
     '<path d="M9 5a3 3 0 0 1 3 -3a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3a3 3 0 0 1 -3 -3l0 -5"/>' +
     '<path d="M5 10a7 7 0 0 0 14 0"/><path d="M8 21l8 0"/><path d="M12 17l0 4"/>',
 
+  volume:
+    '<path d="M11 5l-5 4H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>' +
+    '<path d="M18.5 5.5a9 9 0 0 1 0 13"/>',
+  'player-play': '<path d="M7 4v16l13 -8z"/>',
+  'player-pause': '<path d="M8 5v14M16 5v14"/>',
+
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
 
   // El visto. Va con la cruz: aceptar y descartar son dos gestos, no uno con dos

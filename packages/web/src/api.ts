@@ -860,6 +860,21 @@ export const api = {
 
   pages: () => json<PageSummary[]>('/pages'),
 
+  /** Convierte un fragmento breve en voz sin sacarlo de esta Vera. */
+  speak: async (text: string, signal?: AbortSignal): Promise<Blob> => {
+    const response = await fetch('/speech', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? `el servidor contestó ${response.status}`);
+    }
+    return response.blob();
+  },
+
   askLibrarian: (said: { pageId: string; blockId?: string; text: string }) =>
     json<LibrarianRequestView>('/librarian/requests', {
       method: 'POST',

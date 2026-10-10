@@ -8,11 +8,13 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { listen } from './server.ts';
 import { modelPresence } from './model.ts';
 import { transcriberDiagnosis } from './transcribe.ts';
+import { createLocalSpeech } from './speech.ts';
 
 /**
  * La configuración de esta instancia, si la hay.
@@ -39,6 +41,14 @@ const databasePath = process.argv[3] ?? setting('VERA_DATABASE') ?? 'data/vera.s
 const host = process.argv[4] ?? setting('VERA_HOST') ?? '127.0.0.1';
 // Configurable para que una instancia de pruebas no escriba en el almacén real.
 const objectsRoot = process.argv[5] ?? setting('VERA_OBJECTS') ?? 'objects';
+const speechRuntime = setting('VERA_TTS_RUNTIME') ?? join(homedir(), '.local/share/vera/tts');
+const speech = createLocalSpeech({
+  cacheRoot: setting('VERA_TTS_CACHE') ?? join(speechRuntime, 'cache'),
+  python: setting('VERA_TTS_PYTHON') ?? join(speechRuntime, 'venv/bin/python'),
+  worker: setting('VERA_TTS_WORKER') ?? join(ROOT, 'scripts/tts-worker.py'),
+  source: setting('VERA_TTS_SOURCE') ?? join(speechRuntime, 'chatterbox-latam/chatterbox/src'),
+  prompt: setting('VERA_TTS_PROMPT') ?? join(speechRuntime, 'es_mx_f1.wav'),
+});
 const webRoot = setting('VERA_WEB_ROOT') ?? 'packages/web/dist';
 
 /*
@@ -114,6 +124,7 @@ const { vera } = listen({
   host,
   webRoot,
   objectsRoot,
+  speech,
   ...(reachableAt === undefined ? {} : { reachableAt }),
   ...(remoteMcpCredential === undefined ? {} : { remoteMcpCredential }),
   ...(publicDomain === undefined

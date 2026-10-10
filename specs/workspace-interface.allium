@@ -247,6 +247,36 @@ contract BlockBehaviourPresentation {
         -- source or a query through the ordinary prose formatter.
 }
 
+-- Reading aloud is another presentation of the words already on the page. It
+-- does not create an audio attachment, a revision or a second textual source.
+contract SpokenReading {
+    read_page: (page: core/Page) -> Any
+    read_block: (block: core/Block) -> Any
+    stop: () -> Any
+
+    @invariant APageIsReadInItsAuthoredOrder
+        -- Page reading begins with the title and continues through non-empty
+        -- blocks in their outline order. Long blocks may be prepared in smaller
+        -- fragments, but those fragments never change or reorder their words.
+
+    @invariant EveryBlockCanBeHeardOnItsOwn
+        -- Every non-empty block offers the same voice independently of page
+        -- reading. Starting another block or the whole page stops the current
+        -- reading; its one control can pause and continue the audio it began.
+
+    @invariant SpeechIsAProjectionNotAContribution
+        -- Listening creates no block, revision, asset or operation. The words
+        -- stay on this Vera while the configured local voice prepares them, and
+        -- cached audio is derived from the exact text rather than stored as a
+        -- second mutable source.
+
+    @invariant ASlowVoiceSaysThatItIsPreparing
+        -- While the local model has not produced playable audio, the initiating
+        -- control remains the visible place of the wait and can stop it. A
+        -- failure leaves the written page intact and tells the reader what
+        -- could not be heard.
+}
+
 contract BlockManipulation {
     copy_reference: (block: core/Block) -> BlockReference
     copy_block: (block: core/Block) -> String
@@ -1279,6 +1309,7 @@ surface VeraWorkspace {
         fulfils EditablePresentation
         fulfils NativeMarkdownEditing
         fulfils BlockBehaviourPresentation
+        fulfils SpokenReading
         fulfils BlockManipulation
         fulfils PageFrontMatter
         fulfils ResponsiveWorkspace

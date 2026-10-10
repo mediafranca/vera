@@ -1966,6 +1966,69 @@ button { touch-action: manipulation; }
   outline: none;
 }
 
+.read-page,
+.read-block {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.read-page {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.read-page .icon,
+.read-block .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.read-page:hover,
+.read-page:focus-visible,
+.read-page[data-speech-state]:not([data-speech-state='play']),
+.read-block:hover,
+.read-block:focus-visible,
+.read-block[data-speech-state]:not([data-speech-state='play']) {
+  color: var(--accent);
+  outline: none;
+}
+
+.read-block {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.05rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.block:hover > .read-block,
+.block:focus-within > .read-block,
+.read-block[data-speech-state]:not([data-speech-state='play']) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .read-block { opacity: 0.68; }
+}
+
+.read-page.counting,
+.read-block.counting {
+  width: auto;
+  min-width: 1.75rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  font: 0.68rem/1 var(--font-ui);
+  white-space: nowrap;
+}
+
 html.presenting,
 html.presenting body {
   overflow: hidden;

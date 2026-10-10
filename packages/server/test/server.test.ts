@@ -12,7 +12,15 @@ const PORT = 4271;
 const OWNER = 'participant:herbert';
 
 before(() => {
-  running = listen({ port: PORT, databasePath: ':memory:', owner: { id: OWNER, name: 'Dueña' } });
+  running = listen({
+    port: PORT,
+    databasePath: ':memory:',
+    owner: { id: OWNER, name: 'Dueña' },
+    speech: {
+      speak: async (text) => ({ bytes: Buffer.from(`voz:${text}`), mediaType: 'audio/wav', cached: false }),
+      close: () => undefined,
+    },
+  });
   base = `http://localhost:${PORT}`;
 });
 
@@ -85,6 +93,31 @@ describe('mapas de Google pegados', () => {
     assert.equal(destination.searchParams.get('q'), '-32.9696873,-71.3848611');
     assert.equal(destination.searchParams.get('output'), 'embed');
     assert.equal(destination.searchParams.has('key'), false);
+  });
+});
+
+describe('lectura local', () => {
+  it('sirve el audio derivado sin convertirlo en contenido del grafo', async () => {
+    const before = await get('/health') as { operations: number };
+    const response = await fetch(`${base}/speech`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Una memoria continua.' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'audio/wav');
+    assert.equal(await response.text(), 'voz:Una memoria continua.');
+    const after = await get('/health') as { operations: number };
+    assert.equal(after.operations, before.operations);
+  });
+
+  it('rechaza fragmentos que exceden la unidad gobernada', async () => {
+    const response = await fetch(`${base}/speech`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'x'.repeat(301) }),
+    });
+    assert.equal(response.status, 422);
   });
 });
 

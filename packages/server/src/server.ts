@@ -158,6 +158,7 @@ import { readLinks } from './process.ts';
 import { describeStructure, readingPasses, readStructure } from './structure.ts';
 import { describePlan, planTabularity } from './tabularity.ts';
 import { transcribeAudio } from './transcribe.ts';
+import type { SpeechSynthesizer } from './speech.ts';
 import { renderPage } from '@vera/store/projection';
 import {
   p5FrameDocument,
@@ -272,6 +273,8 @@ export interface ServerOptions {
   webRoot?: string;
   /** Almacén de objetos direccionado por hash, donde viven los binarios. */
   objectsRoot?: string;
+  /** Voz local derivada: no escribe en el grafo ni abandona la máquina. */
+  speech?: SpeechSynthesizer;
   owner?: { id: ParticipantId; name: string };
   /**
    * En qué puerto quedó escuchando, para poder decirlo.
@@ -1690,6 +1693,38 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
       return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
     };
+
+    /*
+     * Leer en voz alta es una proyección efímera del texto, no una edición ni
+     * un archivo del corpus. La puerta es privada y estrecha: un fragmento por
+     * vez, para poder detener una página entre bloques.
+     */
+    if (request.method === 'POST' && path === '/speech') {
+      if (publicAccess) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      if (options.speech === undefined) {
+        send(response, 503, { error: 'la voz local no está configurada' });
+        return;
+      }
+      const body = await readSmallJson(4 * 1024);
+      const text = typeof body['text'] === 'string' ? body['text'].trim().replace(/\s+/g, ' ') : '';
+      if (text.length === 0 || text.length > 300) {
+        send(response, 422, { error: 'el fragmento debe tener entre 1 y 300 caracteres' });
+        return;
+      }
+      const spoken = await options.speech.speak(text);
+      response.writeHead(200, {
+        'content-type': spoken.mediaType,
+        'content-length': spoken.bytes.byteLength,
+        'cache-control': 'private, max-age=31536000, immutable',
+        'x-vera-speech-cache': spoken.cached ? 'hit' : 'miss',
+        'x-content-type-options': 'nosniff',
+      });
+      response.end(spoken.bytes);
+      return;
+    }
 
     /*
      * Puerta estrecha de Vera Clip.
@@ -7209,6 +7244,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     store,
     close: () => {
       clearInterval(retryLibrarianDispatches);
+      options.speech?.close();
       store.close();
     },
   };
