@@ -5,6 +5,11 @@ import { countInto, type Counting } from './waiting.ts';
 
 export interface SpeechPart { key: string; text: string }
 
+interface Prepared<T> {
+  settled: boolean;
+  result: Promise<{ ok: true; value: T } | { ok: false; problem: unknown }>;
+}
+
 interface Reading {
   key: string;
   button: HTMLButtonElement;
@@ -87,6 +92,40 @@ export function speechParts(key: string, text: string, maximum = 280): SpeechPar
   return parts;
 }
 
+/**
+ * Prepara sólo la próxima pieza mientras se consume la actual. Así una lectura
+ * larga no parece terminar en cada límite del sintetizador y tampoco llena al
+ * trabajador local con una cola oculta.
+ */
+export async function runSpeechQueue<T>(
+  parts: readonly SpeechPart[],
+  prepare: (part: SpeechPart) => Promise<T>,
+  consume: (value: T, part: SpeechPart) => Promise<void>,
+  beforeAwait: (part: SpeechPart, waiting: boolean) => void = () => undefined,
+): Promise<void> {
+  const begin = (part: SpeechPart): Prepared<T> => {
+    const prepared: Prepared<T> = {
+      settled: false,
+      result: Promise.resolve({ ok: false, problem: new Error('voz sin preparar') }),
+    };
+    prepared.result = prepare(part)
+      .then((value) => ({ ok: true as const, value }), (problem: unknown) => ({ ok: false as const, problem }))
+      .finally(() => { prepared.settled = true; });
+    return prepared;
+  };
+
+  let upcoming = parts[0] === undefined ? null : begin(parts[0]);
+  for (let index = 0; index < parts.length && upcoming !== null; index += 1) {
+    const part = parts[index] as SpeechPart;
+    beforeAwait(part, !upcoming.settled);
+    const outcome = await upcoming.result;
+    if (!outcome.ok) throw outcome.problem;
+    const following = parts[index + 1];
+    upcoming = following === undefined ? null : begin(following);
+    await consume(outcome.value, part);
+  }
+}
+
 async function play(blob: Blob, reading: Reading, token: number): Promise<void> {
   if (token !== generation) return;
   const url = URL.createObjectURL(blob);
@@ -139,21 +178,27 @@ export function wireReadingButton(
     current = reading;
     void (async () => {
       try {
-        for (const part of queue) {
-          if (token !== generation) return;
-          reading.key = part.key;
-          label(button, 'waiting');
-          const wait = document.createElement('span');
-          wait.className = 'speech-wait';
-          wait.setAttribute('role', 'status');
-          wait.setAttribute('aria-live', 'polite');
-          button.append(wait);
-          reading.count = countInto(wait, 'Preparando voz…', 'speech:kokoro');
-          const blob = await api.speak(part.text, reading.controller.signal);
-          reading.count.close();
-          reading.count = null;
-          await play(blob, reading, token);
-        }
+        await runSpeechQueue(
+          queue,
+          (part) => api.speak(part.text, reading.controller.signal),
+          async (blob) => {
+            reading.count?.close();
+            reading.count = null;
+            await play(blob, reading, token);
+          },
+          (part, waiting) => {
+            if (token !== generation) return;
+            reading.key = part.key;
+            if (!waiting) return;
+            label(button, 'waiting');
+            const wait = document.createElement('span');
+            wait.className = 'speech-wait';
+            wait.setAttribute('role', 'status');
+            wait.setAttribute('aria-live', 'polite');
+            button.append(wait);
+            reading.count = countInto(wait, 'Preparando voz…', 'speech:kokoro');
+          },
+        );
       } catch (problem) {
         if (!reading.controller.signal.aborted) {
           report(problem instanceof Error ? problem.message : 'no se pudo leer en voz alta');

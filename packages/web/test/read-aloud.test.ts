@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { speechParts } from '../src/read-aloud.ts';
+import { runSpeechQueue, speechParts } from '../src/read-aloud.ts';
 
 describe('fragmentos de lectura', () => {
   it('conserva el orden y prefiere límites de oración', () => {
@@ -27,5 +27,50 @@ describe('fragmentos de lectura', () => {
 
   it('no inventa voz para un bloque vacío', () => {
     assert.deepEqual(speechParts('block:vacio', '   '), []);
+  });
+
+  it('prepara la parte siguiente mientras todavía reproduce la actual', async () => {
+    const parts = speechParts('bitacora', 'Primera parte. Segunda parte. Tercera parte.', 16);
+    const events: string[] = [];
+    const preparation = new Map<string, (value: string) => void>();
+    const playback = new Map<string, () => void>();
+    const done = runSpeechQueue(
+      parts,
+      (part) => new Promise<string>((resolve) => {
+        events.push(`preparar:${part.key}`);
+        preparation.set(part.key, resolve);
+      }),
+      (audio, part) => new Promise<void>((resolve) => {
+        events.push(`reproducir:${part.key}:${audio}`);
+        playback.set(part.key, resolve);
+      }),
+    );
+
+    preparation.get('bitacora:0')?.('audio-0');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events, [
+      'preparar:bitacora:0',
+      'preparar:bitacora:1',
+      'reproducir:bitacora:0:audio-0',
+    ]);
+
+    preparation.get('bitacora:1')?.('audio-1');
+    playback.get('bitacora:0')?.();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(events.slice(-2), [
+      'preparar:bitacora:2',
+      'reproducir:bitacora:1:audio-1',
+    ]);
+
+    preparation.get('bitacora:2')?.('audio-2');
+    playback.get('bitacora:1')?.();
+    await new Promise((resolve) => setImmediate(resolve));
+    playback.get('bitacora:2')?.();
+    await done;
+    assert.deepEqual(events.filter((event) => event.startsWith('reproducir:')), [
+      'reproducir:bitacora:0:audio-0',
+      'reproducir:bitacora:1:audio-1',
+      'reproducir:bitacora:2:audio-2',
+    ]);
   });
 });
