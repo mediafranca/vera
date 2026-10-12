@@ -84,7 +84,7 @@ export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesize
         env: {
           ...globalThis.process.env,
           VERA_TTS_MODEL_ROOT: options.modelRoot,
-          VERA_TTS_VOICE: options.voice ?? 'ef_dora',
+          VERA_TTS_VOICE: options.voice ?? 'em_alex',
           VERA_TTS_THREADS: String(options.threads ?? 3),
         },
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -160,7 +160,7 @@ export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesize
         throw new Error('el fragmento debe tener entre 1 y 300 caracteres');
       }
       if (signal?.aborted === true) throw interrupted();
-      const key = createHash('sha256').update(`kokoro-es-ef-dora-v1\0${text}`).digest('hex');
+      const key = createHash('sha256').update(`kokoro-es-em-alex-v1\0${text}`).digest('hex');
       const path = join(cacheRoot, `${key}.wav`);
       if (existsSync(path)) return { bytes: readFileSync(path), mediaType: 'audio/wav', cached: true };
       return new Promise<SpokenAudio>((resolveAudio, rejectAudio) => {

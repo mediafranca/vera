@@ -35,7 +35,7 @@ def write_pcm(path: Path, samples, sample_rate: int) -> None:
 
 
 root = Path(os.environ.get("VERA_TTS_MODEL_ROOT", ""))
-voice_name = os.environ.get("VERA_TTS_VOICE", "ef_dora")
+voice_name = os.environ.get("VERA_TTS_VOICE", "em_alex")
 config = root / "config.json"
 weights = root / "kokoro-v1_0.pth"
 voice = root / "voices" / f"{voice_name}.pt"

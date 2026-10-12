@@ -47,7 +47,7 @@ const speech = createLocalSpeech({
   python: setting('VERA_TTS_PYTHON') ?? join(speechRuntime, 'venv/bin/python'),
   worker: setting('VERA_TTS_WORKER') ?? join(ROOT, 'scripts/tts-worker.py'),
   modelRoot: setting('VERA_TTS_MODEL_ROOT') ?? join(speechRuntime, 'model'),
-  voice: setting('VERA_TTS_VOICE') ?? 'ef_dora',
+  voice: setting('VERA_TTS_VOICE') ?? 'em_alex',
 });
 const webRoot = setting('VERA_WEB_ROOT') ?? 'packages/web/dist';
 
