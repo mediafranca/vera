@@ -270,6 +270,12 @@ contract SpokenReading {
         -- cached audio is derived from the exact text rather than stored as a
         -- second mutable source.
 
+    @invariant DerivedAudioCannotAccumulateWithoutBound
+        -- Reusable spoken audio is a bounded, expiring cache rather than a
+        -- second archive. Vera may discard the least recently used or oldest
+        -- derived audio at any time; hearing it again regenerates it from the
+        -- current text without changing the corpus.
+
     @invariant PreparingSpeechDoesNotMoveTheWriting
         -- While the local model has not produced playable audio, a status stays
         -- anchored to the initiating control without changing the block's

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, utimesSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -17,6 +19,8 @@ export interface LocalSpeechOptions {
   modelRoot: string;
   voice?: string;
   threads?: number;
+  maxCacheBytes?: number;
+  maxCacheAgeMs?: number;
 }
 
 interface Job {
@@ -39,10 +43,45 @@ function interrupted(message = 'la lectura fue detenida'): Error {
 export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesizer {
   const cacheRoot = resolve(options.cacheRoot);
   mkdirSync(cacheRoot, { recursive: true });
+  const maxCacheBytes = Number.isFinite(options.maxCacheBytes)
+    ? Math.max(0, options.maxCacheBytes as number)
+    : 256 * 1024 * 1024;
+  const maxCacheAgeMs = Number.isFinite(options.maxCacheAgeMs)
+    ? Math.max(0, options.maxCacheAgeMs as number)
+    : 30 * 24 * 60 * 60 * 1000;
   let child: ChildProcessWithoutNullStreams | null = null;
   let ready: Promise<void> | null = null;
   let active: Job | null = null;
   let queued: Job | null = null;
+
+  /** El audio es una proyección regenerable: nunca crece sin límite. */
+  const pruneCache = (): void => {
+    const now = Date.now();
+    const entries: Array<{ path: string; size: number; usedAt: number }> = [];
+    for (const entry of readdirSync(cacheRoot, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const path = join(cacheRoot, entry.name);
+      if (entry.name.endsWith('.part')) {
+        try { unlinkSync(path); } catch { /* una limpieza no debe tumbar la voz */ }
+        continue;
+      }
+      if (!entry.name.endsWith('.wav')) continue;
+      try {
+        const said = statSync(path);
+        if (now - said.mtimeMs > maxCacheAgeMs) unlinkSync(path);
+        else entries.push({ path, size: said.size, usedAt: said.mtimeMs });
+      } catch { /* el archivo pudo desaparecer entre listado y lectura */ }
+    }
+    let total = entries.reduce((sum, entry) => sum + entry.size, 0);
+    for (const entry of entries.sort((left, right) => left.usedAt - right.usedAt)) {
+      if (total <= maxCacheBytes) break;
+      try {
+        unlinkSync(entry.path);
+        total -= entry.size;
+      } catch { /* otro proceso ya lo retiró */ }
+    }
+  };
+  pruneCache();
 
   const detach = (job: Job): void => {
     if (job.signal !== undefined && job.onAbort !== undefined) {
@@ -104,7 +143,9 @@ export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesize
         const finished = active;
         active = null;
         if (message.ok === true && existsSync(finished.path)) {
-          fulfil(finished, { bytes: readFileSync(finished.path), mediaType: 'audio/wav', cached: false });
+          const bytes = readFileSync(finished.path);
+          pruneCache();
+          fulfil(finished, { bytes, mediaType: 'audio/wav', cached: false });
         } else {
           reject(finished, new Error(message.error ?? 'la voz local no produjo audio'));
         }
@@ -162,7 +203,12 @@ export function createLocalSpeech(options: LocalSpeechOptions): SpeechSynthesize
       if (signal?.aborted === true) throw interrupted();
       const key = createHash('sha256').update(`kokoro-es-em-alex-v1\0${text}`).digest('hex');
       const path = join(cacheRoot, `${key}.wav`);
-      if (existsSync(path)) return { bytes: readFileSync(path), mediaType: 'audio/wav', cached: true };
+      if (existsSync(path)) {
+        const bytes = readFileSync(path);
+        const now = new Date();
+        try { utimesSync(path, now, now); } catch { /* el audio ya está en memoria */ }
+        return { bytes, mediaType: 'audio/wav', cached: true };
+      }
       return new Promise<SpokenAudio>((resolveAudio, rejectAudio) => {
         const job: Job = {
           id: randomUUID(), path, text, settled: false,

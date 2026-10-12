@@ -48,6 +48,8 @@ const speech = createLocalSpeech({
   worker: setting('VERA_TTS_WORKER') ?? join(ROOT, 'scripts/tts-worker.py'),
   modelRoot: setting('VERA_TTS_MODEL_ROOT') ?? join(speechRuntime, 'model'),
   voice: setting('VERA_TTS_VOICE') ?? 'em_alex',
+  maxCacheBytes: Number(setting('VERA_TTS_CACHE_MAX_BYTES') ?? 256 * 1024 * 1024),
+  maxCacheAgeMs: Number(setting('VERA_TTS_CACHE_MAX_AGE_DAYS') ?? 30) * 24 * 60 * 60 * 1000,
 });
 const webRoot = setting('VERA_WEB_ROOT') ?? 'packages/web/dist';
 

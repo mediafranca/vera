@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -97,5 +97,56 @@ for await (const line of createInterface({ input: process.stdin })) {
     assert.equal(jobs.includes('intermedia'), false);
     assert.equal(jobs.at(-1), 'última');
     assert.ok(jobs.length <= 2);
+  });
+
+  it('caduca lo antiguo y expulsa primero lo menos usado al alcanzar el límite', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vera-speech-cache-'));
+    roots.push(root);
+    const cacheRoot = join(root, 'cache');
+    const fake = join(root, 'fake-worker.mjs');
+    const worker = join(root, 'worker.py');
+    const counter = join(root, 'jobs.txt');
+    await writeFile(worker, 'worker');
+    await writeFile(fake, `#!/usr/bin/env node
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+process.stdout.write(JSON.stringify({ ready: true }) + '\\n');
+for await (const line of createInterface({ input: process.stdin })) {
+  const job = JSON.parse(line);
+  appendFileSync(${JSON.stringify(counter)}, job.text + '\\n');
+  writeFileSync(job.output, Buffer.alloc(16, job.text.length));
+  process.stdout.write(JSON.stringify({ id: job.id, ok: true }) + '\\n');
+}
+`);
+    await chmod(fake, 0o755);
+
+    const bounded = createLocalSpeech({
+      cacheRoot, python: fake, worker, modelRoot: root,
+      maxCacheBytes: 20,
+      maxCacheAgeMs: 60_000,
+    });
+    running.push(bounded);
+    await bounded.speak('primera');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await bounded.speak('segunda');
+    assert.equal((await readdir(cacheRoot)).filter((name) => name.endsWith('.wav')).length, 1);
+    assert.equal((await bounded.speak('primera')).cached, false, 'la pieza más antigua ya fue expulsada');
+    bounded.close();
+
+    const remaining = (await readdir(cacheRoot)).find((name) => name.endsWith('.wav')) as string;
+    const old = new Date(Date.now() - 120_000);
+    await utimes(join(cacheRoot, remaining), old, old);
+    const expiring = createLocalSpeech({
+      cacheRoot, python: fake, worker, modelRoot: root,
+      maxCacheBytes: 20,
+      maxCacheAgeMs: 60_000,
+    });
+    running.push(expiring);
+    assert.equal((await readdir(cacheRoot)).filter((name) => name.endsWith('.wav')).length, 0);
+    await expiring.speak('primera');
+    assert.ok((await stat(cacheRoot)).isDirectory());
+
+    const jobs = (await readFile(counter, 'utf8')).trim().split('\n');
+    assert.deepEqual(jobs, ['primera', 'segunda', 'primera', 'primera']);
   });
 });
