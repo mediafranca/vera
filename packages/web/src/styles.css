@@ -750,21 +750,15 @@ button { touch-action: manipulation; }
   --format-bar-height: 2.15rem;
   --format-bar-gap: 0.45rem;
   /*
-   * La barra pertenece al bloque, pero no ocupa una línea suya.
-   *
-   * `sticky` la deja alineada con la caja de edición y, al recorrer un bloque
-   * largo, la detiene arriba del panel de texto. La traslación la pone sobre el
-   * bloque; el margen negativo devuelve exactamente su alto al flujo. Abrirla y
-   * cerrarla no desplaza ni el editor ni ninguno de los bloques que siguen.
-   *
-   * El `top` incluye la misma altura y distancia que luego se restan con el
-   * transform: la posición visible resultante queda a .65rem del borde superior
-   * del panel, nunca fuera de la pantalla.
+   * La barra pertenece al bloque y sólo existe cuando se la pide desde la
+   * herramienta que reemplaza su viñeta. Ocupa su propia fila antes del fuente:
+   * al recorrer un bloque largo se va con su comienzo, en vez de flotar sobre lo
+   * escrito. El icono de herramientas es el que permanece alcanzable.
    */
-  position: sticky;
-  top: calc(0.65rem + var(--format-bar-height) + var(--format-bar-gap));
+  position: relative;
   z-index: 12;
   display: flex;
+  flex-wrap: wrap;
   box-sizing: border-box;
   /*
    * Cabe en la columna que realmente tiene el texto.
@@ -776,16 +770,19 @@ button { touch-action: manipulation; }
    * hacia la derecha. La barra ocupa como máximo su ancho natural y sus botones
    * ceden dentro de ella, de modo que el documento nunca gana otro eje.
    */
-  width: min(100%, 27.2rem);
-  height: var(--format-bar-height);
-  margin: 0 0 calc(-1 * var(--format-bar-height));
-  transform: translateY(calc(-100% - var(--format-bar-gap)));
+  width: min(calc(100% - 1rem), 27.2rem);
+  min-height: var(--format-bar-height);
+  margin: 0 0 var(--format-bar-gap);
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 5px;
   background: var(--bg-raised);
   box-shadow: 0 0.3rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
   scrollbar-width: none;
+}
+
+.format-bar[hidden] {
+  display: none;
 }
 
 .format-bar::-webkit-scrollbar {
@@ -795,7 +792,7 @@ button { touch-action: manipulation; }
 .format-action {
   flex: 1 1 2.35rem;
   min-width: 1.7rem;
-  height: 100%;
+  height: var(--format-bar-height);
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
   background: transparent;
@@ -836,7 +833,7 @@ button { touch-action: manipulation; }
   display: flex;
   flex: 0 1 3.55rem;
   min-width: 2.8rem;
-  height: 100%;
+  height: var(--format-bar-height);
 }
 
 .format-heading-choices {
@@ -5978,6 +5975,29 @@ body.settings-open #text {
 .bullet.generated::before {
   background: none;
   box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/*
+ * Al escribir, la viñeta deja de abrir el menú general del bloque y pasa a
+ * nombrar la herramienta que sí corresponde en ese momento: el formato. El
+ * SVG sustituye también números y marcas de procedencia sólo mientras dura la
+ * edición; al salir, cada señal original vuelve intacta.
+ */
+.block > .bullet.editing-tools::before {
+  display: none;
+}
+
+.bullet.editing-tools {
+  position: sticky;
+  top: 0.65rem;
+  z-index: 13;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+.bullet.editing-tools .icon {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 /* --- La bitácora, leída de corrido ---------------------------------------- */

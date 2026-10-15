@@ -189,8 +189,21 @@ describe('videos de YouTube', () => {
 describe('barra de formato', () => {
   it('cede dentro de la columna sin crear desplazamiento horizontal del documento', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-    assert.match(styles, /\.format-bar \{[\s\S]*?width: min\(100%, 27\.2rem\);/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?flex-wrap: wrap;[\s\S]*?width: min\(calc\(100% - 1rem\), 27\.2rem\);/);
     assert.match(styles, /\.format-action \{[\s\S]*?flex: 1 1 2\.35rem;[\s\S]*?min-width: 1\.7rem;/);
+  });
+
+  it('nace colapsada y la viñeta del bloque la gobierna sin perder el foco', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /formatBar\.hidden = true/);
+    assert.match(source, /bullet\.classList\.add\('editing-tools'\)/);
+    assert.match(source, /editingTools\.hidden = !editingTools\.hidden/);
+    assert.match(source, /if \(body\.classList\.contains\('editing'\)\) event\.preventDefault\(\)/);
+    assert.match(styles, /\.format-bar\[hidden\] \{\s*display: none;/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?position: relative;/);
+    assert.match(styles, /\.block > \.bullet\.editing-tools::before \{\s*display: none;/);
+    assert.match(styles, /\.bullet\.editing-tools \{\s*position: sticky;\s*top: 0\.65rem;/);
   });
 });
 

@@ -5751,6 +5751,16 @@ export function renderOutliner(
     bullet.addEventListener('click', (event) => {
       event.stopPropagation();
       if (draggedMoved) return;
+      const editingTools = body.querySelector<HTMLElement>('.format-bar');
+      if (body.classList.contains('editing') && editingTools !== null) {
+        editingTools.hidden = !editingTools.hidden;
+        bullet.setAttribute('aria-expanded', String(!editingTools.hidden));
+        const toolsAction = editingTools.hidden ? 'mostrar' : 'ocultar';
+        bullet.setAttribute('aria-label', `${toolsAction} herramientas de formato`);
+        bullet.title = `${toolsAction} herramientas de formato`;
+        body.querySelector<HTMLTextAreaElement>('.editor')?.focus({ preventScroll: true });
+        return;
+      }
       if (readOnly) {
         openBlockMenu(bullet, [[
           ...(callbacks.canAskLibrarian === true ? [{
@@ -5950,6 +5960,13 @@ export function renderOutliner(
           },
         ],
       ]);
+    });
+
+    // El botón de herramientas no debe sacar el foco del editor: hacerlo
+    // cerraría la edición antes de que el click pudiera desplegar la barra y
+    // perdería además la selección que se quiere formatear.
+    bullet.addEventListener('mousedown', (event) => {
+      if (body.classList.contains('editing')) event.preventDefault();
     });
 
     // Al enfocar, el bloque muestra su Markdown; al salir, su render.
@@ -7911,7 +7928,7 @@ function keepCaretInSight(editor: HTMLTextAreaElement, at: number): void {
   const frame = scroller.getBoundingClientRect();
   const line = lineHeightOf(editor);
   const margin = Math.max(16, line);
-  const toolbar = document.querySelector<HTMLElement>('.format-bar');
+  const toolbar = document.querySelector<HTMLElement>('.format-bar:not([hidden])');
   const topInset = toolbar === null ? margin : toolbar.getBoundingClientRect().height + 12;
   const tall = box.height + topInset + margin > view;
 
@@ -7981,14 +7998,34 @@ function startEditing(
    * audio no es texto de nadie.
    */
   const spoken = body.querySelector('.audio-block');
+  const bullet = body.parentElement?.querySelector<HTMLButtonElement>(':scope > .bullet') ?? null;
+  const bulletPresentation = bullet === null ? null : {
+    html: bullet.innerHTML,
+    title: bullet.title,
+    label: bullet.getAttribute('aria-label'),
+    popup: bullet.getAttribute('aria-haspopup'),
+    draggable: bullet.draggable,
+  };
   const formatBar = document.createElement('div');
   formatBar.className = 'format-bar';
   formatBar.setAttribute('role', 'toolbar');
   formatBar.setAttribute('aria-label', 'formato del bloque');
+  formatBar.hidden = true;
+  formatBar.id = `format-${block.stableId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   body.innerHTML = '';
   if (spoken !== null) body.append(spoken);
   body.append(formatBar, editor);
   body.classList.add('editing');
+  if (bullet !== null) {
+    bullet.classList.add('editing-tools');
+    bullet.innerHTML = icon('tool');
+    bullet.title = 'herramientas de formato';
+    bullet.setAttribute('aria-label', 'mostrar herramientas de formato');
+    bullet.removeAttribute('aria-haspopup');
+    bullet.setAttribute('aria-controls', formatBar.id);
+    bullet.setAttribute('aria-expanded', 'false');
+    bullet.draggable = false;
+  }
 
   /**
    * El alto sigue al contenido.
@@ -8140,6 +8177,18 @@ function startEditing(
   /** Volver a la vista de lectura, conservando la grabación por el mismo motivo. */
   const render = (content: string): void => {
     body.classList.remove('editing');
+    if (bullet !== null && bulletPresentation !== null) {
+      bullet.classList.remove('editing-tools');
+      bullet.innerHTML = bulletPresentation.html;
+      bullet.title = bulletPresentation.title;
+      if (bulletPresentation.label === null) bullet.removeAttribute('aria-label');
+      else bullet.setAttribute('aria-label', bulletPresentation.label);
+      if (bulletPresentation.popup === null) bullet.removeAttribute('aria-haspopup');
+      else bullet.setAttribute('aria-haspopup', bulletPresentation.popup);
+      bullet.removeAttribute('aria-controls');
+      bullet.removeAttribute('aria-expanded');
+      bullet.draggable = bulletPresentation.draggable;
+    }
     body.classList.toggle('code-source', isFencedCodeContent(content));
     const heldAudio = body.querySelector('.audio-block');
     body.innerHTML = '';

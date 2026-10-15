@@ -125,15 +125,18 @@ contract NativeMarkdownEditing {
         -- of the Markdown renderer.
 
     @invariant FormattingIsOneEditingTool
-        -- While a Markdown block is being edited, `/formato` reveals one bar
-        -- above its source. Its observable order is the split heading control;
+        -- While a Markdown block is being edited, its bullet becomes a tools
+        -- control and the formatting bar begins collapsed. Activating that
+        -- control reveals one bar above the source of that same block. Its
+        -- observable order is the split heading control;
         -- bold, italic, strikethrough, underline, superscript and subscript;
         -- quotation and code; then Vera internal link and external web link. H1
         -- is the heading control's visible primary action; the adjacent arrow
         -- reveals H2 through H6 in a vertical list. Italic is presented as an
         -- italic `I`, strikethrough as a struck `S`, and underline as an
         -- underlined `U`. These appearances do not replace accessible names.
-        -- Closing the bar leaves the same source, selection and caret in place.
+        -- Closing or reopening the bar leaves the same source, selection and
+        -- caret in place. Leaving the editor restores the block's ordinary bullet.
 
     @invariant FormattingWritesPortableMarkdown
         -- An internal link wraps selected text as `[[…]]`; with no selection it
@@ -162,19 +165,21 @@ contract NativeMarkdownEditing {
         -- Mermaid, drawing or media. Executable and specialised behaviours begin
         -- only through their explicit block command or recognised attachment.
 
-    @invariant FormattingFloatsWithoutMovingTheText
-        -- The formatting bar floats above the block being edited and occupies no
-        -- space in the document flow: opening or closing it moves neither that
-        -- block's source nor any block below it. It stays horizontally aligned
-        -- with the editor. While a block taller than the viewport is edited, the
-        -- bar remains at the top of the visible text pane instead of scrolling
-        -- outside the screen.
+    @invariant FormattingStaysWithTheEditedBlock
+        -- While collapsed, the formatting tool occupies only the bullet's usual
+        -- place. While a block taller than the viewport is edited, that tool
+        -- remains at the top of the visible text pane so the bar can always be
+        -- opened or closed. When opened, the bar takes its own row above the
+        -- source inside the edited block and stays horizontally aligned with that
+        -- editor. The bar travels in the ordinary flow with the beginning of the
+        -- source instead of floating over text; scrolling down leaves it above,
+        -- and returning to the beginning reveals it before the first line. Tool
+        -- and bar are bounded by the edited block and never enter a neighbour.
 
     @invariant FormattingNeverCoversWhatIsBeingWritten
-        -- Floating cannot make the bar an obstacle. It never covers the caret,
-        -- the current selection, an autocomplete result or the line being
-        -- edited; when the available edge cannot hold it, it moves, collapses or
-        -- closes rather than asking the participant to write underneath it.
+        -- The bar never covers the source, caret, current selection or an
+        -- autocomplete result. It occupies its own row before the source rather
+        -- than asking the participant to read or write underneath it.
 }
 
 -- A block has one primary way of being read, but no stored type field is needed.
