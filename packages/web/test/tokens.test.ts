@@ -97,6 +97,26 @@ describe('rotación automática del mapa 3D', () => {
 });
 
 describe('superficies del sistema de diseño', () => {
+  it('restablece la apariencia canónica vigente en claro y oscuro', () => {
+    const defaults = new Map(DEFAULT_TOKENS.map((token) => [token.name, token]));
+
+    assert.deepEqual(defaults.get('--bg-raised'), {
+      name: '--bg-raised', light: '#e8ebf1', dark: '#390e30',
+    });
+    assert.deepEqual(defaults.get('--rule'), {
+      name: '--rule', light: '#454f6e21', dark: '#5220606e',
+    });
+    assert.deepEqual(defaults.get('--text-size'), {
+      name: '--text-size', light: '15px', dark: '16px',
+    });
+    assert.deepEqual(defaults.get('--line-height'), {
+      name: '--line-height', light: '1.744', dark: '1.744',
+    });
+    assert.deepEqual(defaults.get('--content-width'), {
+      name: '--content-width', light: '45em', dark: '40em',
+    });
+  });
+
   it('cada superficie elevada usa el token gobernado que Vera realmente define', () => {
     assert.ok(DEFAULT_TOKENS.some((token) => token.name === '--bg-raised'));
     assert.doesNotMatch(styles, /var\(--surface\b/);

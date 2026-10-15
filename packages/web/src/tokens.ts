@@ -43,7 +43,7 @@ export function kindOf(token: DesignToken): TokenKind {
  * La reserva del sistema de diseño.
  *
  * No son valores neutros de fábrica: son los que Herbert ajustó usando Vera y
- * dejó fijados el 8 de agosto de 2026 —fondo ciruela en oscuro, verde pálido en
+ * dejó fijados el 15 de octubre de 2026 —fondo ciruela en oscuro, verde pálido en
  * los nodos, naranja quemado de acento—. @guarantee EditableDesignSystem dice
  * que el sistema se ajusta desde dentro; esto es el otro extremo del mismo
  * gesto: lo ajustado vuelve al código, así que una instancia nueva y un
@@ -56,10 +56,10 @@ export function kindOf(token: DesignToken): TokenKind {
  */
 export const DEFAULT_TOKENS: DesignToken[] = [
   { name: '--bg', light: '#e6ebe9', dark: '#2e0024' },
-  { name: '--bg-raised', light: '#e8ebf1', dark: '#351725' },
+  { name: '--bg-raised', light: '#e8ebf1', dark: '#390e30' },
   { name: '--text', light: '#454f6e', dark: '#cde0cf' },
   { name: '--text-dim', light: '#6b7080', dark: '#a4a696' },
-  { name: '--rule', light: '#d1d1d2', dark: '#24001c' },
+  { name: '--rule', light: '#454f6e21', dark: '#5220606e' },
   { name: '--accent', light: '#a84a0b', dark: '#ee895d' },
   { name: '--node-central', light: '#045591', dark: '#ec5f22' },
   { name: '--node-fill', light: '#393a3c', dark: '#acc8af' },
@@ -97,7 +97,7 @@ export const DEFAULT_TOKENS: DesignToken[] = [
   // que debería pedir recompilar. Rige el texto y sólo el texto: la interfaz la
   // mide `--phone-scale` sobre la raíz, que son dos cosas distintas aunque
   // durante un tiempo pareciera que eran una.
-  { name: '--text-size', light: '16px', dark: '16px' },
+  { name: '--text-size', light: '15px', dark: '16px' },
   // La interlínea: cada cuánto cae una línea de texto.
   //
   // Es la retícula de base de toda la aplicación. De ella salen el ritmo de la
@@ -106,17 +106,17 @@ export const DEFAULT_TOKENS: DesignToken[] = [
   // donde habría caído. Sin número aquí, ese ritmo lo fijaban ocho valores
   // sueltos repartidos por la hoja y ajustarlo pedía recompilar.
   //
-  // Sin unidad, para que multiplique al tamaño de letra de cada sitio: 1.55 en
-  // el cuerpo son 1.55 veces 16 px, y en un teléfono, 1.55 veces lo que
+  // Sin unidad, para que multiplique al tamaño de letra de cada sitio: 1.744 en
+  // el cuerpo son 1.744 veces el tamaño vigente, y en un teléfono, 1.744 veces lo que
   // `--phone-scale` haya dejado.
-  { name: '--line-height', light: '1.55', dark: '1.55' },
+  { name: '--line-height', light: '1.744', dark: '1.744' },
   // Hasta dónde llega una línea de prosa.
   //
   // Una línea muy ancha se lee mal: el ojo pierde el comienzo de la siguiente al
   // volver del final de la anterior. Con el texto a pantalla completa las líneas
   // llegaban al borde. No lo cumplen las tablas, las imágenes, los diagramas ni
   // el código, que necesitan el ancho que necesitan y no son prosa.
-  { name: '--content-width', light: '45em', dark: '45em' },
+  { name: '--content-width', light: '45em', dark: '40em' },
   // Cuánto se mete hacia dentro cada nivel del esquema.
   //
   // Un token porque la talla cómoda depende de la pantalla: en un teléfono, todo
