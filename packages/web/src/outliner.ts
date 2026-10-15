@@ -477,6 +477,15 @@ function chooseTranscript(choices: YoutubeTranscriptChoice[]): Promise<YoutubeTr
   });
 }
 
+/** Por qué no hay nada que escoger, dicho antes de abrir un diálogo vacío. */
+export function unavailableTranscriptReason(
+  choices: readonly YoutubeTranscriptChoice[],
+): string | null {
+  return choices.length === 0
+    ? 'YouTube no ofrece subtítulos publicados ni automáticos para este video'
+    : null;
+}
+
 /** Deja dicho que en este bloque se va a hablar. */
 export function speakInto(block: string, destination = 'este bloque'): void {
   speakingIn = { block, destination };
@@ -5642,6 +5651,8 @@ export function renderOutliner(
             transcript.disabled = true;
             transcript.textContent = 'Buscando pistas…';
             void api.youtubeTranscripts(source).then(async (catalog) => {
+              const unavailable = unavailableTranscriptReason(catalog.choices);
+              if (unavailable !== null) throw new Error(unavailable);
               const choice = await chooseTranscript(catalog.choices);
               if (choice === null) return;
               transcript.textContent = 'Trayendo…';
@@ -5964,10 +5975,11 @@ export function renderOutliner(
         else callbacks.onOpenBlock(ref.page, ref.id);
         return;
       }
-      if (target.tagName === 'A') return;
-      // Pulsar el reproductor o sus botones no abre el editor; pulsar el texto
-      // sí, que es lo que se espera de un texto.
-      if (target.closest('.audio-block, .process-block') !== null) return;
+      // Los controles y objetos incrustados actúan sobre sí mismos. Ninguno
+      // abre además el fuente del bloque que los contiene: ésa era la razón por
+      // la que pulsar «Traer transcripción» podía acabar enseñando la URL cruda
+      // del video, aunque el botón hubiera empezado ya su propia acción.
+      if (target.closest('a, button, input, select, textarea, .audio-block, .process-block, .embed') !== null) return;
       if (readOnly) return;
 
       /*

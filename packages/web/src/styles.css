@@ -766,8 +766,17 @@ button { touch-action: manipulation; }
   z-index: 12;
   display: flex;
   box-sizing: border-box;
-  width: max-content;
-  max-width: 100%;
+  /*
+   * Cabe en la columna que realmente tiene el texto.
+   *
+   * En la vista de escritorio con mapa, la columna puede ser más angosta que
+   * el ancho preferido de todos los controles. `max-content` dejaba que esos
+   * controles produjeran desborde horizontal en `#text`; al enfocar uno, el
+   * navegador desplazaba el panel entero y parecía que el texto había saltado
+   * hacia la derecha. La barra ocupa como máximo su ancho natural y sus botones
+   * ceden dentro de ella, de modo que el documento nunca gana otro eje.
+   */
+  width: min(100%, 27.2rem);
   height: var(--format-bar-height);
   margin: 0 0 calc(-1 * var(--format-bar-height));
   transform: translateY(calc(-100% - var(--format-bar-gap)));
@@ -784,8 +793,8 @@ button { touch-action: manipulation; }
 }
 
 .format-action {
-  flex: 0 0 auto;
-  min-width: 2.35rem;
+  flex: 1 1 2.35rem;
+  min-width: 1.7rem;
   height: 100%;
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
@@ -825,7 +834,8 @@ button { touch-action: manipulation; }
 
 .format-heading {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 3.55rem;
+  min-width: 2.8rem;
   height: 100%;
 }
 

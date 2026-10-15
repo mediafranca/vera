@@ -29,6 +29,7 @@ import {
   reloadAfterServerWriting,
   reloadAfterDerivedWriting,
   reloadOptionsFor,
+  unavailableTranscriptReason,
 } from '../src/outliner.ts';
 import type { BlockView, CrossingRow } from '../src/api.ts';
 
@@ -165,6 +166,31 @@ describe('menú encadenado', () => {
       { run: () => order.push('run') },
     );
     assert.deepEqual(order, ['stop', 'run']);
+  });
+});
+
+describe('videos de YouTube', () => {
+  it('explica cuando YouTube no publica ninguna pista en vez de abrir un diálogo vacío', () => {
+    assert.equal(
+      unavailableTranscriptReason([]),
+      'YouTube no ofrece subtítulos publicados ni automáticos para este video',
+    );
+    assert.equal(unavailableTranscriptReason([{
+      source: 'published', language: 'es', label: 'Español', translated: false,
+    }]), null);
+  });
+
+  it('los controles del video quedan fuera del gesto que abre el editor', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /closest\('a, button, input, select, textarea, \.audio-block, \.process-block, \.embed'\)/);
+  });
+});
+
+describe('barra de formato', () => {
+  it('cede dentro de la columna sin crear desplazamiento horizontal del documento', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /\.format-bar \{[\s\S]*?width: min\(100%, 27\.2rem\);/);
+    assert.match(styles, /\.format-action \{[\s\S]*?flex: 1 1 2\.35rem;[\s\S]*?min-width: 1\.7rem;/);
   });
 });
 
