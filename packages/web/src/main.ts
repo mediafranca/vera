@@ -28,6 +28,7 @@ import {
 import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
 import {
   allowEmbedsFrom,
+  focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
   renderOutliner,
@@ -96,6 +97,7 @@ import {
 } from './promote.ts';
 import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
+import { wirePullToRefresh } from './pull-to-refresh.ts';
 
 const PHONE = 640;
 
@@ -1509,7 +1511,8 @@ function callbacksForJournalSlice(page: PageView, slice: HTMLElement): OutlinerC
       if (!slice.isConnected) return;
       const text = $('#text');
       const viewport = holdTextViewport(text);
-      renderOutliner(slice, fresh, callbacksForJournalSlice(fresh, slice), focus, null, isReadOnly(),
+      const continued = focusAfterChange(fresh.blocks, focus);
+      renderOutliner(slice, fresh, callbacksForJournalSlice(fresh, slice), continued, null, isReadOnly(),
         isAnybody() && corpus?.transparentBlockTraceability === true);
       restoreTextViewport(text, viewport);
     }).catch((error) => {
@@ -1631,6 +1634,10 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
     onReload: (focus, options) => {
       const text = $('#text');
       const viewport = holdTextViewport(text);
+      const nextBlocks = replica !== null && openView !== null && workspace.activePage === replica.page
+        ? blocksOf(replica)
+        : openView?.blocks ?? page.blocks;
+      const continued = focusAfterChange(nextBlocks, focus);
       /*
        * Renombrar es el único cambio corriente que la réplica de una página
        * difiere a propósito: también reescribe referencias del resto del grafo.
@@ -1644,7 +1651,7 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
           void (async () => {
             await openPage(
               active,
-              focus,
+              continued,
               options.replaceRoute === true ? { replaceRoute: true } : {},
             );
             // Volver al corpus puede insertar o retirar aparatos derivados por
@@ -1661,13 +1668,13 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
         openView.blockProperties = blockPropertiesOf(replica);
         openView.properties = pagePropertiesOf(replica);
         openView.visibility = replica.graph.page(replica.page)?.visibility ?? openView.visibility;
-        renderOutliner(text, openView, callbacksFor(openView), focus, workspace.focusRoot, isReadOnly(),
+        renderOutliner(text, openView, callbacksFor(openView), continued, workspace.focusRoot, isReadOnly(),
           isAnybody() && corpus?.transparentBlockTraceability === true);
         restoreTextViewport(text, viewport);
         catchUp();
         return;
       }
-      if (workspace.activePage !== null) void openPage(workspace.activePage, focus);
+      if (workspace.activePage !== null) void openPage(workspace.activePage, continued);
     },
     // @invariant FocusBoundsTheStructure: con la vista enraizada en un bloque,
     // sólo se dibuja su subárbol, así que desindentar, fusionar y mover se
@@ -1868,6 +1875,37 @@ function revealBlock(stableId: string, page: string): void {
 /** Un aviso a la vez, en texto plano: el corpus no dicta marcado. */
 function notice(message: string): void {
   systemNotice(message);
+}
+
+/**
+ * Pedir expresamente la versión canónica de lo que se está leyendo.
+ *
+ * No basta con redibujar la réplica: el gesto significa «mira otra vez en el
+ * corpus». La entrega se obtiene antes de tocar el documento, así que una caída
+ * de red conserva intacta la versión visible en vez de sustituirla por una copia
+ * y fingir que se actualizó.
+ */
+async function refreshVisiblePage(): Promise<void> {
+  const target = openView;
+  if (target === null || workspace.activePage !== target.id) return;
+
+  const active = document.activeElement;
+  const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
+    (active instanceof HTMLElement && active.isContentEditable);
+  if (writing) throw new Error('termina la edición antes de actualizar');
+
+  if (!isAnybody()) {
+    await catchUpWithCorpus();
+    await api.drain();
+  }
+  const canonical = await canonicalPage(target);
+  // La red puede tardar: nunca hacer volver a quien ya navegó a otra página.
+  if (workspace.activePage !== target.id) return;
+  await openPage(canonical.id, null, {
+    fromUrl: true,
+    replaceRoute: true,
+    delivered: canonical,
+  });
 }
 
 /**
@@ -4014,6 +4052,16 @@ window.addEventListener('message', (event: MessageEvent<unknown>) => {
 });
 
 if (!handlesSharedAccess()) void boot();
+
+const pullRefresh = $('#pull-refresh');
+pullRefresh.querySelector<HTMLElement>('.pull-refresh-icon')!.innerHTML = icon('refresh-cw');
+wirePullToRefresh({
+  container: $('#text'),
+  indicator: pullRefresh,
+  canRefresh: () => openView !== null && workspace.activePage === openView.id,
+  refresh: refreshVisiblePage,
+  failed: (message) => notice(`No se pudo actualizar la página: ${message}.`),
+});
 
 /*
  * Registrar el service worker, y además ocuparse de que se renueve.

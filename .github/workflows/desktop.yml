@@ -241,7 +241,12 @@ jobs:
           MACOS_SIGNED: ${{ needs.macos.outputs.signed }}
         run: |
           {
-            echo "## Vera $GITHUB_REF_NAME"
+            release_notes="docs/releases/$GITHUB_REF_NAME.md"
+            if [ ! -f "$release_notes" ]; then
+              echo "::error::Faltan las notas de $GITHUB_REF_NAME en $release_notes"
+              exit 1
+            fi
+            cat "$release_notes"
             echo
             echo "Linux (AppImage, deb) es siempre una release estable: no requiere"
             echo "firma de código, así que no depende de certificados comerciales."

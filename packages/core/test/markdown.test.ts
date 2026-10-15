@@ -210,6 +210,19 @@ describe('inlineMarkdown', () => {
       assert.ok(!html.includes('<img'), `un PDF no es una imagen: ${html}`);
     });
 
+    it('un audio incrustado conserva el reproductor dentro del bloque', () => {
+      const html = inlineMarkdown('![escuchar](../assets/voz.ogg)', {
+        resolveAsset: (path) =>
+          path === '../assets/voz.ogg'
+            ? { url: '/media/' + 'c'.repeat(64), mediaType: 'audio/ogg' }
+            : null,
+      });
+      assert.equal(
+        html,
+        `<audio class="media-audio" src="/media/${'c'.repeat(64)}" controls preload="metadata"></audio>`,
+      );
+    });
+
     it('una ruta que Vera no tiene se emite tal cual y degrada sola', () => {
       const html = inlineMarkdown('![x](../assets/ausente.png)', resolver);
       assert.match(html, /<img src="\.\.\/assets\/ausente\.png"/);
@@ -620,6 +633,22 @@ describe('incrustaciones', () => {
     assert.match(html, /referrerpolicy="strict-origin-when-cross-origin"/);
     assert.match(html, /Traer transcripción/);
     assert.match(html, /data-youtube-source="https:\/\/youtu\.be\/dQw4w9WgXcQ"/);
+  });
+
+  it('una URL corta de Google Maps pegada sola se vuelve un mapa sin perder su fuente', () => {
+    const source = 'https://maps.app.goo.gl/c3QtQWekv2Uu6CxYA';
+    const html = renderMarkdown(source, { embedHosts: ['google.com'] });
+    assert.match(html, /class="embed google-map"/);
+    assert.match(html, /src="\/embeds\/google-map\?url=https%3A%2F%2Fmaps\.app\.goo\.gl%2F/);
+    assert.match(html, /loading="lazy"/);
+    assert.match(html, /referrerpolicy="no-referrer"/);
+    assert.match(html, new RegExp(`href="${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+  });
+
+  it('Google Maps no se incrusta sin autorización ni dentro de una frase', () => {
+    const source = 'https://maps.app.goo.gl/c3QtQWekv2Uu6CxYA';
+    assert.ok(!renderMarkdown(source).includes('<iframe'));
+    assert.ok(!renderMarkdown(`lugar: ${source}`, { embedHosts: ['google.com'] }).includes('<iframe'));
   });
 
   it('un clip de YouTube conserva la fuente y limita la reproducción', () => {

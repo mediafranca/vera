@@ -185,13 +185,13 @@ contract BlockBehaviourPresentation {
 
     @invariant TheCurrentBlockBehavioursAreNamed
         -- Vera distinguishes standard Markdown, explicit executable HTML, audio,
-        -- video, YouTube clip, embedded map, hand drawing, p5.js, SVG, query,
-        -- Mermaid and Markdown table blocks.
+        -- video, YouTube clip, Google Maps address, embedded map, hand drawing,
+        -- p5.js, SVG, query, Mermaid and Markdown table blocks.
         -- Each is presented and edited according to its own behaviour.
 
     @invariant BehaviourIsDerivedRatherThanDuplicated
-        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, embedded
-        -- maps, HTML, p5.js and SVG are recognised from their complete preserved
+        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, Google
+        -- Maps addresses, embedded maps, HTML, p5.js and SVG are recognised from their complete preserved
         -- source; audio and video are recognised from their native attachment.
         -- Vera does not keep a second mutable type label that can disagree with
         -- the content.
@@ -245,6 +245,48 @@ contract BlockBehaviourPresentation {
         -- Editing opens the source, canvas or media controls appropriate to the
         -- derived behaviour. It never sends drawing coordinates, executable
         -- source or a query through the ordinary prose formatter.
+}
+
+-- Reading aloud is another presentation of the words already on the page. It
+-- does not create an audio attachment, a revision or a second textual source.
+contract SpokenReading {
+    read_page: (page: core/Page) -> Any
+    read_block: (block: core/Block) -> Any
+    stop: () -> Any
+
+    @invariant APageIsReadInItsAuthoredOrder
+        -- Page reading begins with the title and continues through non-empty
+        -- blocks in their outline order. Long blocks may be prepared in smaller
+        -- fragments, but those fragments never change or reorder their words.
+
+    @invariant EveryBlockCanBeHeardOnItsOwn
+        -- Every non-empty block offers the same voice independently of page
+        -- reading. Starting another block or the whole page stops the current
+        -- reading; its one control can pause and continue the audio it began.
+
+    @invariant SpeechIsAProjectionNotAContribution
+        -- Listening creates no block, revision, asset or operation. The words
+        -- stay on this Vera while the configured local voice prepares them, and
+        -- cached audio is derived from the exact text rather than stored as a
+        -- second mutable source.
+
+    @invariant DerivedAudioCannotAccumulateWithoutBound
+        -- Reusable spoken audio is a bounded, expiring cache rather than a
+        -- second archive. Vera may discard the least recently used or oldest
+        -- derived audio at any time; hearing it again regenerates it from the
+        -- current text without changing the corpus.
+
+    @invariant PreparingSpeechDoesNotMoveTheWriting
+        -- While the local model has not produced playable audio, a status stays
+        -- anchored to the initiating control without changing the block's
+        -- measure or moving its text. The control can still stop the wait; a
+        -- failure leaves the written page intact and says what could not be heard.
+
+    @invariant RepeatedGesturesDoNotBecomeAHiddenQueue
+        -- At most one fragment is being synthesized and at most the latest
+        -- requested fragment may wait behind it. Stopping or replacing a read
+        -- rejects obsolete requests rather than accumulating work the reader can
+        -- no longer see.
 }
 
 contract BlockManipulation {
@@ -572,6 +614,7 @@ contract ResponsiveWorkspace {
 -- después y Vera dice qué está haciendo mientras tanto.
 contract ProgressivePageReading {
     open: (page: core/Page) -> core/Page
+    refresh: (page: core/Page) -> core/Page
 
     @invariant AUsablePageArrivesBeforeItsEnrichment
         -- As soon as the page title, properties and blocks are available, Vera
@@ -584,6 +627,14 @@ contract ProgressivePageReading {
         -- content, editing state and reading position already on screen. The
         -- page does not disappear, return to its beginning or pretend to have
         -- been opened a second time.
+
+    @invariant PullingFromTheBeginningRequestsTheCanonicalPage
+        -- On a touch reading surface, pulling downward from the beginning makes
+        -- the refresh intention and its threshold visible. Releasing beyond the
+        -- threshold requests the current canonical page and presents that
+        -- revision without adding a navigation step. A pull begun after the
+        -- beginning remains ordinary scrolling; a failed request preserves the
+        -- readable page already on screen and reports the failure.
 
     @invariant BackgroundWorkExplainsItself
         -- While derived information is still being prepared, a discreet status
@@ -1270,6 +1321,7 @@ surface VeraWorkspace {
         fulfils EditablePresentation
         fulfils NativeMarkdownEditing
         fulfils BlockBehaviourPresentation
+        fulfils SpokenReading
         fulfils BlockManipulation
         fulfils PageFrontMatter
         fulfils ResponsiveWorkspace
@@ -1566,6 +1618,12 @@ surface VeraWorkspace {
         -- anterior o posterior donde caerá el paso. La marca desaparece al
         -- soltar o cancelar y el orden resultante coincide con ese intersticio:
         -- se señala una posición de inserción, no una pastilla receptora.
+
+    @guarantee EveryTraceStepKeepsItsNameLegible
+        -- El asa de arrastre, el título y la eliminación se leen como una sola
+        -- unidad compacta. El asa queda próxima al nombre sin perder su blanco
+        -- interactivo; cuando el espacio no alcanza, el título termina en una
+        -- elipsis visible en vez de quedar cortado como si faltara contenido.
 
     @guarantee TheTraceSurvivesRefresh
         -- El rastro completo sobrevive a recargar o cerrar la interfaz. La última

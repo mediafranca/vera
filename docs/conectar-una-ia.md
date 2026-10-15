@@ -24,6 +24,24 @@ valores. Vera los calcula, y tú los pegas.
 Eso es todo el método. Lo demás de este documento es cómo se llaman esos cinco
 valores en cada formulario, de dónde se sacan, y qué hacer cuando no funciona.
 
+## Inicio rápido desde Vera Desktop
+
+1. Instala la [última versión de Vera Desktop](https://github.com/mediafranca/vera/releases/latest)
+   y abre la página **MCP**.
+2. Si la IA corre en el mismo equipo, crea allí una credencial y usa la
+   configuración local que Vera calcula.
+3. Si la IA vive en Internet y acepta una URL MCP con bearer, activa **Vera
+   Conecta**, espera el estado conectado y crea un acceso exclusivo para ese
+   cliente.
+4. Copia la URL y la credencial una sola vez al formulario del cliente. No
+   guardes la credencial en notas, chats ni capturas.
+5. Pide al cliente ejecutar `vera_quien_soy` y comprueba identidad y alcances
+   antes de leer o escribir.
+
+Conocer `conecta.mediafranca.net` o la URL pública de una instalación **no**
+permite abrirla: el identificador enruta y la credencial autoriza. El corpus
+permanece en el equipo y Vera Desktop debe estar conectado para responder.
+
 ---
 
 ## Paso 0 — ¿este servicio puede conectarse?

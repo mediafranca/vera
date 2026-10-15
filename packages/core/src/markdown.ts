@@ -48,6 +48,52 @@ const EMBED_HEIGHT = 460;
 type LinkedResourceKind = 'pdf' | 'image' | 'audio' | 'video' | 'tiktok' | 'instagram' | 'page';
 
 /**
+ * Una dirección de Google Maps pegada como bloque entero es un mapa, no sólo
+ * una página enlazada.
+ *
+ * La dirección corta sigue siendo la fuente —editar la vuelve a mostrar tal
+ * cual— y el servidor local hace la única resolución necesaria. El iframe no
+ * recibe la página de Vera ni el nombre de la nota: pide una ruta neutra del
+ * mismo origen que redirige al visor de Google sólo cuando el navegador llega
+ * a él (`loading=lazy`).
+ */
+export function googleMapIn(source: string, hosts: readonly string[] = []): string | null {
+  const clean = source.trim();
+  if (!/^https:\/\/[^\s<>]+$/.test(clean)) return null;
+
+  let url: URL;
+  try {
+    url = new URL(clean);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  const direct = (host === 'google.com' || host.endsWith('.google.com')) && url.pathname.startsWith('/maps');
+  const shortened = host === 'maps.app.goo.gl' || (host === 'goo.gl' && url.pathname.startsWith('/maps'));
+  if (!direct && !shortened) return null;
+
+  // El programa que terminará corriendo viene de google.com. La abreviatura
+  // no puede concederse permiso a sí misma sólo por aparecer en un bloque.
+  const allowed = hosts.some((one) => {
+    const named = one.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    return named !== '' && ('google.com' === named || 'google.com'.endsWith(`.${named}`));
+  });
+  if (!allowed) return null;
+
+  const escaped = quoteAttribute(escapeHtml(clean));
+  const resolver = `/embeds/google-map?url=${encodeURIComponent(clean)}`;
+  return (
+    `<figure class="embed google-map">` +
+    `<iframe src="${resolver}" height="460" loading="lazy" ` +
+    `sandbox="allow-scripts allow-forms allow-popups allow-same-origin" ` +
+    `referrerpolicy="no-referrer" title="Google Maps"></iframe>` +
+    `<figcaption><span>mapa · Google Maps</span>` +
+    `<a href="${escaped}" rel="noreferrer" target="_blank">abrir en Google Maps</a></figcaption>` +
+    `</figure>`
+  );
+}
+
+/**
  * Una dirección que ocupa el bloque entero se presenta como objeto enlazado.
  * No se pide todavía: cargar un medio directo requiere el gesto «Mostrar».
  * Los proveedores con adaptador de incrustación se reconocen por separado en
@@ -913,6 +959,9 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
   // marcado. Ver `embedIn` y specs/executable-content-sandbox.allium.
   const embed = embedIn(source, options.embedHosts ?? []);
   if (embed !== null) return embed;
+
+  const googleMap = googleMapIn(source, options.embedHosts ?? []);
+  if (googleMap !== null) return googleMap;
 
   const resource = linkedResourceIn(source);
   if (resource !== null) return resource;

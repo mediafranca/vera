@@ -121,6 +121,20 @@ contract LinkedResourcesDegradeSafely {
         -- e Instagram se reconocen como proveedores; cualquier otro destino se
         -- presenta como página. Mezclada con prosa sigue siendo un enlace común.
 
+    @invariant AGoogleMapsAddressMayBecomeAMap
+        -- Una dirección de Google Maps que ocupa el bloque entero puede mostrar
+        -- el mapa directamente cuando `google.com` está entre los servidores que
+        -- el corpus autorizó. Pegar la dirección basta: Vera resuelve también el
+        -- acortador oficial, pero nunca sigue esa resolución fuera de servidores
+        -- de Google ni acepta una dirección mezclada con prosa como autorización.
+        -- No necesita una clave de API del participante.
+
+    @invariant TheMapArrivesOnlyWhenRead
+        -- Reconocer la dirección no consulta Google. El visor y, si hace falta,
+        -- la resolución del enlace corto se piden de forma diferida cuando el
+        -- mapa llega a la lectura. La fuente original permanece visible y
+        -- accionable debajo; si el proveedor falla, todavía se puede seguir.
+
     @invariant RecognitionDoesNotContactTheDestination
         -- Reconocer, rotular y volver accionable una dirección no la consulta.
         -- El recurso remoto sólo se pide cuando alguien elige «Mostrar» o sigue

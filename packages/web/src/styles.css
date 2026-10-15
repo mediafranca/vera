@@ -1536,11 +1536,16 @@ button { touch-action: manipulation; }
 /* Dentro del salchichón hay tres gestos, pero una sola figura. El nombre deja
    de traer su propia pastilla: el borde pertenece al conjunto entero. */
 .trail-step .trail-pill {
+  min-width: 0;
   height: 100%;
   border: 0;
   border-radius: 0;
   background: none;
-  padding-inline: 0.25rem;
+  /* El asa conserva todo su blanco táctil. El título ocupa parte del aire que
+     antes se sumaba a su costado derecho: aproximadamente 0,7ex menos sin
+     superponer controles ni encoger el blanco de arrastre. */
+  padding-left: max(0px, calc(0.25rem - 0.7ex));
+  padding-right: 0.25rem;
 }
 
 /* Plex se posa ópticamente bajo dentro de una cápsula tan baja. El botón y su
@@ -1548,6 +1553,10 @@ button { touch-action: manipulation; }
    píxeles para equilibrarse con la x, que ya ocupa el centro correcto. */
 .trail-step .trail-label {
   display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transform: translateY(-0.12rem);
 }
 
@@ -1821,6 +1830,94 @@ button { touch-action: manipulation; }
   padding: 2rem 2.5rem 6rem;
 }
 
+/*
+ * Tirar de la lectura para pedir nuevamente su versión canónica.
+ *
+ * Comparte el área del texto, pero no forma parte del documento: redibujar una
+ * página no lo borra y su tamaño no mueve una sola línea. El desplazamiento lo
+ * entrega el gesto como variable; escondido queda entero sobre el borde y va
+ * asomando con la resistencia de la mano.
+ */
+#pull-refresh {
+  --pull-distance: 0px;
+  --pull-turn: 0deg;
+  grid-area: text;
+  align-self: start;
+  justify-self: center;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: 0.35rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  box-shadow: 0 0.3rem 1rem rgb(0 0 0 / 14%);
+  pointer-events: none;
+  opacity: 1;
+  transform: translateY(calc(-100% + var(--pull-distance)));
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+#pull-refresh.retreating {
+  transition: transform 180ms ease, opacity 180ms ease, color 120ms ease,
+    border-color 120ms ease;
+}
+
+#pull-refresh[hidden],
+#vera-root[data-layout='graph_only'] #pull-refresh {
+  display: none;
+}
+
+#pull-refresh.ready {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.pull-refresh-icon,
+.pull-refresh-icon .icon {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.pull-refresh-icon {
+  transform: rotate(var(--pull-turn));
+}
+
+#pull-refresh.refreshing .pull-refresh-icon {
+  animation: pull-refresh-spin 700ms linear infinite;
+}
+
+#pull-refresh.failed {
+  color: var(--warm);
+  border-color: var(--warm);
+}
+
+.pull-refresh-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes pull-refresh-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #pull-refresh { transition: none; }
+  #pull-refresh.refreshing .pull-refresh-icon { animation: none; }
+}
+
 /* El encabezado reúne el título y una sola hilera de acciones de página. */
 .page-header {
   position: relative;
@@ -1867,6 +1964,84 @@ button { touch-action: manipulation; }
   background: var(--text);
   border-color: var(--text);
   outline: none;
+}
+
+.read-page,
+.read-block {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  position: relative;
+  overflow: visible;
+}
+
+.read-page {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.read-page .icon,
+.read-block .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.read-page:hover,
+.read-page:focus-visible,
+.read-page[data-speech-state]:not([data-speech-state='play']),
+.read-block:hover,
+.read-block:focus-visible,
+.read-block[data-speech-state]:not([data-speech-state='play']) {
+  color: var(--accent);
+  outline: none;
+}
+
+.read-block {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.05rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.block:hover > .read-block,
+.block:focus-within > .read-block,
+.read-block[data-speech-state]:not([data-speech-state='play']) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .read-block { opacity: 0.68; }
+}
+
+.speech-wait {
+  position: absolute;
+  z-index: 12;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  width: max-content;
+  max-width: min(18rem, 70vw);
+  padding: 0.32rem 0.48rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.35rem;
+  background: var(--bg-raised);
+  box-shadow: 0 0.35rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text-dim);
+  font: 0.68rem/1 var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.read-block .speech-wait {
+  top: auto;
+  bottom: calc(100% + 0.25rem);
 }
 
 html.presenting,
@@ -6864,6 +7039,10 @@ html[data-working-slow='true']::after {
   aspect-ratio: 16 / 9;
 }
 
+.google-map iframe {
+  height: clamp(20rem, 52vh, 36rem);
+}
+
 .embed figcaption {
   margin-top: 0.25rem;
   font-family: var(--font-mono);
@@ -9428,7 +9607,7 @@ html[data-working-slow='true']::after {
   width: min(100%, 32rem);
   margin: 0.4rem 0;
 }
-.media-catalogued { cursor: pointer; }
+.media-catalogued:not(audio, video) { cursor: pointer; }
 
 .page-compose-progress {
   position: sticky;

@@ -221,6 +221,24 @@ caída de red no abre puertos: el enlace siempre se inicia desde Desktop y se
 reconecta con espera exponencial. Al cerrar Desktop se cancelan el socket, los
 latidos y cualquier reintento.
 
+### Vera Clip: local primero
+
+Vera Clip no necesita el relay cuando comparte equipo con Vera Desktop. Recibe
+una capacidad estrecha, escribe por loopback y conserva a la persona propietaria
+como autora de la incorporación; `import` distingue el material de su fuente.
+
+```mermaid
+flowchart LR
+    C[Vera Clip] -->|1. localhost + capture| L[Vera local]
+    C -.->|2. respaldo opcional| R[Vera Conecta]
+    R -.-> D[Vera Desktop]
+    D --> L
+    L -->|participant: propietario<br/>channel: import| G[(Grafo)]
+```
+
+El relay es transporte alternativo, no una copia central ni la ruta por defecto.
+La guía de autorización y revocación está en [Vera Clip](vera-clip.md).
+
 ---
 
 ## 3. Casos de uso, por actor

@@ -88,11 +88,27 @@ servicio multiusuario listo para producción.
 > [Seguridad](SECURITY.md) y [Exponer Vera](docs/exponer-vera.md) antes de cambiar
 > la frontera de red.
 
-## Instalación
+## Instalar Vera
 
-Hay dos caminos, según qué se necesite.
+### En tres pasos
 
-### Aplicación de escritorio (Windows, macOS y Linux)
+1. **Descarga Vera Desktop** para Windows, macOS o Linux desde la
+   [última versión](https://github.com/mediafranca/vera/releases/latest).
+2. **Abre la aplicación.** Vera crea una memoria inicial en tu equipo; el corpus
+   no se sube a MediaFranca ni a un proveedor de IA.
+3. **Conecta la IA que elijas** desde la página **MCP** de Vera. Si el cliente
+   corre en el mismo equipo, usa la conexión local. Si vive en Internet, activa
+   **Vera Conecta**, crea un acceso para ese cliente y copia la URL y la
+   credencial que Vera muestra una sola vez.
+
+La IA debe ejecutar primero `vera_quien_soy`: así compruebas la identidad y los
+alcances con que entró antes de dejarla leer o escribir. Una URL de Conecta no
+abre la biblioteca por sí sola; cada cliente necesita su propia credencial
+revocable.
+
+Hay dos formas de instalar, según qué se necesite.
+
+### Aplicación de escritorio (recomendada)
 
 La vía más simple para probar Vera sin tocar código: memoria inicial ya
 cargada y, donde hay firma comercial, actualización automática por canal
@@ -133,14 +149,38 @@ npm run typecheck
 npm test
 ```
 
-## Conectar una IA a tu Vera
+## Hacer que Vera funcione con IA
 
-Vera no se usa sólo desde su interfaz: cualquier cliente que hable
+Vera no trae una IA cautiva ni obliga a contratar otra suscripción: cualquier
+cliente que hable
 [MCP](https://modelcontextprotocol.io/) —Claude Code, Claude Desktop, Codex,
 Gemini CLI, LM Studio y otros— se conecta a la misma puerta y opera el corpus
 con su propia identidad y credencial. La guía completa, con los cinco valores
 de conexión y un caso por cada forma de desplegar el cliente, está en
 [Conectar una IA](docs/conectar-una-ia.md).
+
+- **Cliente local:** conecta por `stdio` o por loopback; los datos no necesitan
+  salir a un relay.
+- **Cliente remoto con bearer:** activa
+  [Vera Conecta](https://vera.mediafranca.net/vera-conecta/), autoriza un acceso
+  desde Vera Desktop y configura la URL `https://conecta.mediafranca.net/v/<id>/mcp`.
+- **Cliente que exige OAuth:** todavía no es compatible con Vera Conecta. La
+  documentación lo marca expresamente en vez de fingir una integración.
+
+Vera Conecta transporta solicitudes mientras Desktop está conectado. No aloja
+una copia del grafo. Cloudflare y el relay forman parte del trayecto y pueden
+procesar el contenido en tránsito, pero el servicio no persiste páginas,
+bloques, prompts ni respuestas MCP.
+
+## Capturar desde el navegador
+
+[Vera Clip](https://github.com/mediafranca/vera-clip) deposita selecciones y
+artículos directamente en la Vera local. Actúa como herramienta delegada de la
+persona propietaria —no como otro autor— mediante una capacidad revocable que
+sólo permite capturar. La ruta ordinaria usa `localhost` y no pasa por Internet;
+[Vera Conecta](https://vera.mediafranca.net/vera-conecta/) queda como respaldo
+cuando el navegador está en otro equipo. La guía está en
+[Vera Clip: capturar en la Vera local](docs/vera-clip.md).
 
 ## Documentación del código
 

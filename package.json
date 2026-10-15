@@ -1,6 +1,6 @@
 {
   "name": "vera",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "private": true,
   "type": "module",
   "description": "Memoria personal soberana: corpus versionado, editable, replicable y auditable",

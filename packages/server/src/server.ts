@@ -82,6 +82,7 @@ import {
   type Store,
 } from '@vera/store';
 import { composeBooklet, composePaper, toPdf } from './paper.ts';
+import { googleMapEmbedUrl, resolveGoogleMapPoint } from './google-map.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
@@ -157,6 +158,7 @@ import { readLinks } from './process.ts';
 import { describeStructure, readingPasses, readStructure } from './structure.ts';
 import { describePlan, planTabularity } from './tabularity.ts';
 import { transcribeAudio } from './transcribe.ts';
+import type { SpeechSynthesizer } from './speech.ts';
 import { renderPage } from '@vera/store/projection';
 import {
   p5FrameDocument,
@@ -271,6 +273,8 @@ export interface ServerOptions {
   webRoot?: string;
   /** Almacén de objetos direccionado por hash, donde viven los binarios. */
   objectsRoot?: string;
+  /** Voz local derivada: no escribe en el grafo ni abandona la máquina. */
+  speech?: SpeechSynthesizer;
   owner?: { id: ParticipantId; name: string };
   /**
    * En qué puerto quedó escuchando, para poder decirlo.
@@ -1487,6 +1491,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/search' ||
         path === '/search/pages' ||
         path === '/query' ||
+        path === '/embeds/google-map' ||
         path === '/p5-frame.html' ||
         path === '/p5.min.js' ||
         path.startsWith('/pages/') ||
@@ -1690,6 +1695,52 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     };
 
     /*
+     * Leer en voz alta es una proyección efímera del texto, no una edición ni
+     * un archivo del corpus. La puerta es privada y estrecha: un fragmento por
+     * vez, para poder detener una página entre bloques.
+     */
+    if (request.method === 'POST' && path === '/speech') {
+      if (publicAccess) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      if (options.speech === undefined) {
+        send(response, 503, { error: 'la voz local no está configurada' });
+        return;
+      }
+      const body = await readSmallJson(4 * 1024);
+      const text = typeof body['text'] === 'string' ? body['text'].trim().replace(/\s+/g, ' ') : '';
+      if (text.length === 0 || text.length > 300) {
+        send(response, 422, { error: 'el fragmento debe tener entre 1 y 300 caracteres' });
+        return;
+      }
+      const controller = new AbortController();
+      const stop = (): void => controller.abort();
+      request.once('aborted', stop);
+      response.once('close', stop);
+      let spoken: Awaited<ReturnType<SpeechSynthesizer['speak']>>;
+      try {
+        spoken = await options.speech.speak(text, controller.signal);
+      } catch (problem) {
+        if (controller.signal.aborted || (problem instanceof Error && problem.name === 'AbortError')) return;
+        throw problem;
+      } finally {
+        request.off('aborted', stop);
+        response.off('close', stop);
+      }
+      if (controller.signal.aborted || response.destroyed) return;
+      response.writeHead(200, {
+        'content-type': spoken.mediaType,
+        'content-length': spoken.bytes.byteLength,
+        'cache-control': 'private, max-age=31536000, immutable',
+        'x-vera-speech-cache': spoken.cached ? 'hit' : 'miss',
+        'x-content-type-options': 'nosniff',
+      });
+      response.end(spoken.bytes);
+      return;
+    }
+
+    /*
      * Puerta estrecha de Vera Clip.
      *
      * La captura nace en la bitácora del día como un subárbol importado. El
@@ -1697,7 +1748,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * estables: perder la respuesta y reenviar nunca duplica el depósito.
      */
     if (request.method === 'POST' && path === '/captures') {
-      if (presentedCredential !== null && !presentedCredential.scopes.includes('capture')) {
+      if (presentedCredential === null) {
+        send(response, 401, { error: 'la captura requiere una credencial delegada por la persona propietaria' });
+        return;
+      }
+      if (!presentedCredential.scopes.includes('capture')) {
         send(response, 403, { error: 'la credencial no tiene alcance capture' });
         return;
       }
@@ -3268,14 +3323,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
 
         /*
-         * La identidad se deriva del nombre con que se declara el cliente.
-         *
-         * Pedirla aparte sería pedir dos veces lo mismo con dos formas distintas,
-         * y la forma exacta —`participant:chatgpt`— es una convención del
-         * almacén que no tiene por qué saberse para conectar una IA.
+         * Una IA habla como un participante propio. Una herramienta de captura
+         * no: demuestra qué cliente ejecutó el gesto, pero quien incorpora el
+         * material sigue siendo la persona propietaria y el canal será import.
          */
-        const participant = `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
-        if (graph.participant(participant) === undefined) {
+        const participant = deal === 'capturar'
+          ? owner
+          : `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
+        if (deal !== 'capturar' && graph.participant(participant) === undefined) {
           saveParticipant(store, { id: participant, name, kind: 'agent' });
           graph.addParticipant({ id: participant, name, kind: 'agent' });
           graph.admit(participant);
@@ -5982,6 +6037,34 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const participant = publicAccess ? ANYBODY : (url.searchParams.get('participant') ?? owner.id);
 
     try {
+      if (path === '/embeds/google-map') {
+        const authorised = embedHosts().some((host) => {
+          const named = host.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          return named !== '' && ('google.com' === named || 'google.com'.endsWith(`.${named}`));
+        });
+        if (!authorised) {
+          send(response, 404, { error: 'Google Maps no está autorizado como incrustación' });
+          return;
+        }
+        try {
+          const point = await resolveGoogleMapPoint(url.searchParams.get('url') ?? '');
+          if (point === null) {
+            send(response, 422, { error: 'la dirección no contiene un lugar reconocible' });
+            return;
+          }
+          response.writeHead(302, {
+            location: googleMapEmbedUrl(point),
+            'cache-control': 'private, max-age=86400',
+            'referrer-policy': 'no-referrer',
+            'x-content-type-options': 'nosniff',
+          });
+          response.end();
+        } catch {
+          send(response, 502, { error: 'Google Maps no respondió' });
+        }
+        return;
+      }
+
       if (path === '/health') {
         const visiblePages = publicAccess
           ? graph.pages().filter((page) => isPublicPage(page.id))
@@ -7175,6 +7258,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     store,
     close: () => {
       clearInterval(retryLibrarianDispatches);
+      options.speech?.close();
       store.close();
     },
   };

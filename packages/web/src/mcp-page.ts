@@ -785,12 +785,82 @@ export async function renderConnections(
   const capturesNote = document.createElement('p');
   capturesNote.className = 'governing-note';
   capturesNote.textContent =
-    'Vera Clip y futuras entradas de captura aparecerán aquí con su alcance explícito; ' +
-    'no heredan por omisión los permisos de una conexión conversacional.';
+    'Vera Clip actúa como una herramienta de la persona propietaria: deposita por importación ' +
+    'y no se convierte en otro autor. Su credencial sólo permite capturar y puede revocarse aquí.';
   element.append(relay, relayNote, remoteClients, captures, capturesNote);
+  captureConnectForm(element, notify);
 
   if (declaring.size === 0 && door.undeclared.length === 0) return null;
   return { element, declaring };
+}
+
+/**
+ * Entregarle a Vera Clip una capacidad estrecha, local y revocable.
+ *
+ * El navegador no recibe una credencial general de Herbert: recibe una llave
+ * que sólo abre `/captures`. Por eso una extensión comprometida no puede leer
+ * el grafo ni escribir operaciones arbitrarias, y retirarla no afecta a las IA
+ * conectadas por la puerta MCP.
+ */
+function captureConnectForm(
+  host: HTMLElement,
+  notify: (message: string) => void,
+): void {
+  const form = document.createElement('div');
+  form.className = 'connect-new capture-connect';
+
+  const explanation = document.createElement('p');
+  explanation.className = 'connect-says';
+  explanation.textContent =
+    'Autoriza esta instalación de Vera Clip para depositar directamente en la Vera local. ' +
+    'La selección no pasa por Internet; Conecta queda como respaldo para otro dispositivo.';
+
+  const authorize = document.createElement('button');
+  authorize.type = 'button';
+  authorize.className = 'connect-copy';
+  authorize.textContent = 'autorizar Vera Clip';
+
+  const born = document.createElement('div');
+  born.className = 'connect-born';
+  form.append(explanation, authorize, born);
+  host.append(form);
+
+  authorize.addEventListener('click', () => {
+    authorize.disabled = true;
+    void api.connect({ name: 'Vera Clip', client: 'vera-clip', deal: 'capturar' }).then(
+      (made) => {
+        born.innerHTML = '';
+        const warning = document.createElement('p');
+        warning.className = 'governing-note';
+        warning.textContent =
+          'Copia esta autorización en las opciones de Vera Clip. El secreto se muestra una sola vez.';
+        const value = document.createElement('pre');
+        value.className = 'connect-json';
+        const code = document.createElement('code');
+        code.textContent = JSON.stringify({
+          url: 'http://127.0.0.1:4173',
+          client: made.client,
+          credential: made.secret,
+        }, null, 2);
+        value.append(code);
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'connect-copy';
+        copy.textContent = 'copiar autorización';
+        copy.addEventListener('click', () => {
+          void navigator.clipboard?.writeText(code.textContent ?? '').then(() => {
+            copy.textContent = 'copiada';
+          });
+        });
+        born.append(warning, value, copy);
+        notify('Vera Clip autorizada para capturar');
+      },
+      (error: Error) => {
+        authorize.disabled = false;
+        notify(error.message);
+      },
+    );
+  });
 }
 
 /**

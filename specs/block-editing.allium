@@ -164,6 +164,13 @@ contract OutlineManipulation {
         -- visible. If folding hides the edited block, focus moves to the fold
         -- control that now represents it without sending the viewport elsewhere.
 
+    @invariant EveryActionKeepsTheNearestWritingPlace
+        -- Repainting after an action keeps focus, selection and caret on the
+        -- acted-on block while it survives. If the action removes that block,
+        -- focus moves to the next visible survivor, or to the previous one when
+        -- nothing follows it. No ordinary action returns the participant to the
+        -- beginning of the page merely because the outline was rebuilt.
+
     @invariant OnlyParentsFold
         -- A block with no children has nothing to fold, and offering the control
         -- there would promise something that cannot happen.
