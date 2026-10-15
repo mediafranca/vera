@@ -2538,6 +2538,22 @@ async function drawGraph(reach = 1): Promise<void> {
   if (turn !== graphTurn) return;
 
   /*
+   * D4 necesita la ontología para ofrecer los tipos de relación, pero pedirla
+   * puede esperar red. El ojo y el rastro todavía deben seguir disponibles
+   * durante esa espera: apartarlos antes deja al mapa sin salida y permite que
+   * un segundo dibujo intente retirar controles que ya no están en el DOM.
+   */
+  const relationTypes = workspace.graphView === 'graph_d4'
+    ? await api.ontology()
+      .then((ontology) => ontology.relations
+        .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
+        .map((one) => one.name))
+      .catch(() => [] as string[])
+    : [];
+  // La vista o la página pueden haber cambiado mientras llegaba la ontología.
+  if (turn !== graphTurn) return;
+
+  /*
    * El ojo y el rastro se apartan aquí, y no antes de pedir el grafo.
    *
    * Viven dentro del mapa y el renderizador vacía su contenedor, así que hay que
@@ -2608,11 +2624,6 @@ async function drawGraph(reach = 1): Promise<void> {
       renderGraph3D(container, data, onClick, settings);
     } else if (workspace.graphView === 'graph_d4') {
       cleanupGraph3D();
-      const relationTypes = await api.ontology()
-        .then((ontology) => ontology.relations
-          .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
-          .map((one) => one.name))
-        .catch(() => [] as string[]);
       renderGraphD4(container, data, onClick, {
         ...settings,
         relations: {

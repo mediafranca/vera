@@ -12,6 +12,29 @@ describe('carga progresiva del mapa', () => {
     assert.match(main, /workspace\.graphView === 'graph_d4' \? 'd4' : 'spatial'/);
   });
 
+  it('no aparta el ojo mientras D4 espera la ontología', () => {
+    const draw = main.slice(
+      main.indexOf('async function drawGraph('),
+      main.indexOf('/**\n * Por dónde se ha pasado'),
+    );
+    const ontology = draw.indexOf('await api.ontology()');
+    const removeControls = draw.indexOf("const controls = $('#map-controls')");
+    const settings = draw.indexOf('const settings = {');
+    const restoreControls = draw.indexOf('container.append(controls, trail)');
+
+    assert.ok(ontology >= 0, 'D4 debe pedir la ontología');
+    assert.ok(
+      ontology < removeControls,
+      'el ojo debe permanecer en el DOM mientras llega la ontología',
+    );
+    assert.ok(removeControls < restoreControls, 'los controles retirados deben restaurarse');
+    assert.doesNotMatch(
+      draw.slice(removeControls, settings),
+      /\bawait\b/,
+      'ninguna espera puede intercalarse mientras los controles están apartados',
+    );
+  });
+
   it('inicia el mapa público conocido antes de esperar el índice', () => {
     const start = main.slice(main.indexOf('async function start()'), main.indexOf('/**\n * Arrancar puede fallar'));
     const eager = start.indexOf('const eagerPublicCentre');
