@@ -553,6 +553,7 @@ function readOperation(body: SubmitBody): { error: string } | {
 
 export function createVeraServer(options: ServerOptions): VeraServer {
   const store = openStore({ path: options.databasePath, graphName: 'mind' });
+  let librarianDispatchInProgress = false;
 
   const dispatchLibrarianRequest = async (id: string): Promise<void> => {
     if (options.librarianHook === undefined) {
@@ -574,10 +575,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       markLibrarianDispatched(store, id, false, error instanceof Error ? error.message : 'OpenClaw no respondió');
     }
   };
+  const dispatchNextLibrarianRequest = async (): Promise<void> => {
+    if (librarianDispatchInProgress) return;
+    librarianDispatchInProgress = true;
+    try {
+      const [id] = pendingLibrarianDispatches(store);
+      if (id !== undefined) await dispatchLibrarianRequest(id);
+    } finally {
+      librarianDispatchInProgress = false;
+    }
+  };
   const retryLibrarianDispatches = setInterval(() => {
-    for (const id of pendingLibrarianDispatches(store)) void dispatchLibrarianRequest(id);
+    void dispatchNextLibrarianRequest();
   }, 30_000);
   retryLibrarianDispatches.unref();
+  void dispatchNextLibrarianRequest();
 
   /*
    * El grafo en memoria se reconstruye del log al arrancar y responde las
@@ -1881,7 +1893,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         sourceBlockId: block?.stableId ?? null,
         contextSnapshot: snapshot,
       });
-      await dispatchLibrarianRequest(created.id);
+      await dispatchNextLibrarianRequest();
       send(response, 201, librarianRequest(store, created.id));
       return;
     }
@@ -1934,6 +1946,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         removeLibrarianRequest(store, id);
         send(response, 200, { status: 'removed', id });
+        void dispatchNextLibrarianRequest();
         return;
       }
       if (request.method === 'POST' && action === 'claim') {
@@ -1993,6 +2006,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes: [] });
           if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
           send(response, 201, answered);
+          void dispatchNextLibrarianRequest();
           return;
         }
         /*
@@ -2032,6 +2046,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
         send(response, 201, answered);
+        void dispatchNextLibrarianRequest();
         return;
       }
     }

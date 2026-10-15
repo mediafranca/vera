@@ -800,7 +800,9 @@ async function askLibrarian(
     });
     toast(request.dispatchStatus === 'failed'
       ? 'pedido guardado; el bibliotecario está desconectado y podrá retomarlo'
-      : 'pedido enviado al bibliotecario');
+      : request.dispatchStatus === 'pending'
+        ? 'pedido guardado en la cola del bibliotecario'
+        : 'pedido enviado al bibliotecario');
     callbacks.onReload(null);
   } catch {
     toast('no se pudo guardar la solicitud');
@@ -892,7 +894,8 @@ function librarianDialogHeader(title: string, context: string): HTMLElement {
 function librarianRequestState(request: LibrarianRequestView): string {
   if (request.status === 'working') return 'El bibliotecario está trabajando';
   if (request.dispatchStatus === 'failed') return 'Solicitud guardada; esperando reconexión';
-  return 'El bibliotecario está recibiendo la solicitud';
+  if (request.dispatchStatus === 'pending') return 'Solicitud guardada en la cola';
+  return 'Solicitud entregada; esperando al bibliotecario';
 }
 
 let activeLibrarianRequests: LibrarianRequestView[] = [];
@@ -909,7 +912,7 @@ function updateLibrarianProgress(dialog: HTMLDialogElement, requests: LibrarianR
   if (elapsed !== null) elapsed.textContent = `Tiempo transcurrido: ${saySeconds(Math.max(0, Date.now() - latest.createdAt))}`;
   if (more !== null) {
     const others = requests.length - 1;
-    more.textContent = others === 0 ? '' : `${others} solicitud${others === 1 ? '' : 'es'} más en curso`;
+    more.textContent = others === 0 ? '' : `${others} solicitud${others === 1 ? '' : 'es'} más en la cola`;
     more.hidden = others === 0;
   }
 }

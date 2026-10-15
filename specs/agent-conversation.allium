@@ -10,7 +10,7 @@
 -- Excludes:
 --   - Mirroring Telegram or another external channel automatically
 --   - Model choice, prompts, token budgets and OpenClaw's internal session format
---   - Chain-of-thought, caches, queues, credentials and secrets
+--   - Chain-of-thought, caches, internal worker queues, credentials and secrets
 --   - Applying proposed graph operations, governed by change-application.allium
 -- Dependencies: Participants, pages, blocks and changes are governed by
 --   core.allium; agent identity and authorship by agent-participation.allium;
@@ -84,6 +84,13 @@ contract ConversationWithAgent {
         -- Vera makes the request durable before attempting delivery. The hook
         -- carries an identifier, not the only surviving copy of the instruction
         -- or its context. If OpenClaw is absent, the request remains queued.
+
+    @invariant NewRequestsWaitWithoutInterrupting
+        -- A named agent may accumulate many durable queued requests, but handles
+        -- only one at a time. A new request never interrupts work already begun;
+        -- after that turn finishes, the oldest waiting request becomes eligible
+        -- for delivery. Re-delivering the same durable request after a lost wake
+        -- does not count as starting a second turn.
 
     @invariant RepeatedDeliveryIsOneRequest
         -- Dispatch may retry after a timeout or restart. The durable request id is
@@ -386,6 +393,11 @@ rule LibrarianBeginsARequest {
     requires: request.conversation.agent = agent
     requires: request.status = queued
     requires: interpretation != ""
+    requires: not ConversationRequests.any(other =>
+        other != request
+        and other.conversation.agent = agent
+        and other.status = working
+    )
 
     ensures:
         request.status = working
@@ -397,7 +409,15 @@ rule VeraDispatchesAQueuedRequest {
     when: DispatchAgentRequest(request)
 
     requires: request.status = queued
-    requires: request.dispatch_status in {pending, failed}
+    requires: request.dispatch_status in {pending, delivered, failed}
+    requires: not ConversationRequests.any(other =>
+        other != request
+        and other.conversation.agent = request.conversation.agent
+        and (
+            other.status = working
+            or (other.status = queued and other.dispatch_status = delivered)
+        )
+    )
 
     ensures:
         request.dispatch_status = delivered
@@ -409,13 +429,16 @@ rule VeraDispatchesAQueuedRequest {
         -- credential dedicated to this boundary. The payload names only the
         -- durable request. The librarian reads its instruction and snapshot back from
         -- Vera, so a hook body cannot replace the canonical context.
+        -- Among waiting requests, Vera dispatches the oldest durable creation.
+        -- A delivered request may be re-delivered after a bounded lease when a
+        -- worker disappears before claiming it; its identity remains unchanged.
 }
 
 rule VeraRecordsDispatchFailure {
     when: FailAgentDispatch(request, reason)
 
     requires: request.status = queued
-    requires: request.dispatch_status in {pending, failed}
+    requires: request.dispatch_status in {pending, delivered, failed}
 
     ensures:
         request.dispatch_status = failed
