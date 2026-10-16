@@ -5751,16 +5751,6 @@ export function renderOutliner(
     bullet.addEventListener('click', (event) => {
       event.stopPropagation();
       if (draggedMoved) return;
-      const editingTools = body.querySelector<HTMLElement>('.format-bar');
-      if (body.classList.contains('editing') && editingTools !== null) {
-        editingTools.hidden = !editingTools.hidden;
-        bullet.setAttribute('aria-expanded', String(!editingTools.hidden));
-        const toolsAction = editingTools.hidden ? 'mostrar' : 'ocultar';
-        bullet.setAttribute('aria-label', `${toolsAction} herramientas de formato`);
-        bullet.title = `${toolsAction} herramientas de formato`;
-        body.querySelector<HTMLTextAreaElement>('.editor')?.focus({ preventScroll: true });
-        return;
-      }
       if (readOnly) {
         openBlockMenu(bullet, [[
           ...(callbacks.canAskLibrarian === true ? [{
@@ -7998,33 +7988,48 @@ function startEditing(
    * audio no es texto de nadie.
    */
   const spoken = body.querySelector('.audio-block');
-  const bullet = body.parentElement?.querySelector<HTMLButtonElement>(':scope > .bullet') ?? null;
-  const bulletPresentation = bullet === null ? null : {
-    html: bullet.innerHTML,
-    title: bullet.title,
-    label: bullet.getAttribute('aria-label'),
-    popup: bullet.getAttribute('aria-haspopup'),
-    draggable: bullet.draggable,
-  };
+  const row = body.parentElement;
   const formatBar = document.createElement('div');
   formatBar.className = 'format-bar';
   formatBar.setAttribute('role', 'toolbar');
   formatBar.setAttribute('aria-label', 'formato del bloque');
   formatBar.hidden = true;
   formatBar.id = `format-${block.stableId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const rememberFormatBarHeight = (): void => {
+    const height = formatBar.getBoundingClientRect().height;
+    if (height > 0) formatBar.style.setProperty('--format-bar-measured-height', `${height}px`);
+  };
+  const formatBarSize = new ResizeObserver(rememberFormatBarHeight);
+  formatBarSize.observe(formatBar);
+  const formatBarAnchor = document.createElement('div');
+  formatBarAnchor.className = 'format-bar-anchor';
+  formatBarAnchor.append(formatBar);
   body.innerHTML = '';
   if (spoken !== null) body.append(spoken);
-  body.append(formatBar, editor);
+  body.append(formatBarAnchor, editor);
   body.classList.add('editing');
-  if (bullet !== null) {
-    bullet.classList.add('editing-tools');
-    bullet.innerHTML = icon('tool');
-    bullet.title = 'herramientas de formato';
-    bullet.setAttribute('aria-label', 'mostrar herramientas de formato');
-    bullet.removeAttribute('aria-haspopup');
-    bullet.setAttribute('aria-controls', formatBar.id);
-    bullet.setAttribute('aria-expanded', 'false');
-    bullet.draggable = false;
+  const formatTrigger = document.createElement('button');
+  formatTrigger.type = 'button';
+  formatTrigger.className = 'format-tools-trigger';
+  formatTrigger.innerHTML = icon('wrench');
+  formatTrigger.title = 'mostrar herramientas de formato';
+  formatTrigger.setAttribute('aria-label', 'mostrar herramientas de formato');
+  formatTrigger.setAttribute('aria-controls', formatBar.id);
+  formatTrigger.setAttribute('aria-expanded', 'false');
+  formatTrigger.addEventListener('mousedown', (event) => event.preventDefault());
+  formatTrigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    formatBar.hidden = !formatBar.hidden;
+    if (!formatBar.hidden) requestAnimationFrame(rememberFormatBarHeight);
+    formatTrigger.setAttribute('aria-expanded', String(!formatBar.hidden));
+    const toolsAction = formatBar.hidden ? 'mostrar' : 'ocultar';
+    formatTrigger.setAttribute('aria-label', `${toolsAction} herramientas de formato`);
+    formatTrigger.title = `${toolsAction} herramientas de formato`;
+    editor.focus({ preventScroll: true });
+  });
+  if (row !== null) {
+    // Fuera del esquema: la viñeta sigue abriendo el menú propio del bloque.
+    row.prepend(formatTrigger);
   }
 
   /**
@@ -8177,18 +8182,8 @@ function startEditing(
   /** Volver a la vista de lectura, conservando la grabación por el mismo motivo. */
   const render = (content: string): void => {
     body.classList.remove('editing');
-    if (bullet !== null && bulletPresentation !== null) {
-      bullet.classList.remove('editing-tools');
-      bullet.innerHTML = bulletPresentation.html;
-      bullet.title = bulletPresentation.title;
-      if (bulletPresentation.label === null) bullet.removeAttribute('aria-label');
-      else bullet.setAttribute('aria-label', bulletPresentation.label);
-      if (bulletPresentation.popup === null) bullet.removeAttribute('aria-haspopup');
-      else bullet.setAttribute('aria-haspopup', bulletPresentation.popup);
-      bullet.removeAttribute('aria-controls');
-      bullet.removeAttribute('aria-expanded');
-      bullet.draggable = bulletPresentation.draggable;
-    }
+    formatBarSize.disconnect();
+    formatTrigger.remove();
     body.classList.toggle('code-source', isFencedCodeContent(content));
     const heldAudio = body.querySelector('.audio-block');
     body.innerHTML = '';

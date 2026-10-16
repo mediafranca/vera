@@ -749,13 +749,18 @@ button { touch-action: manipulation; }
 .format-bar {
   --format-bar-height: 2.15rem;
   --format-bar-gap: 0.45rem;
+  --format-bar-measured-height: var(--format-bar-height);
   /*
-   * La barra pertenece al bloque y sólo existe cuando se la pide desde la
-   * herramienta que reemplaza su viñeta. Ocupa su propia fila antes del fuente:
-   * al recorrer un bloque largo se va con su comienzo, en vez de flotar sobre lo
-   * escrito. El icono de herramientas es el que permanece alcanzable.
+   * La barra pertenece al bloque, pero no a su altura. Vive en un ancla absoluta
+   * que cubre el editor sin participar de su composición; la traslación la
+   * coloca encima, invadiendo el bloque anterior.
+   *
+   * `sticky` actúa antes de `transform`: el `top` reserva su altura medida y la
+   * traslación la resta después. Por eso, al desplazarse, su borde visible queda
+   * a 0.65rem del viewport aunque la barra envuelva en dos filas.
    */
-  position: relative;
+  position: sticky;
+  top: calc(0.65rem + var(--format-bar-measured-height) + var(--format-bar-gap));
   z-index: 12;
   display: flex;
   flex-wrap: wrap;
@@ -772,13 +777,23 @@ button { touch-action: manipulation; }
    */
   width: min(calc(100% - 1rem), 27.2rem);
   min-height: var(--format-bar-height);
-  margin: 0 0 var(--format-bar-gap);
+  margin: 0;
+  transform: translateY(calc(0px - var(--format-bar-measured-height) - var(--format-bar-gap)));
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 5px;
   background: var(--bg-raised);
   box-shadow: 0 0.3rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
   scrollbar-width: none;
+  pointer-events: auto;
+}
+
+.format-bar-anchor {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  overflow: visible;
+  pointer-events: none;
 }
 
 .format-bar[hidden] {
@@ -3895,6 +3910,7 @@ html.presenting body {
  * ninguna medida del renglón depende de que esta regla exista.
  */
 .body.editing {
+  position: relative;
   background: color-mix(in srgb, var(--accent) 9%, transparent);
   border-radius: 3px;
 }
@@ -5978,26 +5994,44 @@ body.settings-open #text {
 }
 
 /*
- * Al escribir, la viñeta deja de abrir el menú general del bloque y pasa a
- * nombrar la herramienta que sí corresponde en ese momento: el formato. El
- * SVG sustituye también números y marcas de procedencia sólo mientras dura la
- * edición; al salir, cada señal original vuelve intacta.
+ * Al escribir aparece una herramienta fuera del esquema. No sustituye la
+ * viñeta: ésta conserva su menú, su procedencia y su función de arrastre. El
+ * margen izquierdo negativo y su compensación derecha hacen sitio al botón sin
+ * desplazar el chevron, la viñeta ni el texto; también en el primer nivel queda
+ * más afuera que todos ellos. El icono va en negativo para acompañar los temas.
  */
-.block > .bullet.editing-tools::before {
-  display: none;
-}
-
-.bullet.editing-tools {
+.format-tools-trigger {
   position: sticky;
   top: 0.65rem;
   z-index: 13;
-  color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.45rem;
+  height: 1.45rem;
+  margin-left: -2.5rem;
+  margin-right: 0.55rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--text) 24%, var(--accent));
+  border-radius: 50%;
+  color: var(--bg);
+  background: var(--accent);
+  box-shadow: 0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
+  cursor: pointer;
   font-size: 1rem;
 }
 
-.bullet.editing-tools .icon {
-  width: 0.95rem;
-  height: 0.95rem;
+.format-tools-trigger .icon {
+  width: 0.92rem;
+  height: 0.92rem;
+  margin: 0;
+}
+
+.format-tools-trigger:is(:hover, :focus-visible) {
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent),
+    0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
 }
 
 /* --- La bitácora, leída de corrido ---------------------------------------- */

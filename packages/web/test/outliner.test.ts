@@ -193,17 +193,25 @@ describe('barra de formato', () => {
     assert.match(styles, /\.format-action \{[\s\S]*?flex: 1 1 2\.35rem;[\s\S]*?min-width: 1\.7rem;/);
   });
 
-  it('nace colapsada y la viñeta del bloque la gobierna sin perder el foco', () => {
+  it('nace colapsada y un botón exterior la gobierna sin quitarle el menú a la viñeta', () => {
     const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     assert.match(source, /formatBar\.hidden = true/);
-    assert.match(source, /bullet\.classList\.add\('editing-tools'\)/);
-    assert.match(source, /editingTools\.hidden = !editingTools\.hidden/);
-    assert.match(source, /if \(body\.classList\.contains\('editing'\)\) event\.preventDefault\(\)/);
+    assert.match(source, /formatTrigger\.className = 'format-tools-trigger'/);
+    assert.match(source, /formatTrigger\.innerHTML = icon\('wrench'\)/);
+    assert.match(source, /formatBarAnchor\.className = 'format-bar-anchor'/);
+    assert.match(source, /body\.append\(formatBarAnchor, editor\)/);
+    assert.match(source, /row\.prepend\(formatTrigger\)/);
+    assert.match(source, /formatBar\.hidden = !formatBar\.hidden/);
+    assert.match(source, /formatTrigger\.addEventListener\('mousedown', \(event\) => event\.preventDefault\(\)\)/);
+    assert.doesNotMatch(source, /bullet\.classList\.add\('editing-tools'\)/);
+    assert.match(source, /bullet\.setAttribute\('aria-haspopup', 'menu'\)/);
     assert.match(styles, /\.format-bar\[hidden\] \{\s*display: none;/);
-    assert.match(styles, /\.format-bar \{[\s\S]*?position: relative;/);
-    assert.match(styles, /\.block > \.bullet\.editing-tools::before \{\s*display: none;/);
-    assert.match(styles, /\.bullet\.editing-tools \{\s*position: sticky;\s*top: 0\.65rem;/);
+    assert.match(source, /new ResizeObserver\(rememberFormatBarHeight\)/);
+    assert.match(source, /if \(!formatBar\.hidden\) requestAnimationFrame\(rememberFormatBarHeight\)/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?position: sticky;[\s\S]*?top: calc\(0\.65rem \+ var\(--format-bar-measured-height\) \+ var\(--format-bar-gap\)\);[\s\S]*?margin: 0;[\s\S]*?transform: translateY\(calc\(0px - var\(--format-bar-measured-height\) - var\(--format-bar-gap\)\)\);/);
+    assert.match(styles, /\.format-bar-anchor \{\s*position: absolute;\s*inset: 0;[\s\S]*?pointer-events: none;/);
+    assert.match(styles, /\.format-tools-trigger \{\s*position: sticky;\s*top: 0\.65rem;[\s\S]*?display: grid;[\s\S]*?place-items: center;[\s\S]*?width: 1\.45rem;[\s\S]*?height: 1\.45rem;[\s\S]*?margin-left: -2\.5rem;[\s\S]*?margin-right: 0\.55rem;[\s\S]*?border-radius: 50%;[\s\S]*?color: var\(--bg\);[\s\S]*?background: var\(--accent\);/);
   });
 });
 
