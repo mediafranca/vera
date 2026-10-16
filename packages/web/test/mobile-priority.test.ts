@@ -20,6 +20,15 @@ describe('prioridad móvil', () => {
     );
   });
 
+  it('no abandona ni vacía el campo cuando la consulta todavía no tiene resultados', () => {
+    const liveSearch = main.match(
+      /input\.addEventListener\('input',[\s\S]+?input\.addEventListener\('keydown'/,
+    )?.[0] ?? '';
+    assert.match(liveSearch, /if \(complete\.length === 0\) \{[\s\S]*?close\(\);\s*return;/);
+    assert.doesNotMatch(liveSearch, /openSearchResults\(text\)/);
+    assert.match(main, /if \(event\.key === 'Enter'\)[\s\S]+openSearchResults\(input\.value\)/);
+  });
+
   it('Ajustes bloquea el documento y queda contenido por la ventana', () => {
     assert.match(main, /document\.body\.classList\.add\('settings-open'\)/);
     assert.match(main, /document\.body\.classList\.remove\('settings-open'\)/);

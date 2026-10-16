@@ -3310,8 +3310,12 @@ function wireSearch(): void {
 
       const complete = pageSearchResults(text, pages, hits);
       if (complete.length === 0) {
+        // Mientras se escribe, una consulta todavía incompleta no es una
+        // decisión. Cambiar aquí a la página de resultados vaciaba este campo
+        // y le quitaba el foco —en un teléfono parecía que la última letra
+        // había borrado la búsqueda entera—. Enter sigue siendo el gesto que
+        // compromete la consulta, incluso cuando no tiene coincidencias.
         close();
-        void openSearchResults(text);
         return;
       }
       suggest(text, hits);
