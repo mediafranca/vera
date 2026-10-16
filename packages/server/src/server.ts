@@ -1959,7 +1959,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (request.method === 'POST' && action === 'reply') {
         if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
         let body: Record<string, unknown>;
-        try { body = await readSmallJson(); }
+        // Una respuesta sobre bloque debe reenviar su contenido completo. Las
+        // transcripciones y otros bloques documentales superan legítimamente
+        // el límite pequeño de 64 KiB usado por formularios ordinarios.
+        try { body = await readSmallJson(2_100_000); }
         catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         const changes = Array.isArray(body.changes) ? body.changes as Change[] : [];

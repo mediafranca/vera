@@ -196,6 +196,29 @@ describe('solicitudes al bibliotecario', () => {
     assert.match(JSON.stringify(pageView.json), /Evidencia\. Interpretación\./);
   });
 
+  it('permite responder sobre un bloque documental mayor que 64 KiB', async () => {
+    const largeBlock = await write({
+      kind: 'create_block', page, parent: null, position: 1,
+      content: `Transcripción\n${'pasaje documentado '.repeat(4_000)}`,
+    });
+    const created = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, blockId: largeBlock, text: 'Añade una lectura editorial' },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const largeRequestId = created.json['id'] as string;
+    assert.equal((await call(`/librarian/requests/${encodeURIComponent(largeRequestId)}/claim`, {
+      method: 'POST', secret,
+    })).status, 200);
+    const content = `Lectura editorial\n${'pasaje documentado '.repeat(4_000)}`;
+    const answered = await call(`/librarian/requests/${encodeURIComponent(largeRequestId)}/reply`, {
+      method: 'POST', secret,
+      body: { text: 'Añadí la lectura.', changes: [{ kind: 'edit_block', block: largeBlock, content }] },
+    });
+    assert.equal(answered.status, 201, JSON.stringify(answered.json));
+    const pageView = await call(`/pages/${encodeURIComponent(page)}`);
+    assert.match(JSON.stringify(pageView.json), /Lectura editorial/);
+  });
+
   it('la respuesta vuelve a la página y al bloque de origen', async () => {
     const listed = await call(`/librarian/requests?page=${encodeURIComponent(page)}&block=${encodeURIComponent(block)}`);
     assert.equal(listed.status, 200);
