@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { readDrawing, writeDrawing } from '@vera/core';
@@ -98,5 +99,19 @@ describe('la política de lápiz, tacto y palma', () => {
   it('lápiz y ratón siempre llegan como tinta o goma deliberada', () => {
     assert.equal(canvasPointerIntent('pen', true, 0, true), 'ink');
     assert.equal(canvasPointerIntent('mouse', false, 0, false), 'ink');
+  });
+});
+
+describe('los controles del lienzo', () => {
+  it('forman una sola barra y usan la familia de iconos de Vera', () => {
+    const source = readFileSync(new URL('../src/canvas.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /controls\.setAttribute\('role', 'toolbar'\)/);
+    assert.match(source, /undo\.innerHTML = icon\('arrow-back-up'\)/);
+    assert.match(source, /redo\.innerHTML = icon\('arrow-forward-up'\)/);
+    assert.match(source, /controls\.append\(pencil, eraser, undo, redo, done\)/);
+    assert.doesNotMatch(source, /undo\.textContent = '↶'|redo\.textContent = '↷'/);
+    assert.match(styles, /\.canvas-tool \{[\s\S]*?width: 2\.75rem;[\s\S]*?height: 2\.75rem;/);
+    assert.match(styles, /\.canvas-controls > \.canvas-tool \+ \.canvas-tool \{\s*border-left:/);
   });
 });

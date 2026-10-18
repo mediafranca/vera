@@ -175,6 +175,9 @@ contract NativeMarkdownEditing {
         -- source instead of floating over text; scrolling down leaves it above,
         -- and returning to the beginning reveals it before the first line. Tool
         -- and bar are bounded by the edited block and never enter a neighbour.
+        -- The collapsed tool is a circular control aligned exactly with the
+        -- centre of the block bullet and large enough to remain legible without
+        -- shifting the bullet, fold control or source from their ordinary axes.
 
     @invariant FormattingNeverCoversWhatIsBeingWritten
         -- The bar never covers the source, caret, current selection or an

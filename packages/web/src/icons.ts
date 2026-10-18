@@ -128,6 +128,12 @@ const SHAPES = {
   eraser:
     '<path d="M19 19h-11l-4 -4a2 2 0 0 1 0 -3l7 -7a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-6 6"/>' +
     '<path d="M18 12.3l-6.3 -6.3"/>',
+  // Tabler arrow-back-up / arrow-forward-up. A diferencia de los caracteres
+  // ↶ y ↷, heredan el mismo trazo y la misma caja que toda la familia de Vera.
+  'arrow-back-up':
+    '<path d="M9 14l-4 -4l4 -4"/><path d="M5 10h11a4 4 0 1 1 0 8h-1"/>',
+  'arrow-forward-up':
+    '<path d="M15 14l4 -4l-4 -4"/><path d="M19 10h-11a4 4 0 1 0 0 8h1"/>',
   // El lápiz macizo: una acción secundaria pequeña se reconoce por su silueta,
   // sin necesitar fondo ni el doble trazo de un icono calado.
   'edit-filled':

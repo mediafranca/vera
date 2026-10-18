@@ -6014,9 +6014,11 @@ body.settings-open #text {
   z-index: 13;
   display: grid;
   place-items: center;
+  align-self: flex-start;
   flex: none;
-  width: 1.45rem;
-  height: 1.45rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin-top: calc(var(--thread-y) - 0.825rem);
   margin-left: -2.5rem;
   margin-right: 0.55rem;
   padding: 0;
@@ -7418,11 +7420,6 @@ html[data-working-slow='true']::after {
   bottom: calc(1rem + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.canvas-tools {
-  display: flex;
   overflow: hidden;
   border: 1px solid var(--accent);
   border-radius: 0.3ex;
@@ -7443,15 +7440,15 @@ html[data-working-slow='true']::after {
 .canvas-tool {
   display: grid;
   place-items: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0.45rem;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
-.canvas-tool + .canvas-tool {
+.canvas-controls > .canvas-tool + .canvas-tool {
   border-left: 1px solid var(--accent);
 }
 
@@ -7464,14 +7461,9 @@ html[data-working-slow='true']::after {
   cursor: default;
 }
 
-.canvas-history .canvas-tool {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
 .canvas-tool svg {
-  width: 1rem;
-  height: 1rem;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 /*
@@ -7484,16 +7476,11 @@ html[data-working-slow='true']::after {
 .canvas-button.done {
   background: transparent;
   color: var(--accent);
-  display: grid;
-  place-items: center;
-  width: 1.65rem;
-  height: 1.65rem;
-  padding: 0.18rem;
 }
 
 .canvas-button.done svg {
-  width: 0.72rem;
-  height: 0.72rem;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .canvas-sheet.erasing {

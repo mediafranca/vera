@@ -243,10 +243,8 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
 
     const controls = document.createElement('div');
     controls.className = 'canvas-controls';
-    const tools = document.createElement('div');
-    tools.className = 'canvas-tools';
-    tools.setAttribute('role', 'group');
-    tools.setAttribute('aria-label', 'herramienta de dibujo');
+    controls.setAttribute('role', 'toolbar');
+    controls.setAttribute('aria-label', 'controles del dibujo');
     const pencil = document.createElement('button');
     pencil.type = 'button';
     pencil.className = 'canvas-button canvas-tool active';
@@ -261,27 +259,21 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
     eraser.title = 'borrador';
     eraser.setAttribute('aria-label', 'borrar trazos');
     eraser.setAttribute('aria-pressed', 'false');
-    tools.append(pencil, eraser);
-    const historyControls = document.createElement('div');
-    historyControls.className = 'canvas-tools canvas-history';
-    historyControls.setAttribute('role', 'group');
-    historyControls.setAttribute('aria-label', 'historial del dibujo');
     const undo = document.createElement('button');
     undo.type = 'button';
     undo.className = 'canvas-button canvas-tool';
-    undo.textContent = '↶';
+    undo.innerHTML = icon('arrow-back-up');
     undo.title = 'deshacer';
     undo.setAttribute('aria-label', 'deshacer en el dibujo');
     const redo = document.createElement('button');
     redo.type = 'button';
     redo.className = 'canvas-button canvas-tool';
-    redo.textContent = '↷';
+    redo.innerHTML = icon('arrow-forward-up');
     redo.title = 'rehacer';
     redo.setAttribute('aria-label', 'rehacer en el dibujo');
-    historyControls.append(undo, redo);
     const done = document.createElement('button');
     done.type = 'button';
-    done.className = 'canvas-button done';
+    done.className = 'canvas-button canvas-tool done';
     /*
      * El visto, y no la palabra «listo».
      *
@@ -294,7 +286,7 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
     done.innerHTML = icon('check');
     done.title = 'listo';
     done.setAttribute('aria-label', 'listo, guardar el dibujo');
-    controls.append(tools, historyControls, done);
+    controls.append(pencil, eraser, undo, redo, done);
     shell.append(controls);
     document.body.append(shell);
 

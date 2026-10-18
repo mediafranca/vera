@@ -390,6 +390,13 @@ rule UndoingInsideTheCanvasIsNotUndoingInTheGraph {
         -- Los atajos de teclado siguen funcionando, pero reparar un error con la
         -- mano no depende de conocer un gesto táctil oculto que una palma pueda
         -- activar por accidente.
+
+    @invariant TheCanvasControlsAreOneToolbar
+        -- Lápiz, goma, deshacer, rehacer y terminar forman una sola barra
+        -- continua. Todos ofrecen el mismo blanco táctil, comparten altura y
+        -- separadores, y sus pictogramas pertenecen a la misma familia visual
+        -- que el resto de Vera. La agrupación no borra sus nombres accesibles ni
+        -- el estado activo o indisponible de cada acción.
 }
 
 rule ADrawingIsShownAtItsOwnSize {
