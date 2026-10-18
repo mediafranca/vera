@@ -3898,6 +3898,11 @@ html.presenting body {
   font-family: var(--font-mono);
 }
 
+/* Una fuente especializada conserva voz de código aunque sea una URL sola. */
+.body.derived-source-view > .editor {
+  font-family: var(--font-mono);
+}
+
 /*
  * Dónde se está escribiendo, dicho sólo con color.
  *
@@ -7528,31 +7533,55 @@ html[data-working-slow='true']::after {
 }
 
 /*
- * El pie de un dibujo: cuándo se hizo, y por dónde se vuelve a él.
+ * El pie común de toda representación derivada.
  *
- * Debajo y no encima. Un dibujo se ve del tamaño de sus trazos —@invariant
- * ItsOwnSizePlusAMargin— y un garabato de dos centímetros es un tamaño legítimo:
- * cualquier cosa puesta sobre él tapa justo el trazo que alguien mira antes de
- * decidir si lo retoca.
- *
- * Fecha y lápiz se recogen juntos al extremo derecho. Son información y acción
- * secundarias: no abren una segunda línea de lectura bajo la figura.
+ * Debajo y no encima: el mismo sitio sirve para video, Mermaid, HTML, mapa,
+ * proceso y dibujo sin tapar el objeto. Fuente queda a la izquierda; las
+ * acciones propias del medio se recogen a la derecha.
  */
-.drawn-foot {
+.derived-source-foot {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  /* Un solo espacio visual entre la fecha y su gesto de edición. */
+  justify-content: flex-start;
   gap: 0.25rem;
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  margin: -0.1rem 0 0.5rem;
+  margin: 0.15rem 0 0.5rem;
   font-family: var(--font-ui);
 }
 
+.derived-source-toggle {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0.48rem;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  font: 650 0.68rem/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.derived-source-toggle:hover,
+.derived-source-toggle:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.derived-source-toggle .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.drawn-foot { margin-top: -0.1rem; }
+
 /* La fecha se lee y no se pulsa: del tamaño y el color de lo que acompaña. */
 .drawn-when {
+  margin-left: auto;
   font-size: 0.82rem;
   color: var(--text-dim);
 }
@@ -7592,35 +7621,6 @@ html[data-working-slow='true']::after {
   font-family: var(--font-ui);
   margin-block: .2rem .55rem;
 }
-
-.process-source-dialog {
-  width: min(42rem, calc(100vw - 2rem));
-  border: 1px solid var(--rule);
-  border-radius: .65rem;
-  background: var(--bg);
-  color: var(--text);
-  padding: 1.15rem;
-  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / .2);
-}
-.process-source-dialog::backdrop { background: rgb(0 0 0 / .45); }
-.process-source-dialog h2 { margin: 0 0 .35rem; font: 600 1.25rem/1.2 var(--font-ui); }
-.process-source-dialog p { margin: .35rem 0 .9rem; color: var(--text-dim); }
-.process-source-dialog textarea {
-  display: block;
-  width: 100%;
-  min-height: 11rem;
-  resize: vertical;
-  border: 1px solid var(--rule);
-  border-radius: .4rem;
-  padding: .8rem;
-  background: var(--paper, var(--bg));
-  color: var(--text);
-  font: .92rem/1.5 var(--font-mono, ui-monospace, monospace);
-}
-.process-source-dialog textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.process-source-dialog textarea[aria-invalid='true'] { border-color: var(--warm); }
-.process-source-dialog .process-source-feedback { min-height: 1.25rem; color: var(--warm); }
-.process-source-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; }
 
 .process-header {
   align-items: center;

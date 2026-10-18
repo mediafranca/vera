@@ -201,6 +201,22 @@ contract BlockBehaviourPresentation {
         -- Vera does not keep a second mutable type label that can disagree with
         -- the content.
 
+    @invariant DerivedBlocksShareOneSourceControl
+        -- Every editable block whose complete textual source produces a
+        -- specialised representation offers the same control below that
+        -- representation. Activating it replaces the representation with the
+        -- exact canonical source in that block; the control in the same place
+        -- then returns to the representation. The control is outside the
+        -- represented object, so it never covers a drawing, diagram, video,
+        -- map or executable surface.
+
+    @invariant SourceEditingIsAllowedToChangeTheBehaviour
+        -- Source mode is an editor, not a read-only inspector. Saving uses the
+        -- ordinary block history and derives the next behaviour from the new
+        -- source. If it no longer forms a valid specialised block, Vera keeps
+        -- the authored source readable and editable as safe Markdown rather
+        -- than retaining an obsolete representation or silently repairing it.
+
     @invariant AYouTubeClipNamesItsInterval
         -- A deliberate `clip` block preserves the YouTube address and names a
         -- beginning and an end. Presentation plays only that interval; an absent,
@@ -247,9 +263,11 @@ contract BlockBehaviourPresentation {
         -- This presentation adds no width syntax to the portable Markdown.
 
     @invariant SpecialisedBlocksKeepTheirOwnEditor
-        -- Editing opens the source, canvas or media controls appropriate to the
-        -- derived behaviour. It never sends drawing coordinates, executable
-        -- source or a query through the ordinary prose formatter.
+        -- Source mode presents specialised text without prose-formatting tools.
+        -- A drawing additionally offers its canvas, so editing points and
+        -- pressures directly does not replace editing the same source through
+        -- hand gestures. Native media without textual source keeps its own media
+        -- controls and does not pretend to have code.
 }
 
 -- Reading aloud is another presentation of the words already on the page. It

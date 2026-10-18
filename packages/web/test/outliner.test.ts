@@ -15,6 +15,7 @@ import {
   externalDestination,
   foldsWhileRevealing,
   foldedState,
+  hasDerivedRepresentation,
   invokeMenuAction,
   initialFoldingOpen,
   isFencedCodeContent,
@@ -54,6 +55,41 @@ describe('tipografía del fuente cercado', () => {
   it('no vuelve monoespaciado un bloque de prosa que sólo contiene un ejemplo', () => {
     assert.equal(isFencedCodeContent('Una explicación.\n```ts\nconst x = 1\n```'), false);
     assert.equal(isFencedCodeContent('texto ordinario'), false);
+  });
+});
+
+describe('fuente y representación derivada', () => {
+  const withoutRenderedObject = {
+    querySelector: () => null,
+  } as unknown as ParentNode;
+
+  it('reconoce los regímenes que terminan de componerse fuera de Markdown', () => {
+    assert.equal(hasDerivedRepresentation('```dibujo\n0,0,50\n```', withoutRenderedObject), true);
+    assert.equal(hasDerivedRepresentation('? tipo=proyecto', withoutRenderedObject), true);
+    assert.equal(hasDerivedRepresentation('prosa ordinaria', withoutRenderedObject), false);
+  });
+
+  it('confía en la representación ya reconocida para embeds y ejecutables', () => {
+    let asked = '';
+    const rendered = {
+      querySelector: (selector: string) => {
+        asked = selector;
+        return {};
+      },
+    } as unknown as ParentNode;
+    assert.equal(hasDerivedRepresentation('https://youtu.be/dQw4w9WgXcQ', rendered), true);
+    assert.match(asked, /\.embed/);
+    assert.match(asked, /code\.language-mermaid/);
+  });
+
+  it('usa un solo pie y alterna código con ojo sin herramientas de prosa', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /foot\.className = 'derived-source-foot'/);
+    assert.match(source, /button\.textContent = '<\/>'/);
+    assert.match(source, /button\.innerHTML = icon\('eye'\)/);
+    assert.match(source, /if \(sourceMode\) body\.append\(editor\)/);
+    assert.match(source, /if \(!sourceMode && row !== null\)/);
+    assert.match(source, /if \(sourceMode\) callbacks\.onReload\(null\)/);
   });
 });
 

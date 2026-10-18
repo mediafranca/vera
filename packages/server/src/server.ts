@@ -533,6 +533,18 @@ function readOperation(body: SubmitBody): { error: string } | {
   if (typeof kind !== 'string' || !CHANGE_KINDS.has(kind)) {
     return { error: `change.kind must be one of ${[...CHANGE_KINDS].join(', ')}` };
   }
+  if (kind === 'set_property') {
+    const property = change as { propertyKey?: unknown; propertyValue?: unknown };
+    if (typeof property.propertyKey !== 'string' || typeof property.propertyValue !== 'string') {
+      return { error: 'set_property needs propertyKey and propertyValue strings' };
+    }
+  }
+  if (kind === 'remove_property') {
+    const property = change as { propertyKey?: unknown };
+    if (typeof property.propertyKey !== 'string') {
+      return { error: 'remove_property needs a propertyKey string' };
+    }
+  }
 
   let evidence: OriginEvidence | undefined;
   if (body.evidence !== undefined && body.evidence !== null) {

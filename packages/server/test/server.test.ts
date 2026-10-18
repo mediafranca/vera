@@ -273,6 +273,15 @@ describe('POST /operations', () => {
       400,
       'link_pages ya no es parte del vocabulario',
     );
+    assert.equal(
+      (await post({
+        originId: 'propiedad-malformada',
+        participant: OWNER,
+        change: { kind: 'set_property', page: 'page:algo', key: 'tipo', value: 'nota' },
+      })).status,
+      400,
+      'una propiedad con nombres de campo ajenos se rechaza sin tumbar el servidor',
+    );
   });
 
   it('protege una página especial de borrado, recorrido y procesamiento', async () => {

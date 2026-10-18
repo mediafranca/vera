@@ -3376,6 +3376,67 @@ export function isFencedCodeContent(source: string): boolean {
   return /^(?:`{3,}|~{3,})\s*[\w+-]*\s*$/.test(first);
 }
 
+/**
+ * Una representación que nace de la fuente completa del bloque.
+ *
+ * Se decide sobre el DOM que ya produjo el dominio: repetir aquí los parsers de
+ * YouTube, Mermaid, mapas y ejecutables crearía dos ideas de qué es válido. Las
+ * tres excepciones que terminan de componerse fuera de Markdown se reconocen por
+ * su fuente canónica.
+ */
+export function hasDerivedRepresentation(source: string, rendered: ParentNode): boolean {
+  return looksLikeDrawing(source)
+    || looksLikeQuery(source)
+    || looksLikeProcess(source)
+    || rendered.querySelector(
+      ':is(.embed, .embedded-map, .executable, .mediawiki-figure, code.language-mermaid)',
+    ) !== null;
+}
+
+/**
+ * En papel la fuente desplegable sigue siendo una degradación útil. En el
+ * outliner interactivo la reemplaza el único control fuente/representación.
+ */
+function removeInlineDerivedSources(rendered: ParentNode): void {
+  rendered.querySelectorAll(
+    ':is(.embed, .embedded-map, .executable, .mediawiki-figure) > details',
+  ).forEach((details) => details.remove());
+}
+
+function sourceRepresentationButton(
+  mode: 'source' | 'representation',
+  act: () => void,
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'derived-source-toggle';
+  if (mode === 'source') {
+    button.textContent = '</>';
+    button.title = 'ver o editar fuente';
+    button.setAttribute('aria-label', 'ver o editar la fuente de este bloque');
+  } else {
+    button.innerHTML = icon('eye');
+    button.title = 'ver representación';
+    button.setAttribute('aria-label', 'guardar la fuente y ver su representación');
+  }
+  // El botón que devuelve a la representación vive dentro del editor. No
+  // deja que mousedown dispare blur antes de que el clic pueda guardar.
+  button.addEventListener('mousedown', (event) => event.preventDefault());
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    act();
+  });
+  return button;
+}
+
+function derivedSourceFoot(mode: 'source' | 'representation', act: () => void): HTMLDivElement {
+  const foot = document.createElement('div');
+  foot.className = 'derived-source-foot';
+  foot.append(sourceRepresentationButton(mode, act));
+  return foot;
+}
+
 function wireCataloguedMedia(container: HTMLElement, page: PageView): void {
   for (const asset of page.assets) {
     for (const element of container.querySelectorAll<HTMLElement>(
@@ -5632,6 +5693,7 @@ export function renderOutliner(
       } else {
         text.innerHTML = renderMarkdown(task === null ? node.block.content : task.said, options);
         decorateCodeBlocks(text);
+        removeInlineDerivedSources(text);
       }
       markMissingImages(text);
       body.append(text);
@@ -5790,11 +5852,6 @@ export function renderOutliner(
        */
       openBlockMenu(bullet, [
         [
-          ...(readProcessBlock(node.block.content) === null ? [] : [{
-            label: 'Editar código',
-            icon: 'edit-2',
-            run: () => openProcessSourceEditor(node),
-          } satisfies MenuAction]),
           {
             label: glosses[node.block.stableId]?.content ? 'Editar glosa' : 'Agregar glosa',
             icon: 'message-square',
@@ -6034,6 +6091,19 @@ export function renderOutliner(
     });
 
     /*
+     * Una sola puerta entre fuente y representación.
+     *
+     * Vive debajo del objeto y no dentro de cada renderizador: por eso un video,
+     * un diagrama y un dibujo no vuelven a inventar el mismo gesto. En lectura
+     * pública no se ofrece edición; los medios nativos tampoco entran aquí
+     * porque no guardan una fuente textual en este bloque.
+     */
+    const sourceFoot = !readOnly && hasDerivedRepresentation(node.block.content, body)
+      ? derivedSourceFoot('source', () => openDerivedSourceEditor(node, body))
+      : null;
+    if (sourceFoot !== null) body.append(sourceFoot);
+
+    /*
      * Un dibujo: el lápiz por donde se entra y las teclas por donde se sale.
      *
      * Los trazos son el texto del bloque, así que aquí no hay dónde poner el
@@ -6069,8 +6139,8 @@ export function renderOutliner(
        * dos se recogen a la derecha: información y gesto secundarios quedan
        * juntos y fuera del eje principal de la lectura.
        */
-      const foot = document.createElement('div');
-      foot.className = 'drawn-foot';
+      const foot = sourceFoot ?? document.createElement('div');
+      foot.classList.add('derived-source-foot', 'drawn-foot');
 
       /*
        * Cuándo se dibujó por última vez.
@@ -6097,7 +6167,7 @@ export function renderOutliner(
         void redraw(node.block, callbacks, toast);
       });
       foot.append(pencil);
-      body.append(foot);
+      if (foot.parentElement !== body) body.append(foot);
 
       /*
        * La decisión la toma `resolveDrawingKey`; aquí sólo se ejecuta.
@@ -6529,67 +6599,29 @@ export function renderOutliner(
   }
 
   /**
-   * La fuente de una invocación es corta, portable y merece verse completa.
-   * Se edita aparte porque el bloque transformado reserva su cuerpo para estado,
-   * Play y propuesta; el editor común lo excluye deliberadamente.
+   * Abre la fuente canónica de cualquier representación derivada.
+   *
+   * Pasa deliberadamente alrededor de `openEditor`: tocar un dibujo sigue
+   * enfocándolo y el proceso conserva Enter para ejecutar. Sólo el control
+   * explícito `</>` elige editar coordenadas o declaración como fuente.
    */
-  function openProcessSourceEditor(node: Node): void {
-    if (readProcessBlock(node.block.content) === null) return;
-    const dialog = document.createElement('dialog');
-    dialog.className = 'process-source-dialog';
-    const form = document.createElement('form');
-    form.method = 'dialog';
-    const title = document.createElement('h2');
-    title.textContent = 'Código del proceso';
-    const explain = document.createElement('p');
-    explain.textContent = 'Aquí vive la declaración completa: identidad, entrada, presentación, solicitud y lectura de la respuesta. Las credenciales permanecen en la conexión gobernada.';
-    const editor = document.createElement('textarea');
-    editor.value = node.block.content;
-    editor.spellcheck = false;
-    editor.setAttribute('aria-label', 'código del proceso');
-    const feedback = document.createElement('p');
-    feedback.className = 'process-source-feedback';
-    feedback.setAttribute('role', 'status');
-    const actions = document.createElement('div');
-    actions.className = 'dialog-actions';
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.textContent = 'Cancelar';
-    const save = document.createElement('button');
-    save.type = 'submit';
-    save.className = 'primary';
-    save.textContent = 'Guardar';
-    cancel.addEventListener('click', () => dialog.close());
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      if (readProcessBlock(editor.value) === null) {
-        feedback.textContent = 'La fuente necesita definición, versión y una entrada ((bloque)).';
-        editor.setAttribute('aria-invalid', 'true');
-        return;
-      }
-      editor.removeAttribute('aria-invalid');
-      save.disabled = true;
-      void submitQuietly({
-        kind: 'edit_block',
-        block: node.block.stableId,
-        content: editor.value,
-      }).then((applied) => {
-        if (!applied) {
-          save.disabled = false;
-          return;
-        }
-        dialog.close();
-        callbacks.onReload(null);
-      });
-    });
-    dialog.addEventListener('close', () => dialog.remove());
-    actions.append(cancel, save);
-    form.append(title, explain, editor, feedback, actions);
-    dialog.append(form);
-    document.body.append(dialog);
-    dialog.showModal();
-    editor.focus();
-    editor.setSelectionRange(0, editor.value.length);
+  function openDerivedSourceEditor(node: Node, body: HTMLElement): void {
+    const near = neighbourhoods.get(node.block.stableId);
+    if (near === undefined) return;
+    startEditing(
+      node.block,
+      body,
+      callbacks,
+      options,
+      {
+        page: page.id,
+        view: page,
+        near,
+        children: node.children.map((child) => child.block.stableId),
+      },
+      0,
+      true,
+    );
   }
 
   /*
@@ -7941,6 +7973,7 @@ function startEditing(
   options: RenderOptions,
   context: { page: string; view: PageView; near: Neighbourhood; children: string[] },
   placement: number | SourceSelection = Number.MAX_SAFE_INTEGER,
+  sourceMode = false,
 ): void {
   if (body.querySelector('textarea') !== null) return;
   const session = createSession(block.content);
@@ -8000,14 +8033,16 @@ function startEditing(
     if (height > 0) formatBar.style.setProperty('--format-bar-measured-height', `${height}px`);
   };
   const formatBarSize = new ResizeObserver(rememberFormatBarHeight);
-  formatBarSize.observe(formatBar);
+  if (!sourceMode) formatBarSize.observe(formatBar);
   const formatBarAnchor = document.createElement('div');
   formatBarAnchor.className = 'format-bar-anchor';
   formatBarAnchor.append(formatBar);
   body.innerHTML = '';
   if (spoken !== null) body.append(spoken);
-  body.append(formatBarAnchor, editor);
+  if (sourceMode) body.append(editor);
+  else body.append(formatBarAnchor, editor);
   body.classList.add('editing');
+  body.classList.toggle('derived-source-view', sourceMode);
   const formatTrigger = document.createElement('button');
   formatTrigger.type = 'button';
   formatTrigger.className = 'format-tools-trigger';
@@ -8027,7 +8062,7 @@ function startEditing(
     formatTrigger.title = `${toolsAction} herramientas de formato`;
     editor.focus({ preventScroll: true });
   });
-  if (row !== null) {
+  if (!sourceMode && row !== null) {
     // Fuera del esquema: la viñeta sigue abriendo el menú propio del bloque.
     row.prepend(formatTrigger);
   }
@@ -8181,7 +8216,7 @@ function startEditing(
 
   /** Volver a la vista de lectura, conservando la grabación por el mismo motivo. */
   const render = (content: string): void => {
-    body.classList.remove('editing');
+    body.classList.remove('editing', 'derived-source-view');
     formatBarSize.disconnect();
     formatTrigger.remove();
     body.classList.toggle('code-source', isFencedCodeContent(content));
@@ -8197,6 +8232,7 @@ function startEditing(
     text.className = 'body-text';
     text.innerHTML = renderMarkdown(content, options);
     decorateCodeBlocks(text);
+    removeInlineDerivedSources(text);
     text.addEventListener('click', (event) => {
       const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a');
       if (link === null || link.classList.contains('media-file')) return;
@@ -8306,8 +8342,18 @@ function startEditing(
     if (leaving) return;
     leaving = true;
     window.clearTimeout(timer);
-    void flush(session.leave()).then(() => render(session.saved()));
+    void flush(session.leave()).then((saved) => {
+      if (!saved) {
+        leaving = false;
+        editor.focus();
+        return;
+      }
+      if (sourceMode) callbacks.onReload(null);
+      else render(session.saved());
+    });
   };
+
+  if (sourceMode) body.append(derivedSourceFoot('representation', leave));
 
   /** Una tecla estructural guarda lo pendiente antes de cambiar el árbol. */
   const structural = (outcome: KeyOutcome): void => {

@@ -48,12 +48,11 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(outliner, /acciones del bloque: \$\{blockSummary\}/);
   });
 
-  it('devuelve un bloque de proceso a su propia fuente desde el menú de la viñeta', () => {
-    assert.match(outliner, /readProcessBlock\(node\.block\.content\) === null/);
-    assert.match(outliner, /label: 'Editar código',[\s\S]*?run: \(\) => openProcessSourceEditor\(node\)/);
-    assert.match(outliner, /className = 'process-source-dialog'/);
-    assert.match(outliner, /readProcessBlock\(editor\.value\) === null/);
-    assert.match(outliner, /Aquí vive la declaración completa: identidad, entrada, presentación, solicitud y lectura de la respuesta/);
+  it('devuelve un bloque de proceso a la fuente común dentro del mismo bloque', () => {
+    assert.match(outliner, /function openDerivedSourceEditor\(node: Node, body: HTMLElement\)/);
+    assert.doesNotMatch(outliner, /process-source-dialog/);
+    assert.doesNotMatch(outliner, /label: 'Editar código'/);
+    assert.match(outliner, /derivedSourceFoot\('source'/);
     assert.match(outliner, /presentationOf\(invocation\)/);
   });
 
