@@ -2,8 +2,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
-import { headingAnchor, inlineMarkdown, linkedResourceIn, renderMarkdown, uniqueAnchors } from '../src/markdown.ts';
+import {
+  executableFrameBridge,
+  headingAnchor,
+  inlineMarkdown,
+  linkedResourceIn,
+  renderMarkdown,
+  SVG_EXECUTABLE_BRIDGE_SHA256,
+  uniqueAnchors,
+} from '../src/markdown.ts';
 
 describe('inlineMarkdown', () => {
   it('escapa el HTML antes de cualquier otra cosa', () => {
@@ -479,6 +488,17 @@ describe('renderMarkdown', () => {
       assert.match(html, /scrolling="no"/);
       assert.match(html, /aspect-ratio:10 \/ 10;height:auto/);
       assert.match(html, /html,body\{overflow:hidden\}body&gt;svg\{width:100%\}/);
+    });
+
+    it('autoriza exactamente el puente SVG vigente y nunca un nonce fijo', () => {
+      const actual = createHash('sha256')
+        .update(`\n${executableFrameBridge()}\n`)
+        .digest('base64');
+      assert.equal(SVG_EXECUTABLE_BRIDGE_SHA256, actual);
+      const html = renderMarkdown('```svg\n<svg><script>throw 1</script></svg>\n```');
+      assert.ok(html.includes(`sha256-${actual}`));
+      assert.ok(!html.includes("script-src 'nonce-"));
+      assert.ok(!html.includes('script-src &#39;nonce-'));
     });
 
     it('respeta la proporción rectangular declarada por el SVG', () => {

@@ -188,7 +188,11 @@ contract AuthoredExecutableBlocks {
         -- que escribió, pero lo que no especifica no aparece como un rectángulo
         -- blanco y ajeno. Cambiar entre día y noche, o cambiar los valores de
         -- diseño de Vera, actualiza también el recinto visible sin reescribir ni
-        -- volver a ejecutar su fuente.
+        -- volver a ejecutar su fuente. Las tipografías autoalojadas que nombran
+        -- esos valores viajan con la apariencia y quedan disponibles dentro del
+        -- origen opaco; heredar `--font-body` no puede depender de que la misma
+        -- fuente esté instalada en el aparato ni abrir una petición a otro
+        -- servidor.
 
     @invariant TheFrameFollowsWhatTheSourceDraws
         -- El recinto no impone un alto fijo. Parte del alto intrínseco que la

@@ -813,7 +813,7 @@ function executableBlock(language: string, source: string, options: RenderOption
   // En SVG sólo corre el puente exacto de Vera. El hash impide que un <script>
   // o un manejador `onload` pegado dentro de la ilustración gane ejecución.
   const scriptPolicy = kind === 'svg'
-    ? "'sha256-wgyR5BYfyYZZKEzfArrxKC8eIKqOy4/9tjvjaLir9iA='"
+    ? `'sha256-${SVG_EXECUTABLE_BRIDGE_SHA256}'`
     : "'unsafe-inline'";
   const svgViewBox = kind === 'svg'
     ? /<svg\b[^>]*\bviewBox\s*=\s*["']\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)\s*["']/i.exec(source)
@@ -843,8 +843,16 @@ function executableBlock(language: string, source: string, options: RenderOption
   return `<figure class="executable executable-${kind}${heightClass}">${marked}<details><summary>fuente ${title}</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
 }
 
+/**
+ * Hash CSP del puente exacto que se inserta entre saltos de línea.
+ *
+ * La prueba calcula este valor desde `executableFrameBridge()`: si el puente
+ * cambia, la CSP no puede quedar silenciosamente apuntando al programa viejo.
+ */
+export const SVG_EXECUTABLE_BRIDGE_SHA256 = 'Lrm+hc3dvXxJBJsHCImB6K1kaMzKFd2PVS1CjIOzlug=';
+
 /** Puente mínimo del recinto: recibe apariencia y sólo devuelve su talla. */
-function executableFrameBridge(): string {
+export function executableFrameBridge(): string {
   return `
 const veraFrame = ${JSON.stringify('vera-executable-frame')};
 const report = () => parent.postMessage({ type: veraFrame, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) }, '*');
@@ -854,6 +862,15 @@ addEventListener('message', event => {
   if (appearance === null || typeof appearance !== 'object') return;
   for (const [name, value] of Object.entries(appearance.tokens ?? {})) {
     if (/^--[a-z0-9-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value);
+  }
+  if (typeof appearance.fontFaces === 'string') {
+    let fonts = document.getElementById('vera-frame-fonts');
+    if (fonts === null) {
+      fonts = document.createElement('style');
+      fonts.id = 'vera-frame-fonts';
+      document.head.append(fonts);
+    }
+    if (fonts.textContent !== appearance.fontFaces) fonts.textContent = appearance.fontFaces;
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';
