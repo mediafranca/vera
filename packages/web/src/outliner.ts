@@ -18,6 +18,7 @@ import {
   looksLikeDrawing,
   looksLikeQuery,
   readDrawing,
+  readMarkdownTable,
   renderMarkdown,
   suggestTitles,
   titleKey,
@@ -26,6 +27,7 @@ import {
   isTrail,
   argumentMaturityChanges,
   type ArgumentMaturity,
+  type MarkdownTable,
   type RenderOptions,
 } from '@vera/core';
 import { renderArgumentWorkbenchBand } from './argument-workbench-page.ts';
@@ -46,6 +48,7 @@ import {
 import { scrollDeltaFor, sourceOffsetFor } from './caret.ts';
 import { parseOutlineClipboard } from './outline-clipboard.ts';
 import { selectedSiblingMove } from './selection-movement.ts';
+import { mountMarkdownTableEditor, type TableCellAddress } from './table-editor.ts';
 import { sourceSelection, type SourceSelection } from './source-selection.ts';
 import { completeInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
@@ -3389,7 +3392,7 @@ export function hasDerivedRepresentation(source: string, rendered: ParentNode): 
     || looksLikeQuery(source)
     || looksLikeProcess(source)
     || rendered.querySelector(
-      ':is(.embed, .embedded-map, .executable, .mediawiki-figure, code.language-mermaid)',
+      ':is(.table-scroll, .embed, .embedded-map, .executable, .mediawiki-figure, code.language-mermaid)',
     ) !== null;
 }
 
@@ -6061,6 +6064,20 @@ export function renderOutliner(
         window.getSelection()?.removeAllRanges();
         return;
       }
+      // Una celda se edita como celda. El control `</>` sigue siendo la ruta
+      // deliberada a las tuberías completas del bloque. Shift conserva antes
+      // que esto su significado transversal de seleccionar bloques.
+      const tableCell = target.closest<HTMLTableCellElement>('.table-scroll th, .table-scroll td');
+      if (tableCell !== null) {
+        const source = readMarkdownTable(node.block.content);
+        if (source !== null) {
+          const row = tableCell.closest('thead') === null
+            ? ((tableCell.parentElement as HTMLTableRowElement | null)?.sectionRowIndex ?? 0) + 1
+            : 0;
+          openTableVisualEditor(node, body, source, { row, column: tableCell.cellIndex });
+          return;
+        }
+      }
       // Empezar a escribir deshace lo escogido. @invariant NothingIsSelectedWhileWriting.
       if (picked.size > 0) clearPicked();
       pickedOn = node.block.stableId;
@@ -6102,6 +6119,25 @@ export function renderOutliner(
       ? derivedSourceFoot('source', () => openDerivedSourceEditor(node, body))
       : null;
     if (sourceFoot !== null) body.append(sourceFoot);
+
+    const markdownTable = readMarkdownTable(node.block.content);
+    if (!readOnly && markdownTable !== null) {
+      body.classList.add('table-body');
+      const foot = sourceFoot ?? document.createElement('div');
+      foot.classList.add('derived-source-foot', 'table-foot');
+      const editTable = document.createElement('button');
+      editTable.type = 'button';
+      editTable.className = 'table-visual-edit';
+      editTable.innerHTML = icon('grid');
+      editTable.title = 'editar tabla';
+      editTable.setAttribute('aria-label', 'editar visualmente esta tabla');
+      editTable.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openTableVisualEditor(node, body, markdownTable);
+      });
+      foot.append(editTable);
+      if (foot.parentElement !== body) body.append(foot);
+    }
 
     /*
      * Un dibujo: el lápiz por donde se entra y las teclas por donde se sale.
@@ -6577,6 +6613,11 @@ export function renderOutliner(
      * `drawingKeys`— y enseña el lápiz por donde se entra al lienzo.
      * @invariant TouchingADrawingIsNotEditingIt.
      */
+    const table = readMarkdownTable(node.block.content);
+    if (table !== null) {
+      openTableVisualEditor(node, body, table);
+      return;
+    }
     if (looksLikeDrawing(node.block.content) || looksLikeProcess(node.block.content)) {
       body.focus();
       return;
@@ -6596,6 +6637,27 @@ export function renderOutliner(
       },
       placement,
     );
+  }
+
+  function openTableVisualEditor(
+    node: Node,
+    body: HTMLElement,
+    table: MarkdownTable,
+    initial?: TableCellAddress,
+  ): void {
+    if (body.querySelector('input, textarea') !== null) return;
+    mountMarkdownTableEditor(body, table, {
+      ...(initial === undefined ? {} : { initial }),
+      save: async (source) => {
+        if (source !== null && !(await submitQuietly({
+          kind: 'edit_block',
+          block: node.block.stableId,
+          content: source,
+        }))) return false;
+        callbacks.onReload(null);
+        return true;
+      },
+    });
   }
 
   /**

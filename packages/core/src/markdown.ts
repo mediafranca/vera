@@ -38,6 +38,7 @@
 import { drawingSvg, readDrawing } from './drawing.ts';
 import { renderMediaWiki } from './mediawiki.ts';
 import { wikiReference } from './text.ts';
+import { markdownTableCells } from './markdown-table.ts';
 
 const EMBED = /^\s*<iframe\b([^>]*)>\s*<\/iframe>\s*$/i;
 const ATTRIBUTE = /(\w[\w-]*)\s*=\s*"([^"]*)"/g;
@@ -921,15 +922,6 @@ function renderList(items: ListItem[], options: RenderOptions): string {
   return html;
 }
 
-function cells(row: string): string[] {
-  return row
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim());
-}
-
 /**
  * Renderiza el Markdown de un bloque completo.
  *
@@ -1091,16 +1083,31 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
     // simplemente contiene barras verticales.
     if (TABLE_ROW.test(line) && TABLE_DIVIDER.test(lines[at + 1] ?? '')) {
       flushParagraph(paragraph);
-      const head = cells(line);
+      const head = markdownTableCells(line) ?? [];
+      const divider = markdownTableCells(lines[at + 1] ?? '') ?? [];
       at += 2;
       const body: string[][] = [];
       while (at < lines.length && TABLE_ROW.test(lines[at] ?? '')) {
-        body.push(cells(lines[at] ?? ''));
+        body.push(markdownTableCells(lines[at] ?? '') ?? []);
         at += 1;
       }
-      const headRow = head.map((cell) => `<th>${inlineMarkdown(cell, options)}</th>`).join('');
+      const alignment = (index: number): 'left' | 'center' | 'right' => {
+        const cell = (divider[index] ?? '').replace(/\s/g, '');
+        if (cell.startsWith(':') && cell.endsWith(':')) return 'center';
+        if (cell.endsWith(':')) return 'right';
+        return 'left';
+      };
+      const alignmentAttribute = (index: number): string => {
+        const value = alignment(index);
+        return value === 'left' ? '' : ` data-align="${value}"`;
+      };
+      const headRow = head.map((cell, index) =>
+        `<th${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`,
+      ).join('');
       const rows = body
-        .map((row) => `<tr>${row.map((cell) => `<td>${inlineMarkdown(cell, options)}</td>`).join('')}</tr>`)
+        .map((row) => `<tr>${row.map((cell, index) =>
+          `<td${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</td>`,
+        ).join('')}</tr>`)
         .join('');
       html += `<div class="table-scroll"><table><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`;
       continue;

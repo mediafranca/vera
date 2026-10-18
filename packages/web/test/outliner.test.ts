@@ -79,6 +79,7 @@ describe('fuente y representación derivada', () => {
     } as unknown as ParentNode;
     assert.equal(hasDerivedRepresentation('https://youtu.be/dQw4w9WgXcQ', rendered), true);
     assert.match(asked, /\.embed/);
+    assert.match(asked, /\.table-scroll/);
     assert.match(asked, /code\.language-mermaid/);
   });
 

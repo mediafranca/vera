@@ -254,6 +254,26 @@ contract BlockBehaviourPresentation {
         -- complete source is a Markdown table. It remains portable Markdown and
         -- changing it back to ordinary prose needs no conversion or lost data.
 
+    @invariant ATableHasAVisualEditorAndItsSource
+        -- Activating a rendered Markdown table opens a rectangular cell editor
+        -- rather than asking the participant to maintain pipes and padding by
+        -- hand. The shared source control remains available as a distinct route
+        -- to the exact Markdown. Both routes edit the same block and returning
+        -- to the representation records one ordinary block revision.
+
+    @invariant TableEditingKeepsThePortableShape
+        -- The visual editor can add or remove rows and columns and set each
+        -- column to left, centre or right alignment. It serialises a header, an
+        -- alignment divider and rectangular body rows as portable Markdown;
+        -- it introduces no opaque table identity, column-width syntax, merged
+        -- cells or private metadata.
+
+    @invariant TableCellsKeepSmallMarkdown
+        -- Every cell edits one line of inline Markdown. Bold, italic, code and
+        -- links remain authored source rather than rich-text state. Tab and
+        -- Shift-Tab traverse cells, Enter moves down the current column, and a
+        -- rectangular tab-separated paste fills the grid from the active cell.
+
     @invariant TableColumnsRemainLegible
         -- Ordinary words in a rendered Markdown table are never broken between
         -- arbitrary letters merely to keep the table inside the reading column.
