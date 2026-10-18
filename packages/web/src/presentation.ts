@@ -122,40 +122,52 @@ function renderNode(node: PresentationNode, options: RenderOptions, depth = 0): 
   return host;
 }
 
-type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'map' | 'table' | 'video';
+type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'iframe' | 'map' | 'table' | 'video';
 
-/**
- * El único contenido visual de una lámina, si ésta es espacial y no prosa con
- * una ilustración intercalada.
- *
- * La diferencia evita que una imagen dentro de una explicación convierta toda
- * la lámina en un lienzo. Sólo una raíz cuyo cuerpo consiste en un medio —con
- * los envoltorios Markdown inevitables `p` y `a`— abandona la medida de lectura.
- */
-function spatialMedium(body: HTMLElement): SpatialMedium | null {
-  if (body.children.length !== 1) return null;
-  let only = body.firstElementChild as HTMLElement | null;
-  if (only === null) return null;
-
-  if (only.matches('.executable')) return 'executable';
-  if (only.matches('.embedded-map')) return 'map';
-  if (only.matches('.drawn')) return 'drawing';
-  if (only.matches('.mermaid-figure')) return 'diagram';
-  if (only.matches('.table-scroll, table')) return 'table';
-  if (only.matches('video')) return 'video';
-  if (only.matches('img, svg')) return 'image';
+function spatialKind(host: HTMLElement): SpatialMedium | null {
+  let medium = host;
+  if (medium.matches('.executable')) return 'executable';
+  if (medium.matches('.embed') && medium.querySelector(':scope > iframe') !== null) return 'iframe';
+  if (medium.matches('.embedded-map')) return 'map';
+  if (medium.matches('.drawn')) return 'drawing';
+  if (medium.matches('.mermaid-figure')) return 'diagram';
+  if (medium.matches('.table-scroll, table')) return 'table';
+  if (medium.matches('video')) return 'video';
+  if (medium.matches('img, svg')) return 'image';
 
   for (const wrapper of ['P', 'A']) {
-    if (only.tagName !== wrapper || only.children.length !== 1) continue;
-    if ([...only.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '')) {
+    if (medium.tagName !== wrapper || medium.children.length !== 1) continue;
+    if ([...medium.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '')) {
       return null;
     }
-    only = only.firstElementChild as HTMLElement;
+    medium = medium.firstElementChild as HTMLElement;
   }
 
-  if (only.matches('img, svg')) return 'image';
-  if (only.matches('video')) return 'video';
+  if (medium.matches('img, svg')) return 'image';
+  if (medium.matches('video')) return 'video';
   return null;
+}
+
+/**
+ * Reconoce una superficie visual única, sola o acompañada por un título y un
+ * pie breves. Más de un medio, listas o descendientes mantienen la lámina en
+ * lectura documental: maximizarla inventaría una composición que no fue escrita.
+ */
+function spatialMedium(body: HTMLElement): SpatialMedium | null {
+  if (body.parentElement?.querySelector(':scope > .presentation-children') !== null) return null;
+  const children = [...body.children] as HTMLElement[];
+  const candidates = children.flatMap((host) => {
+    const kind = spatialKind(host);
+    return kind === null ? [] : [{ host, kind }];
+  });
+  if (candidates.length !== 1) return null;
+  const { host, kind } = candidates[0]!;
+  const accessories = children.filter((child) => child !== host);
+  if (accessories.length > 2 || accessories.some((child) => !child.matches('h1, h2, h3, h4, h5, h6, p'))) {
+    return null;
+  }
+  host.classList.add('presentation-primary-medium');
+  return kind;
 }
 
 /** Marca sólo las láminas cuyo medio debe medir contra el viewport. */

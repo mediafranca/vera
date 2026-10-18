@@ -2101,9 +2101,9 @@ html.presenting body {
   width: 100%;
   height: 100%;
   --content-width: min(44em, 100%);
-  --presentation-slide-top: clamp(3.25rem, 5vh, 4.5rem);
+  --presentation-slide-top: clamp(4rem, 7vh, 5.5rem);
   --presentation-slide-inline: clamp(1rem, 3vw, 3rem);
-  --presentation-slide-bottom: clamp(1rem, 3vh, 2rem);
+  --presentation-slide-bottom: clamp(4rem, 7vh, 5.5rem);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 2rem;
@@ -2232,8 +2232,14 @@ html.presenting body {
 }
 
 .vera-presentation .presentation-spatial > .presentation-block > .body {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: clamp(0.35rem, 1vh, 0.75rem);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -2256,11 +2262,27 @@ html.presenting body {
   margin: 0 !important;
 }
 
-.vera-presentation .presentation-spatial .body > :is(.drawn, .mermaid-figure, .executable, .embedded-map) {
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium {
+  flex: 1 1 0;
   width: 100% !important;
-  height: 100% !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
   max-width: none !important;
   max-height: none !important;
+  margin: 0 !important;
+}
+
+/* El alto porcentual de un recinto sólo es resoluble cuando su medio principal
+   ya recibió el resto finito de la columna. `min-height: 0` y este recorte
+   evitan que la relación intrínseca agrande el flex item y pase bajo Reveal. */
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium:is(.executable, .embed, .embedded-map) {
+  overflow: hidden;
+}
+
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium:is(p, a) {
+  display: grid;
+  place-items: center;
   margin: 0 !important;
 }
 
@@ -2302,6 +2324,28 @@ html.presenting body {
   border-radius: 0 !important;
   outline: 0 !important;
   box-shadow: none !important;
+}
+
+/* Una página externa incrustada ocupa el escenario como cualquier otro medio.
+   Su procedencia sigue visible en un pie pequeño; la fuente desplegable no es
+   parte de la lámina. */
+.vera-presentation .presentation-spatial .body .embed {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+}
+
+.vera-presentation .presentation-spatial .body .embed iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+}
+
+.vera-presentation .presentation-spatial .body .embed details {
+  display: none;
 }
 
 /* En edición manda `alto`; en Presentación manda el escenario disponible. */
