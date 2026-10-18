@@ -2850,6 +2850,8 @@ html.presenting body {
 .gloss-toggle {
   width: 1.5rem;
   height: 1.5rem;
+  align-self: flex-start;
+  margin-top: calc(var(--thread-y) - 0.75rem);
   padding: 0.18rem;
   border: 0;
   background: transparent;
@@ -2909,6 +2911,28 @@ html.presenting body {
 
 .block:has(> .block-gloss.open) {
   flex-wrap: wrap;
+}
+
+/*
+ * En la página completa una superficie ancha no deja su glosa detrás de una
+ * marca. La glosa es parte de la lectura y cae debajo del medio, donde hay
+ * ancho para ella incluso en una tableta. La columna marginal de la prosa sí
+ * sigue esperando el ancho mayor de abajo: son composiciones distintas.
+ */
+#vera-root[data-layout='text_only'] .block.wide-content:has(> .block-gloss:not(.empty)) {
+  flex-wrap: wrap;
+}
+
+#vera-root[data-layout='text_only'] .block.wide-content > .block-gloss:not(.empty) {
+  display: block;
+}
+
+#vera-root[data-layout='text_only'] .block.wide-content > .block-gloss {
+  width: calc(100% - var(--rail) - var(--rail-gap) - 0.65rem);
+}
+
+#vera-root[data-layout='text_only'] .block.wide-content > .gloss-toggle {
+  display: none;
 }
 
 .gloss-editor {
@@ -2979,9 +3003,6 @@ html.presenting body {
     display: none;
   }
 
-  #vera-root[data-layout='text_only'] .block.wide-content > .block-gloss {
-    width: calc(100% - var(--rail) - var(--rail-gap) - 0.65rem);
-  }
 }
 
 /* El control de plegado. Está siempre en la columna —vacío en las hojas— para
