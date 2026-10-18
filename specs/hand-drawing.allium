@@ -298,6 +298,19 @@ rule DrawingOpensAWholeScreen {
         -- navegador. Los contactos espurios de la palma y del lápiz se ignoran
         -- como gestos nativos: sólo alimentan el lápiz, la goma o la lente.
 
+    @invariant ADetectedPenRejectsThePalm
+        -- Desde que el lienzo reconoce un lápiz, un contacto táctil aislado no
+        -- dibuja, no borra, no cambia de herramienta y no deshace. Mientras el
+        -- lápiz está apoyado y durante una guarda breve después de levantarlo,
+        -- todo tacto se ignora: una palma no es una intención. Fuera de esa
+        -- guarda, dos contactos todavía pueden mover o acercar la lente.
+
+    @invariant TouchOnlyDrawingStillWorks
+        -- En una pantalla donde nadie ha usado lápiz, un dedo sigue dibujando y
+        -- dos dedos siguen gobernando la lente. Proteger al lápiz no convierte
+        -- el tacto en una entrada de segunda clase ni exige configurar el
+        -- dispositivo antes de empezar.
+
     @invariant PencilAndEraserAreTheOnlyTools
         -- El lienzo ofrece exactamente dos modos: el lápiz deja tinta y la goma
         -- retira trazos. No hay paleta, selector de color ni regla de grosores:
@@ -310,12 +323,12 @@ rule DrawingOpensAWholeScreen {
         -- intermedias ni se fabrican pequeños segmentos sobre la recta.
 }
 
-rule ErasingOnTheCanvasRemovesTouchedStrokes {
+rule ErasingOnTheCanvasRemovesTouchedParts {
     when: EraseAt(participant, block, point)
 
     requires: canvas_open(participant, block)
 
-    ensures: every_stroke_touched_by_the_eraser_is_removed(block, point)
+    ensures: every_part_touched_by_the_eraser_is_removed(block, point)
 
     @invariant TheEraserIsBroaderThanTheNib
         -- La goma tiene un radio visible y sensiblemente mayor que el trazo más
@@ -323,8 +336,15 @@ rule ErasingOnTheCanvasRemovesTouchedStrokes {
         -- sobre una línea de pocos píxeles.
 
     @invariant ErasingRemainsVectorial
-        -- Tocar un trazo retira ese gesto entero. No rasteriza el dibujo ni lo
-        -- corta en una proliferación de fragmentos difíciles de versionar.
+        -- La goma recorta el corredor continuo que recorre sobre el eje del
+        -- trazo. Lo tocado desaparece y cada parte superviviente queda como un
+        -- trazo, con posición y presión interpoladas en sus nuevos extremos. No
+        -- rasteriza el dibujo ni convierte cada segmento en una entidad.
+
+    @invariant OneEraserGestureIsOneUndo
+        -- Aunque una pasada corte varios trazos y produzca varios fragmentos,
+        -- deshacer la devuelve entera. La unidad de historia es la intención de
+        -- la mano, no cada intersección geométrica que hizo falta calcular.
 
     @invariant ErasingStillWritesOnlyOnFinish
         -- Igual que dibujar, borrar modifica sólo el lienzo mientras está
@@ -364,6 +384,12 @@ rule UndoingInsideTheCanvasIsNotUndoingInTheGraph {
         -- una sola operación, y deshacerla devuelve el bloque a como estaba. Son
         -- dos deshaceres a escalas distintas, como el del editor de texto y el
         -- de la página.
+
+    @invariant UndoAndRedoAreVisible
+        -- Deshacer y rehacer tienen controles visibles junto a las herramientas.
+        -- Los atajos de teclado siguen funcionando, pero reparar un error con la
+        -- mano no depende de conocer un gesto táctil oculto que una palma pueda
+        -- activar por accidente.
 }
 
 rule ADrawingIsShownAtItsOwnSize {
@@ -472,8 +498,8 @@ open question "¿Debe la historia de un bloque de dibujo guardarse entera cada v
 -- que quien la encuentre va a leer como que la tecla no llegó.
 open question "¿Debe Backspace sobre un dibujo enfocado quitarlo, y entonces qué lo distingue de perder un dibujo por pulsar una tecla sin querer?"
 
--- Answered: hay una goma vectorial de radio mayor que la punta; al tocar un
--- trazo lo retira entero sin rasterizar el dibujo.
+-- Answered: hay una goma vectorial de radio mayor que la punta; recorta el
+-- corredor recorrido y conserva como trazos las partes no tocadas.
 
 -- El corpus podría saber qué hay dibujado. El modelo local corre en esta máquina
 -- y lee páginas; mirar un dibujo es otra clase de lectura.

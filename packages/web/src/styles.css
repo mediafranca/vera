@@ -7451,6 +7451,16 @@ html[data-working-slow='true']::after {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.canvas-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.canvas-history .canvas-tool {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 .canvas-tool svg {
   width: 1rem;
   height: 1rem;

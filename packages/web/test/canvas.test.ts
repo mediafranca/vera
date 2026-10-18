@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ERASER_RADIUS, eraseStrokesAt, extendStroke } from '../src/canvas.ts';
+import { readDrawing, writeDrawing } from '@vera/core';
+
+import {
+  ERASER_RADIUS,
+  canvasPointerIntent,
+  eraseStrokesAt,
+  eraseStrokesBetween,
+  extendStroke,
+} from '../src/canvas.ts';
 
 const point = (x: number, y: number, pressure = 0.5) => ({ x, y, pressure });
 
@@ -28,19 +36,67 @@ describe('la recta del lienzo', () => {
 });
 
 describe('la goma del lienzo', () => {
-  it('toca un segmento aunque ninguna muestra caiga dentro del radio', () => {
-    const crossed = [point(0, 0), point(100, 0)];
+  it('recorta un segmento aunque ninguna muestra caiga dentro del radio', () => {
+    const crossed = [point(0, 0, 0), point(100, 0, 1)];
     const far = [point(0, 100), point(100, 100)];
     const strokes = [crossed, far];
-    const removed = eraseStrokesAt(strokes, point(50, ERASER_RADIUS - 1), ERASER_RADIUS);
-    assert.deepEqual(removed.map((one) => one.stroke), [crossed]);
-    assert.deepEqual(strokes, [far]);
+    assert.equal(eraseStrokesAt(strokes, point(50, 0), 10), true);
+    assert.equal(strokes.length, 3);
+    assert.deepEqual(strokes[2], far);
+    assert.ok(Math.abs(strokes[0]!.at(-1)!.x - 40) < 0.001);
+    assert.ok(Math.abs(strokes[1]![0]!.x - 60) < 0.001);
+    assert.ok(Math.abs(strokes[0]!.at(-1)!.pressure - 0.4) < 0.001);
+    assert.ok(Math.abs(strokes[1]![0]!.pressure - 0.6) < 0.001);
   });
 
   it('no borra un trazo fuera de su radio mayor', () => {
     const stroke = [point(0, 0), point(100, 0)];
     const strokes = [stroke];
-    assert.deepEqual(eraseStrokesAt(strokes, point(50, ERASER_RADIUS + 1), ERASER_RADIUS), []);
+    assert.equal(eraseStrokesAt(strokes, point(50, ERASER_RADIUS + 1), ERASER_RADIUS), false);
     assert.deepEqual(strokes, [stroke]);
+  });
+
+  it('borra el corredor entre eventos y no sólo sus extremos', () => {
+    const crossed = [point(50, -20), point(50, 20)];
+    const strokes = [crossed];
+    assert.equal(
+      eraseStrokesBetween(strokes, point(0, 0), point(100, 0), 5),
+      true,
+    );
+    assert.equal(strokes.length, 2);
+    assert.ok(Math.abs(strokes[0]!.at(-1)!.y + 5) < 0.001);
+    assert.ok(Math.abs(strokes[1]![0]!.y - 5) < 0.001);
+  });
+
+  it('los fragmentos sobreviven a escritura y lectura sin cambiar el formato', () => {
+    const strokes = [[point(0, 0, 0), point(100, 0, 1)]];
+    eraseStrokesAt(strokes, point(50, 0), 10);
+    const restored = readDrawing(writeDrawing(strokes));
+    assert.equal(restored.length, 2);
+    assert.deepEqual(restored[0]!.at(-1), point(40, 0, 0.4));
+    assert.deepEqual(restored[1]![0], point(60, 0, 0.6));
+  });
+});
+
+describe('la política de lápiz, tacto y palma', () => {
+  it('un dedo dibuja mientras el lienzo sea sólo táctil', () => {
+    assert.equal(canvasPointerIntent('touch', false, 1, false), 'ink');
+  });
+
+  it('un contacto aislado no altera tinta después de detectar lápiz', () => {
+    assert.equal(canvasPointerIntent('touch', true, 1, false), 'ignore');
+  });
+
+  it('dos dedos todavía gobiernan la lente fuera de la guarda', () => {
+    assert.equal(canvasPointerIntent('touch', true, 2, false), 'navigate');
+  });
+
+  it('la guarda posterior al lápiz ignora incluso dos contactos', () => {
+    assert.equal(canvasPointerIntent('touch', true, 2, true), 'ignore');
+  });
+
+  it('lápiz y ratón siempre llegan como tinta o goma deliberada', () => {
+    assert.equal(canvasPointerIntent('pen', true, 0, true), 'ink');
+    assert.equal(canvasPointerIntent('mouse', false, 0, false), 'ink');
   });
 });
