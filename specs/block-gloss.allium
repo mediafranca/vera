@@ -273,17 +273,20 @@ surface BlockGloss {
         -- A block whose principal content is intentionally unconstrained by the
         -- prose width -- including a table, image, drawing or diagram -- keeps
         -- its gloss below the content instead of placing it beyond the content's
-        -- right edge. The gloss is lightly indented and may occupy the same
-        -- available width as the block.
+        -- right edge. In the text-only page the existing gloss is visible
+        -- without first opening a disclosure, at every viewport width; the
+        -- gloss is lightly indented and may occupy the same available width as
+        -- the block. Compact and split views continue to disclose it on demand.
 
     @guarantee ConstrainedTextKeepsTheGlossAtItsBlock
         -- In split text-and-map layout, and on a narrow mobile presentation, the
         -- marginal column withdraws. When the block has a gloss, a small
         -- floating `align-left` mark from the Feather icon vocabulary remains
         -- attached at the right of its block text, distinct from the folding
-        -- chevron and block mark in the left-hand structural rail. Activating
-        -- it reveals the gloss below its block without navigating away or
-        -- changing the outline.
+        -- chevron and block mark in the left-hand structural rail. Its centre
+        -- follows the first line of the block rather than the lower baseline of
+        -- a tall image, drawing, diagram or frame. Activating it reveals the
+        -- gloss below its block without navigating away or changing the outline.
 
     @guarantee MarginaliaDoesNotDisplaceTheOutlineControls
         -- Introducing or revealing a gloss never moves the block's structural

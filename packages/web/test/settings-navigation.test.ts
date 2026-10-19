@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { COMMANDS } from '../src/autocomplete.ts';
 
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
@@ -35,5 +36,11 @@ describe('arquitectura de configuración', () => {
     const backup = settings.indexOf("'Respaldo y traslado'");
     assert.ok(government >= 0 && backup > government);
     assert.match(settings, /settings-backup/);
+  });
+
+  it('presenta cada comando una sola vez en Teclado', () => {
+    const names = COMMANDS.map((command) => command.name);
+    assert.equal(new Set(names).size, names.length);
+    assert.equal(names.filter((name) => name === 'tarea').length, 1);
   });
 });

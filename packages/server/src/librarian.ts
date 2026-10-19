@@ -172,17 +172,39 @@ export function markLibrarianDispatched(store: Store, id: string, delivered: boo
 }
 
 export function pendingLibrarianDispatches(store: Store, now = Date.now()): string[] {
-  const rows = store.db.prepare(`SELECT id FROM agent_requests
-    WHERE graph_id=? AND status='queued' AND dispatch_status!='delivered'
-      AND dispatch_attempts < 5
-      AND (last_dispatch_at IS NULL OR last_dispatch_at <= ?)
-    ORDER BY created_at ASC LIMIT 20`).all(store.graphId, now - 30_000) as { id: string }[];
-  return rows.map((row) => row.id);
+  const working = store.db.prepare(`SELECT 1 FROM agent_requests
+    WHERE graph_id=? AND status='working' LIMIT 1`).get(store.graphId);
+  if (working !== undefined) return [];
+
+  const oldest = store.db.prepare(`SELECT id, dispatch_status, last_dispatch_at
+    FROM agent_requests
+    WHERE graph_id=? AND status='queued'
+    ORDER BY created_at ASC, rowid ASC LIMIT 1`).get(store.graphId) as {
+      id: string;
+      dispatch_status: 'pending' | 'delivered' | 'failed';
+      last_dispatch_at: number | null;
+    } | undefined;
+  if (oldest === undefined) return [];
+
+  // Un despertar entregado reserva el turno mientras el worker lo reclama. Si
+  // éste desaparece, la reserva caduca y se reenvía el mismo id durable.
+  const retryAfter = oldest.dispatch_status === 'delivered' ? 120_000 : 30_000;
+  if (oldest.last_dispatch_at !== null && oldest.last_dispatch_at > now - retryAfter) return [];
+  return [oldest.id];
 }
 
 export function claimLibrarianRequest(store: Store, id: string): LibrarianRequest | undefined {
   store.db.prepare(`UPDATE agent_requests SET status='working', started_at=?, failure_reason=NULL
-    WHERE graph_id=? AND id=? AND status='queued'`).run(Date.now(), store.graphId, id);
+    WHERE graph_id=? AND id=? AND status='queued'
+      AND NOT EXISTS (
+        SELECT 1 FROM agent_requests active
+        WHERE active.graph_id=agent_requests.graph_id
+          AND active.id!=agent_requests.id
+          AND (
+            active.status='working'
+            OR (active.status='queued' AND active.dispatch_status='delivered')
+          )
+      )`).run(Date.now(), store.graphId, id);
   return librarianRequest(store, id);
 }
 

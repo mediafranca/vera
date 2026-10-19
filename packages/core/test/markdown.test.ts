@@ -2,8 +2,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
-import { headingAnchor, inlineMarkdown, linkedResourceIn, renderMarkdown, uniqueAnchors } from '../src/markdown.ts';
+import {
+  executableFrameBridge,
+  headingAnchor,
+  inlineMarkdown,
+  linkedResourceIn,
+  renderMarkdown,
+  SVG_EXECUTABLE_BRIDGE_SHA256,
+  uniqueAnchors,
+} from '../src/markdown.ts';
 
 describe('inlineMarkdown', () => {
   it('escapa el HTML antes de cualquier otra cosa', () => {
@@ -481,6 +490,17 @@ describe('renderMarkdown', () => {
       assert.match(html, /html,body\{overflow:hidden\}body&gt;svg\{width:100%\}/);
     });
 
+    it('autoriza exactamente el puente SVG vigente y nunca un nonce fijo', () => {
+      const actual = createHash('sha256')
+        .update(`\n${executableFrameBridge()}\n`)
+        .digest('base64');
+      assert.equal(SVG_EXECUTABLE_BRIDGE_SHA256, actual);
+      const html = renderMarkdown('```svg\n<svg><script>throw 1</script></svg>\n```');
+      assert.ok(html.includes(`sha256-${actual}`));
+      assert.ok(!html.includes("script-src 'nonce-"));
+      assert.ok(!html.includes('script-src &#39;nonce-'));
+    });
+
     it('respeta la proporción rectangular declarada por el SVG', () => {
       const html = renderMarkdown('```svg\n<svg viewBox="0 0 510 240"></svg>\n```');
       assert.match(html, /aspect-ratio:510 \/ 240;height:auto/);
@@ -497,7 +517,7 @@ describe('renderMarkdown', () => {
     it('exige la fila separadora', () => {
       const html = renderMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |');
       assert.match(html, /<table>/);
-      assert.match(html, /<th>a<\/th><th>b<\/th>/);
+      assert.match(html, /<th scope="col">a<\/th><th scope="col">b<\/th>/);
       assert.match(html, /<td>1<\/td><td>2<\/td>/);
     });
 
@@ -508,6 +528,13 @@ describe('renderMarkdown', () => {
 
     it('envuelve la tabla para que desborde sola', () => {
       assert.match(renderMarkdown('| a |\n| --- |\n| 1 |'), /<div class="table-scroll">/);
+    });
+
+    it('interpreta la fila Markdown vacía como cabeceras en la primera columna', () => {
+      const html = renderMarkdown('|  |  |\n| --- | --- |\n| A | 1 |\n| B | 2 |');
+      assert.ok(!html.includes('<thead>'));
+      assert.match(html, /<th scope="row">A<\/th><td>1<\/td>/);
+      assert.match(html, /<th scope="row">B<\/th><td>2<\/td>/);
     });
   });
 

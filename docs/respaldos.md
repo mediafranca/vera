@@ -2,9 +2,11 @@
 
 La base viva `data/vera.sqlite` no se copia directamente. `npm run backup:data`
 usa la API de backup en línea de SQLite, comprueba la integridad de la copia y
-la entrega a un repositorio cifrado de restic. Restic fragmenta y deduplica los
-snapshots: las ejecuciones posteriores conservan los bloques nuevos o cambiados
-en vez de añadir otra base completa.
+la entrega a un repositorio cifrado de restic. La misma ejecución captura el
+almacén `objects/`, que contiene los binarios referidos por el grafo y también
+forma parte del corpus portable. Restic fragmenta y deduplica ambos snapshots:
+las ejecuciones posteriores conservan los bloques nuevos o cambiados en vez de
+añadir otra copia completa.
 
 En Alexei el repositorio está fuera del proyecto, en
 `~/.local/share/vera-backups/restic`, y su contraseña está cifrada como
@@ -30,7 +32,8 @@ systemctl --user status vera-backup-andrei.timer
 journalctl --user -u vera-backup-andrei.service
 ```
 
-El repositorio remoto vive en `~/Backups/vera-restic` de Andrei. Usa la misma
+El repositorio remoto vive en `~/Backups/vera-restic` de Andrei. Replica tanto
+la SQLite (`vera-sqlite`) como el almacén binario (`vera-objects`) y usa la misma
 credencial cifrada de Restic conservada en Alexei; ni la contraseña ni la base
 descifrada se almacenan en el portátil remoto. La retención replica la política
 local: siete diarios, cuatro semanales y seis mensuales.

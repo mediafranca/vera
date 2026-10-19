@@ -932,6 +932,12 @@ export const api = {
       method: 'POST',
     }),
 
+  renameCredential: (id: string, label: string) =>
+    json<CredentialView>(`/agents/credentials/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ label }),
+    }),
+
   /** Cercar una credencial: qué clase puede plantar y con qué se marca lo suyo. */
   confine: (id: string, said: { kind: string; source: string | null }) =>
     json(`/agents/credentials/${encodeURIComponent(id)}/confinement`, {

@@ -10,11 +10,13 @@ import { readFileSync } from 'node:fs';
 import {
   buildNeighbourhoods,
   buildTree,
+  applyFrontMatterMode,
   bodyBlocks,
   blockRemovalOrder,
   externalDestination,
   foldsWhileRevealing,
   foldedState,
+  hasDerivedRepresentation,
   invokeMenuAction,
   initialFoldingOpen,
   isFencedCodeContent,
@@ -23,12 +25,14 @@ import {
   needsProgressiveComposition,
   nearestContinuityFocus,
   nodeMarkdown,
+  offeredPropertyOptions,
   pageReferenceRows,
   projectedReferenceText,
   referenceExcerptAddsContext,
   reloadAfterServerWriting,
   reloadAfterDerivedWriting,
   reloadOptionsFor,
+  unavailableTranscriptReason,
 } from '../src/outliner.ts';
 import type { BlockView, CrossingRow } from '../src/api.ts';
 
@@ -37,6 +41,25 @@ const block = (stableId: string, parent: string | null, position: number, conten
   parent,
   position,
   content,
+});
+
+describe('vocabularios de propiedades', () => {
+  it('muestra entero un vocabulario gobernado aunque tenga más de doce respuestas', () => {
+    const offered = Array.from({ length: 17 }, (_, index) => ({
+      value: `Tipo ${index + 1}`,
+      uses: 0,
+      declared: true,
+    }));
+    assert.deepEqual(offeredPropertyOptions(offered), offered);
+  });
+
+  it('limita a doce respuestas la cola de un vocabulario inferido', () => {
+    const offered = Array.from({ length: 17 }, (_, index) => ({
+      value: `Uso ${index + 1}`,
+      uses: 17 - index,
+    }));
+    assert.deepEqual(offeredPropertyOptions(offered), offered.slice(0, 12));
+  });
 });
 
 describe('tipografía del fuente cercado', () => {
@@ -53,6 +76,73 @@ describe('tipografía del fuente cercado', () => {
   it('no vuelve monoespaciado un bloque de prosa que sólo contiene un ejemplo', () => {
     assert.equal(isFencedCodeContent('Una explicación.\n```ts\nconst x = 1\n```'), false);
     assert.equal(isFencedCodeContent('texto ordinario'), false);
+  });
+});
+
+describe('modo global del front matter', () => {
+  it('abre o cierra todos los metadatos y sus controles en la superficie', () => {
+    const metadata = [{ hidden: true }, { hidden: true }];
+    const controls = [false, false].map(() => {
+      const attributes = new Map<string, string>();
+      const control = {
+        attributes,
+        title: '',
+        open: false,
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        classList: { toggle: (_name: string, open: boolean) => { control.open = open; } },
+      };
+      return control;
+    });
+    const root = {
+      querySelectorAll: (selector: string) => selector === '.page-metadata' ? metadata : controls,
+    } as unknown as ParentNode;
+
+    applyFrontMatterMode(root, true);
+    assert.deepEqual(metadata.map((one) => one.hidden), [false, false]);
+    assert.deepEqual(controls.map((one) => one.attributes.get('aria-expanded')), ['true', 'true']);
+    assert.deepEqual(controls.map((one) => one.title), ['Ocultar propiedades', 'Ocultar propiedades']);
+    assert.deepEqual(controls.map((one) => one.open), [true, true]);
+
+    applyFrontMatterMode(root, false);
+    assert.deepEqual(metadata.map((one) => one.hidden), [true, true]);
+    assert.deepEqual(controls.map((one) => one.attributes.get('aria-expanded')), ['false', 'false']);
+    assert.deepEqual(controls.map((one) => one.open), [false, false]);
+  });
+});
+
+describe('fuente y representación derivada', () => {
+  const withoutRenderedObject = {
+    querySelector: () => null,
+  } as unknown as ParentNode;
+
+  it('reconoce los regímenes que terminan de componerse fuera de Markdown', () => {
+    assert.equal(hasDerivedRepresentation('```dibujo\n0,0,50\n```', withoutRenderedObject), true);
+    assert.equal(hasDerivedRepresentation('? tipo=proyecto', withoutRenderedObject), true);
+    assert.equal(hasDerivedRepresentation('prosa ordinaria', withoutRenderedObject), false);
+  });
+
+  it('confía en la representación ya reconocida para embeds y ejecutables', () => {
+    let asked = '';
+    const rendered = {
+      querySelector: (selector: string) => {
+        asked = selector;
+        return {};
+      },
+    } as unknown as ParentNode;
+    assert.equal(hasDerivedRepresentation('https://youtu.be/dQw4w9WgXcQ', rendered), true);
+    assert.match(asked, /\.embed/);
+    assert.match(asked, /\.table-scroll/);
+    assert.match(asked, /code\.language-mermaid/);
+  });
+
+  it('usa un solo pie y alterna code-xml con ojo sin herramientas de prosa', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /foot\.className = 'derived-source-foot'/);
+    assert.match(source, /button\.innerHTML = icon\('code-xml'\)/);
+    assert.match(source, /button\.innerHTML = icon\('eye'\)/);
+    assert.match(source, /if \(sourceMode\) body\.append\(editor\)/);
+    assert.match(source, /if \(!sourceMode && row !== null\)/);
+    assert.match(source, /if \(sourceMode\) callbacks\.onReload\(null\)/);
   });
 });
 
@@ -165,6 +255,75 @@ describe('menú encadenado', () => {
       { run: () => order.push('run') },
     );
     assert.deepEqual(order, ['stop', 'run']);
+  });
+});
+
+describe('videos de YouTube', () => {
+  it('explica cuando YouTube no publica ninguna pista en vez de abrir un diálogo vacío', () => {
+    assert.equal(
+      unavailableTranscriptReason([]),
+      'YouTube no ofrece subtítulos publicados ni automáticos para este video',
+    );
+    assert.equal(unavailableTranscriptReason([{
+      source: 'published', language: 'es', label: 'Español', translated: false,
+    }]), null);
+  });
+
+  it('los controles del video quedan fuera del gesto que abre el editor', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /closest\('a, button, input, select, textarea, \.audio-block, \.process-block, \.embed'\)/);
+  });
+});
+
+describe('barra de formato', () => {
+  it('cede dentro de la columna sin crear desplazamiento horizontal del documento', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /\.format-bar \{[\s\S]*?flex-wrap: wrap;[\s\S]*?width: min\(calc\(100% - 1rem\), 27\.2rem\);/);
+    assert.match(styles, /\.format-action \{[\s\S]*?flex: 1 1 2\.35rem;[\s\S]*?min-width: 1\.7rem;/);
+  });
+
+  it('usa una sola familia Lucide y deja sus trazos por encima del texto', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    for (const name of [
+      'bold', 'italic', 'strikethrough', 'underline', 'superscript', 'subscript',
+      'quote', 'code', 'link', 'external-link',
+    ]) {
+      assert.match(source, new RegExp(`icon: '${name}'`));
+    }
+    assert.doesNotMatch(source, /icon: 'brackets'.*enlace interno/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?z-index:\s*90;/);
+    assert.match(styles, /\.format-action \.icon \{[\s\S]*?z-index:\s*2;/);
+  });
+
+  it('ofrece sólo herramientas inline y omite la jerarquía de encabezados', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /format-heading|headingLevels|chooseHeading|icon\('heading-[1-6]'\)/);
+    assert.doesNotMatch(styles, /\.format-heading/);
+    assert.match(source, /icon: 'bold'/);
+    assert.match(source, /icon: 'external-link'/);
+  });
+
+  it('nace colapsada y un botón exterior la gobierna sin quitarle el menú a la viñeta', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /formatBar\.hidden = true/);
+    assert.match(source, /formatTrigger\.className = 'format-tools-trigger'/);
+    assert.match(source, /formatTrigger\.innerHTML = icon\('wrench'\)/);
+    assert.match(source, /formatBarAnchor\.className = 'format-bar-anchor'/);
+    assert.match(source, /body\.append\(formatBarAnchor, editor\)/);
+    assert.match(source, /row\.prepend\(formatTrigger\)/);
+    assert.match(source, /formatBar\.hidden = !formatBar\.hidden/);
+    assert.match(source, /formatTrigger\.addEventListener\('mousedown', \(event\) => event\.preventDefault\(\)\)/);
+    assert.doesNotMatch(source, /bullet\.classList\.add\('editing-tools'\)/);
+    assert.match(source, /bullet\.setAttribute\('aria-haspopup', 'menu'\)/);
+    assert.match(styles, /\.format-bar\[hidden\] \{\s*display: none;/);
+    assert.match(source, /new ResizeObserver\(rememberFormatBarHeight\)/);
+    assert.match(source, /if \(!formatBar\.hidden\) requestAnimationFrame\(rememberFormatBarHeight\)/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?position: sticky;[\s\S]*?top: calc\(0\.65rem \+ var\(--format-bar-measured-height\) \+ var\(--format-bar-gap\)\);[\s\S]*?margin: 0;[\s\S]*?transform: translateY\(calc\(0px - var\(--format-bar-measured-height\) - var\(--format-bar-gap\)\)\);/);
+    assert.match(styles, /\.format-bar-anchor \{\s*position: absolute;\s*inset: 0;[\s\S]*?pointer-events: none;/);
+    assert.match(styles, /\.format-tools-trigger \{\s*position: sticky;\s*top: 0\.65rem;[\s\S]*?display: grid;[\s\S]*?place-items: center;[\s\S]*?align-self: flex-start;[\s\S]*?width: 1\.65rem;[\s\S]*?height: 1\.65rem;[\s\S]*?margin-top: calc\(var\(--thread-y\) - 0\.825rem\);[\s\S]*?margin-left: -2\.5rem;[\s\S]*?margin-right: 0\.55rem;[\s\S]*?border-radius: 50%;[\s\S]*?color: var\(--bg\);[\s\S]*?background: var\(--accent\);/);
   });
 });
 

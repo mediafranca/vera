@@ -38,6 +38,7 @@
 import { drawingSvg, readDrawing } from './drawing.ts';
 import { renderMediaWiki } from './mediawiki.ts';
 import { wikiReference } from './text.ts';
+import { markdownTableCells } from './markdown-table.ts';
 
 const EMBED = /^\s*<iframe\b([^>]*)>\s*<\/iframe>\s*$/i;
 const ATTRIBUTE = /(\w[\w-]*)\s*=\s*"([^"]*)"/g;
@@ -812,7 +813,7 @@ function executableBlock(language: string, source: string, options: RenderOption
   // En SVG sólo corre el puente exacto de Vera. El hash impide que un <script>
   // o un manejador `onload` pegado dentro de la ilustración gane ejecución.
   const scriptPolicy = kind === 'svg'
-    ? "'sha256-wgyR5BYfyYZZKEzfArrxKC8eIKqOy4/9tjvjaLir9iA='"
+    ? `'sha256-${SVG_EXECUTABLE_BRIDGE_SHA256}'`
     : "'unsafe-inline'";
   const svgViewBox = kind === 'svg'
     ? /<svg\b[^>]*\bviewBox\s*=\s*["']\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)\s*["']/i.exec(source)
@@ -842,8 +843,16 @@ function executableBlock(language: string, source: string, options: RenderOption
   return `<figure class="executable executable-${kind}${heightClass}">${marked}<details><summary>fuente ${title}</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
 }
 
+/**
+ * Hash CSP del puente exacto que se inserta entre saltos de línea.
+ *
+ * La prueba calcula este valor desde `executableFrameBridge()`: si el puente
+ * cambia, la CSP no puede quedar silenciosamente apuntando al programa viejo.
+ */
+export const SVG_EXECUTABLE_BRIDGE_SHA256 = 'Lrm+hc3dvXxJBJsHCImB6K1kaMzKFd2PVS1CjIOzlug=';
+
 /** Puente mínimo del recinto: recibe apariencia y sólo devuelve su talla. */
-function executableFrameBridge(): string {
+export function executableFrameBridge(): string {
   return `
 const veraFrame = ${JSON.stringify('vera-executable-frame')};
 const report = () => parent.postMessage({ type: veraFrame, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) }, '*');
@@ -853,6 +862,15 @@ addEventListener('message', event => {
   if (appearance === null || typeof appearance !== 'object') return;
   for (const [name, value] of Object.entries(appearance.tokens ?? {})) {
     if (/^--[a-z0-9-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value);
+  }
+  if (typeof appearance.fontFaces === 'string') {
+    let fonts = document.getElementById('vera-frame-fonts');
+    if (fonts === null) {
+      fonts = document.createElement('style');
+      fonts.id = 'vera-frame-fonts';
+      document.head.append(fonts);
+    }
+    if (fonts.textContent !== appearance.fontFaces) fonts.textContent = appearance.fontFaces;
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';
@@ -919,15 +937,6 @@ function renderList(items: ListItem[], options: RenderOptions): string {
 
   while (open.length > 0) html += `</li></${open.pop()?.tag}>`;
   return html;
-}
-
-function cells(row: string): string[] {
-  return row
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim());
 }
 
 /**
@@ -1091,18 +1100,36 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
     // simplemente contiene barras verticales.
     if (TABLE_ROW.test(line) && TABLE_DIVIDER.test(lines[at + 1] ?? '')) {
       flushParagraph(paragraph);
-      const head = cells(line);
+      const head = markdownTableCells(line) ?? [];
+      const divider = markdownTableCells(lines[at + 1] ?? '') ?? [];
       at += 2;
       const body: string[][] = [];
       while (at < lines.length && TABLE_ROW.test(lines[at] ?? '')) {
-        body.push(cells(lines[at] ?? ''));
+        body.push(markdownTableCells(lines[at] ?? '') ?? []);
         at += 1;
       }
-      const headRow = head.map((cell) => `<th>${inlineMarkdown(cell, options)}</th>`).join('');
+      const alignment = (index: number): 'left' | 'center' | 'right' => {
+        const cell = (divider[index] ?? '').replace(/\s/g, '');
+        if (cell.startsWith(':') && cell.endsWith(':')) return 'center';
+        if (cell.endsWith(':')) return 'right';
+        return 'left';
+      };
+      const alignmentAttribute = (index: number): string => {
+        const value = alignment(index);
+        return value === 'left' ? '' : ` data-align="${value}"`;
+      };
+      const rowHeaders = head.every((cell) => cell.trim() === '');
+      const headRow = rowHeaders ? '' : `<thead><tr>${head.map((cell, index) =>
+        `<th scope="col"${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`,
+      ).join('')}</tr></thead>`;
       const rows = body
-        .map((row) => `<tr>${row.map((cell) => `<td>${inlineMarkdown(cell, options)}</td>`).join('')}</tr>`)
+        .map((row) => `<tr>${row.map((cell, index) =>
+          rowHeaders && index === 0
+            ? `<th scope="row"${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`
+            : `<td${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</td>`,
+        ).join('')}</tr>`)
         .join('');
-      html += `<div class="table-scroll"><table><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      html += `<div class="table-scroll"><table>${headRow}<tbody>${rows}</tbody></table></div>`;
       continue;
     }
 

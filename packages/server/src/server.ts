@@ -95,6 +95,7 @@ import {
   listCredentials,
   resolveSecret,
   revokeCredential,
+  renameCredential,
   credentialById,
   scopeRefusal,
   type Credential,
@@ -533,6 +534,18 @@ function readOperation(body: SubmitBody): { error: string } | {
   if (typeof kind !== 'string' || !CHANGE_KINDS.has(kind)) {
     return { error: `change.kind must be one of ${[...CHANGE_KINDS].join(', ')}` };
   }
+  if (kind === 'set_property') {
+    const property = change as { propertyKey?: unknown; propertyValue?: unknown };
+    if (typeof property.propertyKey !== 'string' || typeof property.propertyValue !== 'string') {
+      return { error: 'set_property needs propertyKey and propertyValue strings' };
+    }
+  }
+  if (kind === 'remove_property') {
+    const property = change as { propertyKey?: unknown };
+    if (typeof property.propertyKey !== 'string') {
+      return { error: 'remove_property needs a propertyKey string' };
+    }
+  }
 
   let evidence: OriginEvidence | undefined;
   if (body.evidence !== undefined && body.evidence !== null) {
@@ -553,6 +566,7 @@ function readOperation(body: SubmitBody): { error: string } | {
 
 export function createVeraServer(options: ServerOptions): VeraServer {
   const store = openStore({ path: options.databasePath, graphName: 'mind' });
+  let librarianDispatchInProgress = false;
 
   const dispatchLibrarianRequest = async (id: string): Promise<void> => {
     if (options.librarianHook === undefined) {
@@ -574,10 +588,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       markLibrarianDispatched(store, id, false, error instanceof Error ? error.message : 'OpenClaw no respondió');
     }
   };
+  const dispatchNextLibrarianRequest = async (): Promise<void> => {
+    if (librarianDispatchInProgress) return;
+    librarianDispatchInProgress = true;
+    try {
+      const [id] = pendingLibrarianDispatches(store);
+      if (id !== undefined) await dispatchLibrarianRequest(id);
+    } finally {
+      librarianDispatchInProgress = false;
+    }
+  };
   const retryLibrarianDispatches = setInterval(() => {
-    for (const id of pendingLibrarianDispatches(store)) void dispatchLibrarianRequest(id);
+    void dispatchNextLibrarianRequest();
   }, 30_000);
   retryLibrarianDispatches.unref();
+  void dispatchNextLibrarianRequest();
 
   /*
    * El grafo en memoria se reconstruye del log al arrancar y responde las
@@ -926,6 +951,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /** Cada propiedad de este corpus, con qué clase de campo es. */
   const declaredProperties = () => readPropertyDeclarations(declaredIn('properties'));
 
+  /** Cada clase de cosa, con qué propiedades la constituyen. */
+  const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
+
   /**
    * Qué se puede contestar a una propiedad en esta página.
    *
@@ -939,20 +967,37 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const declaration = declaredProperties().find(
       (one) => titleKey(one.name) === titleKey(key),
     );
-    if (declaration === undefined || declaration.values.length === 0) return observed;
+    if (declaration === undefined) return observed;
 
-    const used = new Map(observed.map((one) => [titleKey(one.value), one] as const));
-    const declared = declaration.values.map((value) => ({
+    /*
+     * `tipo` no mantiene una segunda lista en Propiedades: sus respuestas son
+     * exactamente las clases declaradas en VERA: Objetos. Duplicarlas aquí
+     * permitiría que ambas páginas discreparan y volvería a introducir la
+     * errata que esto evita —por ejemplo, ofrecer `Nota` y `nota` como si
+     * fueran dos clases. Los demás dominios cerrados sí toman sus `valores::`
+     * de la declaración de la propiedad.
+     */
+    const values =
+      titleKey(declaration.role ?? '') === 'kind'
+        ? declaredObjects().map((one) => one.name)
+        : declaration.values;
+    if (values.length === 0) return observed;
+
+    // Las variantes de caja y diacríticos son una sola respuesta; sus usos se
+    // suman bajo la grafía canónica en vez de competir en el desplegable.
+    const used = new Map<string, number>();
+    for (const one of observed) {
+      const named = titleKey(one.value);
+      used.set(named, (used.get(named) ?? 0) + one.uses);
+    }
+    const declared = values.map((value) => ({
       value,
-      uses: used.get(titleKey(value))?.uses ?? 0,
+      uses: used.get(titleKey(value)) ?? 0,
       declared: true,
     }));
-    const named = new Set(declaration.values.map(titleKey));
+    const named = new Set(values.map(titleKey));
     return [...declared, ...observed.filter((one) => !named.has(titleKey(one.value)))];
   };
-
-  /** Cada clase de cosa, con qué propiedades la constituyen. */
-  const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
 
   /** Cada tipo de arista que este corpus ofrece al escribir una relación. */
   const declaredRelations = () => readRelationDeclarations(declaredIn('relations'));
@@ -1881,7 +1926,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         sourceBlockId: block?.stableId ?? null,
         contextSnapshot: snapshot,
       });
-      await dispatchLibrarianRequest(created.id);
+      await dispatchNextLibrarianRequest();
       send(response, 201, librarianRequest(store, created.id));
       return;
     }
@@ -1934,6 +1979,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         removeLibrarianRequest(store, id);
         send(response, 200, { status: 'removed', id });
+        void dispatchNextLibrarianRequest();
         return;
       }
       if (request.method === 'POST' && action === 'claim') {
@@ -1946,7 +1992,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (request.method === 'POST' && action === 'reply') {
         if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
         let body: Record<string, unknown>;
-        try { body = await readSmallJson(); }
+        // Una respuesta sobre bloque debe reenviar su contenido completo. Las
+        // transcripciones y otros bloques documentales superan legítimamente
+        // el límite pequeño de 64 KiB usado por formularios ordinarios.
+        try { body = await readSmallJson(2_100_000); }
         catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         const changes = Array.isArray(body.changes) ? body.changes as Change[] : [];
@@ -1993,6 +2042,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes: [] });
           if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
           send(response, 201, answered);
+          void dispatchNextLibrarianRequest();
           return;
         }
         /*
@@ -2032,6 +2082,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
         send(response, 201, answered);
+        void dispatchNextLibrarianRequest();
         return;
       }
     }
@@ -3581,6 +3632,38 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
       send(response, 200, revoked);
+      return;
+    }
+
+    if (request.method === 'PATCH' && /^\/agents\/credentials\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) {
+        send(response, 403, blocked);
+        return;
+      }
+      const id = decodeURIComponent(path.split('/')[3] ?? '');
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: { label?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const label = typeof body.label === 'string' ? body.label.trim() : '';
+        if (label === '') {
+          send(response, 400, { error: 'el alias de una credencial no puede quedar vacío' });
+          return;
+        }
+        const renamed = renameCredential(store, id, label);
+        if (renamed === null) {
+          send(response, 404, { error: `no existe la credencial ${id}` });
+          return;
+        }
+        send(response, 200, renamed);
+      });
       return;
     }
 

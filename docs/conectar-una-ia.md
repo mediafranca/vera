@@ -68,7 +68,7 @@ Al día de hoy, aplicado a los servicios más habituales:
 | Proveedor | Cliente que entra | Cliente que no |
 | --- | --- | --- |
 | Anthropic | Claude Code y clientes de escritorio con HTTP + bearer | claude.ai cuando exige un conector alojado |
-| OpenAI | Codex y ChatGPT mediante la configuración común de plugins/aplicaciones; la disponibilidad se activa por superficie y conversación | Una conexión configurada no queda necesariamente seleccionada en cada chat |
+| OpenAI | Codex por HTTPS con bearer leído desde una variable de entorno | ChatGPT mientras Vera no ofrezca OAuth 2.1 o el Secure MCP Tunnel de OpenAI |
 | LM Studio | la app 0.3.17 o posterior, con un modelo capaz de usar herramientas | — |
 | Google | Gemini CLI | Gemini en el navegador |
 | Microsoft | VS Code / Copilot (`mcp.json`) | Copilot en el navegador |
@@ -350,50 +350,31 @@ En Alexei también puede declararse la puerta local `stdio` con `command`,
 más rápida y evita guardar el bearer en `mcp.json`; la pública corresponde a un
 LM Studio remoto.
 
-OpenAI presenta plugins y aplicaciones conectadas como una configuración común
-para ChatGPT y Codex. Que el formulario ofrezca `STDIO`, comando, argumentos y
-variables de entorno no basta para concluir que la conexión sea exclusiva de
-Codex. Hay que distinguir **configurar la conexión** de **exponerla en una
-superficie**: una conexión válida puede estar disponible para Codex y todavía
-no aparecer seleccionada en un chat concreto de ChatGPT.
+### ChatGPT: todavía no por la puerta bearer de Vera
 
-### ChatGPT: habilitar Vera en una conversación
+La URL `https://vera.mediafranca.net/mcp` está públicamente alcanzable y habla
+Streamable HTTP, pero protege un grafo privado con una credencial bearer fija.
+**ChatGPT no puede presentar API keys o cabeceras personalizadas en su conexión
+MCP actual.** Crear un plugin con «sin autenticación» y pegar la URL no sirve:
+el escaneo llega sin credencial —o no llega— y Vera lo rechaza antes de mostrar
+sus herramientas.
 
-La conexión puede crearse desde la configuración compartida. Cuando haya que
-declarar su puerta HTTP, estos son los valores:
+ChatGPT requiere una de estas dos rutas, ninguna implementada aún en Vera:
 
-| Campo | Valor |
-| --- | --- |
-| **Nombre** | `Vera` |
-| **URL / endpoint MCP** | `https://vera.mediafranca.net/mcp` |
-| **Autenticación** | `Ninguna` |
-| **Cabecera adicional · nombre** | `authorization` |
-| **Cabecera adicional · valor** | `Bearer <TOKEN_EXCLUSIVO_DE_CHATGPT>` |
+1. **OAuth 2.1 conforme al contrato MCP**, con metadatos del recurso protegido,
+   autorización con PKCE y tokens verificables; o
+2. **Secure MCP Tunnel de OpenAI**, distinto de Vera Conecta.
 
-`Bearer` lleva mayúscula inicial, luego **un espacio** y luego la credencial
-completa, sin comillas, corchetes ni signos `< >`. Los nombres de cabecera HTTP
-no distinguen mayúsculas, de modo que `authorization` y `Authorization` son
-equivalentes. No añadas `x-vera-client`: la identidad la deriva Vera del token.
+Vera Conecta tampoco resuelve esta incompatibilidad por sí sola: entrega una URL
+por instalación y un bearer revocable, mientras que ChatGPT sigue sin poder
+presentar ese bearer. El dominio `conecta.mediafranca.net` sin la ruta
+`/v/<instalación>/mcp` nunca es una dirección MCP.
 
-Después de guardarla o escanear sus herramientas, confirma que Vera figure entre
-las aplicaciones/plugins habilitados en el mismo espacio o proyecto donde se
-abrirá la conversación. Crear la conexión no la incorpora retroactivamente a
-los chats abiertos.
-
-Abre un chat nuevo. En el botón **+**, entra a **Más** y selecciona Vera; también
-puedes invocarla mediante `@Vera` si aparece disponible. Sólo entonces pide
-ejecutar `vera_quien_soy`. Que el modelo diga que no encuentra una app llamada
-Vera significa que esa conversación no la tiene expuesta, aunque la conexión
-compartida sea válida; revisa el espacio/proyecto activo y la lista de plugins o
-aplicaciones habilitados. Debe responder la identidad
-destinada a ChatGPT y sus alcances; `participant:herbert` u otra identidad es un
-fallo. Un `401` indica un bearer incompleto o retirado.
-
-ChatGPT aloja esta conexión: la URL debe ser alcanzable desde Internet. La
-configuración de una aplicación MCP personalizada y la disponibilidad de sus
-acciones dependen del plan y de las políticas del espacio de trabajo de ChatGPT.
-La documentación oficial vigente se mantiene en [Developer mode and MCP apps in
-ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt-beta).
+Cuando exista una de esas rutas, el cierre correcto será instalar el plugin,
+abrir una conversación nueva, invocarlo mediante `@Vera` y ejecutar
+`vera_quien_soy`. Hasta entonces, usa Codex u otro cliente que sí acepte bearer.
+Véase la documentación oficial de [autenticación de plugins](https://developers.openai.com/plugins/build/auth)
+y de [conexiones MCP en ChatGPT](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
 
 ### Elegir transporte por su costo real
 
@@ -517,9 +498,8 @@ Dicho aparte para no confundir lo construido con lo previsto.
   Todavía no edita, mueve ni descarta páginas o bloques.
 - **OAuth para servicios alojados que no aceptan cabeceras propias.** La puerta pública con bearer ya existe en
   `https://vera.mediafranca.net/mcp`. Los clientes que no permiten declarar un
-  bearer y exigen descubrir y completar OAuth todavía necesitan M6. No bloquea
-  Codex, Claude Code ni el formulario de ChatGPT cuando admite una cabecera
-  `authorization` propia.
+  bearer y exigen descubrir y completar OAuth todavía necesitan M6. Esto bloquea
+  ChatGPT, pero no Codex ni Claude Code.
 - **Publicar toda Vera con Tailscale Funnel.** Sigue siendo un error: M5 expone
   únicamente `/mcp` mediante el frente HTTPS existente. La aplicación privada,
   `POST /operations` y el resto de la API no forman parte de esa puerta.

@@ -31,11 +31,15 @@ import {
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
+  presentOutlinerPage,
   renderOutliner,
   speakInto,
   type OutlinerCallbacks,
 } from './outliner.ts';
-import { holdViewport as holdTextViewport, restoreViewport as restoreTextViewport } from './viewport.ts';
+import {
+  holdViewport as holdTextViewport,
+  restoreViewportThroughComposition as restoreTextViewport,
+} from './viewport.ts';
 import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
 import { isDay, today } from './autocomplete.ts';
@@ -1784,11 +1788,7 @@ async function applyRoute(): Promise<void> {
     gesture: 'opened_directly',
   });
   if (presentationBlock !== null) {
-    const present = document.querySelector<HTMLButtonElement>('.present-page');
-    if (present !== null) {
-      present.dataset['initialBlock'] = presentationBlock;
-      present.click();
-    }
+    if (openView !== null) void presentOutlinerPage(openView, callbacksFor(openView), presentationBlock);
   }
 }
 
@@ -2538,6 +2538,22 @@ async function drawGraph(reach = 1): Promise<void> {
   if (turn !== graphTurn) return;
 
   /*
+   * D4 necesita la ontología para ofrecer los tipos de relación, pero pedirla
+   * puede esperar red. El ojo y el rastro todavía deben seguir disponibles
+   * durante esa espera: apartarlos antes deja al mapa sin salida y permite que
+   * un segundo dibujo intente retirar controles que ya no están en el DOM.
+   */
+  const relationTypes = workspace.graphView === 'graph_d4'
+    ? await api.ontology()
+      .then((ontology) => ontology.relations
+        .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
+        .map((one) => one.name))
+      .catch(() => [] as string[])
+    : [];
+  // La vista o la página pueden haber cambiado mientras llegaba la ontología.
+  if (turn !== graphTurn) return;
+
+  /*
    * El ojo y el rastro se apartan aquí, y no antes de pedir el grafo.
    *
    * Viven dentro del mapa y el renderizador vacía su contenedor, así que hay que
@@ -2608,11 +2624,6 @@ async function drawGraph(reach = 1): Promise<void> {
       renderGraph3D(container, data, onClick, settings);
     } else if (workspace.graphView === 'graph_d4') {
       cleanupGraph3D();
-      const relationTypes = await api.ontology()
-        .then((ontology) => ontology.relations
-          .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
-          .map((one) => one.name))
-        .catch(() => [] as string[]);
       renderGraphD4(container, data, onClick, {
         ...settings,
         relations: {
@@ -3299,8 +3310,12 @@ function wireSearch(): void {
 
       const complete = pageSearchResults(text, pages, hits);
       if (complete.length === 0) {
+        // Mientras se escribe, una consulta todavía incompleta no es una
+        // decisión. Cambiar aquí a la página de resultados vaciaba este campo
+        // y le quitaba el foco —en un teléfono parecía que la última letra
+        // había borrado la búsqueda entera—. Enter sigue siendo el gesto que
+        // compromete la consulta, incluso cuando no tiene coincidencias.
         close();
-        void openSearchResults(text);
         return;
       }
       suggest(text, hits);
@@ -3437,9 +3452,9 @@ function wireTheme(): void {
   showGraphReach();
 
   /*
-   * Los diarios no son ruido opcional dentro de una vecindad. El interruptor
-   * sólo autoriza a dibujar el día que ya está seleccionado y ocupa el foco;
-   * ningún otro día aparece jamás como vecino.
+   * Los diarios pueden dominar una vecindad, pero el interruptor hace justamente
+   * lo que promete: los admite o los retira del mapa visible. El día que ocupa
+   * el foco permanece aunque se apaguen, porque sigue siendo el centro del mapa.
    */
   const journalSwitch = $<HTMLInputElement>('#map-journals');
   $('#map-journals-icon').innerHTML = icon('calendar');

@@ -53,6 +53,11 @@ const SHAPES = {
     '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065"/>' +
     '<path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
 
+  // Lucide `wrench`. No es la rueda dentada de Ajustes: actúa sólo sobre el
+  // bloque que se está editando.
+  wrench:
+    '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
+
   'layout-navbar-expand':
     '<path d="M4 18v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2"/>' +
     '<path d="M4 9h16"/><path d="M10 14l2 2l2 -2"/>',
@@ -83,6 +88,35 @@ const SHAPES = {
   'player-pause': '<path d="M8 5v14M16 5v14"/>',
 
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+
+  // Lucide: la familia completa de formato comparte caja, trazo y lenguaje.
+  bold:
+    '<path d="M14 12a4 4 0 0 0 0-8H6v16h9a4 4 0 0 0 0-8Z"/><path d="M6 12h9"/>',
+  italic: '<line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/>',
+  strikethrough:
+    '<path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" x2="20" y1="12" y2="12"/>',
+  underline:
+    '<path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="20" y2="20"/>',
+  superscript:
+    '<path d="m4 19 8-8"/><path d="m12 19-8-8"/><path d="M20 12h-4c0-1.5.44-2 2.5-3.5S21 6 20.5 5s-1.5-1.5-2.5-1.5c-1.5 0-2.5 1-2.5 2.5"/>',
+  subscript:
+    '<path d="m4 5 8 8"/><path d="m12 5-8 8"/><path d="M20 19h-4c0-1.5.44-2 2.5-3.5S21 13 20.5 12s-1.5-1.5-2.5-1.5c-1.5 0-2.5 1-2.5 2.5"/>',
+  quote:
+    '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>' +
+    '<path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  // Lucide `code-xml`: la fuente completa de una representación derivada.
+  'code-xml':
+    '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
+  link:
+    '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>' +
+    '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  'rows-3': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/>',
+  'columns-3': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 21V3"/><path d="M15 21V3"/>',
+  'circle-plus': '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
+  'circle-minus': '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+  'align-center': '<path d="M17 10H7"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M17 18H7"/>',
+  'align-right': '<path d="M21 10H7"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H7"/>',
 
   // El visto. Va con la cruz: aceptar y descartar son dos gestos, no uno con dos
   // estados, y se dibujan como los dos que son.
@@ -123,6 +157,12 @@ const SHAPES = {
   eraser:
     '<path d="M19 19h-11l-4 -4a2 2 0 0 1 0 -3l7 -7a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-6 6"/>' +
     '<path d="M18 12.3l-6.3 -6.3"/>',
+  // Tabler arrow-back-up / arrow-forward-up. A diferencia de los caracteres
+  // ↶ y ↷, heredan el mismo trazo y la misma caja que toda la familia de Vera.
+  'arrow-back-up':
+    '<path d="M9 14l-4 -4l4 -4"/><path d="M5 10h11a4 4 0 1 1 0 8h-1"/>',
+  'arrow-forward-up':
+    '<path d="M15 14l4 -4l-4 -4"/><path d="M19 10h-11a4 4 0 1 0 0 8h1"/>',
   // El lápiz macizo: una acción secundaria pequeña se reconoce por su silueta,
   // sin necesitar fondo ni el doble trazo de un icono calado.
   'edit-filled':

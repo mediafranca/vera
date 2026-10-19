@@ -140,6 +140,14 @@ describe('superficies especiales', () => {
     assert.doesNotMatch(appearanceHandler, /neighbourhood|fetch/);
   });
 
+  it('lleva Plex como datos a los recintos ejecutables sin abrirles red', () => {
+    assert.match(executableFrames, /\/fonts\/plex-sans-variable\.woff2/);
+    assert.match(executableFrames, /\/fonts\/plex-mono-400\.woff2/);
+    assert.match(executableFrames, /data:font\/woff2;base64/);
+    assert.match(executableFrames, /fontFaces/);
+    assert.doesNotMatch(executableFrames, /allow-same-origin/);
+  });
+
   it('reserva al menos 640 píxeles cuando un p5 pide windowHeight', () => {
     assert.match(styles, /\.executable-window-height iframe[\s\S]*?height:\s*max\(640px, 100dvh\)/);
     assert.match(executableFrames, /Math\.max\(640, window\.innerHeight\)/);

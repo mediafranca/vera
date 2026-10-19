@@ -210,6 +210,52 @@ describe('dominios declarados de propiedades', () => {
       { value: 'afirmación', uses: 0, declared: true },
     ]);
   });
+
+  it('toma todos los tipos de Objetos y colapsa sus variantes de caja', async () => {
+    const kind = await write({
+      kind: 'create_block',
+      stableId: 'block:test-kind-property',
+      page: 'page:test-properties-governing',
+      parent: null,
+      position: 0,
+      content: 'tipo',
+    });
+    await write({ kind: 'set_property', block: kind, propertyKey: 'campo', propertyValue: 'una de' });
+    await write({ kind: 'set_property', block: kind, propertyKey: 'papel', propertyValue: 'kind' });
+
+    const objects = await write({
+      kind: 'create_page',
+      stableId: 'page:test-kind-objects',
+      title: 'VERA: Objetos',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: objects, propertyKey: 'special-kind', propertyValue: 'objects' });
+    for (const [position, name] of ['Nota', 'Persona', 'Proyecto'].entries()) {
+      const declaration = await write({
+        kind: 'create_block',
+        stableId: `block:test-kind-${name.toLowerCase()}`,
+        page: objects,
+        parent: null,
+        position,
+        content: name,
+      });
+      await write({ kind: 'set_property', block: declaration, propertyKey: 'qué', propertyValue: name });
+    }
+
+    const page = await write({ kind: 'create_page', title: 'Una nota', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'tipo', propertyValue: 'Nota' });
+    const another = await write({ kind: 'create_page', title: 'Otra nota', visibility: 'private' });
+    await write({ kind: 'set_property', page: another, propertyKey: 'tipo', propertyValue: 'nota' });
+
+    const detail = (await get(`/pages/${encodeURIComponent(page)}`)) as {
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+    };
+    assert.deepEqual(detail.domains['tipo']?.slice(0, 3), [
+      { value: 'Nota', uses: 2, declared: true },
+      { value: 'Persona', uses: 0, declared: true },
+      { value: 'Proyecto', uses: 0, declared: true },
+    ]);
+  });
 });
 
 describe('modelos de procesamiento', () => {
@@ -272,6 +318,15 @@ describe('POST /operations', () => {
       (await post({ originId: 'x', participant: OWNER, change: { kind: 'link_pages' } })).status,
       400,
       'link_pages ya no es parte del vocabulario',
+    );
+    assert.equal(
+      (await post({
+        originId: 'propiedad-malformada',
+        participant: OWNER,
+        change: { kind: 'set_property', page: 'page:algo', key: 'tipo', value: 'nota' },
+      })).status,
+      400,
+      'una propiedad con nombres de campo ajenos se rechaza sin tumbar el servidor',
     );
   });
 

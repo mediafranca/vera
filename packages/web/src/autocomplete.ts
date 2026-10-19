@@ -219,7 +219,8 @@ export interface Command {
     | 'zotero'
     | 'dibujar'
     | 'proceso'
-    | 'formato';
+    | 'formato'
+    | 'tabla';
   /** Se oculta de la portada del menú, pero sigue disponible por su nombre. */
   group?: 'formato';
 }
@@ -260,11 +261,10 @@ export const COMMANDS: Command[] = [
   },
   { name: 'mermaid', hint: 'diagrama', inserts: '```mermaid\n\n```', caret: 11 },
   { name: 'mediawiki', hint: 'wikitext', inserts: '```mediawiki\n\n```', caret: 13 },
-  { name: 'tabla', hint: 'tabla de dos columnas', inserts: '| a | b |\n| --- | --- |\n|  |  |', caret: 2 },
+  { name: 'tabla', hint: 'tabla: elegir tamaño y cabeceras', inserts: '', caret: 0, acts: 'tabla' },
   { name: 'linea', hint: 'línea horizontal', inserts: '---', caret: 3, group: 'formato' },
   { name: 'lista', hint: 'lista con viñetas', inserts: '- ', caret: 2, group: 'formato' },
   { name: 'numerada', hint: 'lista numerada', inserts: '1. ', caret: 3, group: 'formato' },
-  { name: 'tarea', hint: 'casilla por hacer', inserts: '- [ ] ', caret: 6, group: 'formato' },
   { name: 'nota', hint: 'referencia a nota al pie', inserts: '[^1]', caret: 3, group: 'formato' },
   { name: 'pagina', hint: 'enlace a otra página', inserts: '[[]]', caret: 2, group: 'formato' },
   /*

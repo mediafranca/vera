@@ -17,8 +17,13 @@ const graph: GraphData = {
 };
 
 describe('el interruptor de diarios en el mapa', () => {
-  it('no muestra diarios vecinos aunque esté encendido', () => {
+  it('muestra los diarios vecinos cuando está encendido', () => {
     const shown = journalsInMap(graph, 'idea', true);
+    assert.deepEqual(shown, graph);
+  });
+
+  it('retira los diarios vecinos cuando está apagado', () => {
+    const shown = journalsInMap(graph, 'idea', false);
     assert.deepEqual(shown.nodes.map((node) => node.id), ['idea', 'other']);
     assert.deepEqual(shown.links, [{ source: 'idea', target: 'other' }]);
   });

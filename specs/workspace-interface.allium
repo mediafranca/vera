@@ -125,15 +125,18 @@ contract NativeMarkdownEditing {
         -- of the Markdown renderer.
 
     @invariant FormattingIsOneEditingTool
-        -- While a Markdown block is being edited, `/formato` reveals one bar
-        -- above its source. Its observable order is the split heading control;
+        -- While a Markdown block is being edited, its bullet becomes a tools
+        -- control and the formatting bar begins collapsed. Activating that
+        -- control reveals one bar above the source of that same block. Its
+        -- observable order is the split heading control;
         -- bold, italic, strikethrough, underline, superscript and subscript;
         -- quotation and code; then Vera internal link and external web link. H1
         -- is the heading control's visible primary action; the adjacent arrow
         -- reveals H2 through H6 in a vertical list. Italic is presented as an
         -- italic `I`, strikethrough as a struck `S`, and underline as an
         -- underlined `U`. These appearances do not replace accessible names.
-        -- Closing the bar leaves the same source, selection and caret in place.
+        -- Closing or reopening the bar leaves the same source, selection and
+        -- caret in place. Leaving the editor restores the block's ordinary bullet.
 
     @invariant FormattingWritesPortableMarkdown
         -- An internal link wraps selected text as `[[…]]`; with no selection it
@@ -162,19 +165,24 @@ contract NativeMarkdownEditing {
         -- Mermaid, drawing or media. Executable and specialised behaviours begin
         -- only through their explicit block command or recognised attachment.
 
-    @invariant FormattingFloatsWithoutMovingTheText
-        -- The formatting bar floats above the block being edited and occupies no
-        -- space in the document flow: opening or closing it moves neither that
-        -- block's source nor any block below it. It stays horizontally aligned
-        -- with the editor. While a block taller than the viewport is edited, the
-        -- bar remains at the top of the visible text pane instead of scrolling
-        -- outside the screen.
+    @invariant FormattingStaysWithTheEditedBlock
+        -- While collapsed, the formatting tool occupies only the bullet's usual
+        -- place. While a block taller than the viewport is edited, that tool
+        -- remains at the top of the visible text pane so the bar can always be
+        -- opened or closed. When opened, the bar takes its own row above the
+        -- source inside the edited block and stays horizontally aligned with that
+        -- editor. The bar travels in the ordinary flow with the beginning of the
+        -- source instead of floating over text; scrolling down leaves it above,
+        -- and returning to the beginning reveals it before the first line. Tool
+        -- and bar are bounded by the edited block and never enter a neighbour.
+        -- The collapsed tool is a circular control aligned exactly with the
+        -- centre of the block bullet and large enough to remain legible without
+        -- shifting the bullet, fold control or source from their ordinary axes.
 
     @invariant FormattingNeverCoversWhatIsBeingWritten
-        -- Floating cannot make the bar an obstacle. It never covers the caret,
-        -- the current selection, an autocomplete result or the line being
-        -- edited; when the available edge cannot hold it, it moves, collapses or
-        -- closes rather than asking the participant to write underneath it.
+        -- The bar never covers the source, caret, current selection or an
+        -- autocomplete result. It occupies its own row before the source rather
+        -- than asking the participant to read or write underneath it.
 }
 
 -- A block has one primary way of being read, but no stored type field is needed.
@@ -195,6 +203,22 @@ contract BlockBehaviourPresentation {
         -- source; audio and video are recognised from their native attachment.
         -- Vera does not keep a second mutable type label that can disagree with
         -- the content.
+
+    @invariant DerivedBlocksShareOneSourceControl
+        -- Every editable block whose complete textual source produces a
+        -- specialised representation offers the same control below that
+        -- representation. Activating it replaces the representation with the
+        -- exact canonical source in that block; the control in the same place
+        -- then returns to the representation. The control is outside the
+        -- represented object, so it never covers a drawing, diagram, video,
+        -- map or executable surface.
+
+    @invariant SourceEditingIsAllowedToChangeTheBehaviour
+        -- Source mode is an editor, not a read-only inspector. Saving uses the
+        -- ordinary block history and derives the next behaviour from the new
+        -- source. If it no longer forms a valid specialised block, Vera keeps
+        -- the authored source readable and editable as safe Markdown rather
+        -- than retaining an obsolete representation or silently repairing it.
 
     @invariant AYouTubeClipNamesItsInterval
         -- A deliberate `clip` block preserves the YouTube address and names a
@@ -233,6 +257,30 @@ contract BlockBehaviourPresentation {
         -- complete source is a Markdown table. It remains portable Markdown and
         -- changing it back to ordinary prose needs no conversion or lost data.
 
+    @invariant ATableHasAVisualEditorAndItsSource
+        -- Activating a rendered Markdown table opens a rectangular cell editor
+        -- rather than asking the participant to maintain pipes and padding by
+        -- hand. The shared source control remains available as a distinct route
+        -- to the exact Markdown. Both routes edit the same block and returning
+        -- to the representation records one ordinary block revision.
+
+    @invariant TableEditingKeepsThePortableShape
+        -- The visual editor can add or remove rows and columns and set each
+        -- column to left, centre or right alignment. `/tabla` lets the participant
+        -- choose the visible rows, columns and whether headers occupy the first
+        -- row or first column before inserting it. The editor can later transpose
+        -- between those header axes without losing cell content. It serialises a header, an
+        -- alignment divider and rectangular body rows as portable Markdown;
+        -- it introduces no opaque table identity, column-width syntax, merged
+        -- cells or private metadata. A blank Markdown header row is the portable
+        -- convention for row headers in the first column.
+
+    @invariant TableCellsKeepSmallMarkdown
+        -- Every cell edits one line of inline Markdown. Bold, italic, code and
+        -- links remain authored source rather than rich-text state. Tab and
+        -- Shift-Tab traverse cells, Enter moves down the current column, and a
+        -- rectangular tab-separated paste fills the grid from the active cell.
+
     @invariant TableColumnsRemainLegible
         -- Ordinary words in a rendered Markdown table are never broken between
         -- arbitrary letters merely to keep the table inside the reading column.
@@ -242,9 +290,11 @@ contract BlockBehaviourPresentation {
         -- This presentation adds no width syntax to the portable Markdown.
 
     @invariant SpecialisedBlocksKeepTheirOwnEditor
-        -- Editing opens the source, canvas or media controls appropriate to the
-        -- derived behaviour. It never sends drawing coordinates, executable
-        -- source or a query through the ordinary prose formatter.
+        -- Source mode presents specialised text without prose-formatting tools.
+        -- A drawing additionally offers its canvas, so editing points and
+        -- pressures directly does not replace editing the same source through
+        -- hand gestures. Native media without textual source keeps its own media
+        -- controls and does not pretend to have code.
 }
 
 -- Reading aloud is another presentation of the words already on the page. It
@@ -428,6 +478,13 @@ contract BlockManipulation {
         -- A selection and a caret are two different answers to "what does the
         -- next keystroke act on", and only one of them can be right. Beginning
         -- to write clears the selection; making a selection leaves the writing.
+
+    @invariant ASelectedMoveKeepsItsPlace
+        -- Indenting, outdenting or moving a selected range may rebuild a long
+        -- page progressively. The selected blocks remain selected and the
+        -- reader stays at the same visible passage while every drawing batch
+        -- arrives; an early partial drawing never sends the viewport to the
+        -- beginning of the page.
 }
 
 -- History is evidence about a block, not another descendant of that block.
@@ -1380,6 +1437,13 @@ surface VeraWorkspace {
         -- on a phone renders as it did on the desk. The remaining choices name
         -- the system's own faces on purpose: those are meant to differ per
         -- device, and resolving them differently is them working.
+
+    @guarantee FrontMatterVisibilityIsAClientMode
+        -- Showing or hiding front matter is one client preference, like colour
+        -- scheme or layout, and never a property of an individual Page. The
+        -- gesture changes every page currently visible in the workspace and the
+        -- remembered choice applies to pages rendered later. It creates no graph
+        -- mutation and is not synchronized to another client.
 
     @guarantee PresentationSurvivesTheServer
         -- Presentation is read and drawn from what the device already holds, and

@@ -48,6 +48,17 @@ contract APageBecomesADocument {
         -- no se puede pulsar y un retroenlace que no lleva a ninguna parte son
         -- ruido con forma de información.
 
+    @invariant ExternalLinksCarryTheirAddress
+        -- Un vínculo a una dirección HTTP o HTTPS conserva las palabras con que
+        -- fue nombrado y recibe un número en superíndice. Al pie del documento,
+        -- ese número dice la dirección completa: en papel se puede leer y
+        -- transcribir aunque el vínculo no se pueda pulsar.
+        --
+        -- Una misma dirección exacta conserva el mismo número cada vez que
+        -- aparece y se enumera una sola vez, según su primera aparición. Las
+        -- referencias internas de Vera, las anclas del mismo documento y las
+        -- citas de bloque no son direcciones externas y no entran en esta lista.
+
     @invariant TheTextIsRenderedByTheSameHandAsTheScreen
         -- El Markdown del papel lo dibuja la misma función que dibuja la
         -- pantalla. Dos renderizadores acaban diciendo cosas distintas del mismo

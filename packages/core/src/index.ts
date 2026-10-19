@@ -105,6 +105,8 @@ export {
 } from './drawing.ts';
 export type { DrawnSvg, Extents, Nib, Point, Segment, Stroke } from './drawing.ts';
 export type { RenderOptions } from './markdown.ts';
+export { markdownTableCells, readMarkdownTable, writeMarkdownTable } from './markdown-table.ts';
+export type { MarkdownTable, TableAlignment } from './markdown-table.ts';
 export { answersIn } from './vocabulary.ts';
 
 export {
