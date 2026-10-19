@@ -89,6 +89,7 @@ import {
   actionOf,
   completionFor,
   detectTrigger,
+  iframeSource,
   isDay,
   matchingCommands,
   queryOf,
@@ -1529,6 +1530,88 @@ function pickTableShape(
   dialog.showModal();
   rows.focus();
   rows.select();
+}
+
+/** `/iframe` pide lo que no debe obligar a recordar como sintaxis. */
+function pickIframe(
+  anchor: HTMLElement,
+  onPick: (source: string) => void,
+  onDismiss: () => void,
+): void {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'table-shape-dialog iframe-dialog';
+  const form = document.createElement('form');
+  form.method = 'dialog';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Incrustar una página';
+  const fields = document.createElement('div');
+  fields.className = 'iframe-dialog-fields';
+
+  const urlLabel = document.createElement('label');
+  urlLabel.textContent = 'URL';
+  const address = document.createElement('input');
+  address.type = 'url';
+  address.required = true;
+  address.placeholder = 'https://…';
+  urlLabel.append(address);
+
+  const heightLabel = document.createElement('label');
+  heightLabel.textContent = 'Alto en la página';
+  const height = document.createElement('input');
+  height.type = 'number';
+  height.min = '120';
+  height.max = '2000';
+  height.step = '1';
+  height.value = '720';
+  height.required = true;
+  height.inputMode = 'numeric';
+  heightLabel.append(height);
+  fields.append(urlLabel, heightLabel);
+
+  const note = document.createElement('p');
+  note.className = 'iframe-dialog-note';
+  note.textContent = 'Sólo HTTPS y orígenes autorizados. En Presentación ocupará el alto disponible.';
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancelar';
+  const create = document.createElement('button');
+  create.type = 'submit';
+  create.className = 'dialog-primary-action';
+  create.textContent = 'Incrustar';
+  actions.append(cancel, create);
+  form.append(title, fields, note, actions);
+  dialog.append(form);
+  document.body.append(dialog);
+
+  let source: string | null = null;
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    source = iframeSource(address.value, Number(height.value));
+    if (source === null) {
+      address.setCustomValidity('Usa una dirección HTTPS y un alto entre 120 y 2000 px.');
+      address.reportValidity();
+      return;
+    }
+    dialog.close('create');
+  });
+  address.addEventListener('input', () => address.setCustomValidity(''));
+  cancel.addEventListener('click', () => dialog.close('cancel'));
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dialog.close('cancel');
+  });
+  dialog.addEventListener('close', () => {
+    const written = source;
+    dialog.remove();
+    if (written !== null) onPick(written);
+    else onDismiss();
+  });
+  dialog.showModal();
+  address.focus();
 }
 
 /** Envía un cambio sin recargar. Devuelve si se aplicó. */
@@ -8398,6 +8481,7 @@ function startEditing(
   // pertenece al gesto de adjuntar y no debe cerrar la edición.
   let choosingAttachment = false;
   let choosingTable = false;
+  let choosingIframe = false;
   // Una salida estructural no vuelve a dibujar aquí: la página se recarga entera
   // y sería dibujar algo que está a punto de desaparecer.
   let leaving = false;
@@ -8586,6 +8670,26 @@ function startEditing(
         editor.focus();
       }, () => {
         choosingTable = false;
+        editor.focus();
+      });
+      return;
+    }
+
+    if (acts === 'iframe') {
+      const at = applied.cursor;
+      window.clearTimeout(timer);
+      choosingIframe = true;
+      pickIframe(editor, (source) => {
+        choosingIframe = false;
+        editor.value = editor.value.slice(0, at) + source + editor.value.slice(at);
+        const after = at + source.length;
+        editor.setSelectionRange(after, after);
+        session.type(editor.value);
+        autosize();
+        scheduleSave();
+        editor.focus();
+      }, () => {
+        choosingIframe = false;
         editor.focus();
       });
       return;
@@ -8947,7 +9051,7 @@ function startEditing(
 
   editor.addEventListener('blur', () => {
     closeList();
-    if (choosingAttachment || choosingTable) return;
+    if (choosingAttachment || choosingTable || choosingIframe) return;
     leave();
   });
 

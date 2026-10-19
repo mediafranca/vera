@@ -9,6 +9,7 @@ import {
   actionOf,
   completionFor,
   detectTrigger,
+  iframeSource,
   matchingCommands,
   queryOf,
   today,
@@ -255,10 +256,28 @@ describe('matchingCommands', () => {
     );
   });
 
-  it('ofrece plantillas portables para clips y mapas', () => {
+  it('pide los datos del iframe antes de escribir y conserva plantillas para clips y mapas', () => {
+    const iframe = COMMANDS.find((command) => command.name === 'iframe');
     const clip = matchingCommands('fragmento de YouTube').find((command) => command.name === 'clip');
     const map = matchingCommands('mapa 2D').find((command) => command.name === 'mapa');
+    assert.equal(iframe?.inserts, '');
+    assert.equal(iframe?.acts, 'iframe');
     assert.match(String(clip?.inserts), /desde: 00:00[\s\S]*hasta: 00:30/);
     assert.match(String(map?.inserts), /página: \[\[\]\][\s\S]*alcance: 2[\s\S]*alto: 640/);
+  });
+});
+
+describe('iframeSource', () => {
+  it('escribe una valla iframe portable con URL y alto validados', () => {
+    assert.equal(
+      iframeSource('https://ejemplo.cl/herramienta?x=1', 720),
+      '```iframe\n<iframe src="https://ejemplo.cl/herramienta?x=1" height="720"></iframe>\n```',
+    );
+  });
+
+  it('rechaza transporte sin cifrar y alturas fuera del formulario', () => {
+    assert.equal(iframeSource('http://ejemplo.cl', 720), null);
+    assert.equal(iframeSource('https://ejemplo.cl', 80), null);
+    assert.equal(iframeSource('no es una URL', 720), null);
   });
 });

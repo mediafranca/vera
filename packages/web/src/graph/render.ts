@@ -3,7 +3,7 @@ import type { EmbeddedMapCamera, EmbeddedMapPlanarCamera } from "@vera/core";
 import type { GraphData, GraphLink, GraphNode } from "./types.ts";
 import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
-import { type Moving, runs, spineForce } from "./spine.ts";
+import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 
 export type NodeStyle = "circular" | "title";
 
@@ -817,8 +817,9 @@ export function renderGraph(
             .map((id) => (data.nodes as (GraphNode & Partial<Moving>)[]).find((n) => n.id === id))
             .filter((one): one is GraphNode & Moving => one !== undefined),
         );
-  if (chains.some((chain) => chain.length >= 3)) {
-    sim.force("spine", spineForce(chains) as any);
+  const spines = straightenableRuns(chains);
+  if (spines.some((chain) => chain.length >= 3)) {
+    sim.force("spine", spineForce(spines) as any);
   }
 
   /*
@@ -1041,7 +1042,7 @@ export function renderGraph(
     thread !== null &&
     straightened !== thread.page &&
     allPlaced &&
-    chains.some((one) => one.length >= 3)
+    spines.some((one) => one.length >= 3)
   ) {
     relax();
   }

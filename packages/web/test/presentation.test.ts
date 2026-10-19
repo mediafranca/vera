@@ -111,8 +111,20 @@ describe('páginas que se pueden presentar', () => {
     assert.match(source, /slide\.append\(renderNode\(root, options\)\)/);
     assert.doesNotMatch(source, /dataset\['presentationColumn'\]/);
     assert.match(source, /deck\.on\('overviewshown'/);
-    assert.match(source, /frame\.loading = 'eager'/);
+    assert.doesNotMatch(source, /frame\.loading = 'eager'/);
     assert.doesNotMatch(source, /viewDistance: 1_000/);
+  });
+
+  it('mantiene un solo recinto visual activo y suspende la copia de la página', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    assert.match(source, /const parkedFrameSources = new WeakMap/);
+    assert.match(source, /if \(sourceSurface !== null\) parkFrames\(sourceSurface\)/);
+    assert.match(source, /sourceFrameWatch\?\.observe\(sourceSurface!, \{ childList: true, subtree: true \}\)/);
+    assert.match(source, /sourceFrameWatch\?\.disconnect\(\)/);
+    assert.match(source, /parkFrames\(slide\);\s*\n\s*slides\.append\(slide\)/);
+    assert.match(source, /if \(slide === current\) activateFrames\(slide\);\s*\n\s*else parkFrames\(slide\)/);
+    assert.match(source, /sourceSurface\.isConnected\) activateFrames\(sourceSurface\)/);
+    assert.match(source, /deck\.on\('slidechanged'.*syncCurrentSlideFrames/);
   });
 
   it('vuelve a resolver la hoja gobernada al actualizar y detecta sus cambios', () => {

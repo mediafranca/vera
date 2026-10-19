@@ -276,11 +276,13 @@ rule PresentingAnEmbedNamesItsHost {
     requires: exists embed
 
     ensures: shown(embed.host)
+    ensures: shown(link_to("VERA: Incrustaciones"))
 
     @invariant AnEmbedIsNotAnonymous
         -- Debajo de lo incrustado se lee de dónde viene. Un rectángulo que corre
         -- programa ajeno sin decir de quién es se parece demasiado a una parte de
-        -- Vera, y no lo es.
+        -- Vera, y no lo es. El mismo pie enlaza discretamente la página rectora
+        -- donde se revisan y cambian los orígenes autorizados.
 }
 
 rule PresentAuthoredExecutableBlock {

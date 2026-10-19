@@ -220,7 +220,8 @@ export interface Command {
     | 'dibujar'
     | 'proceso'
     | 'formato'
-    | 'tabla';
+    | 'tabla'
+    | 'iframe';
   /** Se oculta de la portada del menú, pero sigue disponible por su nombre. */
   group?: 'formato';
 }
@@ -239,7 +240,13 @@ export const COMMANDS: Command[] = [
   { name: 'cita', hint: 'cita', inserts: '> ', caret: 2, group: 'formato' },
   { name: 'codigo', hint: 'bloque de código', inserts: '```\n\n```', caret: 4, group: 'formato' },
   { name: 'html', hint: 'HTML ejecutable y aislado', inserts: '```html-live\n\n```', caret: 13 },
-  { name: 'iframe', hint: 'Incrustación externa autorizada', inserts: '```iframe\n\n```', caret: 10 },
+  {
+    name: 'iframe',
+    hint: 'incrustación externa: indicar URL y alto',
+    inserts: '',
+    caret: 0,
+    acts: 'iframe',
+  },
   {
     name: 'clip',
     hint: 'fragmento de YouTube entre dos tiempos',
@@ -354,6 +361,20 @@ export const COMMANDS: Command[] = [
 /** Lo que un comando hace además de escribir, si hace algo. */
 export function actionOf(name: string): Command['acts'] | undefined {
   return COMMANDS.find((command) => command.name === name)?.acts;
+}
+
+/** Fuente portable que deja `/iframe` después de validar su pequeño formulario. */
+export function iframeSource(address: string, height: number): string | null {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || !Number.isInteger(height) || height < 120 || height > 2000) {
+    return null;
+  }
+  return `\`\`\`iframe\n<iframe src="${url.href}" height="${height}"></iframe>\n\`\`\``;
 }
 
 /** Filtra por lo escrito. Sin consulta se ofrecen todos. */

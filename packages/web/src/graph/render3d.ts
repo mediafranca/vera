@@ -29,7 +29,7 @@ import type { EmbeddedMap3DCamera } from "@vera/core";
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
 import type { GraphData, GraphNode } from "./types.ts";
 import type { RenderSettings } from "./render";
-import { type Moving, runs, spineForce } from "./spine.ts";
+import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { icon } from "../icons.ts";
 import {
   advanceAutoRotation,
@@ -1127,15 +1127,16 @@ export function renderGraph3D(
             .filter((one): one is (typeof nodes)[number] => one !== undefined)
             .map((one) => one as unknown as Moving),
         );
-  if (chains.some((chain) => chain.length >= 3)) {
-    for (const chain of chains) {
+  const spines = straightenableRuns(chains);
+  if (spines.some((chain) => chain.length >= 3)) {
+    for (const chain of spines) {
       for (const one of chain as unknown as Record<string, unknown>[]) {
         one["fx"] = null;
         one["fy"] = null;
         one["fz"] = null;
       }
     }
-    sim.force("spine", spineForce(chains) as never);
+    sim.force("spine", spineForce(spines) as never);
   }
 
   /*
@@ -1166,7 +1167,7 @@ export function renderGraph3D(
    * la repulsión cerca de su equilibrio, así que lo que se mueve es lo que piden
    * los resortes nuevos y no una redistribución entera.
    */
-  const settling = allPlaced && opening && chains.some((chain) => chain.length >= 3);
+  const settling = allPlaced && opening && spines.some((chain) => chain.length >= 3);
   if (!settling) {
     if (allPlaced) sim.alpha(0).stop();
   } else if (document.hidden) {
@@ -1652,17 +1653,31 @@ export function renderGraph3D(
   document.addEventListener("constel:zoom", onZoom);
   document.addEventListener("constel:center", onCentre);
 
-  // El panel cambia de tamaño al plegar la columna de texto, y entonces el
-  // encuadre de antes ya no encuadra. Repintar es barato; rehacer el mapa no.
+  // El panel cambia de tamaño al plegar la columna de texto o al arrastrar el
+  // divisor, y ninguna de esas dos cosas cambia el tamaño de `window`. Mirar
+  // sólo `resize` dejaba las coordenadas calculadas para el panel anterior
+  // dentro del SVG nuevo: el mapa parecía estirado hasta que ocurría otro
+  // redibujo. Se observa el recinto que de verdad gobierna la lente y se reúne
+  // cada ráfaga de cambios en un solo cuadro.
+  let resizeFrame: number | null = null;
   const onResize = (): void => {
-    fit();
-    paint();
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = null;
+      fit();
+      paint();
+      sortByDepth();
+    });
   };
+  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
+  resizeObserver?.observe(container);
   window.addEventListener("resize", onResize);
 
   teardown = (): void => {
     sim.stop();
     if (gliding !== null) cancelAnimationFrame(gliding);
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    resizeObserver?.disconnect();
     setAutoRotation(false);
     if (governAutoRotation === setAutoRotation) governAutoRotation = null;
     document.removeEventListener("constel:zoom", onZoom);

@@ -26,6 +26,53 @@ interface LoadedPresentationStyle {
   warnings: string[];
 }
 
+interface ParkedFrameSource {
+  src: string | null;
+  srcdoc: string | null;
+}
+
+/**
+ * Los recintos ejecutables viven en procesos separados del navegador. Una
+ * presentación larga no debe arrancarlos todos a la vez —menos aún mientras
+ * la misma página sigue montada detrás del escenario— porque Chrome puede
+ * terminar mostrando su «carita triste» en SVG y p5 perfectamente válidos.
+ *
+ * La fuente queda en memoria, no en atributos data: un p5 completo puede ser
+ * grande y duplicarlo dentro del DOM sólo cambiaría presión de proceso por
+ * presión de memoria.
+ */
+const parkedFrameSources = new WeakMap<HTMLIFrameElement, ParkedFrameSource>();
+
+function framesWithin(root: ParentNode): HTMLIFrameElement[] {
+  const direct = root instanceof HTMLIFrameElement ? [root] : [];
+  return [...direct, ...root.querySelectorAll<HTMLIFrameElement>('iframe')];
+}
+
+function parkFrames(root: ParentNode): void {
+  for (const frame of framesWithin(root)) {
+    if (!parkedFrameSources.has(frame)) {
+      const source = { src: frame.getAttribute('src'), srcdoc: frame.getAttribute('srcdoc') };
+      if (source.src === null && source.srcdoc === null) continue;
+      parkedFrameSources.set(frame, source);
+    }
+    frame.removeAttribute('src');
+    frame.removeAttribute('srcdoc');
+  }
+}
+
+function activateFrames(root: ParentNode): void {
+  for (const frame of framesWithin(root)) {
+    const source = parkedFrameSources.get(frame);
+    if (source === undefined) continue;
+    if (source.srcdoc !== null && frame.getAttribute('srcdoc') !== source.srcdoc) {
+      frame.setAttribute('srcdoc', source.srcdoc);
+    }
+    if (source.src !== null && frame.getAttribute('src') !== source.src) {
+      frame.setAttribute('src', source.src);
+    }
+  }
+}
+
 export function presentationRevision(page: Pick<PageView, 'lastEditedAt' | 'blocks'>): string {
   return `${page.lastEditedAt ?? 0}:${page.blocks.length}`;
 }
@@ -188,6 +235,19 @@ export async function presentPage(
   let governedStyle = await presentationStyles(sourcePage);
   const syncFrames = (): void => { dispatchEvent(new Event('vera-sync-executable-frames')); };
 
+  // La página ordinaria permanece detrás del escenario. Suspender sus recintos
+  // evita ejecutar dos veces cada SVG, p5 e iframe durante la presentación.
+  const sourceSurface = document.querySelector<HTMLElement>('#text');
+  if (sourceSurface !== null) parkFrames(sourceSurface);
+  const sourceFrameWatch = sourceSurface === null ? null : new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof HTMLElement) parkFrames(node);
+      }
+    }
+  });
+  sourceFrameWatch?.observe(sourceSurface!, { childList: true, subtree: true });
+
   const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
   overlay.className = 'vera-presentation';
@@ -259,8 +319,6 @@ export async function presentPage(
     warning.textContent = governedStyle.warnings.join(' · ');
     overlay.append(warning);
   }
-  document.body.append(overlay);
-
   const fillSlides = (): void => {
     slides.replaceChildren();
     for (const root of roots) {
@@ -276,10 +334,15 @@ export async function presentPage(
         notes.innerHTML = renderMarkdown(gloss, options);
         slide.append(notes);
       }
+      // El slide aún está desconectado: aparcar aquí impide incluso el primer
+      // arranque fugaz de un iframe oculto al incorporarlo a la presentación.
+      parkFrames(slide);
       slides.append(slide);
     }
   };
   fillSlides();
+
+  document.body.append(overlay);
 
   decorateCodeBlocks(overlay);
   await renderMermaid(overlay);
@@ -313,6 +376,14 @@ export async function presentPage(
   const sourceUrl = new URL(window.location.href);
   sourceUrl.searchParams.delete('present');
   const currentBlock = (): string | null => deck.getCurrentSlide()?.dataset['block'] ?? null;
+  const syncCurrentSlideFrames = (): void => {
+    const current = deck.getCurrentSlide();
+    for (const slide of deck.getSlides()) {
+      if (slide === current) activateFrames(slide);
+      else parkFrames(slide);
+    }
+    syncFrames();
+  };
   const updateNotes = (): void => {
     const block = currentBlock();
     const gloss = block === null ? '' : sourcePage.glosses?.[block]?.content.trim() ?? '';
@@ -327,10 +398,12 @@ export async function presentPage(
     if (closed) return;
     closed = true;
     window.clearInterval(revisionWatch);
+    sourceFrameWatch?.disconnect();
     removeEventListener('keydown', onKey, true);
     const block = currentBlock();
     await deck.destroy();
     overlay.remove();
+    if (sourceSurface !== null && sourceSurface.isConnected) activateFrames(sourceSurface);
     document.documentElement.classList.remove('presenting');
     history.replaceState(history.state, '', presentationLocation(sourceUrl, block ?? '', false));
     const source = block === null ? null : document.querySelector<HTMLElement>(`[data-block="${CSS.escape(block)}"]`);
@@ -387,6 +460,7 @@ export async function presentPage(
         const index = roots.findIndex((root) => root.block.stableId === block);
         if (index >= 0) deck.slide(index);
       }
+      syncCurrentSlideFrames();
       refresh.hidden = true;
       refresh.title = 'Actualizar';
       refresh.setAttribute('aria-label', refresh.title);
@@ -406,16 +480,8 @@ export async function presentPage(
   addEventListener('keydown', onKey, true);
   document.documentElement.classList.add('presenting');
   await deck.initialize();
-  deck.on('overviewshown', () => {
-    // En lectura corriente los recintos siguen siendo perezosos. Sólo al pedir
-    // la vista general Safari recibe la orden de producir una miniatura de cada
-    // uno; el puente de p5 detiene enseguida los que no están activos.
-    for (const frame of overlay.querySelectorAll<HTMLIFrameElement>('iframe[loading="lazy"]')) {
-      frame.loading = 'eager';
-    }
-    syncFrames();
-  });
-  deck.on('overviewhidden', syncFrames);
+  deck.on('overviewshown', syncCurrentSlideFrames);
+  deck.on('overviewhidden', syncCurrentSlideFrames);
   if (initialBlock !== null) {
     const initial = deck.getSlides().find((slide) => slide.dataset['block'] === initialBlock);
     if (initial !== undefined) {
@@ -423,7 +489,8 @@ export async function presentPage(
       deck.slide(indices.h, indices.v);
     }
   }
-  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); syncFrames(); });
+  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); syncCurrentSlideFrames(); });
+  syncCurrentSlideFrames();
   updateNotes();
   writeDeepLink();
   revisionWatch = window.setInterval(() => {
