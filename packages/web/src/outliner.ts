@@ -3516,7 +3516,7 @@ function sourceRepresentationButton(
   button.type = 'button';
   button.className = 'derived-source-toggle';
   if (mode === 'source') {
-    button.textContent = '</>';
+    button.innerHTML = icon('code-xml');
     button.title = 'ver o editar fuente';
     button.setAttribute('aria-label', 'ver o editar la fuente de este bloque');
   } else {
@@ -6767,7 +6767,7 @@ export function renderOutliner(
    *
    * Pasa deliberadamente alrededor de `openEditor`: tocar un dibujo sigue
    * enfocándolo y el proceso conserva Enter para ejecutar. Sólo el control
-   * explícito `</>` elige editar coordenadas o declaración como fuente.
+   * explícito de código elige editar coordenadas o declaración como fuente.
    */
   function openDerivedSourceEditor(node: Node, body: HTMLElement): void {
     const near = neighbourhoods.get(node.block.stableId);

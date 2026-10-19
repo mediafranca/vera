@@ -103,10 +103,10 @@ describe('fuente y representación derivada', () => {
     assert.match(asked, /code\.language-mermaid/);
   });
 
-  it('usa un solo pie y alterna código con ojo sin herramientas de prosa', () => {
+  it('usa un solo pie y alterna code-xml con ojo sin herramientas de prosa', () => {
     const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
     assert.match(source, /foot\.className = 'derived-source-foot'/);
-    assert.match(source, /button\.textContent = '<\/>'/);
+    assert.match(source, /button\.innerHTML = icon\('code-xml'\)/);
     assert.match(source, /button\.innerHTML = icon\('eye'\)/);
     assert.match(source, /if \(sourceMode\) body\.append\(editor\)/);
     assert.match(source, /if \(!sourceMode && row !== null\)/);
