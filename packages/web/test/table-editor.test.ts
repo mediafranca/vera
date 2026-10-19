@@ -86,4 +86,15 @@ describe('editor visual de tablas', () => {
     assert.match(styles, /\.table-cell-input\s*\{[^}]*min-height:\s*2\.45rem/s);
     assert.match(styles, /\.table-cell-input:focus\s*\{[^}]*var\(--accent\)/s);
   });
+
+  it('envuelve el texto completo y hace crecer cada celda al editar', () => {
+    assert.match(editor, /document\.createElement\('textarea'\)/);
+    assert.match(editor, /input\.rows = 1/);
+    assert.match(editor, /input\.style\.height = 'auto'[\s\S]*?input\.scrollHeight/);
+    assert.match(editor, /addEventListener\('input',[\s\S]*?fitCellHeight\(input\)/);
+    assert.match(styles, /\.table-cell-input\s*\{[^}]*white-space:\s*pre-wrap/s);
+    assert.match(styles, /\.table-cell-input\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+    assert.match(styles, /\.table-cell-input\s*\{[^}]*overflow:\s*hidden/s);
+    assert.match(styles, /\.table-cell-input\s*\{[^}]*resize:\s*none/s);
+  });
 });

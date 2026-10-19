@@ -88,6 +88,11 @@ export function tabularClipboard(text: string): string[][] | null {
   return clean.split('\n').map((row) => row.split('\t'));
 }
 
+function fitCellHeight(input: HTMLTextAreaElement): void {
+  input.style.height = 'auto';
+  input.style.height = `${input.scrollHeight}px`;
+}
+
 function cloneTable(table: MarkdownTable): MarkdownTable {
   return {
     header: [...table.header],
@@ -111,13 +116,13 @@ export function mountMarkdownTableEditor(
     )),
     column: Math.max(0, Math.min(options.initial?.column ?? 0, table.header.length - 1)),
   };
-  let activeInput: HTMLInputElement | null = null;
+  let activeInput: HTMLTextAreaElement | null = null;
   let saving = false;
   let dirty = false;
 
   const rowAt = (row: number): string[] => row === 0 ? table.header : table.rows[row - 1]!;
   const focus = (address: TableCellAddress, atEnd = false): void => {
-    const input = body.querySelector<HTMLInputElement>(
+    const input = body.querySelector<HTMLTextAreaElement>(
       `.table-cell-input[data-row="${address.row}"][data-column="${address.column}"]`,
     );
     if (input === null) return;
@@ -126,7 +131,7 @@ export function mountMarkdownTableEditor(
     input.setSelectionRange(caret, caret);
   };
 
-  const updateActive = (input: HTMLInputElement): void => {
+  const updateActive = (input: HTMLTextAreaElement): void => {
     activeInput = input;
     active = {
       row: Number(input.dataset['row'] ?? 0),
@@ -150,6 +155,7 @@ export function mountMarkdownTableEditor(
   const apply = (outcome: FormatOutcome): void => {
     if (activeInput === null) return;
     activeInput.value = outcome.buffer;
+    fitCellHeight(activeInput);
     rowAt(active.row)[active.column] = outcome.buffer;
     dirty = true;
     activeInput.setSelectionRange(outcome.selectionStart, outcome.selectionEnd);
@@ -321,8 +327,8 @@ export function mountMarkdownTableEditor(
         const cell = document.createElement(isHeader ? 'th' : 'td');
         if (isHeader) cell.setAttribute('scope', headerAxis);
         cell.dataset['align'] = table.alignments[column] ?? 'left';
-        const input = document.createElement('input');
-        input.type = 'text';
+        const input = document.createElement('textarea');
+        input.rows = 1;
         input.className = 'table-cell-input';
         input.value = value;
         input.spellcheck = true;
@@ -337,6 +343,7 @@ export function mountMarkdownTableEditor(
         input.addEventListener('input', () => {
           rowAt(row)[column] = input.value;
           dirty = true;
+          fitCellHeight(input);
         });
         input.addEventListener('paste', (event) => {
           const pasted = tabularClipboard(event.clipboardData?.getData('text/plain') ?? '');
@@ -430,7 +437,8 @@ export function mountMarkdownTableEditor(
     foot.append(done);
     editor.append(tools, scroll, foot);
     body.append(editor);
-    updateActive(body.querySelector<HTMLInputElement>(
+    body.querySelectorAll<HTMLTextAreaElement>('.table-cell-input').forEach(fitCellHeight);
+    updateActive(body.querySelector<HTMLTextAreaElement>(
       `.table-cell-input[data-row="${active.row}"][data-column="${active.column}"]`,
     )!);
     requestAnimationFrame(() => focus(nextFocus ?? active, true));

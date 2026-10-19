@@ -95,6 +95,7 @@ import {
   listCredentials,
   resolveSecret,
   revokeCredential,
+  renameCredential,
   credentialById,
   scopeRefusal,
   type Credential,
@@ -3631,6 +3632,38 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
       send(response, 200, revoked);
+      return;
+    }
+
+    if (request.method === 'PATCH' && /^\/agents\/credentials\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) {
+        send(response, 403, blocked);
+        return;
+      }
+      const id = decodeURIComponent(path.split('/')[3] ?? '');
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: { label?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const label = typeof body.label === 'string' ? body.label.trim() : '';
+        if (label === '') {
+          send(response, 400, { error: 'el alias de una credencial no puede quedar vacío' });
+          return;
+        }
+        const renamed = renameCredential(store, id, label);
+        if (renamed === null) {
+          send(response, 404, { error: `no existe la credencial ${id}` });
+          return;
+        }
+        send(response, 200, renamed);
+      });
       return;
     }
 

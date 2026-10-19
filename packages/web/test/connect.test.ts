@@ -7,7 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { publicLaunch, remoteLaunch } from '../src/mcp-page.ts';
+import { clientRecipe, credentialState, publicLaunch, remoteLaunch } from '../src/mcp-page.ts';
 import type { MCPConnect } from '../src/api.ts';
 
 const connect = (overrides: Partial<MCPConnect> = {}): MCPConnect => ({
@@ -104,5 +104,31 @@ describe('la configuración HTTPS pública', () => {
     assert.equal(said.mcpServers.vera.headers.Authorization, 'Bearer secreto');
     assert.equal(said.mcpServers.vera.headers['X-Vera-Client'], 'hermes-andrei');
     assert.equal(said.mcpServers.vera.command, undefined);
+  });
+
+  it('Codex recibe TOML con el secreto fuera del archivo', () => {
+    const made = clientRecipe('codex', 'https://vera.example/mcp', 'codex-andrei', 'secreto');
+    assert.equal(made.tokenSeparate, true);
+    assert.match(made.recipe, /bearer_token_env_var = "VERA_MCP_TOKEN"/);
+    assert.match(made.recipe, /X-Vera-Client/);
+    assert.ok(!made.recipe.includes('secreto'));
+  });
+
+  it('ChatGPT no recibe una receta Bearer que no puede ejecutar', () => {
+    const made = clientRecipe('chatgpt', 'https://vera.example/mcp', 'chatgpt-andrei', 'secreto');
+    assert.match(made.recipe, /no puede presentar esta credencial Bearer fija/);
+    assert.match(made.recipe, /OAuth 2\.1 o Secure MCP Tunnel/);
+    assert.ok(!made.recipe.includes('secreto'));
+  });
+});
+
+describe('el estado de un acceso', () => {
+  it('no llama conectada a una credencial activa', () => {
+    assert.equal(credentialState({ status: 'active', lastUsedAt: null }).label, 'activa · nunca usada');
+  });
+
+  it('distingue el uso real y la revocación', () => {
+    assert.match(credentialState({ status: 'active', lastUsedAt: Date.now() }).label, /^activa · usada /);
+    assert.equal(credentialState({ status: 'revoked', lastUsedAt: null }).label, 'revocada');
   });
 });

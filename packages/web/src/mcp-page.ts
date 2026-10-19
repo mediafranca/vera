@@ -16,6 +16,7 @@
 import {
   api,
   type Change,
+  type CredentialView,
   type DiscardDecision,
   type DiscardRequest,
   type MCPConnect,
@@ -33,6 +34,55 @@ export function isConnectionsPage(properties: readonly { key: string; value: str
 }
 
 export type Write = (change: Change) => Promise<boolean>;
+
+export type MCPClientKind = 'codex' | 'chatgpt' | 'claude' | 'generic';
+
+/**
+ * La receta que realmente acepta cada cliente remoto.
+ *
+ * Codex no debe llevar el secreto literal en config.toml: puede leerlo desde
+ * una variable de entorno. ChatGPT no acepta este bearer fijo y por eso recibe
+ * una negativa explícita, no una receta que parece válida. El JSON genérico
+ * sigue siendo útil para Claude y otros clientes compatibles con mcpServers.
+ */
+export function clientRecipe(
+  kind: MCPClientKind,
+  url: string,
+  client: string,
+  token: string,
+): { recipe: string; tokenSeparate: boolean } {
+  if (kind === 'codex') {
+    return {
+      recipe: [
+        '[mcp_servers.vera]',
+        `url = ${JSON.stringify(url)}`,
+        'bearer_token_env_var = "VERA_MCP_TOKEN"',
+        `http_headers = { "X-Vera-Client" = ${JSON.stringify(client)} }`,
+      ].join('\n'),
+      tokenSeparate: true,
+    };
+  }
+  if (kind === 'chatgpt') {
+    return {
+      recipe: [
+        'ChatGPT no puede presentar esta credencial Bearer fija.',
+        `El endpoint de Vera es ${url}, pero necesita OAuth 2.1 o Secure MCP Tunnel.`,
+        'No pegues el token: ChatGPT no lo enviará.',
+      ].join('\n'),
+      tokenSeparate: false,
+    };
+  }
+  return { recipe: publicLaunch(url, client, token), tokenSeparate: false };
+}
+
+/** Un estado que no confunde autorización con presencia en línea. */
+export function credentialState(
+  credential: Pick<CredentialView, 'status' | 'lastUsedAt'>,
+): { label: string; tone: 'good' | 'quiet' | 'off' } {
+  if (credential.status === 'revoked') return { label: 'revocada', tone: 'off' };
+  if (credential.lastUsedAt === null) return { label: 'activa · nunca usada', tone: 'quiet' };
+  return { label: `activa · usada ${when(credential.lastUsedAt)}`, tone: 'good' };
+}
 
 interface DesktopConectaClient {
   principalId: string;
@@ -596,16 +646,48 @@ export async function renderConnections(
   element.className = 'governing-tables';
 
   const conversational = document.createElement('h2');
-  conversational.textContent = 'Entradas conversacionales';
+  conversational.textContent = 'Conectar y administrar IAs';
   element.append(conversational);
 
   const conversationalNote = document.createElement('p');
   conversationalNote.className = 'governing-note';
   conversationalNote.textContent =
-    'Aquí se gobierna quién puede conversar con la biblioteca, con qué identidad y alcance.';
+    'Aquí se crea, comprueba y revoca cada acceso. Los nombres describen quién usa la llave; ' +
+    'la seguridad real vive en la credencial y sus permisos.';
   element.append(conversationalNote);
 
-  if (door.connect !== undefined) connectPanel(door.connect, element, openGuide);
+  connectForm(element, door.connect ?? null, notify);
+  await credentialsSection(element, notify);
+
+  const routes = document.createElement('h3');
+  routes.className = 'governing-title';
+  routes.textContent = '3. Elegir la ruta';
+  const routeNote = document.createElement('p');
+  routeNote.className = 'governing-note';
+  routeNote.textContent = door.connect?.publicMcp === null || door.connect?.publicMcp === undefined
+    ? 'Esta Vera no publica todavía un endpoint HTTPS. Usa la conexión local o Vera Conecta desde Desktop.'
+    : `Desde Andrei, Codex usa ${door.connect.publicMcp}. ChatGPT no puede autenticarse ` +
+      'ahí hasta que Vera ofrezca OAuth 2.1 o Secure MCP Tunnel de OpenAI. ' +
+      'No uses conecta.mediafranca.net a secas: ' +
+      'Vera Conecta entrega una dirección distinta, ligada a una instalación de Vera Desktop.';
+  element.append(routes, routeNote);
+
+  const advanced = document.createElement('details');
+  advanced.className = 'connection-diagnostics';
+  const advancedSummary = document.createElement('summary');
+  advancedSummary.textContent = 'Conexión local, SSH y guías por proveedor';
+  const advancedBody = document.createElement('div');
+  advanced.append(advancedSummary, advancedBody);
+  element.append(advanced);
+  if (door.connect !== undefined) connectPanel(door.connect, advancedBody, openGuide);
+
+  const diagnostics = document.createElement('details');
+  diagnostics.className = 'connection-diagnostics';
+  const diagnosticsSummary = document.createElement('summary');
+  diagnosticsSummary.textContent = 'Historial y diagnóstico';
+  const diagnosticBody = document.createElement('div');
+  diagnostics.append(diagnosticsSummary, diagnosticBody);
+  element.append(diagnostics);
 
   /** Escribir una propiedad del bloque que declara, o quitarla si queda vacía. */
   const put = (block: string, key: string) => async (next: string): Promise<boolean> =>
@@ -618,7 +700,7 @@ export async function renderConnections(
   const declaring = new Set<string>();
 
   if (door.connections.length > 0) {
-    const table = section(element, {
+    const table = section(diagnosticBody, {
       note:
         'Lo de la izquierda se decide aquí y se corrige pulsándolo. Lo de la derecha ' +
         'sale del registro de exposición: es lo que pasó, y no se edita.',
@@ -706,7 +788,7 @@ export async function renderConnections(
    * dé fila o se le cierre la puerta, que es la decisión que toca.
    */
   if (door.undeclared.length > 0) {
-    const table = section(element, {
+    const table = section(diagnosticBody, {
       title: 'Sin declarar',
       note:
         'Leyó sin tener fila arriba. El navegador con que estás leyendo esto sale aquí, ' +
@@ -728,17 +810,18 @@ export async function renderConnections(
     }
   }
 
-  connectForm(element, door.connect ?? null, notify);
-  await credentialsSection(element, notify);
   markedSection(element, door, notify);
 
   const relay = document.createElement('h2');
-  relay.textContent = 'Vera Conecta';
+  relay.textContent = 'Vera Conecta · ruta opcional';
   const relayNote = document.createElement('p');
   relayNote.className = 'governing-note';
   const desktopConecta = (window as unknown as { veraConecta?: DesktopConectaBridge }).veraConecta;
   if (desktopConecta === undefined) {
-    relayNote.textContent = 'El enlace remoto se administra desde Vera Desktop.';
+    relayNote.textContent =
+      'Esta página está abierta fuera de Vera Desktop. Conecta se activa y administra allí; ' +
+      'su dirección útil tiene la forma conecta.mediafranca.net/v/<instalación>/mcp. ' +
+      'El dominio sin esa ruta no se puede pegar como servidor MCP.';
   } else {
     const state = await desktopConecta.status();
     relayNote.textContent = state.secureStorage
@@ -894,20 +977,39 @@ function connectForm(
 ): void {
   const heading = document.createElement('h3');
   heading.className = 'governing-title';
-  heading.textContent = 'Conectar una IA';
+  heading.textContent = '1. Conectar este cliente';
   host.append(heading);
 
   const note = document.createElement('p');
   note.className = 'governing-note';
   note.textContent =
-    'Vera crea la identidad, emite su credencial, le pone el cerco si lo lleva, y le escribe ' +
-    'su fila arriba. El secreto se enseña una sola vez y no se puede volver a leer: si se ' +
-    'pierde, se emite otra y se retira ésta.';
+    'Elige la aplicación y nómbrala por el equipo donde corre. Vera crea una identidad y una ' +
+    'credencial revocable, y después entrega exactamente lo que hay que copiar. El secreto se ' +
+    'enseña una sola vez.';
   host.append(note);
 
   const form = document.createElement('div');
   form.className = 'connect-new';
   host.append(form);
+
+  const clientKind = document.createElement('select');
+  const kindWrap = document.createElement('label');
+  kindWrap.className = 'connect-field';
+  const kindSaid = document.createElement('span');
+  kindSaid.textContent = 'Aplicación';
+  for (const [value, label] of [
+    ['codex', 'Codex'],
+    ['chatgpt', 'ChatGPT'],
+    ['claude', 'Claude'],
+    ['generic', 'Otro cliente MCP'],
+  ] as const) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    clientKind.append(option);
+  }
+  kindWrap.append(kindSaid, clientKind);
+  form.append(kindWrap);
 
   const field = (label: string, placeholder: string, value = ''): HTMLInputElement => {
     const wrap = document.createElement('label');
@@ -923,8 +1025,8 @@ function connectForm(
     return input;
   };
 
-  const name = field('Nombre', 'ChatGPT');
-  const client = field('Se declara como', 'chatgpt');
+  const name = field('Nombre reconocible', 'Codex en Andrei', 'Codex en Andrei');
+  const client = field('Identificador técnico', 'codex-andrei', 'codex-andrei');
   // El nombre se escribe primero y casi siempre dice ya cómo se declara. Se
   // rellena solo mientras nadie lo haya tocado: adivinar está bien; insistir en
   // la adivinanza después de que alguien la corrigió, no.
@@ -932,6 +1034,16 @@ function connectForm(
   client.addEventListener('input', () => (touched = true));
   name.addEventListener('input', () => {
     if (!touched) client.value = name.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  });
+  clientKind.addEventListener('change', () => {
+    const chosen = clientKind.value as MCPClientKind;
+    const display = chosen === 'generic'
+      ? 'Cliente MCP en Andrei'
+      : `${chosen === 'chatgpt' ? 'ChatGPT' : chosen === 'claude' ? 'Claude' : 'Codex'} en Andrei`;
+    name.value = display;
+    client.value = display.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9-]+/g, '-');
+    touched = false;
   });
 
   /*
@@ -980,7 +1092,7 @@ function connectForm(
   const go = document.createElement('button');
   go.type = 'button';
   go.className = 'connect-copy';
-  go.textContent = 'conectar';
+  go.textContent = 'crear acceso';
   form.append(go);
 
   const born = document.createElement('div');
@@ -988,6 +1100,22 @@ function connectForm(
   host.append(born);
 
   go.addEventListener('click', () => {
+    if (clientKind.value === 'chatgpt') {
+      born.replaceChildren();
+      const warning = document.createElement('p');
+      warning.className = 'governing-note';
+      warning.textContent =
+        'ChatGPT no admite la credencial Bearer fija que usa hoy Vera. No se creó una llave inútil. ' +
+        'Para conectarlo hay que añadir OAuth 2.1 a Vera o enlazarla mediante Secure MCP Tunnel de OpenAI.';
+      const steps = document.createElement('ol');
+      steps.className = 'connect-next';
+      steps.innerHTML =
+        '<li>No elijas “sin autenticación”: expondría tu grafo.</li>' +
+        '<li>La dirección directa de Vera está sana, pero ChatGPT no puede autenticarse todavía.</li>' +
+        '<li>Usa Codex mientras se implementa OAuth o el túnel de OpenAI.</li>';
+      born.append(warning, steps);
+      return;
+    }
     const said = {
       name: name.value.trim(),
       client: client.value.trim(),
@@ -1016,25 +1144,61 @@ function connectForm(
         warn.textContent =
           `«${made.label}» conectada, y escribe como ${made.participant}. Copia esto ahora: ` +
           'el secreto no se puede volver a leer.';
+        const recipe = connect?.publicMcp === null || connect?.publicMcp === undefined
+          ? null
+          : clientRecipe(
+              clientKind.value as MCPClientKind,
+              connect.publicMcp,
+              made.client,
+              made.secret,
+            );
         const value = document.createElement('pre');
         value.className = 'connect-json';
         const code = document.createElement('code');
-        code.textContent = connect?.publicMcp === null || connect?.publicMcp === undefined
+        code.textContent = recipe === null
           ? `VERA_URL=${connect?.url ?? 'http://127.0.0.1:4173'}\n` +
             `VERA_CLIENT=${made.client}\n` +
             `VERA_TOKEN=${made.secret}`
-          : publicLaunch(connect.publicMcp, made.client, made.secret);
+          : recipe.recipe;
         value.append(code);
         const copy = document.createElement('button');
         copy.type = 'button';
         copy.className = 'connect-copy';
-        copy.textContent = 'copiar';
+        copy.textContent = 'copiar configuración';
         copy.addEventListener('click', () => {
           void navigator.clipboard?.writeText(code.textContent ?? '').then(() => {
             copy.textContent = 'copiado';
           });
         });
         born.append(warn, value, copy);
+        if (recipe?.tokenSeparate) {
+          const tokenNote = document.createElement('p');
+          tokenNote.className = 'connect-says';
+          tokenNote.textContent =
+            'Guarda el token como variable VERA_MCP_TOKEN en Codex. No lo pegues dentro de config.toml.';
+          const copyToken = document.createElement('button');
+          copyToken.type = 'button';
+          copyToken.className = 'connect-copy';
+          copyToken.textContent = 'copiar token';
+          copyToken.addEventListener('click', () => {
+            void navigator.clipboard?.writeText(made.secret).then(() => (copyToken.textContent = 'copiado'));
+          });
+          born.append(tokenNote, copyToken);
+        }
+        const next = document.createElement('ol');
+        next.className = 'connect-next';
+        if (clientKind.value === 'codex') {
+          next.innerHTML =
+            '<li>Pega el bloque en <code>~/.codex/config.toml</code>.</li>' +
+            '<li>Guarda el token como <code>VERA_MCP_TOKEN</code> en el entorno de Codex.</li>' +
+            '<li>Reinicia Codex y comprueba Vera en sus servidores MCP.</li>';
+        } else {
+          next.innerHTML =
+            '<li>Abre “Añadir servidor MCP” en el cliente.</li>' +
+            '<li>Pega la configuración y reinicia o vuelve a analizar las herramientas.</li>' +
+            '<li>Haz una lectura breve y vuelve aquí para comprobar “último uso”.</li>';
+        }
+        born.append(next);
         notify(`${made.label} conectada`);
       })
       .catch((error: Error) => {
@@ -1050,67 +1214,145 @@ async function credentialsSection(
 ): Promise<void> {
   const held = await api.credentials().catch(() => null);
   if (held === null) return;
+  const heading = document.createElement('h3');
+  heading.className = 'governing-title';
+  heading.textContent = '2. Administrar accesos';
+  const note = document.createElement('p');
+  note.className = 'governing-note';
+  note.textContent =
+    '“Activa” significa que la credencial todavía sirve; no que la aplicación esté en línea. ' +
+    '“Último uso” viene de una entrada real a Vera. Revocar corta sólo ese acceso y no borra lo que escribió.';
+  const list = document.createElement('div');
+  list.className = 'access-list';
+  host.append(heading, note, list);
 
-  const table = section(host, {
-    title: 'Credenciales',
-    note:
-      'Con qué llave entra cada máquina. Sin credencial se entra como el dueño, y lo ' +
-      'que se lea queda anotado con tu nombre: emitirle una a cada conexión es lo que ' +
-      'hace que el registro diga quién leyó de verdad.',
-    headers: ['Etiqueta', 'Escribe como', 'Alcances', 'Cerco', 'Última vez', ''],
-    // La etiqueta y el cerco son los que llevan frases; el resto son palabras
-    // cortas y la última columna sólo un botón.
-    widths: [22, 18, 14, 24, 12, 10],
+  const external = held.filter((one) => !isTechnicalCredential(one));
+  const technical = held.filter(isTechnicalCredential);
+  renderCredentialGroups(list, external, notify);
+
+  if (technical.length > 0) {
+    const details = document.createElement('details');
+    details.className = 'connection-diagnostics';
+    const summary = document.createElement('summary');
+    summary.textContent = `Accesos internos y técnicos (${technical.length})`;
+    const inner = document.createElement('div');
+    inner.className = 'access-list';
+    details.append(summary, inner);
+    renderCredentialGroups(inner, technical, notify);
+    host.append(details);
+  }
+}
+
+function isTechnicalCredential(one: CredentialView): boolean {
+  const said = `${one.label} ${one.participant}`.toLowerCase();
+  return /cotito|bibliotecari|vera clip|capture|hook|automat/.test(said);
+}
+
+function renderCredentialGroups(
+  host: HTMLElement,
+  credentials: readonly CredentialView[],
+  notify: (message: string) => void,
+): void {
+  const grouped = new Map<string, CredentialView[]>();
+  for (const credential of credentials) {
+    const group = grouped.get(credential.participant) ?? [];
+    group.push(credential);
+    grouped.set(credential.participant, group);
+  }
+  if (grouped.size === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'governing-note';
+    empty.textContent = 'No hay accesos en esta sección.';
+    host.append(empty);
+    return;
+  }
+  const ordered = [...grouped.values()].sort((a, b) => {
+    const last = (values: CredentialView[]): number => Math.max(...values.map((one) => one.lastUsedAt ?? one.issuedAt));
+    return last(b) - last(a);
   });
+  for (const group of ordered) {
+    group.sort((a, b) => (b.lastUsedAt ?? b.issuedAt) - (a.lastUsedAt ?? a.issuedAt));
+    const active = group.filter((one) => one.status === 'active');
+    const latest = active[0] ?? group[0]!;
+    const state = credentialState(latest);
+    const card = document.createElement('article');
+    card.className = `access-card access-${state.tone}`;
+    const title = document.createElement('strong');
+    title.textContent = latest.label;
+    const status = document.createElement('span');
+    status.className = 'access-status';
+    status.textContent = state.label;
+    const identity = document.createElement('p');
+    identity.textContent = `${latest.participant} · ${latest.scopes.join(', ')}`;
+    card.append(title, status, identity);
 
-  for (const one of held) {
-    const row = rowIn(table);
-    let at = 0;
-    observedCell(cellIn(row, at++), one.label);
-    observedCell(cellIn(row, at++), one.participant);
-    observedCell(cellIn(row, at++), one.scopes.join(', '));
-
-    /*
-     * El cerco, dicho por lo que concede y no por su nombre técnico.
-     *
-     * «sin cerco» no es un hueco: es un permiso mucho más ancho, y tiene que
-     * leerse como tal. Una celda vacía ahí se leería como «todavía no
-     * configurado», que es lo contrario de lo que pasa.
-     */
-    const fence = cellIn(row, at++);
-    observedCell(
-      fence,
-      one.confinement === null
-        ? 'escribe en todo'
-        : one.confinement.source === null
-          ? `sólo «${one.confinement.kind}»`
-          : `sólo «${one.confinement.kind}» · ${one.confinement.source}`,
-      one.confinement === null
-        ? 'esta credencial no está cercada: escribe donde quiera, como una persona'
-        : 'crea páginas de esa clase, escribe dentro de las suyas, y no borra',
-    );
-
-    observedCell(cellIn(row, at++), one.status === 'revoked' ? 'retirada' : when(one.lastUsedAt));
-
-    const acts = cellIn(row, at++);
-    if (one.status !== 'revoked') {
-      const drop = document.createElement('button');
-      drop.type = 'button';
-      drop.className = 'connect-copy';
-      drop.textContent = 'retirar';
-      drop.title = 'Deja de valer al instante. Lo que ya escribió se queda.';
-      drop.addEventListener('click', () => {
-        void api
-          .revokeCredential(one.id)
-          .then(() => {
-            notify(`${one.label} retirada`);
-            drop.disabled = true;
-            drop.textContent = 'retirada';
-          })
-          .catch((error: Error) => notify(error.message));
+    const duplicates = document.createElement('details');
+    const duplicateSummary = document.createElement('summary');
+    duplicateSummary.textContent = group.length === 1
+      ? 'Ver credencial'
+      : `${group.length} credenciales para esta identidad`;
+    duplicates.append(duplicateSummary);
+    for (const one of group) {
+      const row = document.createElement('div');
+      row.className = 'access-credential';
+      const description = document.createElement('span');
+      const oneState = credentialState(one);
+      description.textContent = oneState.label;
+      const alias = document.createElement('input');
+      alias.type = 'text';
+      alias.className = 'access-alias';
+      alias.value = one.label;
+      alias.setAttribute('aria-label', `alias de ${one.label}`);
+      const saveAlias = document.createElement('button');
+      saveAlias.type = 'button';
+      saveAlias.className = 'connect-copy';
+      saveAlias.textContent = 'guardar alias';
+      saveAlias.addEventListener('click', () => {
+        const next = alias.value.trim();
+        if (next === '' || next === one.label) return;
+        saveAlias.disabled = true;
+        void api.renameCredential(one.id, next).then(
+          (renamed) => {
+            one.label = renamed.label;
+            alias.value = renamed.label;
+            alias.setAttribute('aria-label', `alias de ${renamed.label}`);
+            if (one.id === latest.id) title.textContent = renamed.label;
+            saveAlias.textContent = 'guardado';
+            window.setTimeout(() => {
+              saveAlias.textContent = 'guardar alias';
+              saveAlias.disabled = false;
+            }, 1500);
+            notify(`Alias cambiado a ${renamed.label}`);
+          },
+          (error: Error) => { saveAlias.disabled = false; notify(error.message); },
+        );
       });
-      acts.append(drop);
+      row.append(alias, saveAlias, description);
+      if (one.status === 'active') {
+        const revoke = document.createElement('button');
+        revoke.type = 'button';
+        revoke.className = 'connect-copy';
+        revoke.textContent = 'revocar';
+        revoke.title = 'Deja de valer al instante. Lo que ya escribió se queda.';
+        revoke.addEventListener('click', () => {
+          if (!window.confirm(`¿Revocar «${one.label}»? Dejará de entrar inmediatamente.`)) return;
+          revoke.disabled = true;
+          void api.revokeCredential(one.id).then(
+            () => {
+              notify(`${one.label} revocada`);
+              revoke.textContent = 'revocada';
+              card.classList.remove('access-good');
+              card.classList.add('access-off');
+            },
+            (error: Error) => { revoke.disabled = false; notify(error.message); },
+          );
+        });
+        row.append(revoke);
+      }
+      duplicates.append(row);
     }
+    card.append(duplicates);
+    host.append(card);
   }
 }
 
