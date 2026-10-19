@@ -88,11 +88,27 @@ servicio multiusuario listo para producción.
 > [Seguridad](SECURITY.md) y [Exponer Vera](docs/exponer-vera.md) antes de cambiar
 > la frontera de red.
 
-## Instalación
+## Instalar Vera
 
-Hay dos caminos, según qué se necesite.
+### En tres pasos
 
-### Aplicación de escritorio (Windows, macOS y Linux)
+1. **Descarga Vera Desktop** para Windows, macOS o Linux desde la
+   [última versión](https://github.com/mediafranca/vera/releases/latest).
+2. **Abre la aplicación.** Vera crea una memoria inicial en tu equipo; el corpus
+   no se sube a MediaFranca ni a un proveedor de IA.
+3. **Conecta la IA que elijas** desde la página **MCP** de Vera. Si el cliente
+   corre en el mismo equipo, usa la conexión local. Si vive en Internet, activa
+   **Vera Conecta**, crea un acceso para ese cliente y copia la URL y la
+   credencial que Vera muestra una sola vez.
+
+La IA debe ejecutar primero `vera_quien_soy`: así compruebas la identidad y los
+alcances con que entró antes de dejarla leer o escribir. Una URL de Conecta no
+abre la biblioteca por sí sola; cada cliente necesita su propia credencial
+revocable.
+
+Hay dos formas de instalar, según qué se necesite.
+
+### Aplicación de escritorio (recomendada)
 
 La vía más simple para probar Vera sin tocar código: memoria inicial ya
 cargada y, donde hay firma comercial, actualización automática por canal
@@ -107,6 +123,20 @@ mantiene Vera. El sistema operativo va a advertirlo (SmartScreen o Gatekeeper)
 antes de dejarte abrirlo; las instrucciones para instalar de todas formas
 están en [Instalación en Windows](docs/instalacion-windows.md#instalar-sin-firma)
 y en [Distribución de Vera Desktop](docs/distribucion-escritorio.md#instalar-sin-firma).
+
+Vera todavía evoluciona deprisa. Mientras Windows y macOS se distribuyan sin
+firma, no hay actualización automática: conviene revisar con frecuencia la
+[última versión](https://github.com/mediafranca/vera/releases/latest), leer sus
+notas e instalarla encima de la anterior. **Actualizar el programa no reemplaza
+la memoria:** Windows, macOS y Linux guardan el corpus fuera de los archivos de
+la aplicación y vuelven a abrir la misma base después de la actualización.
+
+En Windows, usa nuevamente `Vera Setup <versión> (sin firmar).exe`; no hace
+falta desinstalar primero. La edición portable es la excepción que requiere
+cuidado: `VeraData` vive junto al ejecutable, así que hay que sustituir el
+portable dentro de la misma carpeta o conservar esa carpeta al moverlo. Abrir
+el portable nuevo en otro directorio no borra la memoria anterior, pero Vera no
+la encontrará allí y se presentará como una instalación nueva.
 
 ### Desde el código fuente
 
@@ -133,14 +163,38 @@ npm run typecheck
 npm test
 ```
 
-## Conectar una IA a tu Vera
+## Hacer que Vera funcione con IA
 
-Vera no se usa sólo desde su interfaz: cualquier cliente que hable
+Vera no trae una IA cautiva ni obliga a contratar otra suscripción: cualquier
+cliente que hable
 [MCP](https://modelcontextprotocol.io/) —Claude Code, Claude Desktop, Codex,
 Gemini CLI, LM Studio y otros— se conecta a la misma puerta y opera el corpus
 con su propia identidad y credencial. La guía completa, con los cinco valores
 de conexión y un caso por cada forma de desplegar el cliente, está en
 [Conectar una IA](docs/conectar-una-ia.md).
+
+- **Cliente local:** conecta por `stdio` o por loopback; los datos no necesitan
+  salir a un relay.
+- **Cliente remoto con bearer:** activa
+  [Vera Conecta](https://vera.mediafranca.net/vera-conecta/), autoriza un acceso
+  desde Vera Desktop y configura la URL `https://conecta.mediafranca.net/v/<id>/mcp`.
+- **Cliente que exige OAuth:** todavía no es compatible con Vera Conecta. La
+  documentación lo marca expresamente en vez de fingir una integración.
+
+Vera Conecta transporta solicitudes mientras Desktop está conectado. No aloja
+una copia del grafo. Cloudflare y el relay forman parte del trayecto y pueden
+procesar el contenido en tránsito, pero el servicio no persiste páginas,
+bloques, prompts ni respuestas MCP.
+
+## Capturar desde el navegador
+
+[Vera Clip](https://github.com/mediafranca/vera-clip) deposita selecciones y
+artículos directamente en la Vera local. Actúa como herramienta delegada de la
+persona propietaria —no como otro autor— mediante una capacidad revocable que
+sólo permite capturar. La ruta ordinaria usa `localhost` y no pasa por Internet;
+[Vera Conecta](https://vera.mediafranca.net/vera-conecta/) queda como respaldo
+cuando el navegador está en otro equipo. La guía está en
+[Vera Clip: capturar en la Vera local](docs/vera-clip.md).
 
 ## Documentación del código
 
@@ -170,11 +224,15 @@ Los reportes de seguridad siguen un canal privado descrito en
 
 ## Proyectos relacionados
 
-[Vera Conecta](https://github.com/mediafranca/vera-conecta) es el puente
-opcional entre una instalación local de Vera y clientes MCP en Internet, sin
+[Vera Conecta](https://vera.mediafranca.net/vera-conecta/) es el puente
+compartido entre una instalación local de Vera y clientes MCP en Internet, sin
 abrir puertos, IP pública ni Tailscale. Vive en un repositorio propio porque
-es infraestructura de red con su propio ciclo de despliegue; hoy es un walking
-skeleton (M0/M1), sin ambiente desplegado.
+es infraestructura de red con su propio ciclo de despliegue. El relay y su
+interfaz Desktop están probados extremo a extremo y el servicio comunitario
+opera en [conecta.mediafranca.net](https://conecta.mediafranca.net). El
+[código y el contrato técnico](https://github.com/mediafranca/vera-conecta)
+permanecen abiertos; cada instalación conserva localmente su corpus y autoriza
+por separado a cada cliente remoto.
 
 Vera se publica bajo [GNU AGPL-3.0-only](LICENSE). Consulta también
 [LICENCIA.md](LICENCIA.md), [AUTHORS.md](AUTHORS.md),

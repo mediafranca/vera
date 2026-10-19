@@ -1,3 +1,7 @@
+import { createServer as createHttpServer } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -54,6 +58,111 @@ before(async () => {
 after(async () => { await running.close(); });
 
 describe('solicitudes al bibliotecario', () => {
+  it('conserva una cola FIFO durable y nunca entrega dos turnos a la vez', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-queue-'));
+    const databasePath = join(directory, 'vera.sqlite');
+    const queuePort = 4325;
+    const hookPort = 4326;
+    const wakes: string[] = [];
+    const hook = createHttpServer(async (request, response) => {
+      let body = '';
+      for await (const chunk of request) body += chunk.toString();
+      wakes.push((JSON.parse(body) as { requestId: string }).requestId);
+      response.writeHead(202).end();
+    });
+    await new Promise<void>((resolve) => hook.listen(hookPort, '127.0.0.1', resolve));
+
+    let queued = listen({
+      port: queuePort,
+      databasePath,
+      owner: { id: OWNER, name: 'Herbert' },
+      librarianHook: { url: `http://127.0.0.1:${hookPort}/wake`, token: 'test-hook-token' },
+    });
+    const queueBase = `http://127.0.0.1:${queuePort}`;
+    const queueCall = async (path: string, options: { method?: string; body?: unknown; secret?: string } = {}) => {
+      const response = await fetch(`${queueBase}${path}`, {
+        method: options.method ?? 'GET',
+        headers: {
+          'content-type': 'application/json',
+          ...(options.secret === undefined ? {} : { authorization: `Bearer ${options.secret}` }),
+        },
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      });
+      return { status: response.status, json: await response.json() as Record<string, unknown> };
+    };
+    const waitForWakes = async (count: number): Promise<void> => {
+      for (let attempt = 0; attempt < 50 && wakes.length < count; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(wakes.length, count);
+    };
+
+    try {
+      assert.equal((await queueCall('/agents', {
+        method: 'POST', body: { id: COTITO, name: 'Cotito' },
+      })).status, 201);
+      const issued = await queueCall('/agents/credentials', {
+        method: 'POST', body: { participant: COTITO, scopes: ['read', 'write'], label: 'cola' },
+      });
+      const queueSecret = issued.json['secret'] as string;
+      const pageReply = await queueCall('/operations', {
+        method: 'POST',
+        body: {
+          originId: 'queue:page', participant: OWNER,
+          change: { kind: 'create_page', title: 'Cola durable', visibility: 'private' },
+        },
+      });
+      const queuePage = pageReply.json['subjectId'] as string;
+
+      const first = await queueCall('/librarian/requests', {
+        method: 'POST', body: { pageId: queuePage, text: 'Primera solicitud' },
+      });
+      const firstId = first.json['id'] as string;
+      assert.equal(first.json['dispatchStatus'], 'delivered');
+      await waitForWakes(1);
+
+      const second = await queueCall('/librarian/requests', {
+        method: 'POST', body: { pageId: queuePage, text: 'Segunda solicitud' },
+      });
+      const secondId = second.json['id'] as string;
+      assert.equal(second.json['dispatchStatus'], 'pending');
+      assert.deepEqual(wakes, [firstId]);
+      assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(secondId)}/claim`, {
+        method: 'POST', secret: queueSecret,
+      })).status, 409);
+
+      await queued.close();
+      queued = listen({
+        port: queuePort,
+        databasePath,
+        owner: { id: OWNER, name: 'Herbert' },
+        librarianHook: { url: `http://127.0.0.1:${hookPort}/wake`, token: 'test-hook-token' },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.deepEqual(wakes, [firstId]);
+
+      assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(firstId)}/claim`, {
+        method: 'POST', secret: queueSecret,
+      })).status, 200);
+      assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(secondId)}/claim`, {
+        method: 'POST', secret: queueSecret,
+      })).status, 409);
+
+      assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(firstId)}/reply`, {
+        method: 'POST', secret: queueSecret, body: { text: 'Primera respuesta', changes: [] },
+      })).status, 201);
+      await waitForWakes(2);
+      assert.deepEqual(wakes, [firstId, secondId]);
+      assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(secondId)}/claim`, {
+        method: 'POST', secret: queueSecret,
+      })).status, 200);
+    } finally {
+      await queued.close();
+      await new Promise<void>((resolve, reject) => hook.close((error) => error === undefined ? resolve() : reject(error)));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('guarda el pedido y su contexto antes de intentar despertarlo', async () => {
     const created = await call('/librarian/requests', {
       method: 'POST', body: { pageId: page, blockId: block, text: 'Ordénalo sin perder su sentido' },
@@ -85,6 +194,29 @@ describe('solicitudes al bibliotecario', () => {
     assert.equal((answered.json['reply'] as Record<string, unknown>)['answeredBy'], COTITO);
     const pageView = await call(`/pages/${encodeURIComponent(page)}`);
     assert.match(JSON.stringify(pageView.json), /Evidencia\. Interpretación\./);
+  });
+
+  it('permite responder sobre un bloque documental mayor que 64 KiB', async () => {
+    const largeBlock = await write({
+      kind: 'create_block', page, parent: null, position: 1,
+      content: `Transcripción\n${'pasaje documentado '.repeat(4_000)}`,
+    });
+    const created = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, blockId: largeBlock, text: 'Añade una lectura editorial' },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const largeRequestId = created.json['id'] as string;
+    assert.equal((await call(`/librarian/requests/${encodeURIComponent(largeRequestId)}/claim`, {
+      method: 'POST', secret,
+    })).status, 200);
+    const content = `Lectura editorial\n${'pasaje documentado '.repeat(4_000)}`;
+    const answered = await call(`/librarian/requests/${encodeURIComponent(largeRequestId)}/reply`, {
+      method: 'POST', secret,
+      body: { text: 'Añadí la lectura.', changes: [{ kind: 'edit_block', block: largeBlock, content }] },
+    });
+    assert.equal(answered.status, 201, JSON.stringify(answered.json));
+    const pageView = await call(`/pages/${encodeURIComponent(page)}`);
+    assert.match(JSON.stringify(pageView.json), /Lectura editorial/);
   });
 
   it('la respuesta vuelve a la página y al bloque de origen', async () => {

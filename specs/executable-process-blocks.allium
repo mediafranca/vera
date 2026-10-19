@@ -313,12 +313,13 @@ surface ProcessBlockExecution {
         -- viñeta, el asa, el plegado, el menú, los hijos, el movimiento y las
         -- referencias siguen siendo los de cualquier bloque de Vera.
 
-    @guarantee TheBulletMenuOpensTheInvocationSource
-        -- El menú de la viñeta ofrece «Editar código». La acción devuelve ese
-        -- mismo bloque a su fuente declarativa completa dentro de un editor
-        -- modal. Allí se pueden cambiar identidad, presentación, versión,
-        -- entradas, conexión, solicitud y mapeo de respuesta. Guardar edita ese
-        -- bloque canónico; cancelar no escribe ni abre otra página.
+    @guarantee TheSharedSourceControlOpensTheInvocationSource
+        -- El mismo control de fuente que acompaña a las demás representaciones
+        -- derivadas devuelve el proceso a su declaración completa dentro del
+        -- propio bloque. Allí se pueden cambiar identidad, presentación,
+        -- versión, entradas, conexión, solicitud y mapeo de respuesta. Volver a
+        -- la representación guarda ese bloque canónico; no nace una copia ni se
+        -- abre una superficie modal particular del proceso.
 
     @guarantee ExecutionDetailsDoNotBecomeFollowingBlocks
         -- Endpoint, cuerpo de solicitud, schema, modelo, request id y demás

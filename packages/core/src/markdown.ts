@@ -38,6 +38,7 @@
 import { drawingSvg, readDrawing } from './drawing.ts';
 import { renderMediaWiki } from './mediawiki.ts';
 import { wikiReference } from './text.ts';
+import { markdownTableCells } from './markdown-table.ts';
 
 const EMBED = /^\s*<iframe\b([^>]*)>\s*<\/iframe>\s*$/i;
 const ATTRIBUTE = /(\w[\w-]*)\s*=\s*"([^"]*)"/g;
@@ -46,6 +47,52 @@ const ATTRIBUTE = /(\w[\w-]*)\s*=\s*"([^"]*)"/g;
 const EMBED_HEIGHT = 460;
 
 type LinkedResourceKind = 'pdf' | 'image' | 'audio' | 'video' | 'tiktok' | 'instagram' | 'page';
+
+/**
+ * Una dirección de Google Maps pegada como bloque entero es un mapa, no sólo
+ * una página enlazada.
+ *
+ * La dirección corta sigue siendo la fuente —editar la vuelve a mostrar tal
+ * cual— y el servidor local hace la única resolución necesaria. El iframe no
+ * recibe la página de Vera ni el nombre de la nota: pide una ruta neutra del
+ * mismo origen que redirige al visor de Google sólo cuando el navegador llega
+ * a él (`loading=lazy`).
+ */
+export function googleMapIn(source: string, hosts: readonly string[] = []): string | null {
+  const clean = source.trim();
+  if (!/^https:\/\/[^\s<>]+$/.test(clean)) return null;
+
+  let url: URL;
+  try {
+    url = new URL(clean);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  const direct = (host === 'google.com' || host.endsWith('.google.com')) && url.pathname.startsWith('/maps');
+  const shortened = host === 'maps.app.goo.gl' || (host === 'goo.gl' && url.pathname.startsWith('/maps'));
+  if (!direct && !shortened) return null;
+
+  // El programa que terminará corriendo viene de google.com. La abreviatura
+  // no puede concederse permiso a sí misma sólo por aparecer en un bloque.
+  const allowed = hosts.some((one) => {
+    const named = one.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    return named !== '' && ('google.com' === named || 'google.com'.endsWith(`.${named}`));
+  });
+  if (!allowed) return null;
+
+  const escaped = quoteAttribute(escapeHtml(clean));
+  const resolver = `/embeds/google-map?url=${encodeURIComponent(clean)}`;
+  return (
+    `<figure class="embed google-map">` +
+    `<iframe src="${resolver}" height="460" loading="lazy" ` +
+    `sandbox="allow-scripts allow-forms allow-popups allow-same-origin" ` +
+    `referrerpolicy="no-referrer" title="Google Maps"></iframe>` +
+    `<figcaption><span>mapa · Google Maps</span>` +
+    `<a href="${escaped}" rel="noreferrer" target="_blank">abrir en Google Maps</a></figcaption>` +
+    `</figure>`
+  );
+}
 
 /**
  * Una dirección que ocupa el bloque entero se presenta como objeto enlazado.
@@ -217,6 +264,7 @@ export function embedIn(
     // Debajo, de dónde viene: un rectángulo que corre programa ajeno sin decir de
     // quién es se parece demasiado a una parte de Vera, y no lo es.
     `<figcaption>${presentation.caption === undefined ? '' : `${escapeHtml(presentation.caption)} · `}incrustado desde ${escapeHtml(host)}` +
+    `<a class="wiki embed-policy" data-page="VERA: Incrustaciones" href="#">orígenes autorizados</a>` +
     (host === 'www.youtube-nocookie.com'
       ? `<button type="button" class="youtube-transcript" data-youtube-source="${quoteAttribute(escapeHtml(presentation.youtubeSource ?? source))}">Traer transcripción</button>`
       : '') +
@@ -766,7 +814,7 @@ function executableBlock(language: string, source: string, options: RenderOption
   // En SVG sólo corre el puente exacto de Vera. El hash impide que un <script>
   // o un manejador `onload` pegado dentro de la ilustración gane ejecución.
   const scriptPolicy = kind === 'svg'
-    ? "'sha256-wgyR5BYfyYZZKEzfArrxKC8eIKqOy4/9tjvjaLir9iA='"
+    ? `'sha256-${SVG_EXECUTABLE_BRIDGE_SHA256}'`
     : "'unsafe-inline'";
   const svgViewBox = kind === 'svg'
     ? /<svg\b[^>]*\bviewBox\s*=\s*["']\s*[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)[\s,]+(\d*\.?\d+(?:[eE][-+]?\d+)?)\s*["']/i.exec(source)
@@ -796,8 +844,16 @@ function executableBlock(language: string, source: string, options: RenderOption
   return `<figure class="executable executable-${kind}${heightClass}">${marked}<details><summary>fuente ${title}</summary><pre><code>${escapeHtml(source)}</code></pre></details></figure>`;
 }
 
+/**
+ * Hash CSP del puente exacto que se inserta entre saltos de línea.
+ *
+ * La prueba calcula este valor desde `executableFrameBridge()`: si el puente
+ * cambia, la CSP no puede quedar silenciosamente apuntando al programa viejo.
+ */
+export const SVG_EXECUTABLE_BRIDGE_SHA256 = 'Lrm+hc3dvXxJBJsHCImB6K1kaMzKFd2PVS1CjIOzlug=';
+
 /** Puente mínimo del recinto: recibe apariencia y sólo devuelve su talla. */
-function executableFrameBridge(): string {
+export function executableFrameBridge(): string {
   return `
 const veraFrame = ${JSON.stringify('vera-executable-frame')};
 const report = () => parent.postMessage({ type: veraFrame, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) }, '*');
@@ -807,6 +863,15 @@ addEventListener('message', event => {
   if (appearance === null || typeof appearance !== 'object') return;
   for (const [name, value] of Object.entries(appearance.tokens ?? {})) {
     if (/^--[a-z0-9-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value);
+  }
+  if (typeof appearance.fontFaces === 'string') {
+    let fonts = document.getElementById('vera-frame-fonts');
+    if (fonts === null) {
+      fonts = document.createElement('style');
+      fonts.id = 'vera-frame-fonts';
+      document.head.append(fonts);
+    }
+    if (fonts.textContent !== appearance.fontFaces) fonts.textContent = appearance.fontFaces;
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';
@@ -875,15 +940,6 @@ function renderList(items: ListItem[], options: RenderOptions): string {
   return html;
 }
 
-function cells(row: string): string[] {
-  return row
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim());
-}
-
 /**
  * Renderiza el Markdown de un bloque completo.
  *
@@ -913,6 +969,9 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
   // marcado. Ver `embedIn` y specs/executable-content-sandbox.allium.
   const embed = embedIn(source, options.embedHosts ?? []);
   if (embed !== null) return embed;
+
+  const googleMap = googleMapIn(source, options.embedHosts ?? []);
+  if (googleMap !== null) return googleMap;
 
   const resource = linkedResourceIn(source);
   if (resource !== null) return resource;
@@ -1042,18 +1101,36 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
     // simplemente contiene barras verticales.
     if (TABLE_ROW.test(line) && TABLE_DIVIDER.test(lines[at + 1] ?? '')) {
       flushParagraph(paragraph);
-      const head = cells(line);
+      const head = markdownTableCells(line) ?? [];
+      const divider = markdownTableCells(lines[at + 1] ?? '') ?? [];
       at += 2;
       const body: string[][] = [];
       while (at < lines.length && TABLE_ROW.test(lines[at] ?? '')) {
-        body.push(cells(lines[at] ?? ''));
+        body.push(markdownTableCells(lines[at] ?? '') ?? []);
         at += 1;
       }
-      const headRow = head.map((cell) => `<th>${inlineMarkdown(cell, options)}</th>`).join('');
+      const alignment = (index: number): 'left' | 'center' | 'right' => {
+        const cell = (divider[index] ?? '').replace(/\s/g, '');
+        if (cell.startsWith(':') && cell.endsWith(':')) return 'center';
+        if (cell.endsWith(':')) return 'right';
+        return 'left';
+      };
+      const alignmentAttribute = (index: number): string => {
+        const value = alignment(index);
+        return value === 'left' ? '' : ` data-align="${value}"`;
+      };
+      const rowHeaders = head.every((cell) => cell.trim() === '');
+      const headRow = rowHeaders ? '' : `<thead><tr>${head.map((cell, index) =>
+        `<th scope="col"${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`,
+      ).join('')}</tr></thead>`;
       const rows = body
-        .map((row) => `<tr>${row.map((cell) => `<td>${inlineMarkdown(cell, options)}</td>`).join('')}</tr>`)
+        .map((row) => `<tr>${row.map((cell, index) =>
+          rowHeaders && index === 0
+            ? `<th scope="row"${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`
+            : `<td${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</td>`,
+        ).join('')}</tr>`)
         .join('');
-      html += `<div class="table-scroll"><table><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      html += `<div class="table-scroll"><table>${headRow}<tbody>${rows}</tbody></table></div>`;
       continue;
     }
 

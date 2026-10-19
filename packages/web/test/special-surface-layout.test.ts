@@ -62,6 +62,14 @@ describe('superficies especiales', () => {
     assert.match(graph3d, /const SCREEN_FONT_MAX = 31;/);
   });
 
+  it('reproyecta el mapa 3D cuando cambia su panel aunque la ventana conserve su tamaño', () => {
+    assert.match(graph3d, /new ResizeObserver\(onResize\)/);
+    assert.match(graph3d, /resizeObserver\?\.observe\(container\)/);
+    assert.match(graph3d, /const onResize[\s\S]*?fit\(\);[\s\S]*?paint\(\);[\s\S]*?sortByDepth\(\)/);
+    assert.match(graph3d, /resizeObserver\?\.disconnect\(\)/);
+    assert.match(graph3d, /if \(resizeFrame !== null\) cancelAnimationFrame\(resizeFrame\)/);
+  });
+
   it('ofrece rotación automática sólo en 3D y gobierna la cámara sin recargar el grafo', () => {
     assert.match(html, /id="map-auto-rotate-field"[^>]+hidden/);
     assert.match(html, /id="map-auto-rotate" type="checkbox"/);
@@ -98,15 +106,22 @@ describe('superficies especiales', () => {
     assert.match(embeddedMap, /preserveDirection: reach > 1/);
   });
 
-  it('proyecta un recorrido incrustado como hilo y conserva la cámara declarada', () => {
+  it('superpone un recorrido incrustado al vecindario y conserva la cámara declarada', () => {
     assert.match(embeddedMap, /stage=enrichment/);
     assert.match(embeddedMap, /threadSettings\(page, delivered\.trail \?\? null\)/);
-    assert.match(embeddedMap, /present\(graphOfThread\(data, thread\), reach, thread\)/);
+    assert.match(embeddedMap, /present\(data, reach, thread\)/);
     assert.match(
       graph3d,
       /embedded === null[\s\S]*?thread !== null[\s\S]*?thread\.page !== framed[\s\S]*?thread\.page !== claimedFor/,
     );
+    assert.match(graph3d, /const box = graphBox\(\);[\s\S]*?frameAround\(/);
+    assert.doesNotMatch(graph3d, /const threadBox/);
     assert.match(graph3d, /embedded === null && remembered && heldOrbit !== null/);
+  });
+
+  it('no descarta el vecindario cuando la página abierta lleva un hilo', () => {
+    assert.doesNotMatch(main, /graphOfThread/);
+    assert.doesNotMatch(embeddedMap, /graphOfThread/);
   });
 
   it('un gesto de cámara cancela el autoencuadre tardío del recorrido', () => {
@@ -131,6 +146,14 @@ describe('superficies especiales', () => {
     );
     const appearanceHandler = embeddedMap.match(/addEventListener\('message',[\s\S]*?\n  \}\);/)?.[0] ?? '';
     assert.doesNotMatch(appearanceHandler, /neighbourhood|fetch/);
+  });
+
+  it('lleva Plex como datos a los recintos ejecutables sin abrirles red', () => {
+    assert.match(executableFrames, /\/fonts\/plex-sans-variable\.woff2/);
+    assert.match(executableFrames, /\/fonts\/plex-mono-400\.woff2/);
+    assert.match(executableFrames, /data:font\/woff2;base64/);
+    assert.match(executableFrames, /fontFaces/);
+    assert.doesNotMatch(executableFrames, /allow-same-origin/);
   });
 
   it('reserva al menos 640 píxeles cuando un p5 pide windowHeight', () => {

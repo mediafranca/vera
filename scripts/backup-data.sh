@@ -3,6 +3,7 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 database="${VERA_BACKUP_DATABASE:-$repository_root/data/vera.sqlite}"
+objects="${VERA_BACKUP_OBJECTS:-$repository_root/objects}"
 restic_repository="${VERA_BACKUP_REPOSITORY:-$HOME/.local/share/vera-backups/restic}"
 credential="${VERA_BACKUP_CREDENTIAL:-$HOME/.openclaw/credentials/vera-restic.cred}"
 restic_binary="${RESTIC_BINARY:-$HOME/.local/bin/restic}"
@@ -17,6 +18,11 @@ fi
 
 if [[ ! -f "$database" ]]; then
   echo "No existe la base de VERA: $database" >&2
+  exit 1
+fi
+
+if [[ ! -d "$objects" ]]; then
+  echo "No existe el almacén de objetos de VERA: $objects" >&2
   exit 1
 fi
 
@@ -62,11 +68,22 @@ export RESTIC_PASSWORD_COMMAND="systemd-creds --user decrypt --name=vera-restic 
   --tag vera-sqlite \
   --stdin --stdin-filename vera.sqlite < "$snapshot"
 
-"$restic_binary" -r "$restic_repository" forget \
+# Los binarios son parte del corpus portable y viven fuera de SQLite. Su
+# almacén es direccionado por contenido, por lo que Restic puede capturarlo en
+# línea y deduplicarlo sin detener Vera.
+"$restic_binary" -r "$restic_repository" backup \
   --host alexei \
-  --tag vera-sqlite \
-  --keep-tag pre-exposure-compaction \
-  --keep-daily 7 \
-  --keep-weekly 4 \
-  --keep-monthly 6 \
-  --prune
+  --tag vera-objects \
+  "$objects"
+
+for tag in vera-sqlite vera-objects; do
+  "$restic_binary" -r "$restic_repository" forget \
+    --host alexei \
+    --tag "$tag" \
+    --keep-tag pre-exposure-compaction \
+    --keep-daily 7 \
+    --keep-weekly 4 \
+    --keep-monthly 6
+done
+
+"$restic_binary" -r "$restic_repository" prune

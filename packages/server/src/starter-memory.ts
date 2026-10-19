@@ -76,7 +76,9 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
   block('first-steps', 'first-write', 2, '2. Crea una página, escribe algunos bloques, enlaza otra página con `[[doble corchete]]` y revisa el historial del bloque.'),
   block('first-steps', 'first-example', 3, '3. Edita [[VERA — Página de ejemplo]]: está hecha para tocarla, moverla y eventualmente borrarla.'),
   block('first-steps', 'first-backup', 4, '4. Exporta un respaldo antes de conectar servicios externos o importar un corpus grande.'),
-  block('first-steps', 'first-agent', 5, '5. Entrega a cada inteligencia una credencial propia y verifica su identidad antes de permitirle escribir.'),
+  block('first-steps', 'first-connect-route', 5,
+    '5. Decide desde dónde se conectará cada inteligencia: si puede alcanzar este equipo, usa una credencial local; si vive en Internet, activa Vera Conecta desde [[VERA: Conexiones]].'),
+  block('first-steps', 'first-agent', 6, '6. Entrega a cada inteligencia una credencial propia y verifica su identidad antes de permitirle escribir.'),
 
   page('manual', 'VERA — Manual'),
   property('manual', 'tipo', 'manual'),
@@ -145,6 +147,16 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
   block('agents', 'agents-audit', 3, '4. Revisa la página de contribuciones del agente y revoca la credencial si deja de necesitar acceso.', 'agents-steps'),
   block('agents', 'agents-warning', 3,
     'Las instrucciones exactas cambian entre clientes. Vera debe mostrar recetas verificadas para cada integración compatible, sin guardar secretos dentro del corpus.'),
+
+  page('connections', 'VERA: Conexiones'),
+  property('connections', 'tipo', 'configuración'),
+  property('connections', 'special-kind', 'connections'),
+  block('connections', 'connections-title', 0, '# Conexiones'),
+  block('connections', 'connections-intro', 1,
+    'Esta página gobierna qué inteligencias pueden entrar a Vera, con qué identidad y con qué alcance. La memoria sigue siendo local aunque actives un puente remoto.'),
+  block('connections', 'connections-list', 2, '## Conexiones autorizadas'),
+  block('connections', 'connections-conecta', 3,
+    'Vera Conecta permanece desactivada hasta que la persona propietaria la activa aquí. La dirección pública identifica una instalación, pero nunca autoriza por sí sola.'),
 
   page('principles', 'VERA — Principios'),
   property('principles', 'tipo', 'documentación'),

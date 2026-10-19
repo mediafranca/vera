@@ -12,7 +12,15 @@ const PORT = 4271;
 const OWNER = 'participant:herbert';
 
 before(() => {
-  running = listen({ port: PORT, databasePath: ':memory:', owner: { id: OWNER, name: 'Dueña' } });
+  running = listen({
+    port: PORT,
+    databasePath: ':memory:',
+    owner: { id: OWNER, name: 'Dueña' },
+    speech: {
+      speak: async (text) => ({ bytes: Buffer.from(`voz:${text}`), mediaType: 'audio/wav', cached: false }),
+      close: () => undefined,
+    },
+  });
   base = `http://localhost:${PORT}`;
 });
 
@@ -55,6 +63,63 @@ async function get(path: string): Promise<unknown> {
   const response = await fetch(`${base}${path}`);
   return response.json();
 }
+
+describe('mapas de Google pegados', () => {
+  it('redirige una dirección completa al visor sin clave sólo cuando el corpus lo autorizó', async () => {
+    const governing = await write({
+      kind: 'create_page',
+      stableId: 'page:test-embeddings-governing',
+      title: 'VERA: Incrustaciones',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: governing, propertyKey: 'special-kind', propertyValue: 'embeddings' });
+    const google = await write({
+      kind: 'create_block',
+      stableId: 'block:test-embeddings-google',
+      page: governing,
+      parent: null,
+      position: 0,
+      content: 'Google Maps',
+    });
+    await write({ kind: 'set_property', block: google, propertyKey: 'servidor', propertyValue: 'google.com' });
+
+    const source = 'https://www.google.com/maps/place/x/@-32.9696873,-71.3848611,14z/data=!3m1!1e3';
+    const response = await fetch(`${base}/embeds/google-map?url=${encodeURIComponent(source)}`, {
+      redirect: 'manual',
+    });
+    assert.equal(response.status, 302);
+    const destination = new URL(response.headers.get('location') ?? '');
+    assert.equal(destination.origin + destination.pathname, 'https://www.google.com/maps');
+    assert.equal(destination.searchParams.get('q'), '-32.9696873,-71.3848611');
+    assert.equal(destination.searchParams.get('output'), 'embed');
+    assert.equal(destination.searchParams.has('key'), false);
+  });
+});
+
+describe('lectura local', () => {
+  it('sirve el audio derivado sin convertirlo en contenido del grafo', async () => {
+    const before = await get('/health') as { operations: number };
+    const response = await fetch(`${base}/speech`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Una memoria continua.' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'audio/wav');
+    assert.equal(await response.text(), 'voz:Una memoria continua.');
+    const after = await get('/health') as { operations: number };
+    assert.equal(after.operations, before.operations);
+  });
+
+  it('rechaza fragmentos que exceden la unidad gobernada', async () => {
+    const response = await fetch(`${base}/speech`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'x'.repeat(301) }),
+    });
+    assert.equal(response.status, 422);
+  });
+});
 
 describe('ontología rectora de relaciones', () => {
   it('lee tipos estructurados desde VERA: Relaciones sin exigir restricciones', async () => {
@@ -145,6 +210,52 @@ describe('dominios declarados de propiedades', () => {
       { value: 'afirmación', uses: 0, declared: true },
     ]);
   });
+
+  it('toma todos los tipos de Objetos y colapsa sus variantes de caja', async () => {
+    const kind = await write({
+      kind: 'create_block',
+      stableId: 'block:test-kind-property',
+      page: 'page:test-properties-governing',
+      parent: null,
+      position: 0,
+      content: 'tipo',
+    });
+    await write({ kind: 'set_property', block: kind, propertyKey: 'campo', propertyValue: 'una de' });
+    await write({ kind: 'set_property', block: kind, propertyKey: 'papel', propertyValue: 'kind' });
+
+    const objects = await write({
+      kind: 'create_page',
+      stableId: 'page:test-kind-objects',
+      title: 'VERA: Objetos',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: objects, propertyKey: 'special-kind', propertyValue: 'objects' });
+    for (const [position, name] of ['Nota', 'Persona', 'Proyecto'].entries()) {
+      const declaration = await write({
+        kind: 'create_block',
+        stableId: `block:test-kind-${name.toLowerCase()}`,
+        page: objects,
+        parent: null,
+        position,
+        content: name,
+      });
+      await write({ kind: 'set_property', block: declaration, propertyKey: 'qué', propertyValue: name });
+    }
+
+    const page = await write({ kind: 'create_page', title: 'Una nota', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'tipo', propertyValue: 'Nota' });
+    const another = await write({ kind: 'create_page', title: 'Otra nota', visibility: 'private' });
+    await write({ kind: 'set_property', page: another, propertyKey: 'tipo', propertyValue: 'nota' });
+
+    const detail = (await get(`/pages/${encodeURIComponent(page)}`)) as {
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+    };
+    assert.deepEqual(detail.domains['tipo']?.slice(0, 3), [
+      { value: 'Nota', uses: 2, declared: true },
+      { value: 'Persona', uses: 0, declared: true },
+      { value: 'Proyecto', uses: 0, declared: true },
+    ]);
+  });
 });
 
 describe('modelos de procesamiento', () => {
@@ -207,6 +318,15 @@ describe('POST /operations', () => {
       (await post({ originId: 'x', participant: OWNER, change: { kind: 'link_pages' } })).status,
       400,
       'link_pages ya no es parte del vocabulario',
+    );
+    assert.equal(
+      (await post({
+        originId: 'propiedad-malformada',
+        participant: OWNER,
+        change: { kind: 'set_property', page: 'page:algo', key: 'tipo', value: 'nota' },
+      })).status,
+      400,
+      'una propiedad con nombres de campo ajenos se rechaza sin tumbar el servidor',
     );
   });
 
@@ -359,6 +479,40 @@ describe('POST /operations/batch', () => {
 });
 
 describe('POST /captures', () => {
+  let captureSecret: string;
+
+  before(async () => {
+    const door = await write({
+      kind: 'create_page',
+      title: 'Puerta de capturas',
+      visibility: 'private',
+    });
+    await write({
+      kind: 'set_property',
+      page: door,
+      propertyKey: 'special-kind',
+      propertyValue: 'connections',
+    });
+    const response = await fetch(`${base}/mcp/connections`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Vera Clip', client: 'vera-clip', deal: 'capturar' }),
+    });
+    const made = await response.json() as Record<string, unknown>;
+    assert.equal(response.status, 201, JSON.stringify(made));
+    assert.equal(made['participant'], OWNER);
+    captureSecret = made['secret'] as string;
+  });
+
+  it('no acepta una captura sin la capacidad delegada', async () => {
+    const response = await fetch(`${base}/captures`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 401);
+  });
+
   it('deposita en la bitácora y un reintento no duplica el subárbol', async () => {
     const capture = {
       kind: 'selection',
@@ -370,7 +524,13 @@ describe('POST /captures', () => {
     };
     const sendCapture = async () => {
       const response = await fetch(`${base}/captures`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(capture),
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${captureSecret}`,
+          'x-vera-client': 'vera-clip',
+        },
+        body: JSON.stringify(capture),
       });
       return { status: response.status, json: await response.json() as Record<string, unknown> };
     };
@@ -386,7 +546,11 @@ describe('POST /captures', () => {
 
   it('rechaza una captura demasiado grande antes de escribir', async () => {
     const response = await fetch(`${base}/captures`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${captureSecret}`,
+        'x-vera-client': 'vera-clip',
+      },
       body: JSON.stringify({
         kind: 'article', title: 'Grande', url: 'https://example.com',
         content: 'x'.repeat(2_000_001), capturedAt: '2026-09-16T12:00:00Z', idempotencyKey: 'too-large',
@@ -736,7 +900,7 @@ describe('lecturas', () => {
     });
 
     const data = (await get(`/graph/${encodeURIComponent(a)}?depth=1`)) as {
-      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number }[];
+      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number; lines?: unknown[] }[];
       links: {
         source: string; target: string; kind?: string; crossing?: string;
         blocks?: { stableId: string; parent: string | null; position: number; content: string }[];
@@ -758,6 +922,7 @@ describe('lecturas', () => {
     for (const node of data.nodes) {
       assert.equal(typeof node.degree, 'number');
       assert.equal(typeof node.blockCount, 'number');
+      assert.equal(node.lines, undefined, '2D/3D no cargan las frases que sólo D4 dibuja');
     }
   });
 
@@ -797,7 +962,7 @@ describe('lecturas', () => {
       targetBlock: sourceBlock,
     }]);
 
-    const data = await get(`/graph/${encodeURIComponent(workbench)}?depth=0`) as {
+    const data = await get(`/graph/${encodeURIComponent(workbench)}?depth=0&detail=d4`) as {
       nodes: { id: string; lines: { block: string }[] }[];
     };
     assert.ok(data.nodes.some((node) => node.id === source));

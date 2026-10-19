@@ -363,6 +363,65 @@ describe('conectar una IA es un solo acto', () => {
     assert.equal(row['permission'], 'escribe en lo suyo');
   });
 
+  it('delega a Vera Clip sólo la captura y conserva la autoría de la persona', async () => {
+    await door();
+    const made = await call('/mcp/connections', {
+      method: 'POST',
+      body: { name: 'Vera Clip', client: 'vera-clip', deal: 'capturar' },
+    });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    assert.equal(made.json['participant'], OWNER);
+    assert.deepEqual(made.json['scopes'], ['capture']);
+
+    const secret = made.json['secret'] as string;
+
+    const captured = await call('/captures', {
+      method: 'POST',
+      secret,
+      body: {
+        kind: 'selection',
+        title: 'Una selección local',
+        url: 'https://example.com/clip',
+        content: 'Texto incorporado por la herramienta de Herbert',
+        capturedAt: '2026-10-06T15:00:00Z',
+        idempotencyKey: 'vera-clip-owner-authority',
+      },
+    });
+    assert.equal(captured.status, 202, JSON.stringify(captured.json));
+
+    const operations = (await call('/ops')).json as unknown as Array<Record<string, unknown>>;
+    const imported = operations.filter((one) =>
+      String(one['subjectId'] ?? '').startsWith(String(captured.json['block'])),
+    );
+    assert.ok(imported.length >= 3);
+    assert.ok(imported.every((one) => one['authoredBy'] === OWNER));
+    assert.ok(imported.every((one) => one['channel'] === 'import'));
+
+    const connections = (await call('/mcp')).json['connections'] as Array<Record<string, unknown>>;
+    const clip = connections.find((one) => one['client'] === 'vera-clip');
+    assert.equal(clip?.['participant'], OWNER);
+    assert.equal(clip?.['permission'], 'depositar capturas');
+
+    assert.equal((await call('/pages', { secret })).status, 403);
+    assert.equal((await submit(
+      { kind: 'create_page', title: 'No autorizada por Vera Clip', visibility: 'private' },
+      secret,
+    )).status, 403);
+
+    const revoked = await call(`/agents/credentials/${encodeURIComponent(String(made.json['id']))}/revoke`, {
+      method: 'POST',
+    });
+    assert.equal(revoked.status, 200, JSON.stringify(revoked.json));
+    assert.equal((await call('/captures', {
+      method: 'POST',
+      secret,
+      body: {
+        kind: 'selection', title: 'Revocada', url: 'https://example.com/revoked',
+        content: 'No entra', capturedAt: '2026-10-06T15:01:00Z', idempotencyKey: 'revoked-clip',
+      },
+    })).status, 401);
+  });
+
   it('lo que se rechaza no deja media conexión detrás', async () => {
     /*
      * Un cerco sin clase se rechaza, y se rechaza antes de emitir nada.

@@ -121,6 +121,42 @@ describe('paperHtml', () => {
     assert.ok(!html.includes('<script>alert'));
     assert.match(html, /&lt;script&gt;/);
   });
+
+  it('numera los vínculos externos y escribe su dirección completa al pie', () => {
+    const html = paperHtml({
+      title: 'Con fuentes',
+      blocks: [bloque('block:1', null, 0, 'Una [fuente](https://ejemplo.cl/a?x=1&y=2).')],
+    });
+    assert.match(html, /fuente<\/a><sup class="external-ref">/);
+    assert.match(html, /<li id="external-url-1"><a href="https:\/\/ejemplo\.cl\/a\?x=1&amp;y=2">/);
+    assert.match(html, />https:\/\/ejemplo\.cl\/a\?x=1&amp;y=2<\/a>/);
+  });
+
+  it('repite el mismo número, pero no la nota, para una dirección repetida', () => {
+    const html = paperHtml({
+      title: 'Repetidos',
+      blocks: [
+        bloque('block:1', null, 0, '[uno](https://ejemplo.cl/a)'),
+        bloque('block:2', null, 1, '[dos](https://ejemplo.cl/a)'),
+      ],
+    });
+    assert.equal(html.match(/class="external-ref"/g)?.length, 2);
+    assert.equal(html.match(/id="external-url-1"/g)?.length, 1);
+    assert.ok(!html.includes('external-url-2'));
+  });
+
+  it('no numera wikis, anclas, citas internas ni imágenes enlazadas', () => {
+    const html = paperHtml({
+      title: 'Internos',
+      blocks: [
+        bloque('block:1', null, 0, '[[Otra]] [sección](#una) ((block:lejano))'),
+        bloque('block:2', null, 1, '[![imagen](https://ejemplo.cl/i.png)](https://ejemplo.cl)'),
+      ],
+      resolveBlock: () => ({ page: 'Otra', excerpt: 'una frase' }),
+    });
+    assert.ok(!html.includes('class="external-ref"'));
+    assert.ok(!html.includes('class="external-notes"'));
+  });
 });
 
 describe('bookletHtml', () => {
@@ -437,7 +473,7 @@ describe('una tabla larga en el papel', () => {
       title: 'Tabla',
       blocks: [bloque('block:1', null, 0, '| Nombre | Valor |\n| --- | --- |\n| uno | 1 |')],
     });
-    assert.match(html, /<table><thead><tr><th>Nombre<\/th><th>Valor<\/th><\/tr><\/thead>/);
+    assert.match(html, /<table><thead><tr><th scope="col">Nombre<\/th><th scope="col">Valor<\/th><\/tr><\/thead>/);
     assert.match(html, /\.b thead \{ display: table-header-group; \}/);
     const tableRule = /\.b table \{([^}]*)\}/.exec(html)?.[1] ?? '';
     assert.ok(!tableRule.includes('break-inside'), 'la tabla completa sigue siendo indivisible');

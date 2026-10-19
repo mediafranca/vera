@@ -18,6 +18,7 @@ import {
   looksLikeDrawing,
   looksLikeQuery,
   readDrawing,
+  readMarkdownTable,
   renderMarkdown,
   suggestTitles,
   titleKey,
@@ -26,6 +27,7 @@ import {
   isTrail,
   argumentMaturityChanges,
   type ArgumentMaturity,
+  type MarkdownTable,
   type RenderOptions,
 } from '@vera/core';
 import { renderArgumentWorkbenchBand } from './argument-workbench-page.ts';
@@ -46,6 +48,12 @@ import {
 import { scrollDeltaFor, sourceOffsetFor } from './caret.ts';
 import { parseOutlineClipboard } from './outline-clipboard.ts';
 import { selectedSiblingMove } from './selection-movement.ts';
+import {
+  mountMarkdownTableEditor,
+  newMarkdownTableSource,
+  type TableCellAddress,
+  type TableHeaderAxis,
+} from './table-editor.ts';
 import { sourceSelection, type SourceSelection } from './source-selection.ts';
 import { completeInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
@@ -72,14 +80,16 @@ import {
 } from '@vera/core';
 import { renderTrailBand, trailMarks, type TrailMark } from './trail-page.ts';
 import { pendingLine, saySeconds } from './waiting.ts';
+import { speechParts, speechText, stopReading, wireReadingButton } from './read-aloud.ts';
 import { createPage } from './pages.ts';
-import { isPresentation, presentPage } from './presentation.ts';
+import { presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
 import {
   actionOf,
   completionFor,
   detectTrigger,
+  iframeSource,
   isDay,
   matchingCommands,
   queryOf,
@@ -94,7 +104,7 @@ import {
 import { audioUrl, voice, type Recording } from './voice.ts';
 import { type NavigationGesture } from './trace.ts';
 import { openMediaDetails } from './media-dialog.ts';
-import { holdViewport, restoreViewport } from './viewport.ts';
+import { holdViewport, restoreViewportThroughComposition } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
 import {
   composePictos, executeProcess, looksLikeProcess, PICTOS_SYMBOLS,
@@ -223,8 +233,35 @@ function openExternalLink(url: string): void {
   dialog.showModal();
 }
 
+/** Marca los enlaces web salientes que ya existen dentro de una composición. */
+function decorateExternalLinks(container: ParentNode): void {
+  /*
+   * El destino no cambia la familia tipográfica del vínculo.
+   *
+   * `renderMarkdown` también se usa en extractos y listas derivadas que no
+   * viven bajo `.body`. Marcar aquí el enlace —cuando ya conocemos el origen
+   * efectivo— evita que esas superficies caigan al azul del navegador. El
+   * icono va dentro del ancla: pertenece al mismo gesto y queda al final aunque
+   * el rótulo se parta en varias líneas.
+   */
+  for (const link of container.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    if (externalDestination(link.getAttribute('href') ?? '') === null) continue;
+    link.classList.add('external-link');
+    if (link.querySelector('.external-link-mark') !== null) continue;
+    if (link.textContent?.trim() === '' && link.querySelector('img, video, picture, iframe') !== null) {
+      continue;
+    }
+    link.insertAdjacentHTML(
+      'beforeend',
+      icon('external-link', { className: 'external-link-mark' }),
+    );
+  }
+}
+
 /** Intercepta sólo enlaces web salientes; páginas, anclas y archivos siguen igual. */
 function wireExternalLinks(container: HTMLElement): void {
+  decorateExternalLinks(container);
+
   container.addEventListener('click', (event) => {
     if (event.defaultPrevented || event.button !== 0) return;
     const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
@@ -449,6 +486,15 @@ function chooseTranscript(choices: YoutubeTranscriptChoice[]): Promise<YoutubeTr
   });
 }
 
+/** Por qué no hay nada que escoger, dicho antes de abrir un diálogo vacío. */
+export function unavailableTranscriptReason(
+  choices: readonly YoutubeTranscriptChoice[],
+): string | null {
+  return choices.length === 0
+    ? 'YouTube no ofrece subtítulos publicados ni automáticos para este video'
+    : null;
+}
+
 /** Deja dicho que en este bloque se va a hablar. */
 export function speakInto(block: string, destination = 'este bloque'): void {
   speakingIn = { block, destination };
@@ -460,9 +506,88 @@ export function speakInto(block: string, destination = 'este bloque'): void {
  */
 let openMenu: HTMLElement | null = null;
 
+interface ContinuityWitness {
+  block: string;
+  at: number | null;
+  visible: readonly string[];
+}
+
+/** El lugar de trabajo que representa el menú abierto y el que acaba de actuar. */
+let openMenuContinuity: ContinuityWitness | null = null;
+let pendingContinuity: ContinuityWitness | null = null;
+
+function continuityWitness(anchor: HTMLElement): ContinuityWitness | null {
+  const row = anchor.closest<HTMLElement>('.block[data-id]');
+  const block = row?.dataset['id'];
+  if (row === null || block === undefined) return null;
+  const page = row.closest<HTMLElement>('[data-page]') ?? row.parentElement;
+  const visible = [...(page?.querySelectorAll<HTMLElement>('.block[data-id]') ?? [])]
+    .map((candidate) => candidate.dataset['id'])
+    .filter((id): id is string => id !== undefined);
+  const editor = anchor instanceof HTMLTextAreaElement
+    ? anchor
+    : anchor.closest<HTMLTextAreaElement>('textarea.editor');
+  return { block, at: editor?.selectionStart ?? null, visible };
+}
+
+/**
+ * Escoge el lugar superviviente más próximo a una acción estructural.
+ *
+ * Si el bloque sigue existiendo, continúa allí. Si desapareció, avanza primero
+ * hacia el siguiente bloque visible y sólo entonces retrocede al anterior. La
+ * búsqueda usa el orden anterior al cambio: el bloque retirado sigue diciendo
+ * dónde estaba aunque ya no pertenezca al modelo nuevo.
+ */
+export function nearestContinuityFocus(
+  visibleBefore: readonly string[],
+  surviving: readonly string[],
+  origin: string,
+  at: number | null,
+): { block: string; at: number | null } | null {
+  const alive = new Set(surviving);
+  if (alive.has(origin)) return { block: origin, at };
+  const here = visibleBefore.indexOf(origin);
+  if (here === -1) return null;
+  for (let index = here + 1; index < visibleBefore.length; index += 1) {
+    const candidate = visibleBefore[index];
+    if (candidate !== undefined && alive.has(candidate)) return { block: candidate, at: null };
+  }
+  for (let index = here - 1; index >= 0; index -= 1) {
+    const candidate = visibleBefore[index];
+    if (candidate !== undefined && alive.has(candidate)) return { block: candidate, at: null };
+  }
+  return null;
+}
+
+/**
+ * Resuelve el foco de un repintado. Un destino explícito manda; de lo contrario
+ * se conserva el editor activo o el bloque cuyo menú originó la acción.
+ */
+export function focusAfterChange(
+  blocks: readonly BlockView[],
+  explicit: { block: string; at: number | null } | null,
+): { block: string; at: number | null } | null {
+  if (explicit !== null) {
+    pendingContinuity = null;
+    return explicit;
+  }
+  const active = typeof document === 'undefined' ? null : document.activeElement;
+  const direct = active instanceof HTMLElement ? continuityWitness(active) : null;
+  const witness = direct ?? pendingContinuity;
+  pendingContinuity = null;
+  if (witness === null) return null;
+  return nearestContinuityFocus(
+    witness.visible,
+    blocks.map((block) => block.stableId),
+    witness.block,
+    witness.at,
+  );
+}
+
 function closeMenu(): void {
   openMenu?.remove();
   openMenu = null;
+  openMenuContinuity = null;
 }
 
 let dismissalBound = false;
@@ -517,7 +642,9 @@ export function invokeMenuAction(
   action: Pick<MenuAction, 'run'>,
 ): void {
   event.stopPropagation();
+  const witness = openMenuContinuity;
   closeMenu();
+  pendingContinuity = witness;
   void action.run();
 }
 
@@ -532,6 +659,7 @@ export function invokeMenuAction(
 function openBlockMenu(anchor: HTMLElement, groups: MenuAction[][]): void {
   bindDismissal();
   closeMenu();
+  openMenuContinuity = continuityWitness(anchor);
 
   const menu = document.createElement('div');
   menu.className = 'block-menu';
@@ -690,7 +818,9 @@ async function askLibrarian(
     });
     toast(request.dispatchStatus === 'failed'
       ? 'pedido guardado; el bibliotecario está desconectado y podrá retomarlo'
-      : 'pedido enviado al bibliotecario');
+      : request.dispatchStatus === 'pending'
+        ? 'pedido guardado en la cola del bibliotecario'
+        : 'pedido enviado al bibliotecario');
     callbacks.onReload(null);
   } catch {
     toast('no se pudo guardar la solicitud');
@@ -782,7 +912,8 @@ function librarianDialogHeader(title: string, context: string): HTMLElement {
 function librarianRequestState(request: LibrarianRequestView): string {
   if (request.status === 'working') return 'El bibliotecario está trabajando';
   if (request.dispatchStatus === 'failed') return 'Solicitud guardada; esperando reconexión';
-  return 'El bibliotecario está recibiendo la solicitud';
+  if (request.dispatchStatus === 'pending') return 'Solicitud guardada en la cola';
+  return 'Solicitud entregada; esperando al bibliotecario';
 }
 
 let activeLibrarianRequests: LibrarianRequestView[] = [];
@@ -799,7 +930,7 @@ function updateLibrarianProgress(dialog: HTMLDialogElement, requests: LibrarianR
   if (elapsed !== null) elapsed.textContent = `Tiempo transcurrido: ${saySeconds(Math.max(0, Date.now() - latest.createdAt))}`;
   if (more !== null) {
     const others = requests.length - 1;
-    more.textContent = others === 0 ? '' : `${others} solicitud${others === 1 ? '' : 'es'} más en curso`;
+    more.textContent = others === 0 ? '' : `${others} solicitud${others === 1 ? '' : 'es'} más en la cola`;
     more.hidden = others === 0;
   }
 }
@@ -1258,6 +1389,19 @@ function isChoosable(offered: { value: string; uses: number; declared?: boolean 
 }
 
 /**
+ * Las respuestas que caben en el menú de una propiedad.
+ *
+ * Un vocabulario gobernado se muestra entero: recortarlo haría que una clase
+ * declarada existiera en la ontología pero no en el lugar donde se elige. En
+ * uno inferido conservamos el límite, porque su cola son usos históricos que
+ * se pueden corregir escribiendo otro valor, no opciones que Vera recomiende.
+ */
+export function offeredPropertyOptions<T extends { declared?: boolean }>(offered: T[]): T[] {
+  const declared = offered.filter((one) => one.declared === true);
+  return declared.length > 0 ? declared : offered.slice(0, OFFERED_AT_MOST);
+}
+
+/**
  * Elegir un día en el calendario.
  *
  * Usa el selector del propio navegador y no uno dibujado aquí. Un calendario es
@@ -1302,6 +1446,172 @@ function pickDate(anchor: HTMLElement, onPick: (date: string) => void): void {
   } catch {
     // El navegador exige un gesto suyo para abrirlo. El campo ya está enfocado.
   }
+}
+
+/** `/tabla` decide forma y eje antes de escribir una sola tubería. */
+function pickTableShape(
+  anchor: HTMLElement,
+  onPick: (rows: number, columns: number, axis: TableHeaderAxis) => void,
+  onDismiss: () => void,
+): void {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'table-shape-dialog';
+  const form = document.createElement('form');
+  form.method = 'dialog';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Crear tabla';
+  const dimensions = document.createElement('div');
+  dimensions.className = 'table-shape-dimensions';
+  const numberField = (labelText: string): HTMLInputElement => {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '2';
+    input.max = '20';
+    input.value = '2';
+    input.inputMode = 'numeric';
+    label.append(input);
+    dimensions.append(label);
+    return input;
+  };
+  const rows = numberField('Filas');
+  const columns = numberField('Columnas');
+
+  const axis = document.createElement('fieldset');
+  const legend = document.createElement('legend');
+  legend.textContent = 'Cabeceras';
+  axis.append(legend);
+  for (const [value, labelText] of [
+    ['row', 'Primera fila'],
+    ['column', 'Primera columna'],
+  ] as const) {
+    const label = document.createElement('label');
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'table-header-axis';
+    radio.value = value;
+    radio.checked = value === 'row';
+    label.append(radio, labelText);
+    axis.append(label);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancelar';
+  const create = document.createElement('button');
+  create.type = 'submit';
+  create.className = 'dialog-primary-action';
+  create.textContent = 'Crear';
+  actions.append(cancel, create);
+  form.append(title, dimensions, axis, actions);
+  dialog.append(form);
+  document.body.append(dialog);
+
+  cancel.addEventListener('click', () => dialog.close('cancel'));
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dialog.close('cancel');
+  });
+  dialog.addEventListener('close', () => {
+    const chosen = dialog.returnValue !== 'cancel';
+    const pickedAxis = form.querySelector<HTMLInputElement>(
+      'input[name="table-header-axis"]:checked',
+    )?.value === 'column' ? 'column' : 'row';
+    const pickedRows = Number(rows.value);
+    const pickedColumns = Number(columns.value);
+    dialog.remove();
+    if (chosen) onPick(pickedRows, pickedColumns, pickedAxis);
+    else onDismiss();
+  });
+  dialog.showModal();
+  rows.focus();
+  rows.select();
+}
+
+/** `/iframe` pide lo que no debe obligar a recordar como sintaxis. */
+function pickIframe(
+  anchor: HTMLElement,
+  onPick: (source: string) => void,
+  onDismiss: () => void,
+): void {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'table-shape-dialog iframe-dialog';
+  const form = document.createElement('form');
+  form.method = 'dialog';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Incrustar una página';
+  const fields = document.createElement('div');
+  fields.className = 'iframe-dialog-fields';
+
+  const urlLabel = document.createElement('label');
+  urlLabel.textContent = 'URL';
+  const address = document.createElement('input');
+  address.type = 'url';
+  address.required = true;
+  address.placeholder = 'https://…';
+  urlLabel.append(address);
+
+  const heightLabel = document.createElement('label');
+  heightLabel.textContent = 'Alto en la página';
+  const height = document.createElement('input');
+  height.type = 'number';
+  height.min = '120';
+  height.max = '2000';
+  height.step = '1';
+  height.value = '720';
+  height.required = true;
+  height.inputMode = 'numeric';
+  heightLabel.append(height);
+  fields.append(urlLabel, heightLabel);
+
+  const note = document.createElement('p');
+  note.className = 'iframe-dialog-note';
+  note.textContent = 'Sólo HTTPS y orígenes autorizados. En Presentación ocupará el alto disponible.';
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancelar';
+  const create = document.createElement('button');
+  create.type = 'submit';
+  create.className = 'dialog-primary-action';
+  create.textContent = 'Incrustar';
+  actions.append(cancel, create);
+  form.append(title, fields, note, actions);
+  dialog.append(form);
+  document.body.append(dialog);
+
+  let source: string | null = null;
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    source = iframeSource(address.value, Number(height.value));
+    if (source === null) {
+      address.setCustomValidity('Usa una dirección HTTPS y un alto entre 120 y 2000 px.');
+      address.reportValidity();
+      return;
+    }
+    dialog.close('create');
+  });
+  address.addEventListener('input', () => address.setCustomValidity(''));
+  cancel.addEventListener('click', () => dialog.close('cancel'));
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dialog.close('cancel');
+  });
+  dialog.addEventListener('close', () => {
+    const written = source;
+    dialog.remove();
+    if (written !== null) onPick(written);
+    else onDismiss();
+  });
+  dialog.showModal();
+  address.focus();
 }
 
 /** Envía un cambio sin recargar. Devuelve si se aplicó. */
@@ -3219,6 +3529,33 @@ export function blockResolver(page: PageView): RenderOptions['resolveBlock'] {
   };
 }
 
+function renderOptionsFor(page: PageView): RenderOptions {
+  const options: RenderOptions = { embedHosts };
+  const asset = assetResolver(page);
+  if (asset !== undefined) options.resolveAsset = asset;
+  const block = blockResolver(page);
+  if (block !== undefined) options.resolveBlock = block;
+  const pending = new Set(page.pendingLinks ?? []);
+  if (pending.size > 0) options.pageExists = (title) => !pending.has(title);
+  return options;
+}
+
+/** Abre la proyección espacial de una página sin depender de un botón en el DOM. */
+export function presentOutlinerPage(
+  page: PageView,
+  callbacks: Pick<OutlinerCallbacks, 'onNavigate' | 'scheme' | 'onScheme'>,
+  initialBlock: string | null = null,
+): Promise<void> {
+  if (!page.blocks.some((block) => block.parent === null)) {
+    toast('esta página todavía no contiene ninguna lámina');
+    return Promise.resolve();
+  }
+  return presentPage(page, renderOptionsFor(page), callbacks.onNavigate, initialBlock, {
+    scheme: callbacks.scheme,
+    onScheme: callbacks.onScheme,
+  });
+}
+
 /**
  * Decide si componer los bloques en más de una pintura.
  *
@@ -3254,15 +3591,98 @@ export function isFencedCodeContent(source: string): boolean {
   return /^(?:`{3,}|~{3,})\s*[\w+-]*\s*$/.test(first);
 }
 
+/**
+ * Aplica el modo de metadatos a todas las páginas contenidas en una superficie.
+ *
+ * La elección vive en el cliente, no en cada página. Una lectura continua puede
+ * tener varios encabezados montados a la vez: todos deben responder al mismo
+ * gesto para que «con metadatos» y «sin metadatos» sean modos de la vista.
+ */
+export function applyFrontMatterMode(root: ParentNode, open: boolean): void {
+  root.querySelectorAll<HTMLElement>('.page-metadata').forEach((metadata) => {
+    metadata.hidden = !open;
+  });
+  root.querySelectorAll<HTMLButtonElement>('.properties-toggle').forEach((toggle) => {
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Ocultar propiedades' : 'Mostrar propiedades');
+    toggle.title = open ? 'Ocultar propiedades' : 'Mostrar propiedades';
+    toggle.classList.toggle('open', open);
+  });
+}
+
+/**
+ * Una representación que nace de la fuente completa del bloque.
+ *
+ * Se decide sobre el DOM que ya produjo el dominio: repetir aquí los parsers de
+ * YouTube, Mermaid, mapas y ejecutables crearía dos ideas de qué es válido. Las
+ * tres excepciones que terminan de componerse fuera de Markdown se reconocen por
+ * su fuente canónica.
+ */
+export function hasDerivedRepresentation(source: string, rendered: ParentNode): boolean {
+  return looksLikeDrawing(source)
+    || looksLikeQuery(source)
+    || looksLikeProcess(source)
+    || rendered.querySelector(
+      ':is(.table-scroll, .embed, .embedded-map, .executable, .mediawiki-figure, code.language-mermaid)',
+    ) !== null;
+}
+
+/**
+ * En papel la fuente desplegable sigue siendo una degradación útil. En el
+ * outliner interactivo la reemplaza el único control fuente/representación.
+ */
+function removeInlineDerivedSources(rendered: ParentNode): void {
+  rendered.querySelectorAll(
+    ':is(.embed, .embedded-map, .executable, .mediawiki-figure) > details',
+  ).forEach((details) => details.remove());
+}
+
+function sourceRepresentationButton(
+  mode: 'source' | 'representation',
+  act: () => void,
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'derived-source-toggle';
+  if (mode === 'source') {
+    button.innerHTML = icon('code-xml');
+    button.title = 'ver o editar fuente';
+    button.setAttribute('aria-label', 'ver o editar la fuente de este bloque');
+  } else {
+    button.innerHTML = icon('eye');
+    button.title = 'ver representación';
+    button.setAttribute('aria-label', 'guardar la fuente y ver su representación');
+  }
+  // El botón que devuelve a la representación vive dentro del editor. No
+  // deja que mousedown dispare blur antes de que el clic pueda guardar.
+  button.addEventListener('mousedown', (event) => event.preventDefault());
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    act();
+  });
+  return button;
+}
+
+function derivedSourceFoot(mode: 'source' | 'representation', act: () => void): HTMLDivElement {
+  const foot = document.createElement('div');
+  foot.className = 'derived-source-foot';
+  foot.append(sourceRepresentationButton(mode, act));
+  return foot;
+}
+
 function wireCataloguedMedia(container: HTMLElement, page: PageView): void {
   for (const asset of page.assets) {
     for (const element of container.querySelectorAll<HTMLElement>(
       `[src="${CSS.escape(asset.url)}"], [href="${CSS.escape(asset.url)}"]`,
     )) {
       if (element.classList.contains('media-catalogued')) continue;
+      const playable = element instanceof HTMLAudioElement || element instanceof HTMLVideoElement;
       element.classList.add('media-catalogued');
-      element.title = 'Previsualizar y editar metadatos';
-      element.addEventListener('click', (event) => {
+      element.title = playable
+        ? 'Doble clic para previsualizar y editar metadatos'
+        : 'Previsualizar y editar metadatos';
+      element.addEventListener(playable ? 'dblclick' : 'click', (event) => {
         event.preventDefault();
         openMediaDetails(asset);
       });
@@ -3279,6 +3699,7 @@ export function renderOutliner(
   readOnly = false,
   transparentBlockTraceability = false,
 ): void {
+  stopReading();
   if (historyPage !== null && historyPage !== page.id) closeHistoryInspector(false);
   document.querySelector('.librarian-activity')?.remove();
   const librarianDialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
@@ -3372,13 +3793,7 @@ export function renderOutliner(
       callbacks.onReload(null, reloadAfterServerWriting());
     },
   };
-  const options: RenderOptions = { embedHosts };
-  const asset = assetResolver(page);
-  if (asset !== undefined) options.resolveAsset = asset;
-  const block = blockResolver(page);
-  if (block !== undefined) options.resolveBlock = block;
-  const pending = new Set(page.pendingLinks ?? []);
-  if (pending.size > 0) options.pageExists = (title) => !pending.has(title);
+  const options = renderOptionsFor(page);
 
   /**
    * Los extractos siguen siendo palabras del corpus, no texto de interfaz.
@@ -3826,7 +4241,9 @@ export function renderOutliner(
   }
   const heading = document.createElement('div');
   heading.className = 'page-heading';
-  heading.append(title);
+  const headingActions = document.createElement('div');
+  headingActions.className = 'page-heading-actions';
+  heading.append(title, headingActions);
 
   /*
    * Las propiedades acompañan al título, pero no tienen que competir con él.
@@ -3844,33 +4261,27 @@ export function renderOutliner(
   propertiesToggle.setAttribute('aria-label', 'Mostrar propiedades');
   propertiesToggle.setAttribute('aria-expanded', 'false');
   propertiesToggle.title = 'Mostrar propiedades';
-  heading.append(propertiesToggle);
-  const declaredPresentation = isPresentation(page.properties, corpusNames().kind);
-  {
-    // @guarantee DeclaredPresentationsOfferPresentationProminently
-    heading.classList.toggle('has-presentation', declaredPresentation);
-    const present = document.createElement('button');
-    present.type = 'button';
-    present.className = 'present-page';
-    present.textContent = 'Presentar';
-    present.hidden = !declaredPresentation;
-    present.addEventListener('click', () => {
-      void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null, {
-        scheme: callbacks.scheme,
-        onScheme: callbacks.onScheme,
-      });
-      delete present.dataset['initialBlock'];
-    });
-    heading.append(present);
-  }
-  const presentationActions: MenuAction[] = declaredPresentation ? [{
+  headingActions.append(propertiesToggle);
+  const readPage = document.createElement('button');
+  readPage.type = 'button';
+  readPage.className = 'read-page';
+  readPage.hidden = readOnly;
+  wireReadingButton(
+    readPage,
+    () => [
+      ...speechParts(`page:${page.id}:title`, page.title),
+      ...page.blocks.flatMap((block) =>
+        speechParts(`block:${block.stableId}`, speechText(block.content, options)),
+      ),
+    ],
+    toast,
+  );
+  headingActions.append(readPage);
+  const presentationActions: MenuAction[] = [{
     label: 'Presentar',
-    icon: 'eye',
-    run: () => void presentPage(page, options, callbacks.onNavigate, null, {
-      scheme: callbacks.scheme,
-      onScheme: callbacks.onScheme,
-    }),
-  }] : [];
+    icon: 'presentation',
+    run: () => void presentOutlinerPage(page, callbacks),
+  }];
   header.append(heading);
 
   // El front matter no es decoración: son propiedades del grafo, y se editan.
@@ -3881,18 +4292,10 @@ export function renderOutliner(
   metadata.className = 'page-metadata';
   metadata.hidden = true;
 
-  const showProperties = (open: boolean): void => {
-    metadata.hidden = !open;
-    propertiesToggle.setAttribute('aria-expanded', String(open));
-    propertiesToggle.setAttribute('aria-label', open ? 'Ocultar propiedades' : 'Mostrar propiedades');
-    propertiesToggle.title = open ? 'Ocultar propiedades' : 'Mostrar propiedades';
-    propertiesToggle.classList.toggle('open', open);
-  };
   const chooseProperties = (open: boolean): void => {
     session.setFrontMatterOpen(open);
-    showProperties(open);
+    applyFrontMatterMode(document, open);
   };
-  showProperties(session.frontMatterOpen());
   propertiesToggle.addEventListener('click', () => chooseProperties(metadata.hidden));
 
   /*
@@ -4308,10 +4711,10 @@ export function renderOutliner(
           // corpus ya usa, y debajo, separado, lo único que es un gesto de la
           // interfaz. Sin la raya, «escribir otro…» se lee como un valor más.
           openBlockMenu(choose, [
-            // Los más dichos, y sólo esos. La cola larga de una propiedad son sus
-            // erratas; ofrecerlas al mismo nivel que los términos las volvería a
-            // sembrar, que es cómo se llegó a tener treinta y ocho tipos.
-            offered.slice(0, OFFERED_AT_MOST).map((option) => ({
+            // Un vocabulario gobernado entero; si todavía se infiere de los usos,
+            // sólo su cabeza. La cola histórica de una propiedad son a menudo
+            // erratas, y ofrecerlas al mismo nivel volvería a sembrarlas.
+            offeredPropertyOptions(offered).map((option) => ({
               label: option.value === property.value ? `${option.value} ·` : option.value,
               run: () => void answer(option.value),
             })),
@@ -4559,6 +4962,7 @@ export function renderOutliner(
   metadata.append(properties);
   if (!readOnly) metadata.append(add);
   header.append(metadata);
+  applyFrontMatterMode(header, session.frontMatterOpen());
 
   /*
    * Lo que se puede hacer con la página entera, en un menú.
@@ -4576,6 +4980,7 @@ export function renderOutliner(
   more.setAttribute('aria-haspopup', 'menu');
   more.title = 'Más de esta página';
   more.innerHTML = icon('more-vertical');
+  headingActions.append(more);
   more.addEventListener('click', (event) => {
     event.stopPropagation();
     if (readOnly) {
@@ -4679,15 +5084,6 @@ export function renderOutliner(
         icon: 'message-square',
         run: () => void askLibrarian(page, null, callbacks),
       },
-      {
-        // Deliberado y sobre esta página, nunca de oficio: resolver un enlace es
-        // preguntarle al servidor que lo tiene, y eso le dice que aquí alguien
-        // está leyendo sobre esto.
-        label: 'Procesar la página',
-        icon: 'cpu',
-        ...(special ? { blocked: 'una página especial se edita deliberadamente y no se procesa' } : {}),
-        run: () => void processPage(page, toast, callbacks),
-      },
       ...presentationActions,
       {
         label: 'Copiar el Markdown de la página',
@@ -4719,8 +5115,6 @@ export function renderOutliner(
       ],
     ]);
   });
-  header.append(more);
-
   container.append(header);
 
   const workbench = renderArgumentWorkbenchBand(
@@ -5233,7 +5627,7 @@ export function renderOutliner(
             : [...page.folded, node.block.stableId];
           renderOutliner(container, page, callbacks, focus, focusRoot, true,
             transparentBlockTraceability);
-          restoreViewport(container, viewport);
+          restoreViewportThroughComposition(container, viewport);
           return;
         }
         void toggleFold(
@@ -5489,6 +5883,7 @@ export function renderOutliner(
       } else {
         text.innerHTML = renderMarkdown(task === null ? node.block.content : task.said, options);
         decorateCodeBlocks(text);
+        removeInlineDerivedSources(text);
       }
       markMissingImages(text);
       body.append(text);
@@ -5508,6 +5903,8 @@ export function renderOutliner(
             transcript.disabled = true;
             transcript.textContent = 'Buscando pistas…';
             void api.youtubeTranscripts(source).then(async (catalog) => {
+              const unavailable = unavailableTranscriptReason(catalog.choices);
+              if (unavailable !== null) throw new Error(unavailable);
               const choice = await chooseTranscript(catalog.choices);
               if (choice === null) return;
               transcript.textContent = 'Trayendo…';
@@ -5645,11 +6042,6 @@ export function renderOutliner(
        */
       openBlockMenu(bullet, [
         [
-          ...(readProcessBlock(node.block.content) === null ? [] : [{
-            label: 'Editar código',
-            icon: 'edit-2',
-            run: () => openProcessSourceEditor(node),
-          } satisfies MenuAction]),
           {
             label: glosses[node.block.stableId]?.content ? 'Editar glosa' : 'Agregar glosa',
             icon: 'message-square',
@@ -5678,14 +6070,6 @@ export function renderOutliner(
             label: 'Solicitar al bibliotecario',
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
-          },
-          {
-            label: 'Procesar el bloque',
-            icon: 'cpu',
-            ...(node.block.content.trim() === ''
-              ? { blocked: 'un bloque vacío no pide nada' }
-              : {}),
-            run: () => void processBlock(node.block, row, toast, callbacks),
           },
         ],
         [
@@ -5807,6 +6191,13 @@ export function renderOutliner(
       ]);
     });
 
+    // El botón de herramientas no debe sacar el foco del editor: hacerlo
+    // cerraría la edición antes de que el click pudiera desplegar la barra y
+    // perdería además la selección que se quiere formatear.
+    bullet.addEventListener('mousedown', (event) => {
+      if (body.classList.contains('editing')) event.preventDefault();
+    });
+
     // Al enfocar, el bloque muestra su Markdown; al salir, su render.
     body.tabIndex = 0;
     body.addEventListener('click', (event) => {
@@ -5830,10 +6221,11 @@ export function renderOutliner(
         else callbacks.onOpenBlock(ref.page, ref.id);
         return;
       }
-      if (target.tagName === 'A') return;
-      // Pulsar el reproductor o sus botones no abre el editor; pulsar el texto
-      // sí, que es lo que se espera de un texto.
-      if (target.closest('.audio-block, .process-block') !== null) return;
+      // Los controles y objetos incrustados actúan sobre sí mismos. Ninguno
+      // abre además el fuente del bloque que los contiene: ésa era la razón por
+      // la que pulsar «Traer transcripción» podía acabar enseñando la URL cruda
+      // del video, aunque el botón hubiera empezado ya su propia acción.
+      if (target.closest('a, button, input, select, textarea, .audio-block, .process-block, .embed') !== null) return;
       if (readOnly) return;
 
       /*
@@ -5850,6 +6242,20 @@ export function renderOutliner(
         pickRange(from, node.block.stableId);
         window.getSelection()?.removeAllRanges();
         return;
+      }
+      // Una celda se edita como celda. El control `</>` sigue siendo la ruta
+      // deliberada a las tuberías completas del bloque. Shift conserva antes
+      // que esto su significado transversal de seleccionar bloques.
+      const tableCell = target.closest<HTMLTableCellElement>('.table-scroll th, .table-scroll td');
+      if (tableCell !== null) {
+        const source = readMarkdownTable(node.block.content);
+        if (source !== null) {
+          const row = tableCell.closest('thead') === null
+            ? ((tableCell.parentElement as HTMLTableRowElement | null)?.sectionRowIndex ?? 0) + 1
+            : 0;
+          openTableVisualEditor(node, body, source, { row, column: tableCell.cellIndex });
+          return;
+        }
       }
       // Empezar a escribir deshace lo escogido. @invariant NothingIsSelectedWhileWriting.
       if (picked.size > 0) clearPicked();
@@ -5879,6 +6285,38 @@ export function renderOutliner(
         : null;
       openEditor(node, body, selected ?? caret);
     });
+
+    /*
+     * Una sola puerta entre fuente y representación.
+     *
+     * Vive debajo del objeto y no dentro de cada renderizador: por eso un video,
+     * un diagrama y un dibujo no vuelven a inventar el mismo gesto. En lectura
+     * pública no se ofrece edición; los medios nativos tampoco entran aquí
+     * porque no guardan una fuente textual en este bloque.
+     */
+    const sourceFoot = !readOnly && hasDerivedRepresentation(node.block.content, body)
+      ? derivedSourceFoot('source', () => openDerivedSourceEditor(node, body))
+      : null;
+    if (sourceFoot !== null) body.append(sourceFoot);
+
+    const markdownTable = readMarkdownTable(node.block.content);
+    if (!readOnly && markdownTable !== null) {
+      body.classList.add('table-body');
+      const foot = sourceFoot ?? document.createElement('div');
+      foot.classList.add('derived-source-foot', 'table-foot');
+      const editTable = document.createElement('button');
+      editTable.type = 'button';
+      editTable.className = 'table-visual-edit';
+      editTable.innerHTML = icon('grid');
+      editTable.title = 'editar tabla';
+      editTable.setAttribute('aria-label', 'editar visualmente esta tabla');
+      editTable.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openTableVisualEditor(node, body, markdownTable);
+      });
+      foot.append(editTable);
+      if (foot.parentElement !== body) body.append(foot);
+    }
 
     /*
      * Un dibujo: el lápiz por donde se entra y las teclas por donde se sale.
@@ -5916,8 +6354,8 @@ export function renderOutliner(
        * dos se recogen a la derecha: información y gesto secundarios quedan
        * juntos y fuera del eje principal de la lectura.
        */
-      const foot = document.createElement('div');
-      foot.className = 'drawn-foot';
+      const foot = sourceFoot ?? document.createElement('div');
+      foot.classList.add('derived-source-foot', 'drawn-foot');
 
       /*
        * Cuándo se dibujó por última vez.
@@ -5944,7 +6382,7 @@ export function renderOutliner(
         void redraw(node.block, callbacks, toast);
       });
       foot.append(pencil);
-      body.append(foot);
+      if (foot.parentElement !== body) body.append(foot);
 
       /*
        * La decisión la toma `resolveDrawingKey`; aquí sólo se ejecuta.
@@ -6003,6 +6441,15 @@ export function renderOutliner(
     }
 
     row.classList.toggle('wide-content', hasWideContent(body));
+    const readBlock = document.createElement('button');
+    readBlock.type = 'button';
+    readBlock.className = 'read-block';
+    readBlock.hidden = readOnly;
+    wireReadingButton(
+      readBlock,
+      () => speechParts(`block:${node.block.stableId}`, speechText(node.block.content, options)),
+      toast,
+    );
     // Dos carriles distintos, y no una fila accidental de controles.
     //
     // El chevron —o su hueco— ya es el primer hijo. La viñeta y el cuerpo se
@@ -6010,7 +6457,7 @@ export function renderOutliner(
     // `renderGloss` añadió al extremo derecho. `append` dejaba esa marca entre
     // el chevron y la viñeta: visualmente parecía otro mando del outline cuando
     // en realidad abre una lectura lateral.
-    row.firstElementChild?.after(bullet, body);
+    row.firstElementChild?.after(bullet, body, readBlock);
     if (threads !== null) row.append(threads);
     list.append(row);
     editors.set(node.block.stableId, { node, body });
@@ -6345,6 +6792,11 @@ export function renderOutliner(
      * `drawingKeys`— y enseña el lápiz por donde se entra al lienzo.
      * @invariant TouchingADrawingIsNotEditingIt.
      */
+    const table = readMarkdownTable(node.block.content);
+    if (table !== null) {
+      openTableVisualEditor(node, body, table);
+      return;
+    }
     if (looksLikeDrawing(node.block.content) || looksLikeProcess(node.block.content)) {
       body.focus();
       return;
@@ -6366,68 +6818,51 @@ export function renderOutliner(
     );
   }
 
-  /**
-   * La fuente de una invocación es corta, portable y merece verse completa.
-   * Se edita aparte porque el bloque transformado reserva su cuerpo para estado,
-   * Play y propuesta; el editor común lo excluye deliberadamente.
-   */
-  function openProcessSourceEditor(node: Node): void {
-    if (readProcessBlock(node.block.content) === null) return;
-    const dialog = document.createElement('dialog');
-    dialog.className = 'process-source-dialog';
-    const form = document.createElement('form');
-    form.method = 'dialog';
-    const title = document.createElement('h2');
-    title.textContent = 'Código del proceso';
-    const explain = document.createElement('p');
-    explain.textContent = 'Aquí vive la declaración completa: identidad, entrada, presentación, solicitud y lectura de la respuesta. Las credenciales permanecen en la conexión gobernada.';
-    const editor = document.createElement('textarea');
-    editor.value = node.block.content;
-    editor.spellcheck = false;
-    editor.setAttribute('aria-label', 'código del proceso');
-    const feedback = document.createElement('p');
-    feedback.className = 'process-source-feedback';
-    feedback.setAttribute('role', 'status');
-    const actions = document.createElement('div');
-    actions.className = 'dialog-actions';
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.textContent = 'Cancelar';
-    const save = document.createElement('button');
-    save.type = 'submit';
-    save.className = 'primary';
-    save.textContent = 'Guardar';
-    cancel.addEventListener('click', () => dialog.close());
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      if (readProcessBlock(editor.value) === null) {
-        feedback.textContent = 'La fuente necesita definición, versión y una entrada ((bloque)).';
-        editor.setAttribute('aria-invalid', 'true');
-        return;
-      }
-      editor.removeAttribute('aria-invalid');
-      save.disabled = true;
-      void submitQuietly({
-        kind: 'edit_block',
-        block: node.block.stableId,
-        content: editor.value,
-      }).then((applied) => {
-        if (!applied) {
-          save.disabled = false;
-          return;
-        }
-        dialog.close();
+  function openTableVisualEditor(
+    node: Node,
+    body: HTMLElement,
+    table: MarkdownTable,
+    initial?: TableCellAddress,
+  ): void {
+    if (body.querySelector('input, textarea') !== null) return;
+    mountMarkdownTableEditor(body, table, {
+      ...(initial === undefined ? {} : { initial }),
+      save: async (source) => {
+        if (source !== null && !(await submitQuietly({
+          kind: 'edit_block',
+          block: node.block.stableId,
+          content: source,
+        }))) return false;
         callbacks.onReload(null);
-      });
+        return true;
+      },
     });
-    dialog.addEventListener('close', () => dialog.remove());
-    actions.append(cancel, save);
-    form.append(title, explain, editor, feedback, actions);
-    dialog.append(form);
-    document.body.append(dialog);
-    dialog.showModal();
-    editor.focus();
-    editor.setSelectionRange(0, editor.value.length);
+  }
+
+  /**
+   * Abre la fuente canónica de cualquier representación derivada.
+   *
+   * Pasa deliberadamente alrededor de `openEditor`: tocar un dibujo sigue
+   * enfocándolo y el proceso conserva Enter para ejecutar. Sólo el control
+   * explícito de código elige editar coordenadas o declaración como fuente.
+   */
+  function openDerivedSourceEditor(node: Node, body: HTMLElement): void {
+    const near = neighbourhoods.get(node.block.stableId);
+    if (near === undefined) return;
+    startEditing(
+      node.block,
+      body,
+      callbacks,
+      options,
+      {
+        page: page.id,
+        view: page,
+        near,
+        children: node.children.map((child) => child.block.stableId),
+      },
+      0,
+      true,
+    );
   }
 
   /*
@@ -6528,6 +6963,10 @@ export function renderOutliner(
       // Los diagramas del lote visible pueden empezar ahora; no esperan a que
       // cientos de bloques posteriores terminen de entrar al documento.
       renderMermaidProgressively(list);
+      // Una página larga entra por lotes. El decorador general ya pasó por los
+      // enlaces anteriores, pero éstos acaban de nacer y deben recibir la misma
+      // señal de salida sin esperar una segunda apertura de la página.
+      decorateExternalLinks(list);
       first = false;
       progress.textContent = `Componiendo la página… ${at} de ${entries.length} bloques`;
       if (at < entries.length) {
@@ -6615,7 +7054,13 @@ export function renderOutliner(
     const seat = editors.get(focus.block);
     if (seat !== undefined) {
       const row = seat.body.closest<HTMLElement>('.block');
-      if (focus.at === null) row?.querySelector<HTMLButtonElement>('.fold')?.focus({ preventScroll: true });
+      if (focus.at === null) {
+        // Las hojas tienen un `span.fold.empty` para conservar la columna. No
+        // puede ganar esta búsqueda: acepta `focus()` sin volverse el elemento
+        // activo y la continuidad se pierde en silencio. Sólo controles reales.
+        row?.querySelector<HTMLButtonElement>('button.fold, button.bullet')?.focus({ preventScroll: true });
+        row?.scrollIntoView({ block: 'nearest' });
+      }
       else {
         row?.scrollIntoView({ block: 'nearest' });
         openEditor(seat.node, seat.body, focus.at);
@@ -6769,6 +7214,10 @@ export function renderOutliner(
         }
         results.append(row);
       }
+      // Buscar recompone la lista y con ella sus extractos. Se marca después de
+      // cada composición para que un enlace que aparece por el filtro no vuelva
+      // al azul del navegador ni pierda su signo de salida.
+      decorateExternalLinks(results);
     };
     search.addEventListener('input', draw);
     draw();
@@ -7742,7 +8191,7 @@ function keepCaretInSight(editor: HTMLTextAreaElement, at: number): void {
   const frame = scroller.getBoundingClientRect();
   const line = lineHeightOf(editor);
   const margin = Math.max(16, line);
-  const toolbar = document.querySelector<HTMLElement>('.format-bar');
+  const toolbar = document.querySelector<HTMLElement>('.format-bar:not([hidden])');
   const topInset = toolbar === null ? margin : toolbar.getBoundingClientRect().height + 12;
   const tall = box.height + topInset + margin > view;
 
@@ -7765,6 +8214,7 @@ function startEditing(
   options: RenderOptions,
   context: { page: string; view: PageView; near: Neighbourhood; children: string[] },
   placement: number | SourceSelection = Number.MAX_SAFE_INTEGER,
+  sourceMode = false,
 ): void {
   if (body.querySelector('textarea') !== null) return;
   const session = createSession(block.content);
@@ -7812,14 +8262,51 @@ function startEditing(
    * audio no es texto de nadie.
    */
   const spoken = body.querySelector('.audio-block');
+  const row = body.parentElement;
   const formatBar = document.createElement('div');
   formatBar.className = 'format-bar';
   formatBar.setAttribute('role', 'toolbar');
   formatBar.setAttribute('aria-label', 'formato del bloque');
+  formatBar.hidden = true;
+  formatBar.id = `format-${block.stableId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const rememberFormatBarHeight = (): void => {
+    const height = formatBar.getBoundingClientRect().height;
+    if (height > 0) formatBar.style.setProperty('--format-bar-measured-height', `${height}px`);
+  };
+  const formatBarSize = new ResizeObserver(rememberFormatBarHeight);
+  if (!sourceMode) formatBarSize.observe(formatBar);
+  const formatBarAnchor = document.createElement('div');
+  formatBarAnchor.className = 'format-bar-anchor';
+  formatBarAnchor.append(formatBar);
   body.innerHTML = '';
   if (spoken !== null) body.append(spoken);
-  body.append(formatBar, editor);
+  if (sourceMode) body.append(editor);
+  else body.append(formatBarAnchor, editor);
   body.classList.add('editing');
+  body.classList.toggle('derived-source-view', sourceMode);
+  const formatTrigger = document.createElement('button');
+  formatTrigger.type = 'button';
+  formatTrigger.className = 'format-tools-trigger';
+  formatTrigger.innerHTML = icon('wrench');
+  formatTrigger.title = 'mostrar herramientas de formato';
+  formatTrigger.setAttribute('aria-label', 'mostrar herramientas de formato');
+  formatTrigger.setAttribute('aria-controls', formatBar.id);
+  formatTrigger.setAttribute('aria-expanded', 'false');
+  formatTrigger.addEventListener('mousedown', (event) => event.preventDefault());
+  formatTrigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    formatBar.hidden = !formatBar.hidden;
+    if (!formatBar.hidden) requestAnimationFrame(rememberFormatBarHeight);
+    formatTrigger.setAttribute('aria-expanded', String(!formatBar.hidden));
+    const toolsAction = formatBar.hidden ? 'mostrar' : 'ocultar';
+    formatTrigger.setAttribute('aria-label', `${toolsAction} herramientas de formato`);
+    formatTrigger.title = `${toolsAction} herramientas de formato`;
+    editor.focus({ preventScroll: true });
+  });
+  if (!sourceMode && row !== null) {
+    // Fuera del esquema: la viñeta sigue abriendo el menú propio del bloque.
+    row.prepend(formatTrigger);
+  }
 
   /**
    * El alto sigue al contenido.
@@ -7845,20 +8332,20 @@ function startEditing(
   autosize();
 
   type FormatAction = (
-    | { label: string; title: string; marker: string }
-    | { label: string; title: string; prefix: '> ' }
+    | { icon: IconName; title: string; marker: string }
+    | { icon: IconName; title: string; prefix: '> ' }
     | { icon: IconName; title: string; link: 'internal' | 'external' }
   ) & { className?: string };
   const formatActions: FormatAction[] = [
-    { label: 'B', title: 'negrita', marker: '**' },
-    { label: 'I', title: 'cursiva', marker: '*', className: 'format-italic' },
-    { label: 'S', title: 'tachado', marker: '~~', className: 'format-strike' },
-    { label: 'U', title: 'subrayado', marker: '++', className: 'format-underline' },
-    { label: 'X²', title: 'superíndice', marker: '^', className: 'format-superscript' },
-    { label: 'X₂', title: 'subíndice', marker: '~', className: 'format-subscript' },
-    { label: '❝', title: 'cita', prefix: '> ' },
-    { label: '</>', title: 'código en línea', marker: '`' },
-    { icon: 'brackets', title: 'enlace interno', link: 'internal' },
+    { icon: 'bold', title: 'negrita', marker: '**' },
+    { icon: 'italic', title: 'cursiva', marker: '*', className: 'format-italic' },
+    { icon: 'strikethrough', title: 'tachado', marker: '~~', className: 'format-strike' },
+    { icon: 'underline', title: 'subrayado', marker: '++', className: 'format-underline' },
+    { icon: 'superscript', title: 'superíndice', marker: '^', className: 'format-superscript' },
+    { icon: 'subscript', title: 'subíndice', marker: '~', className: 'format-subscript' },
+    { icon: 'quote', title: 'cita', prefix: '> ' },
+    { icon: 'code', title: 'código en línea', marker: '`' },
+    { icon: 'link', title: 'enlace interno', link: 'internal' },
     { icon: 'external-link', title: 'enlace externo', link: 'external' },
   ];
   const applyFormat = (formatted: ReturnType<typeof resolveFormat>): void => {
@@ -7872,8 +8359,7 @@ function startEditing(
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `format-action${action.className === undefined ? '' : ` ${action.className}`}`;
-    if ('icon' in action) button.innerHTML = icon(action.icon);
-    else button.textContent = action.label;
+    button.innerHTML = icon(action.icon);
     button.title = action.title;
     button.setAttribute('aria-label', action.title);
     // Mantener la selección del textarea es parte del gesto de formato.
@@ -7890,61 +8376,6 @@ function startEditing(
     });
     formatBar.append(button);
   }
-
-  const headings = document.createElement('div');
-  headings.className = 'format-heading';
-  const headingButtons: HTMLButtonElement[] = [];
-  const updateHeadingState = (): void => {
-    const level = /^#{1,6} /.exec(editor.value)?.[0].trim().length ?? 0;
-    for (const [index, button] of headingButtons.entries()) {
-      button.setAttribute('aria-pressed', String(level === index + 1));
-    }
-  };
-  const chooseHeading = (
-    prefix: '# ' | '## ' | '### ' | '#### ' | '##### ' | '###### ',
-  ): void => {
-    applyFormat(resolveBlockFormat(prefix, editor.value));
-    updateHeadingState();
-  };
-  const headingMain = document.createElement('button');
-  headingMain.type = 'button';
-  headingMain.className = 'format-action format-heading-main';
-  headingMain.textContent = 'H₁';
-  headingMain.title = 'encabezado de nivel 1';
-  headingMain.setAttribute('aria-label', 'encabezado de nivel 1');
-  headingMain.addEventListener('mousedown', (event) => event.preventDefault());
-  headingMain.addEventListener('click', () => chooseHeading('# '));
-  headingButtons.push(headingMain);
-
-  const headingChoices = document.createElement('details');
-  headingChoices.className = 'format-heading-choices';
-  const headingToggle = document.createElement('summary');
-  headingToggle.className = 'format-action format-heading-toggle';
-  headingToggle.innerHTML = icon('chevron-down');
-  headingToggle.title = 'otros niveles de encabezado';
-  headingToggle.setAttribute('aria-label', 'otros niveles de encabezado');
-  headingToggle.addEventListener('mousedown', (event) => event.preventDefault());
-  const headingMenu = document.createElement('div');
-  headingMenu.className = 'format-heading-menu';
-  const headingLevels = ['## ', '### ', '#### ', '##### ', '###### '] as const;
-  for (const [index, prefix] of headingLevels.entries()) {
-    const heading = document.createElement('button');
-    heading.type = 'button';
-    heading.className = 'format-heading-option';
-    heading.textContent = `H${index + 2}`;
-    heading.setAttribute('aria-label', `encabezado de nivel ${index + 2}`);
-    heading.addEventListener('mousedown', (event) => event.preventDefault());
-    heading.addEventListener('click', () => {
-      headingChoices.removeAttribute('open');
-      chooseHeading(prefix);
-    });
-    headingButtons.push(heading);
-    headingMenu.append(heading);
-  }
-  headingChoices.append(headingToggle, headingMenu);
-  headings.append(headingMain, headingChoices);
-  updateHeadingState();
-  formatBar.prepend(headings);
 
   const requested = typeof placement === 'number' ? placement : placement.start;
   const at = Math.min(requested, editor.value.length);
@@ -7970,7 +8401,9 @@ function startEditing(
 
   /** Volver a la vista de lectura, conservando la grabación por el mismo motivo. */
   const render = (content: string): void => {
-    body.classList.remove('editing');
+    body.classList.remove('editing', 'derived-source-view');
+    formatBarSize.disconnect();
+    formatTrigger.remove();
     body.classList.toggle('code-source', isFencedCodeContent(content));
     const heldAudio = body.querySelector('.audio-block');
     body.innerHTML = '';
@@ -7984,6 +8417,7 @@ function startEditing(
     text.className = 'body-text';
     text.innerHTML = renderMarkdown(content, options);
     decorateCodeBlocks(text);
+    removeInlineDerivedSources(text);
     text.addEventListener('click', (event) => {
       const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a');
       if (link === null || link.classList.contains('media-file')) return;
@@ -8046,6 +8480,8 @@ function startEditing(
   // caer exactamente en ese bloque. Mientras el selector está abierto, ese blur
   // pertenece al gesto de adjuntar y no debe cerrar la edición.
   let choosingAttachment = false;
+  let choosingTable = false;
+  let choosingIframe = false;
   // Una salida estructural no vuelve a dibujar aquí: la página se recarga entera
   // y sería dibujar algo que está a punto de desaparecer.
   let leaving = false;
@@ -8093,8 +8529,18 @@ function startEditing(
     if (leaving) return;
     leaving = true;
     window.clearTimeout(timer);
-    void flush(session.leave()).then(() => render(session.saved()));
+    void flush(session.leave()).then((saved) => {
+      if (!saved) {
+        leaving = false;
+        editor.focus();
+        return;
+      }
+      if (sourceMode) callbacks.onReload(null);
+      else render(session.saved());
+    });
   };
+
+  if (sourceMode) body.append(derivedSourceFoot('representation', leave));
 
   /** Una tecla estructural guarda lo pendiente antes de cambiar el árbol. */
   const structural = (outcome: KeyOutcome): void => {
@@ -8203,6 +8649,49 @@ function startEditing(
     if (acts === 'formato') {
       scheduleSave();
       editor.focus();
+      return;
+    }
+
+    if (acts === 'tabla') {
+      const at = applied.cursor;
+      // El temporizador nació al teclear `/tabla`; la elección modal todavía no
+      // ha escrito nada y no debe guardar el comando a medio consumir.
+      window.clearTimeout(timer);
+      choosingTable = true;
+      pickTableShape(editor, (rows, columns, axis) => {
+        choosingTable = false;
+        const written = newMarkdownTableSource(rows, columns, axis);
+        editor.value = editor.value.slice(0, at) + written + editor.value.slice(at);
+        const after = at + written.length;
+        editor.setSelectionRange(after, after);
+        session.type(editor.value);
+        autosize();
+        scheduleSave();
+        editor.focus();
+      }, () => {
+        choosingTable = false;
+        editor.focus();
+      });
+      return;
+    }
+
+    if (acts === 'iframe') {
+      const at = applied.cursor;
+      window.clearTimeout(timer);
+      choosingIframe = true;
+      pickIframe(editor, (source) => {
+        choosingIframe = false;
+        editor.value = editor.value.slice(0, at) + source + editor.value.slice(at);
+        const after = at + source.length;
+        editor.setSelectionRange(after, after);
+        session.type(editor.value);
+        autosize();
+        scheduleSave();
+        editor.focus();
+      }, () => {
+        choosingIframe = false;
+        editor.focus();
+      });
       return;
     }
 
@@ -8562,7 +9051,7 @@ function startEditing(
 
   editor.addEventListener('blur', () => {
     closeList();
-    if (choosingAttachment) return;
+    if (choosingAttachment || choosingTable || choosingIframe) return;
     leave();
   });
 

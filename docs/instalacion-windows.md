@@ -32,6 +32,37 @@ Una release sin firmar **no ofrece actualización automática** (no se genera
 volver a descargar el instalador desde
 [GitHub Releases](https://github.com/mediafranca/vera/releases/latest).
 
+Vera recibe versiones frecuentes. Conviene revisar periódicamente esa página y
+leer las notas de la versión antes de actualizar; una descarga nueva reemplaza
+el programa, no la memoria.
+
+## Actualizar sin perder la memoria
+
+### Instalación normal
+
+1. Descarga `Vera Setup <versión> (sin firmar).exe` desde la última release.
+2. Verifica su SHA-256 como se explica arriba.
+3. Ejecuta el instalador con la misma cuenta de Windows y elige la misma
+   instalación. **No desinstales Vera primero.**
+4. Abre Vera: Desktop encuentra la base existente en
+   `%LOCALAPPDATA%\Vera\data\vera.sqlite` y omite la creación de una memoria
+   inicial.
+
+El instalador no contiene una base `vera.sqlite` y no tiene nada que copiar
+encima del corpus. El desinstalador también está configurado para conservar los
+datos de la aplicación. Una versión nueva puede aplicar migraciones de esquema
+pendientes al abrir, pero cada migración se ejecuta dentro de una transacción:
+un fallo no deja media migración aplicada.
+
+### Edición portable
+
+El portable busca la memoria en `VeraData` junto al ejecutable. Para actualizar,
+reemplaza el `.exe` anterior por el nuevo **dentro de la misma carpeta** y deja
+`VeraData` intacto. Si pones el ejecutable nuevo en otro directorio, Vera no
+pisará la memoria antigua: sencillamente no la encontrará y mostrará la primera
+apertura. Volver a la carpeta anterior —o mover `VeraData` completa junto al
+nuevo ejecutable— recupera esa memoria.
+
 ## Artefactos
 
 - `Vera Setup <versión>.exe`: instalación por persona mediante NSIS. El corpus

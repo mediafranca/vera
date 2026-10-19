@@ -138,6 +138,24 @@ preliminares no entran al canal estable. La memoria permanece en su directorio:
 - macOS: `~/Library/Application Support/Vera/data`;
 - Windows portable: `VeraData` junto al ejecutable.
 
+Esto vale también para la actualización manual de una release sin firmar:
+
+- **Windows instalado:** se ejecuta el NSIS nuevo sobre la instalación anterior,
+  con la misma cuenta; no hace falta desinstalar. `%LOCALAPPDATA%\Vera` queda
+  fuera del payload y se vuelve a abrir al terminar.
+- **macOS:** se reemplaza `Vera.app` en Aplicaciones; la memoria permanece en
+  Application Support.
+- **Linux:** se instala el `.deb` nuevo o se sustituye el AppImage; ninguno de
+  los dos lleva una base de datos ni borra la configuración de la persona.
+- **Windows portable:** se reemplaza el ejecutable dentro de su carpeta y se
+  conserva `VeraData`. Un portable abierto en otra carpeta verá otra ubicación;
+  no borra la anterior, pero tampoco la descubre automáticamente.
+
+Como Vera todavía cambia con rapidez y las releases alfa no reciben avisos
+automáticos, la documentación pública debe llevar siempre a
+[`releases/latest`](https://github.com/mediafranca/vera/releases/latest) y pedir
+que se revisen con frecuencia las notas de versión.
+
 ## Crear una release
 
 Antes del tag:

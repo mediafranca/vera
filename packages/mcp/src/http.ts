@@ -44,7 +44,11 @@ async function bodyOf(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-export async function handlePublicMCP(request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function handleMCP(
+  request: IncomingMessage,
+  response: ServerResponse,
+  veraUrl: string,
+): Promise<void> {
   if (request.url !== '/mcp') {
     answer(response, 404, { error: 'not found' });
     return;
@@ -66,7 +70,7 @@ export async function handlePublicMCP(request: IncomingMessage, response: Server
     ? clientHeader.trim()
     : 'mcp-http';
   const connection = connectionFrom({
-    VERA_URL: process.env.VERA_URL ?? 'http://127.0.0.1:4173',
+    VERA_URL: veraUrl,
     VERA_CLIENT: client,
     VERA_TOKEN: token,
   });
@@ -117,6 +121,17 @@ export async function handlePublicMCP(request: IncomingMessage, response: Server
   } finally {
     await transport.close();
   }
+}
+
+/** Crea una puerta MCP ligada a una Vera local concreta. */
+export function createMCPHandler(
+  veraUrl: string,
+): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
+  return (request, response) => handleMCP(request, response, veraUrl);
+}
+
+export async function handlePublicMCP(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  return handleMCP(request, response, process.env.VERA_URL ?? 'http://127.0.0.1:4173');
 }
 
 if (process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1], 'file:').href) {

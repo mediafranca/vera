@@ -749,34 +749,55 @@ button { touch-action: manipulation; }
 .format-bar {
   --format-bar-height: 2.15rem;
   --format-bar-gap: 0.45rem;
+  --format-bar-measured-height: var(--format-bar-height);
   /*
-   * La barra pertenece al bloque, pero no ocupa una línea suya.
+   * La barra pertenece al bloque, pero no a su altura. Vive en un ancla absoluta
+   * que cubre el editor sin participar de su composición; la traslación la
+   * coloca encima, invadiendo el bloque anterior.
    *
-   * `sticky` la deja alineada con la caja de edición y, al recorrer un bloque
-   * largo, la detiene arriba del panel de texto. La traslación la pone sobre el
-   * bloque; el margen negativo devuelve exactamente su alto al flujo. Abrirla y
-   * cerrarla no desplaza ni el editor ni ninguno de los bloques que siguen.
-   *
-   * El `top` incluye la misma altura y distancia que luego se restan con el
-   * transform: la posición visible resultante queda a .65rem del borde superior
-   * del panel, nunca fuera de la pantalla.
+   * `sticky` actúa antes de `transform`: el `top` reserva su altura medida y la
+   * traslación la resta después. Por eso, al desplazarse, su borde visible queda
+   * a 0.65rem del viewport aunque la barra envuelva en dos filas.
    */
   position: sticky;
-  top: calc(0.65rem + var(--format-bar-height) + var(--format-bar-gap));
-  z-index: 12;
+  top: calc(0.65rem + var(--format-bar-measured-height) + var(--format-bar-gap));
+  z-index: 90;
   display: flex;
+  flex-wrap: wrap;
   box-sizing: border-box;
-  width: max-content;
-  max-width: 100%;
-  height: var(--format-bar-height);
-  margin: 0 0 calc(-1 * var(--format-bar-height));
-  transform: translateY(calc(-100% - var(--format-bar-gap)));
+  /*
+   * Cabe en la columna que realmente tiene el texto.
+   *
+   * En la vista de escritorio con mapa, la columna puede ser más angosta que
+   * el ancho preferido de todos los controles. `max-content` dejaba que esos
+   * controles produjeran desborde horizontal en `#text`; al enfocar uno, el
+   * navegador desplazaba el panel entero y parecía que el texto había saltado
+   * hacia la derecha. La barra ocupa como máximo su ancho natural y sus botones
+   * ceden dentro de ella, de modo que el documento nunca gana otro eje.
+   */
+  width: min(calc(100% - 1rem), 27.2rem);
+  min-height: var(--format-bar-height);
+  margin: 0;
+  transform: translateY(calc(0px - var(--format-bar-measured-height) - var(--format-bar-gap)));
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 5px;
   background: var(--bg-raised);
   box-shadow: 0 0.3rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
   scrollbar-width: none;
+  pointer-events: auto;
+}
+
+.format-bar-anchor {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.format-bar[hidden] {
+  display: none;
 }
 
 .format-bar::-webkit-scrollbar {
@@ -784,15 +805,27 @@ button { touch-action: manipulation; }
 }
 
 .format-action {
-  flex: 0 0 auto;
-  min-width: 2.35rem;
-  height: 100%;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex: 1 1 2.35rem;
+  min-width: 1.7rem;
+  height: var(--format-bar-height);
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
   background: transparent;
   color: inherit;
   font: 600 .9rem/1 var(--font-ui);
   cursor: pointer;
+}
+
+.format-action .icon {
+  position: relative;
+  z-index: 2;
+  width: 1.05rem;
+  height: 1.05rem;
+  pointer-events: none;
 }
 
 .format-action:last-child {
@@ -821,70 +854,6 @@ button { touch-action: manipulation; }
 .format-superscript,
 .format-subscript {
   font-size: 0.78rem;
-}
-
-.format-heading {
-  display: flex;
-  flex: 0 0 auto;
-  height: 100%;
-}
-
-.format-heading-choices {
-  position: relative;
-  height: 100%;
-}
-
-.format-heading-choices > summary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.2rem;
-  padding: 0;
-  list-style: none;
-}
-
-.format-heading-choices > summary::-webkit-details-marker {
-  display: none;
-}
-
-.format-heading-toggle .icon {
-  width: 0.75em;
-  height: 0.75em;
-}
-
-.format-heading-menu {
-  position: absolute;
-  top: calc(100% + 0.3rem);
-  left: 0;
-  display: grid;
-  min-width: 3.4rem;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
-  border-radius: 5px;
-  background: var(--bg-raised);
-  box-shadow: 0 0.3rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
-}
-
-.format-heading-option {
-  min-height: 2rem;
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
-  background: transparent;
-  color: inherit;
-  font: 600 0.82rem/1 var(--font-ui);
-  cursor: pointer;
-}
-
-.format-heading-option:last-child {
-  border-bottom: 0;
-}
-
-.format-heading-option:hover,
-.format-heading-option:focus-visible,
-.format-heading-option[aria-pressed='true'],
-.format-heading-main[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  outline: none;
 }
 
 /* --- La lectura de una página ------------------------------------------ */
@@ -1512,15 +1481,20 @@ button { touch-action: manipulation; }
 
 .trail-step {
   pointer-events: auto;
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-width: 0;
   height: 1.4rem;
   box-sizing: border-box;
-  border: 1px solid var(--rule);
+  /* El borde abraza asa, nombre y eliminación como una sola unidad. `--rule`
+     era demasiado tenue sobre el mapa oscuro y los tres gestos parecían piezas
+     sueltas. */
+  border: 1px solid color-mix(in srgb, var(--text-dim) 58%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
-  overflow: hidden;
+  overflow: visible;
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--bg) 55%, transparent);
 }
 
 .trail-step:hover,
@@ -1531,12 +1505,48 @@ button { touch-action: manipulation; }
 /* Dentro del salchichón hay tres gestos, pero una sola figura. El nombre deja
    de traer su propia pastilla: el borde pertenece al conjunto entero. */
 .trail-step .trail-pill {
+  min-width: 0;
   height: 100%;
   border: 0;
   border-radius: 0;
   background: none;
-  padding-inline: 0.25rem;
+  /* El asa conserva todo su blanco táctil. El título ocupa parte del aire que
+     antes se sumaba a su costado derecho: aproximadamente 0,7ex menos sin
+     superponer controles ni encoger el blanco de arrastre. */
+  padding-left: max(0px, calc(0.25rem - 0.7ex));
+  padding-right: 0.25rem;
 }
+
+/* Plex se posa ópticamente bajo dentro de una cápsula tan baja. El botón y su
+   área pulsable permanecen centrados; sólo la tinta del rótulo asciende dos
+   píxeles para equilibrarse con la x, que ya ocupa el centro correcto. */
+.trail-step .trail-label {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateY(-0.12rem);
+}
+
+/* El arrastre marca el intersticio donde caerá la parada. No colorea una
+   pastilla completa: la decisión es «antes/después», no «sobre». */
+.trail-step.drop-before::before,
+.trail-step.drop-after::after {
+  content: '';
+  position: absolute;
+  top: -0.18rem;
+  bottom: -0.18rem;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0.35rem color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.trail-step.drop-before::before { left: -0.2rem; }
+.trail-step.drop-after::after { right: -0.2rem; }
 
 .trail-step.moving {
   opacity: 0.55;
@@ -1789,7 +1799,95 @@ button { touch-action: manipulation; }
   padding: 2rem 2.5rem 6rem;
 }
 
-/* El menú de la página se ancla a la esquina de la cabecera. */
+/*
+ * Tirar de la lectura para pedir nuevamente su versión canónica.
+ *
+ * Comparte el área del texto, pero no forma parte del documento: redibujar una
+ * página no lo borra y su tamaño no mueve una sola línea. El desplazamiento lo
+ * entrega el gesto como variable; escondido queda entero sobre el borde y va
+ * asomando con la resistencia de la mano.
+ */
+#pull-refresh {
+  --pull-distance: 0px;
+  --pull-turn: 0deg;
+  grid-area: text;
+  align-self: start;
+  justify-self: center;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: 0.35rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  box-shadow: 0 0.3rem 1rem rgb(0 0 0 / 14%);
+  pointer-events: none;
+  opacity: 1;
+  transform: translateY(calc(-100% + var(--pull-distance)));
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+#pull-refresh.retreating {
+  transition: transform 180ms ease, opacity 180ms ease, color 120ms ease,
+    border-color 120ms ease;
+}
+
+#pull-refresh[hidden],
+#vera-root[data-layout='graph_only'] #pull-refresh {
+  display: none;
+}
+
+#pull-refresh.ready {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.pull-refresh-icon,
+.pull-refresh-icon .icon {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.pull-refresh-icon {
+  transform: rotate(var(--pull-turn));
+}
+
+#pull-refresh.refreshing .pull-refresh-icon {
+  animation: pull-refresh-spin 700ms linear infinite;
+}
+
+#pull-refresh.failed {
+  color: var(--warm);
+  border-color: var(--warm);
+}
+
+.pull-refresh-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes pull-refresh-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #pull-refresh { transition: none; }
+  #pull-refresh.refreshing .pull-refresh-icon { animation: none; }
+}
+
+/* El encabezado reúne el título y una sola hilera de acciones de página. */
 .page-header {
   position: relative;
 }
@@ -1799,30 +1897,93 @@ button { touch-action: manipulation; }
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.45rem;
-  padding-right: 2rem;
 }
 
-.page-heading.has-presentation {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+.page-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: start;
+  gap: 0.15rem;
+  padding-top: 0.1rem;
 }
 
-.present-page {
-  align-self: center;
-  margin-top: -0.15rem;
-  padding: 0.42rem 0.8rem;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--bg);
-  font: 600 0.78rem/1 var(--font-ui);
+.read-page,
+.read-block {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
   cursor: pointer;
+  position: relative;
+  overflow: visible;
 }
 
-.present-page:hover,
-.present-page:focus-visible {
-  background: var(--text);
-  border-color: var(--text);
+.read-page {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.read-page .icon,
+.read-block .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.read-page:hover,
+.read-page:focus-visible,
+.read-page[data-speech-state]:not([data-speech-state='play']),
+.read-block:hover,
+.read-block:focus-visible,
+.read-block[data-speech-state]:not([data-speech-state='play']) {
+  color: var(--accent);
   outline: none;
+}
+
+.read-block {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.05rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.block:hover > .read-block,
+.block:focus-within > .read-block,
+.read-block[data-speech-state]:not([data-speech-state='play']) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .read-block { opacity: 0.68; }
+}
+
+.speech-wait {
+  position: absolute;
+  z-index: 12;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  width: max-content;
+  max-width: min(18rem, 70vw);
+  padding: 0.32rem 0.48rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.35rem;
+  background: var(--bg-raised);
+  box-shadow: 0 0.35rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text-dim);
+  font: 0.68rem/1 var(--font-ui);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.read-block .speech-wait {
+  top: auto;
+  bottom: calc(100% + 0.25rem);
 }
 
 html.presenting,
@@ -1860,9 +2021,9 @@ html.presenting body {
   width: 100%;
   height: 100%;
   --content-width: min(44em, 100%);
-  --presentation-slide-top: clamp(3.25rem, 5vh, 4.5rem);
+  --presentation-slide-top: clamp(4rem, 7vh, 5.5rem);
   --presentation-slide-inline: clamp(1rem, 3vw, 3rem);
-  --presentation-slide-bottom: clamp(1rem, 3vh, 2rem);
+  --presentation-slide-bottom: clamp(4rem, 7vh, 5.5rem);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 2rem;
@@ -1991,8 +2152,14 @@ html.presenting body {
 }
 
 .vera-presentation .presentation-spatial > .presentation-block > .body {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: clamp(0.35rem, 1vh, 0.75rem);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 0 !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -2015,11 +2182,27 @@ html.presenting body {
   margin: 0 !important;
 }
 
-.vera-presentation .presentation-spatial .body > :is(.drawn, .mermaid-figure, .executable, .embedded-map) {
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium {
+  flex: 1 1 0;
   width: 100% !important;
-  height: 100% !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
   max-width: none !important;
   max-height: none !important;
+  margin: 0 !important;
+}
+
+/* El alto porcentual de un recinto sólo es resoluble cuando su medio principal
+   ya recibió el resto finito de la columna. `min-height: 0` y este recorte
+   evitan que la relación intrínseca agrande el flex item y pase bajo Reveal. */
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium:is(.executable, .embed, .embedded-map) {
+  overflow: hidden;
+}
+
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium:is(p, a) {
+  display: grid;
+  place-items: center;
   margin: 0 !important;
 }
 
@@ -2061,6 +2244,28 @@ html.presenting body {
   border-radius: 0 !important;
   outline: 0 !important;
   box-shadow: none !important;
+}
+
+/* Una página externa incrustada ocupa el escenario como cualquier otro medio.
+   Su procedencia sigue visible en un pie pequeño; la fuente desplegable no es
+   parte de la lámina. */
+.vera-presentation .presentation-spatial .body .embed {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+}
+
+.vera-presentation .presentation-spatial .body .embed iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+}
+
+.vera-presentation .presentation-spatial .body .embed details {
+  display: none;
 }
 
 /* En edición manda `alto`; en Presentación manda el escenario disponible. */
@@ -2224,7 +2429,7 @@ html.presenting body {
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
-  margin-top: -0.15rem;
+  margin: 0;
   padding: 0.28rem;
   border: 0;
   border-radius: 50%;
@@ -2565,6 +2770,8 @@ html.presenting body {
 .gloss-toggle {
   width: 1.5rem;
   height: 1.5rem;
+  align-self: flex-start;
+  margin-top: calc(var(--thread-y) - 0.75rem);
   padding: 0.18rem;
   border: 0;
   background: transparent;
@@ -2624,6 +2831,28 @@ html.presenting body {
 
 .block:has(> .block-gloss.open) {
   flex-wrap: wrap;
+}
+
+/*
+ * En la página completa una superficie ancha no deja su glosa detrás de una
+ * marca. La glosa es parte de la lectura y cae debajo del medio, donde hay
+ * ancho para ella incluso en una tableta. La columna marginal de la prosa sí
+ * sigue esperando el ancho mayor de abajo: son composiciones distintas.
+ */
+#vera-root[data-layout='text_only'] .block.wide-content:has(> .block-gloss:not(.empty)) {
+  flex-wrap: wrap;
+}
+
+#vera-root[data-layout='text_only'] .block.wide-content > .block-gloss:not(.empty) {
+  display: block;
+}
+
+#vera-root[data-layout='text_only'] .block.wide-content > .block-gloss {
+  width: calc(100% - var(--rail) - var(--rail-gap) - 0.65rem);
+}
+
+#vera-root[data-layout='text_only'] .block.wide-content > .gloss-toggle {
+  display: none;
 }
 
 .gloss-editor {
@@ -2694,9 +2923,6 @@ html.presenting body {
     display: none;
   }
 
-  #vera-root[data-layout='text_only'] .block.wide-content > .block-gloss {
-    width: calc(100% - var(--rail) - var(--rail-gap) - 0.65rem);
-  }
 }
 
 /* El control de plegado. Está siempre en la columna —vacío en las hojas— para
@@ -3316,6 +3542,48 @@ html.presenting body {
   box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
 }
 
+.table-shape-dialog {
+  width: min(25rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: .55rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  box-shadow: 0 .8rem 2.4rem rgb(0 0 0 / 25%);
+  font-family: var(--font-ui);
+}
+
+.table-shape-dialog::backdrop { background: rgb(0 0 0 / 28%); }
+.table-shape-dialog form { display: grid; gap: 1rem; }
+.table-shape-dialog h2 { margin: 0; font: 600 1rem/1.25 var(--font-ui); }
+.table-shape-dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.table-shape-dimensions label { display: grid; gap: .3rem; font-size: .8rem; color: var(--text-dim); }
+.table-shape-dimensions input {
+  min-width: 0;
+  padding: .45rem .55rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.table-shape-dialog fieldset { display: flex; gap: 1rem; margin: 0; padding: 0; border: 0; }
+.table-shape-dialog legend { margin-bottom: .4rem; color: var(--text-dim); font-size: .8rem; }
+.table-shape-dialog fieldset label { display: flex; align-items: center; gap: .35rem; font-size: .85rem; }
+
+.iframe-dialog-fields { display: grid; gap: .75rem; }
+.iframe-dialog-fields label { display: grid; gap: .3rem; font-size: .8rem; color: var(--text-dim); }
+.iframe-dialog-fields input {
+  min-width: 0;
+  padding: .55rem .6rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.iframe-dialog-note { margin: 0; color: var(--text-dim); font-size: .78rem; line-height: 1.4; }
+
 .block-menu {
   position: absolute;
   z-index: 40;
@@ -3657,6 +3925,11 @@ html.presenting body {
   font-family: var(--font-mono);
 }
 
+/* Una fuente especializada conserva voz de código aunque sea una URL sola. */
+.body.derived-source-view > .editor {
+  font-family: var(--font-mono);
+}
+
 /*
  * Dónde se está escribiendo, dicho sólo con color.
  *
@@ -3669,6 +3942,7 @@ html.presenting body {
  * ninguna medida del renglón depende de que esta regla exista.
  */
 .body.editing {
+  position: relative;
   background: color-mix(in srgb, var(--accent) 9%, transparent);
   border-radius: 3px;
 }
@@ -3713,15 +3987,28 @@ html.presenting body {
  * excluyéndolos uno a uno a golpe de especificidad.
  */
 .wiki,
-.body a[href]:not([class]) {
+.body a[href]:not([class]),
+.external-link {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* Visitado tampoco lo cambia: el morado del navegador es del navegador. */
-.body a[href]:not([class]):visited {
+.body a[href]:not([class]):visited,
+.external-link:visited {
   color: var(--accent);
+}
+
+/* La salida se distingue por dirección, no por una segunda paleta. El pequeño
+   Lucide permanece unido al último fragmento del rótulo y no altera la altura
+   de la línea ni la pronunciación del enlace. */
+.external-link .external-link-mark {
+  display: inline-block;
+  width: 0.78em;
+  height: 0.78em;
+  margin-inline-start: 0.24em;
+  vertical-align: -0.06em;
 }
 
 /*
@@ -3748,7 +4035,8 @@ html.presenting body {
 }
 
 .wiki:hover,
-.body a[href]:not([class]):hover {
+.body a[href]:not([class]):hover,
+.external-link:hover {
   border-bottom-color: var(--accent);
 }
 
@@ -4014,6 +4302,9 @@ pre.copyable-code {
 
 .body table {
   border-collapse: collapse;
+  width: 100%;
+  min-width: 100%;
+  table-layout: auto;
   font-family: var(--font-ui);
   font-size: 0.88rem;
 }
@@ -4024,12 +4315,23 @@ pre.copyable-code {
   padding: 0.3rem 0.55rem;
   text-align: left;
   vertical-align: top;
+  /* `.body` parte cualquier token para que una URL no ensanche la página. Una
+     tabla necesita la regla contraria: primero preserva las palabras y el ancho
+     mínimo de cada columna; si el conjunto ya no cabe, `.table-scroll` absorbe
+     el desborde. Así una matriz ancha se desplaza, pero nunca convierte un
+     encabezado o una palabra corriente en una columna de letras sueltas. */
+  min-width: 7rem;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .body th {
   background: var(--bg-raised);
   font-weight: 600;
 }
+
+.body :is(th, td)[data-align='center'] { text-align: center; }
+.body :is(th, td)[data-align='right'] { text-align: right; }
 
 .body img {
   max-width: 100%;
@@ -4601,15 +4903,10 @@ body:has(.embedded-map-frame) {
 
   .page-heading {
     align-items: start;
-    padding-right: 1.65rem;
   }
 
   .page-header h1 {
     font-size: clamp(1.65rem, 9vw, 2.2rem);
-  }
-
-  .properties-toggle {
-    margin-top: 0.05rem;
   }
 
   /* Ya no es una fila aparte: son tres botones más de la única que hay. */
@@ -5184,13 +5481,17 @@ body.settings-open #text {
  * lo que la página dice.
  */
 .page-more {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
+  position: static;
+  display: inline-flex;
   align-items: center;
-  padding: 0.25rem;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0;
+  padding: 0.28rem;
   border: 0;
+  border-radius: 50%;
   background: none;
   color: var(--text-dim);
   cursor: pointer;
@@ -5725,6 +6026,49 @@ body.settings-open #text {
 .bullet.generated::before {
   background: none;
   box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/*
+ * Al escribir aparece una herramienta fuera del esquema. No sustituye la
+ * viñeta: ésta conserva su menú, su procedencia y su función de arrastre. El
+ * margen izquierdo negativo y su compensación derecha hacen sitio al botón sin
+ * desplazar el chevron, la viñeta ni el texto; también en el primer nivel queda
+ * más afuera que todos ellos. El icono va en negativo para acompañar los temas.
+ */
+.format-tools-trigger {
+  position: sticky;
+  top: 0.65rem;
+  z-index: 91;
+  display: grid;
+  place-items: center;
+  align-self: flex-start;
+  flex: none;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin-top: calc(var(--thread-y) - 0.825rem);
+  margin-left: -2.5rem;
+  margin-right: 0.55rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--text) 24%, var(--accent));
+  border-radius: 50%;
+  color: var(--bg);
+  background: var(--accent);
+  box-shadow: 0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.format-tools-trigger .icon {
+  width: 0.92rem;
+  height: 0.92rem;
+  margin: 0;
+}
+
+.format-tools-trigger:is(:hover, :focus-visible) {
+  outline: none;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent),
+    0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
 }
 
 /* --- La bitácora, leída de corrido ---------------------------------------- */
@@ -6796,6 +7140,10 @@ html[data-working-slow='true']::after {
   aspect-ratio: 16 / 9;
 }
 
+.google-map iframe {
+  height: clamp(20rem, 52vh, 36rem);
+}
+
 .embed figcaption {
   margin-top: 0.25rem;
   font-family: var(--font-mono);
@@ -6804,6 +7152,12 @@ html[data-working-slow='true']::after {
   display: flex;
   align-items: baseline;
   gap: 0.65rem;
+}
+
+.embed figcaption .embed-policy {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.15em;
 }
 
 .embed details,
@@ -7099,11 +7453,6 @@ html[data-working-slow='true']::after {
   bottom: calc(1rem + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.canvas-tools {
-  display: flex;
   overflow: hidden;
   border: 1px solid var(--accent);
   border-radius: 0.3ex;
@@ -7124,15 +7473,15 @@ html[data-working-slow='true']::after {
 .canvas-tool {
   display: grid;
   place-items: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0.45rem;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
-.canvas-tool + .canvas-tool {
+.canvas-controls > .canvas-tool + .canvas-tool {
   border-left: 1px solid var(--accent);
 }
 
@@ -7140,9 +7489,14 @@ html[data-working-slow='true']::after {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.canvas-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .canvas-tool svg {
-  width: 1rem;
-  height: 1rem;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 /*
@@ -7155,16 +7509,11 @@ html[data-working-slow='true']::after {
 .canvas-button.done {
   background: transparent;
   color: var(--accent);
-  display: grid;
-  place-items: center;
-  width: 1.65rem;
-  height: 1.65rem;
-  padding: 0.18rem;
 }
 
 .canvas-button.done svg {
-  width: 0.72rem;
-  height: 0.72rem;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .canvas-sheet.erasing {
@@ -7207,31 +7556,55 @@ html[data-working-slow='true']::after {
 }
 
 /*
- * El pie de un dibujo: cuándo se hizo, y por dónde se vuelve a él.
+ * El pie común de toda representación derivada.
  *
- * Debajo y no encima. Un dibujo se ve del tamaño de sus trazos —@invariant
- * ItsOwnSizePlusAMargin— y un garabato de dos centímetros es un tamaño legítimo:
- * cualquier cosa puesta sobre él tapa justo el trazo que alguien mira antes de
- * decidir si lo retoca.
- *
- * Fecha y lápiz se recogen juntos al extremo derecho. Son información y acción
- * secundarias: no abren una segunda línea de lectura bajo la figura.
+ * Debajo y no encima: el mismo sitio sirve para video, Mermaid, HTML, mapa,
+ * proceso y dibujo sin tapar el objeto. Fuente queda a la izquierda; las
+ * acciones propias del medio se recogen a la derecha.
  */
-.drawn-foot {
+.derived-source-foot {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  /* Un solo espacio visual entre la fecha y su gesto de edición. */
+  justify-content: flex-start;
   gap: 0.25rem;
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  margin: -0.1rem 0 0.5rem;
+  margin: 0.15rem 0 0.5rem;
   font-family: var(--font-ui);
 }
 
+.derived-source-toggle {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0.48rem;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  font: 650 0.68rem/1 var(--font-mono);
+  cursor: pointer;
+}
+
+.derived-source-toggle:hover,
+.derived-source-toggle:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.derived-source-toggle .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.drawn-foot { margin-top: -0.1rem; }
+
 /* La fecha se lee y no se pulsa: del tamaño y el color de lo que acompaña. */
 .drawn-when {
+  margin-left: auto;
   font-size: 0.82rem;
   color: var(--text-dim);
 }
@@ -7259,6 +7632,142 @@ html[data-working-slow='true']::after {
   height: 1.1rem;
 }
 
+/* La cuadrícula editada sigue ocupando el lugar de la tabla, no un diálogo. */
+.table-visual-edit {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-left: auto;
+  padding: .55rem;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.table-visual-edit:hover,
+.table-visual-edit:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.table-visual-edit .icon { width: 1.05rem; height: 1.05rem; }
+
+.table-editor {
+  display: grid;
+  gap: .55rem;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--font-ui);
+}
+
+.table-editor-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem .65rem;
+  padding: .35rem;
+  border-block: 1px solid var(--rule);
+  background: var(--bg);
+}
+
+.table-editor-tool-group {
+  display: flex;
+  align-items: center;
+  gap: .2rem;
+}
+
+.table-editor-action {
+  display: grid;
+  place-items: center;
+  appearance: none;
+  min-height: 2rem;
+  padding: .35rem .55rem;
+  border: 1px solid transparent;
+  border-radius: .35rem;
+  background: transparent;
+  color: var(--text-dim);
+  font: 600 .76rem/1 var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.table-editor-action .icon { width: 1rem; height: 1rem; }
+
+.table-editor-action:hover,
+.table-editor-action:focus-visible,
+.table-editor-action[aria-pressed='true'] {
+  border-color: var(--rule);
+  background: var(--bg-raised);
+  color: var(--accent);
+}
+
+.table-editor-action:disabled { opacity: .3; cursor: default; }
+
+.table-editor-status {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: .75rem;
+  white-space: nowrap;
+}
+
+.table-editor-scroll {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.body .table-editor-grid {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.body .table-editor-grid th,
+.body .table-editor-grid td {
+  min-width: 8rem;
+  padding: 0;
+  background: transparent;
+}
+
+.body .table-editor-grid th { background: var(--bg-raised); }
+
+.table-cell-input {
+  appearance: none;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 8rem;
+  min-height: 2.45rem;
+  padding: .45rem .55rem;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: .88rem/1.35 var(--font-ui);
+  text-align: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  resize: none;
+}
+
+.table-cell-input:focus {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.table-editor-foot { margin-top: -.25rem; }
+
+@media (max-width: 700px) {
+  .table-editor-tools { align-items: flex-start; }
+  .table-editor-status { width: 100%; margin-left: 0; }
+  .table-editor-action { min-height: 2.35rem; }
+}
+
 /* Un proceso conserva la línea del outline y despliega su mesa dentro del flujo. */
 .process-body {
   min-width: 0;
@@ -7271,35 +7780,6 @@ html[data-working-slow='true']::after {
   font-family: var(--font-ui);
   margin-block: .2rem .55rem;
 }
-
-.process-source-dialog {
-  width: min(42rem, calc(100vw - 2rem));
-  border: 1px solid var(--rule);
-  border-radius: .65rem;
-  background: var(--bg);
-  color: var(--text);
-  padding: 1.15rem;
-  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / .2);
-}
-.process-source-dialog::backdrop { background: rgb(0 0 0 / .45); }
-.process-source-dialog h2 { margin: 0 0 .35rem; font: 600 1.25rem/1.2 var(--font-ui); }
-.process-source-dialog p { margin: .35rem 0 .9rem; color: var(--text-dim); }
-.process-source-dialog textarea {
-  display: block;
-  width: 100%;
-  min-height: 11rem;
-  resize: vertical;
-  border: 1px solid var(--rule);
-  border-radius: .4rem;
-  padding: .8rem;
-  background: var(--paper, var(--bg));
-  color: var(--text);
-  font: .92rem/1.5 var(--font-mono, ui-monospace, monospace);
-}
-.process-source-dialog textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.process-source-dialog textarea[aria-invalid='true'] { border-color: var(--warm); }
-.process-source-dialog .process-source-feedback { min-height: 1.25rem; color: var(--warm); }
-.process-source-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; }
 
 .process-header {
   align-items: center;
@@ -8834,6 +9314,44 @@ html[data-working-slow='true']::after {
   outline: none;
 }
 
+.conecta-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.8rem;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+.conecta-scope input {
+  accent-color: var(--accent);
+}
+
+.conecta-clients {
+  margin: 0 0 1.4rem;
+}
+
+.conecta-clients h4 {
+  margin: 0 0 0.45rem;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.conecta-client-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--rule);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
 /* Lo que nace: el aviso, el bloque para pegar y el botón de copiar. */
 .connect-born:not(:empty) {
   border: 1px solid var(--accent);
@@ -8849,6 +9367,185 @@ html[data-working-slow='true']::after {
 .connect-born .governing-note {
   margin: 0;
   color: var(--text);
+}
+
+.connect-born h4 {
+  margin: 0.25rem 0 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+}
+
+.connect-fields {
+  width: 100%;
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.2fr);
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+.connect-fields dt,
+.connect-fields dd {
+  margin: 0;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.connect-fields dt {
+  padding-right: 0.8rem;
+  color: var(--text-dim);
+}
+
+.connect-fields dd {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: var(--text);
+}
+
+.connect-fields code {
+  overflow-wrap: anywhere;
+}
+
+.connect-born details {
+  width: 100%;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--rule);
+}
+
+.connect-born details > summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .connect-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .connect-fields dt {
+    padding-bottom: 0.05rem;
+    border-bottom: 0;
+  }
+
+  .connect-fields dd {
+    padding-top: 0.15rem;
+  }
+}
+
+.connect-next {
+  margin: 0.2rem 0 0;
+  padding-left: 1.35rem;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.connection-diagnostics {
+  margin: 0.8rem 0 1.4rem;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 0.55rem 0;
+  font-family: var(--font-ui);
+}
+
+.connection-diagnostics > summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.connection-diagnostics[open] > summary {
+  margin-bottom: 0.8rem;
+  color: var(--text);
+}
+
+.access-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+}
+
+.access-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.75rem;
+  align-content: start;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--text-dim);
+  border-radius: 4px;
+  padding: 0.65rem 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+.access-card.access-good { border-left-color: var(--accent); }
+.access-card.access-off { opacity: 0.68; }
+
+.access-card > strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.access-status {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.access-card > p,
+.access-card > details {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.access-card > details > summary {
+  margin-top: 0.35rem;
+  cursor: pointer;
+}
+
+.access-credential {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--rule);
+}
+
+.access-credential > span {
+  grid-column: 1 / -1;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+}
+
+.access-alias {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.2rem 0.35rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.access-alias:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 
@@ -9322,7 +10019,7 @@ html[data-working-slow='true']::after {
   width: min(100%, 32rem);
   margin: 0.4rem 0;
 }
-.media-catalogued { cursor: pointer; }
+.media-catalogued:not(audio, video) { cursor: pointer; }
 
 .page-compose-progress {
   position: sticky;

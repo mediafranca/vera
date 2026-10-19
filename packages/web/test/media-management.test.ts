@@ -11,6 +11,11 @@ describe('gestión de archivos desde su incrustación y su catálogo', () => {
     assert.match(outliner, /wireCataloguedMedia[\s\S]*?openMediaDetails\(asset\)/);
   });
 
+  it('no secuestra los controles nativos de audio y video', () => {
+    assert.match(outliner, /element instanceof HTMLAudioElement \|\| element instanceof HTMLVideoElement/);
+    assert.match(outliner, /addEventListener\(playable \? 'dblclick' : 'click'/);
+  });
+
   it('ofrece renombrar, reemplazar y eliminar desde la ficha', () => {
     assert.match(dialog, /Nombre del archivo/);
     assert.match(dialog, /api\.renameMedia\(hash, name\.value\)/);

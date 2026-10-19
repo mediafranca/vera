@@ -288,6 +288,19 @@ rule OwnerRevokesCredential {
         -- happened, and what happened does not stop having happened.
 }
 
+rule OwnerRenamesCredential {
+    when: RenameCredential(owner, token, label)
+
+    requires: instance.owner = owner
+    requires: label != ""
+
+    ensures: token.label = label
+
+    @guidance
+        -- El alias sirve para reconocer una llave en la administración. Cambiarlo
+        -- no cambia a quién representa, qué permite ni el secreto que la prueba.
+}
+
 -- The rule that makes @invariant IdentityComesFromTheCredential operational.
 --
 -- The submitter says who it is and presents its secret, and both have to agree
@@ -446,6 +459,7 @@ surface CredentialAdministration {
 
     provides:
         IssueCredential(owner, agent, scopes, label, digest)
+        RenameCredential(owner, token, label)
         RevokeCredential(owner, token)
         DelegateAct(owner, instance.graph, agent, act, subject, reason)
 

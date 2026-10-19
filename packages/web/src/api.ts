@@ -860,6 +860,21 @@ export const api = {
 
   pages: () => json<PageSummary[]>('/pages'),
 
+  /** Convierte un fragmento breve en voz sin sacarlo de esta Vera. */
+  speak: async (text: string, signal?: AbortSignal): Promise<Blob> => {
+    const response = await fetch('/speech', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? `el servidor contestó ${response.status}`);
+    }
+    return response.blob();
+  },
+
   askLibrarian: (said: { pageId: string; blockId?: string; text: string }) =>
     json<LibrarianRequestView>('/librarian/requests', {
       method: 'POST',
@@ -917,6 +932,12 @@ export const api = {
       method: 'POST',
     }),
 
+  renameCredential: (id: string, label: string) =>
+    json<CredentialView>(`/agents/credentials/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ label }),
+    }),
+
   /** Cercar una credencial: qué clase puede plantar y con qué se marca lo suyo. */
   confine: (id: string, said: { kind: string; source: string | null }) =>
     json(`/agents/credentials/${encodeURIComponent(id)}/confinement`, {
@@ -941,7 +962,7 @@ export const api = {
   connect: (said: {
     name: string;
     client: string;
-    deal: 'leer' | 'propio' | 'todo';
+    deal: 'leer' | 'propio' | 'todo' | 'capturar';
     kind?: string;
     source?: string;
     says?: string;
@@ -1288,9 +1309,16 @@ export const api = {
       body: JSON.stringify({ block, folded }),
     }),
 
-  graph: (centre: string, depth: number, published = false, signal?: AbortSignal) =>
+  graph: (
+    centre: string,
+    depth: number,
+    published = false,
+    detail: 'spatial' | 'd4' = 'spatial',
+    signal?: AbortSignal,
+  ) =>
     json<GraphData>(
-      `/graph/${encodeURIComponent(centre)}?depth=${depth}${published ? '&published=1' : ''}`,
+      `/graph/${encodeURIComponent(centre)}?depth=${depth}${published ? '&published=1' : ''}` +
+        `${detail === 'd4' ? '&detail=d4' : ''}`,
       signal === undefined ? undefined : { signal },
     ),
 

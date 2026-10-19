@@ -1,0 +1,152 @@
+import { afterEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { chmod, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { createLocalSpeech, type SpeechSynthesizer } from '../src/speech.ts';
+
+const roots: string[] = [];
+const running: SpeechSynthesizer[] = [];
+
+afterEach(async () => {
+  for (const speech of running.splice(0)) speech.close();
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+});
+
+describe('voz local', () => {
+  it('mantiene un proceso y reutiliza el audio exacto desde la caché', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vera-speech-'));
+    roots.push(root);
+    const fake = join(root, 'fake-worker.mjs');
+    const worker = join(root, 'worker.py');
+    const counter = join(root, 'jobs.txt');
+    await writeFile(worker, 'worker');
+    await writeFile(fake, `#!/usr/bin/env node
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+process.stdout.write(JSON.stringify({ ready: true }) + '\\n');
+for await (const line of createInterface({ input: process.stdin })) {
+  const job = JSON.parse(line);
+  appendFileSync(${JSON.stringify(counter)}, job.text + '\\n');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  writeFileSync(job.output, Buffer.from('RIFF-voz-' + job.text));
+  process.stdout.write(JSON.stringify({ id: job.id, ok: true }) + '\\n');
+}
+`);
+    await chmod(fake, 0o755);
+
+    const speech = createLocalSpeech({
+      cacheRoot: join(root, 'cache'),
+      python: fake,
+      worker,
+      modelRoot: root,
+    });
+    running.push(speech);
+
+    const first = await speech.speak('La misma frase.');
+    const second = await speech.speak('  La   misma frase.  ');
+
+    assert.equal(first.cached, false);
+    assert.equal(second.cached, true);
+    assert.deepEqual(second.bytes, first.bytes);
+    assert.equal(await readFile(counter, 'utf8'), 'La misma frase.\n');
+    const stopped = new AbortController();
+    stopped.abort();
+    await assert.rejects(speech.speak('La misma frase.', stopped.signal), { name: 'AbortError' });
+  });
+
+  it('no acumula una cola de clics cancelados y conserva sólo el último', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vera-speech-queue-'));
+    roots.push(root);
+    const fake = join(root, 'fake-worker.mjs');
+    const worker = join(root, 'worker.py');
+    const counter = join(root, 'jobs.txt');
+    await writeFile(worker, 'worker');
+    await writeFile(fake, `#!/usr/bin/env node
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+process.stdout.write(JSON.stringify({ ready: true }) + '\\n');
+for await (const line of createInterface({ input: process.stdin })) {
+  const job = JSON.parse(line);
+  appendFileSync(${JSON.stringify(counter)}, job.text + '\\n');
+  await new Promise((resolve) => setTimeout(resolve, 90));
+  writeFileSync(job.output, Buffer.from('RIFF-voz-' + job.text));
+  process.stdout.write(JSON.stringify({ id: job.id, ok: true }) + '\\n');
+}
+`);
+    await chmod(fake, 0o755);
+    const speech = createLocalSpeech({
+      cacheRoot: join(root, 'cache'), python: fake, worker, modelRoot: root,
+    });
+    running.push(speech);
+
+    const firstController = new AbortController();
+    const first = speech.speak('primera', firstController.signal);
+    const firstRejected = assert.rejects(first, { name: 'AbortError' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    firstController.abort();
+    const middle = speech.speak('intermedia');
+    const middleRejected = assert.rejects(middle, { name: 'AbortError' });
+    const last = speech.speak('última');
+
+    await firstRejected;
+    await middleRejected;
+    assert.equal((await last).cached, false);
+    const jobs = (await readFile(counter, 'utf8')).trim().split('\n');
+    assert.equal(jobs.includes('intermedia'), false);
+    assert.equal(jobs.at(-1), 'última');
+    assert.ok(jobs.length <= 2);
+  });
+
+  it('caduca lo antiguo y expulsa primero lo menos usado al alcanzar el límite', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vera-speech-cache-'));
+    roots.push(root);
+    const cacheRoot = join(root, 'cache');
+    const fake = join(root, 'fake-worker.mjs');
+    const worker = join(root, 'worker.py');
+    const counter = join(root, 'jobs.txt');
+    await writeFile(worker, 'worker');
+    await writeFile(fake, `#!/usr/bin/env node
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+process.stdout.write(JSON.stringify({ ready: true }) + '\\n');
+for await (const line of createInterface({ input: process.stdin })) {
+  const job = JSON.parse(line);
+  appendFileSync(${JSON.stringify(counter)}, job.text + '\\n');
+  writeFileSync(job.output, Buffer.alloc(16, job.text.length));
+  process.stdout.write(JSON.stringify({ id: job.id, ok: true }) + '\\n');
+}
+`);
+    await chmod(fake, 0o755);
+
+    const bounded = createLocalSpeech({
+      cacheRoot, python: fake, worker, modelRoot: root,
+      maxCacheBytes: 20,
+      maxCacheAgeMs: 60_000,
+    });
+    running.push(bounded);
+    await bounded.speak('primera');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await bounded.speak('segunda');
+    assert.equal((await readdir(cacheRoot)).filter((name) => name.endsWith('.wav')).length, 1);
+    assert.equal((await bounded.speak('primera')).cached, false, 'la pieza más antigua ya fue expulsada');
+    bounded.close();
+
+    const remaining = (await readdir(cacheRoot)).find((name) => name.endsWith('.wav')) as string;
+    const old = new Date(Date.now() - 120_000);
+    await utimes(join(cacheRoot, remaining), old, old);
+    const expiring = createLocalSpeech({
+      cacheRoot, python: fake, worker, modelRoot: root,
+      maxCacheBytes: 20,
+      maxCacheAgeMs: 60_000,
+    });
+    running.push(expiring);
+    assert.equal((await readdir(cacheRoot)).filter((name) => name.endsWith('.wav')).length, 0);
+    await expiring.speak('primera');
+    assert.ok((await stat(cacheRoot)).isDirectory());
+
+    const jobs = (await readFile(counter, 'utf8')).trim().split('\n');
+    assert.deepEqual(jobs, ['primera', 'segunda', 'primera', 'primera']);
+  });
+});

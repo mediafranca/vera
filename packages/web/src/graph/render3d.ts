@@ -29,7 +29,7 @@ import type { EmbeddedMap3DCamera } from "@vera/core";
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
 import type { GraphData, GraphNode } from "./types.ts";
 import type { RenderSettings } from "./render";
-import { type Moving, runs, spineForce } from "./spine.ts";
+import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { icon } from "../icons.ts";
 import {
   advanceAutoRotation,
@@ -732,51 +732,6 @@ export function renderGraph3D(
   };
 
   /**
-   * La caja de un recorrido: sólo sus paradas, y no el vecindario entero.
-   *
-   * @guarantee TheWholeShapeAtOnce. Un hilo con la primera parada fuera de
-   * cuadro no enseña una forma, enseña un trozo, y la forma del argumento —un
-   * tramo recto, un rodeo que vuelve, una estrella desde un solo sitio— es lo
-   * que hace que un recorrido se recuerde: por su dibujo, como se recuerda una
-   * región del mapa.
-   */
-  const threadBox = (): { box: Box; centre: Point } | null => {
-    if (thread === null) return null;
-    const wanted = new Set(thread.stops.map((one) => one.page).filter((one) => one !== null));
-    let any = false;
-    const min = { x: Infinity, y: Infinity, z: Infinity };
-    const max = { x: -Infinity, y: -Infinity, z: -Infinity };
-    for (const d of drawn) {
-      if (!wanted.has(d.node.id)) continue;
-      const { x, y, z } = d.node as GraphNode & Partial<Point>;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-      min.x = Math.min(min.x, (x as number) - d.halfWidth);
-      max.x = Math.max(max.x, (x as number) + d.halfWidth);
-      min.y = Math.min(min.y, (y as number) - d.halfHeight);
-      max.y = Math.max(max.y, (y as number) + d.halfHeight);
-      min.z = Math.min(min.z, z as number);
-      max.z = Math.max(max.z, z as number);
-      any = true;
-    }
-    if (!any) return null;
-    /*
-     * Se gira en torno al medio del recorrido y no a la página abierta.
-     *
-     * La página abierta es la del recorrido, y es justo la que no se dibuja: un
-     * argumento no está al lado de sus premisas sino entre ellas, así que girar
-     * en torno a ella sería girar en torno a un sitio vacío.
-     */
-    return {
-      box: { min, max },
-      centre: {
-        x: (min.x + max.x) / 2,
-        y: (min.y + max.y) / 2,
-        z: (min.z + max.z) / 2,
-      },
-    };
-  };
-
-  /**
    * La página que se está leyendo, que es en torno a lo que gira el mapa.
    *
    * El servidor marca como `central` el centro del vecindario, que es la página
@@ -804,9 +759,9 @@ export function renderGraph3D(
   const fit = (): void => {
     /*
      * Un recorrido recién abierto se encuadra aunque alguien haya movido la
-     * cámara antes, y una sola vez. Abrir un argumento es pedir verlo entero; si
-     * el encuadre no llegara, el hilo estaría dibujado en una esquina y lo que
-     * se prometió —la forma— no se vería.
+     * cámara antes, y una sola vez. Se encuadra el vecindario entero: el hilo ya
+     * se distingue por color, numeración y tipo de trazo, y aislarlo convertiría
+     * el control de alcance en una promesa sin efecto.
      */
     if (
       embedded === null &&
@@ -814,9 +769,19 @@ export function renderGraph3D(
       thread.page !== framed &&
       thread.page !== claimedFor
     ) {
-      const mine = threadBox();
-      if (mine !== null) {
-        orbit = frameAround(mine.box, mine.centre, lensNow(), orbit.azimuth, orbit.elevation);
+      const box = graphBox();
+      if (box !== null) {
+        const yo = focus();
+        orbit =
+          yo === null || !Number.isFinite(yo.x) || !Number.isFinite(yo.y) || !Number.isFinite(yo.z)
+            ? frameBox(box, lensNow(), orbit.azimuth, orbit.elevation)
+            : frameAround(
+                box,
+                { x: yo.x as number, y: yo.y as number, z: yo.z as number },
+                lensNow(),
+                orbit.azimuth,
+                orbit.elevation,
+              );
         framed = thread.page;
         moved = true;
         return;
@@ -1162,15 +1127,16 @@ export function renderGraph3D(
             .filter((one): one is (typeof nodes)[number] => one !== undefined)
             .map((one) => one as unknown as Moving),
         );
-  if (chains.some((chain) => chain.length >= 3)) {
-    for (const chain of chains) {
+  const spines = straightenableRuns(chains);
+  if (spines.some((chain) => chain.length >= 3)) {
+    for (const chain of spines) {
       for (const one of chain as unknown as Record<string, unknown>[]) {
         one["fx"] = null;
         one["fy"] = null;
         one["fz"] = null;
       }
     }
-    sim.force("spine", spineForce(chains) as never);
+    sim.force("spine", spineForce(spines) as never);
   }
 
   /*
@@ -1201,7 +1167,7 @@ export function renderGraph3D(
    * la repulsión cerca de su equilibrio, así que lo que se mueve es lo que piden
    * los resortes nuevos y no una redistribución entera.
    */
-  const settling = allPlaced && opening && chains.some((chain) => chain.length >= 3);
+  const settling = allPlaced && opening && spines.some((chain) => chain.length >= 3);
   if (!settling) {
     if (allPlaced) sim.alpha(0).stop();
   } else if (document.hidden) {
@@ -1687,17 +1653,31 @@ export function renderGraph3D(
   document.addEventListener("constel:zoom", onZoom);
   document.addEventListener("constel:center", onCentre);
 
-  // El panel cambia de tamaño al plegar la columna de texto, y entonces el
-  // encuadre de antes ya no encuadra. Repintar es barato; rehacer el mapa no.
+  // El panel cambia de tamaño al plegar la columna de texto o al arrastrar el
+  // divisor, y ninguna de esas dos cosas cambia el tamaño de `window`. Mirar
+  // sólo `resize` dejaba las coordenadas calculadas para el panel anterior
+  // dentro del SVG nuevo: el mapa parecía estirado hasta que ocurría otro
+  // redibujo. Se observa el recinto que de verdad gobierna la lente y se reúne
+  // cada ráfaga de cambios en un solo cuadro.
+  let resizeFrame: number | null = null;
   const onResize = (): void => {
-    fit();
-    paint();
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = null;
+      fit();
+      paint();
+      sortByDepth();
+    });
   };
+  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
+  resizeObserver?.observe(container);
   window.addEventListener("resize", onResize);
 
   teardown = (): void => {
     sim.stop();
     if (gliding !== null) cancelAnimationFrame(gliding);
+    if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+    resizeObserver?.disconnect();
     setAutoRotation(false);
     if (governAutoRotation === setAutoRotation) governAutoRotation = null;
     document.removeEventListener("constel:zoom", onZoom);

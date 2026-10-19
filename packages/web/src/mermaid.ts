@@ -11,7 +11,6 @@
 // Esto reemplaza lo que se muestra, nunca lo que se guarda, así que al editar
 // reaparece la fuente tal como se escribió.
 //
-import { codeCopyButton } from './code-copy.ts';
 
 // La biblioteca pesa más que todo el resto de la aplicación junta, así que se
 // carga sólo cuando una página trae un diagrama, y una sola vez por sesión.
@@ -120,7 +119,6 @@ export async function renderMermaid(root: HTMLElement): Promise<void> {
     try {
       const { svg } = await mermaid.render(`vera-mermaid-${counter}`, source);
       figure.innerHTML = svg;
-      figure.append(codeCopyButton(source));
       pre.replaceWith(figure);
       fitFrame(figure);
     } catch (error) {

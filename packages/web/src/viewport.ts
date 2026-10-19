@@ -54,3 +54,35 @@ export function restoreViewport(container: HTMLElement, held: HeldViewport): voi
   const delta = viewportDelta(held, now);
   container.scrollTop = delta === null ? held.scrollTop : container.scrollTop + delta;
 }
+
+/**
+ * Conserva el lugar también mientras una página entra por lotes.
+ *
+ * El primer lote de una composición progresiva puede no contener todavía
+ * ninguno de los bloques que estaban a la vista. En ese instante `scrollTop`
+ * queda necesariamente acotado por un documento demasiado corto. Volvemos a
+ * aplicar el mismo testigo en cada pintura hasta que termina la composición;
+ * cuando el bloque reaparece, su identidad estable recupera el lugar exacto.
+ *
+ * Una nueva restauración invalida la anterior. Sin esa generación, dos
+ * redibujados cercanos podrían corregir el mismo visor desde recuerdos
+ * distintos y producir un segundo salto.
+ */
+const viewportRestorations = new WeakMap<HTMLElement, number>();
+
+export function restoreViewportThroughComposition(
+  container: HTMLElement,
+  held: HeldViewport,
+): void {
+  const generation = (viewportRestorations.get(container) ?? 0) + 1;
+  viewportRestorations.set(container, generation);
+
+  const restore = (): void => {
+    if (viewportRestorations.get(container) !== generation || !container.isConnected) return;
+    restoreViewport(container, held);
+    if (container.querySelector('.page-compose-progress') !== null) {
+      window.requestAnimationFrame(restore);
+    }
+  };
+  restore();
+}

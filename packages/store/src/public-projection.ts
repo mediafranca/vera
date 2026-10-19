@@ -49,7 +49,7 @@ export const p5RuntimePath = process.env['VERA_P5_RUNTIME'] ??
 export const p5FrameDocument = `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; connect-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'">
 <style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--font-body:system-ui,sans-serif}html,body{margin:0;min-height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}canvas{display:block;max-width:100%;height:auto!important}html[data-presentation="true"],html[data-presentation="true"] body{width:100%;height:100%}html[data-presentation="true"] canvas{width:100%!important;height:auto!important;max-width:none;max-height:100%;object-fit:contain}pre{white-space:pre-wrap;color:var(--accent,#a00);padding:1rem}</style>
 <script src="/p5.min.js"></script></head><body><script>
 const veraFrame = 'vera-executable-frame';
@@ -60,6 +60,15 @@ addEventListener('message', event => {
   if (appearance === null || typeof appearance !== 'object') return;
   for (const [name, value] of Object.entries(appearance.tokens ?? {})) {
     if (/^--[a-z0-9-]+$/.test(name) && typeof value === 'string') document.documentElement.style.setProperty(name, value);
+  }
+  if (typeof appearance.fontFaces === 'string') {
+    let fonts = document.getElementById('vera-frame-fonts');
+    if (fonts === null) {
+      fonts = document.createElement('style');
+      fonts.id = 'vera-frame-fonts';
+      document.head.append(fonts);
+    }
+    if (fonts.textContent !== appearance.fontFaces) fonts.textContent = appearance.fontFaces;
   }
   document.documentElement.dataset.scheme = appearance.scheme === 'dark' ? 'dark' : 'light';
   document.documentElement.style.colorScheme = appearance.scheme === 'dark' ? 'dark' : 'light';

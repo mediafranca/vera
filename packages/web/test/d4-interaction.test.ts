@@ -192,7 +192,7 @@ describe('interacción de D4', () => {
     assert.match(renderer, /attr\('class', `d4-thread \$\{kind === 'by_path' \? 'by-path' : 'open-ground'\}`\)/);
     assert.match(renderer, /attr\('class', 'd4-thread-stop'\)/);
     assert.match(renderer, /\.text\(ordinals\.join\(' · '\)\)/);
-    assert.match(renderer, /thread !== null && node\.id === thread\.page/);
+    assert.doesNotMatch(renderer, /thread !== null && node\.id === thread\.page/);
     assert.doesNotMatch(renderer, /data\.links\.push\([^)]*thread/s);
   });
 
