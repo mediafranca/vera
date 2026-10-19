@@ -255,9 +255,15 @@ describe('matchingCommands', () => {
     );
   });
 
-  it('ofrece plantillas portables para clips y mapas', () => {
+  it('ofrece plantillas portables para iframes, clips y mapas', () => {
+    const iframe = COMMANDS.find((command) => command.name === 'iframe');
     const clip = matchingCommands('fragmento de YouTube').find((command) => command.name === 'clip');
     const map = matchingCommands('mapa 2D').find((command) => command.name === 'mapa');
+    assert.equal(
+      iframe?.inserts,
+      '```iframe\n<iframe src="" height="720"></iframe>\n```',
+    );
+    assert.equal(iframe?.caret, String(iframe?.inserts).indexOf('src=""') + 5);
     assert.match(String(clip?.inserts), /desde: 00:00[\s\S]*hasta: 00:30/);
     assert.match(String(map?.inserts), /página: \[\[\]\][\s\S]*alcance: 2[\s\S]*alto: 640/);
   });

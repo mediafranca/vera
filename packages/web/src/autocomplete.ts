@@ -239,7 +239,12 @@ export const COMMANDS: Command[] = [
   { name: 'cita', hint: 'cita', inserts: '> ', caret: 2, group: 'formato' },
   { name: 'codigo', hint: 'bloque de código', inserts: '```\n\n```', caret: 4, group: 'formato' },
   { name: 'html', hint: 'HTML ejecutable y aislado', inserts: '```html-live\n\n```', caret: 13 },
-  { name: 'iframe', hint: 'Incrustación externa autorizada', inserts: '```iframe\n\n```', caret: 10 },
+  {
+    name: 'iframe',
+    hint: 'Incrustación externa autorizada',
+    inserts: '```iframe\n<iframe src="" height="720"></iframe>\n```',
+    caret: 23,
+  },
   {
     name: 'clip',
     hint: 'fragmento de YouTube entre dos tiempos',
