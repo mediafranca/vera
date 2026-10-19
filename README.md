@@ -124,6 +124,20 @@ antes de dejarte abrirlo; las instrucciones para instalar de todas formas
 están en [Instalación en Windows](docs/instalacion-windows.md#instalar-sin-firma)
 y en [Distribución de Vera Desktop](docs/distribucion-escritorio.md#instalar-sin-firma).
 
+Vera todavía evoluciona deprisa. Mientras Windows y macOS se distribuyan sin
+firma, no hay actualización automática: conviene revisar con frecuencia la
+[última versión](https://github.com/mediafranca/vera/releases/latest), leer sus
+notas e instalarla encima de la anterior. **Actualizar el programa no reemplaza
+la memoria:** Windows, macOS y Linux guardan el corpus fuera de los archivos de
+la aplicación y vuelven a abrir la misma base después de la actualización.
+
+En Windows, usa nuevamente `Vera Setup <versión> (sin firmar).exe`; no hace
+falta desinstalar primero. La edición portable es la excepción que requiere
+cuidado: `VeraData` vive junto al ejecutable, así que hay que sustituir el
+portable dentro de la misma carpeta o conservar esa carpeta al moverlo. Abrir
+el portable nuevo en otro directorio no borra la memoria anterior, pero Vera no
+la encontrará allí y se presentará como una instalación nueva.
+
 ### Desde el código fuente
 
 Requiere Node.js 24 o posterior.
