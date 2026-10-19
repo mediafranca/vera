@@ -1266,6 +1266,12 @@ surface TrailOnTheMap {
         -- afirmaría que las dos mitades van en línea, y de eso el recorrido no dice
         -- nada.
         --
+        -- Tampoco enderezan un tramo que vuelve a una página ya visitada. En el
+        -- mapa esa página es un solo nodo: obligarla a ocupar dos lugares de una
+        -- fila estiraría el vecindario y borraría precisamente la forma del
+        -- retorno. El hilo y sus ordinales permanecen visibles sobre el reparto
+        -- orgánico.
+        --
         -- Cerrado el recorrido, esta disposición no está: el mismo vecindario
         -- conserva sus posiciones y deja de llevar el hilo superpuesto.
 

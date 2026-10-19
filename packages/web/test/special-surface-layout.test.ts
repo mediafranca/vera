@@ -62,6 +62,14 @@ describe('superficies especiales', () => {
     assert.match(graph3d, /const SCREEN_FONT_MAX = 31;/);
   });
 
+  it('reproyecta el mapa 3D cuando cambia su panel aunque la ventana conserve su tamaño', () => {
+    assert.match(graph3d, /new ResizeObserver\(onResize\)/);
+    assert.match(graph3d, /resizeObserver\?\.observe\(container\)/);
+    assert.match(graph3d, /const onResize[\s\S]*?fit\(\);[\s\S]*?paint\(\);[\s\S]*?sortByDepth\(\)/);
+    assert.match(graph3d, /resizeObserver\?\.disconnect\(\)/);
+    assert.match(graph3d, /if \(resizeFrame !== null\) cancelAnimationFrame\(resizeFrame\)/);
+  });
+
   it('ofrece rotación automática sólo en 3D y gobierna la cámara sin recargar el grafo', () => {
     assert.match(html, /id="map-auto-rotate-field"[^>]+hidden/);
     assert.match(html, /id="map-auto-rotate" type="checkbox"/);
