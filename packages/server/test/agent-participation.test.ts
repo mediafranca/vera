@@ -104,6 +104,35 @@ describe('credenciales', () => {
     assert.equal(mine['secret'], undefined, 'el secreto no puede volver a leerse');
   });
 
+  it('el dueño puede cambiar el alias sin cambiar identidad ni permisos', async () => {
+    const issued = await call('/agents/credentials', {
+      method: 'POST',
+      body: { participant: COTITO, scopes: ['read'], label: 'alias anterior' },
+    });
+    const id = issued.json['id'] as string;
+    const renamed = await call(`/agents/credentials/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: { label: 'Cotito lector' },
+    });
+    assert.equal(renamed.status, 200, JSON.stringify(renamed.json));
+    assert.equal(renamed.json['label'], 'Cotito lector');
+    assert.equal(renamed.json['participant'], COTITO);
+    assert.deepEqual(renamed.json['scopes'], ['read']);
+    assert.equal(renamed.json['id'], id);
+  });
+
+  it('el alias no puede quedar vacío', async () => {
+    const issued = await call('/agents/credentials', {
+      method: 'POST',
+      body: { participant: COTITO, scopes: ['read'], label: 'con nombre' },
+    });
+    const renamed = await call(`/agents/credentials/${encodeURIComponent(String(issued.json['id']))}`, {
+      method: 'PATCH',
+      body: { label: '   ' },
+    });
+    assert.equal(renamed.status, 400);
+  });
+
   it('capture deposita por su puerta pero no abre páginas ni operaciones', async () => {
     const issued = await call('/agents/credentials', {
       method: 'POST',

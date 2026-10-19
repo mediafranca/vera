@@ -21,6 +21,23 @@ export interface ConectaStatus {
   error?: string;
 }
 
+export interface ConectaClient {
+  principalId: string;
+  label: string;
+  status: 'pendiente' | 'autorizado' | 'credencial_vencida' | 'revocado' | 'expirado';
+  scopes: string[];
+  expiresAt: string | null;
+}
+
+export interface ConectaInvitation {
+  principalId: string;
+  label: string;
+  mcpUrl: string;
+  token: string;
+  scopes: string[];
+  expiresAt: string;
+}
+
 type LiveSocket = WebSocket;
 
 const keyFor = (principal: string, scopes: readonly string[]): string =>
@@ -122,6 +139,97 @@ export class DesktopConecta {
   forget(): void {
     this.stop();
     this.store.clear();
+  }
+
+  async clients(): Promise<ConectaClient[]> {
+    const saved = this.requireLink();
+    const response = await fetch(
+      new URL(`/v/${encodeURIComponent(saved.installationId)}/clients`, saved.relayUrl),
+      { headers: { authorization: `Bearer ${saved.linkSecret}` } },
+    );
+    if (!response.ok) throw new Error(`Vera Conecta no pudo listar los accesos (${response.status})`);
+    const body = (await response.json()) as { clientes?: unknown };
+    if (!Array.isArray(body.clientes)) throw new Error('Vera Conecta devolvió un listado inválido');
+    return body.clientes.flatMap((raw): ConectaClient[] => {
+      const client = raw as Record<string, unknown>;
+      if (
+        typeof client.principal_id !== 'string' ||
+        typeof client.etiqueta_de_aplicacion !== 'string' ||
+        typeof client.estado !== 'string' ||
+        !Array.isArray(client.alcances)
+      ) return [];
+      return [{
+        principalId: client.principal_id,
+        label: client.etiqueta_de_aplicacion,
+        status: client.estado as ConectaClient['status'],
+        scopes: client.alcances.filter((scope): scope is string => typeof scope === 'string'),
+        expiresAt: typeof client.expira_en === 'string' ? client.expira_en : null,
+      }];
+    });
+  }
+
+  async authorizeClient(label: string, scopes: string[]): Promise<ConectaInvitation> {
+    const saved = this.requireLink();
+    const cleanLabel = label.trim();
+    const cleanScopes = [...new Set(scopes)].filter((scope) => ['read', 'write', 'delete'].includes(scope));
+    if (cleanLabel === '' || cleanScopes.length === 0) throw new Error('Nombra la IA y concede al menos un alcance.');
+    const base = new URL(`/v/${encodeURIComponent(saved.installationId)}`, saved.relayUrl);
+    const authorization = await fetch(new URL(`${base.pathname}/clients`, base), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        prueba_de_secreto: saved.linkSecret,
+        etiqueta_de_aplicacion: cleanLabel,
+        alcances: cleanScopes,
+        evidencia: 'bearer_del_piloto',
+      }),
+    });
+    if (!authorization.ok) throw new Error(`Vera Conecta rechazó la autorización (${authorization.status})`);
+    const pending = (await authorization.json()) as { principal_id?: unknown };
+    if (typeof pending.principal_id !== 'string') throw new Error('Vera Conecta no devolvió un cliente válido');
+    const claim = await fetch(new URL(`${base.pathname}/clients/${encodeURIComponent(pending.principal_id)}/claim`, base), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prueba_de_consentimiento: pending.principal_id }),
+    });
+    if (!claim.ok) throw new Error(`Vera Conecta no pudo emitir la credencial (${claim.status})`);
+    const issued = (await claim.json()) as {
+      secreto_de_cliente?: unknown;
+      alcances?: unknown;
+      expira_en?: unknown;
+    };
+    if (
+      typeof issued.secreto_de_cliente !== 'string' ||
+      !Array.isArray(issued.alcances) ||
+      typeof issued.expira_en !== 'string'
+    ) throw new Error('Vera Conecta devolvió una credencial incompleta');
+    return {
+      principalId: pending.principal_id,
+      label: cleanLabel,
+      mcpUrl: new URL(`${base.pathname}/mcp`, base).toString(),
+      token: issued.secreto_de_cliente,
+      scopes: issued.alcances.filter((scope): scope is string => typeof scope === 'string'),
+      expiresAt: issued.expira_en,
+    };
+  }
+
+  async revokeClient(principalId: string): Promise<void> {
+    const saved = this.requireLink();
+    const response = await fetch(
+      new URL(`/v/${encodeURIComponent(saved.installationId)}/clients/${encodeURIComponent(principalId)}/revoke`, saved.relayUrl),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prueba_de_secreto: saved.linkSecret }),
+      },
+    );
+    if (!response.ok) throw new Error(`Vera Conecta no pudo revocar el acceso (${response.status})`);
+  }
+
+  private requireLink(): ConectaState {
+    const saved = this.store.read();
+    if (saved === null) throw new Error('Activa Vera Conecta antes de autorizar una IA.');
+    return saved;
   }
 
   private open(): void {

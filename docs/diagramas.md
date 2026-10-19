@@ -187,12 +187,12 @@ flowchart LR
 
 El conector pertenece a Desktop. Vera Conecta conserva el contrato y el estado
 mínimo del relay, pero nunca abre la biblioteca ni custodia credenciales de
-VERA. La página [[VERA: Conexiones]] es la superficie humana de este recorrido.
+VERA. La página [[MCP]] es la superficie humana de este recorrido.
 
 ```mermaid
 sequenceDiagram
     actor D as Dueño de la biblioteca
-    participant UI as VERA: Conexiones
+    participant UI as VERA: la puerta MCP
     participant Desktop as Vera Desktop
     participant Seguro as Almacén seguro del SO
     participant Relay as Vera Conecta
@@ -220,6 +220,24 @@ La activación se rechaza si Desktop no dispone de un almacén seguro real. La
 caída de red no abre puertos: el enlace siempre se inicia desde Desktop y se
 reconecta con espera exponencial. Al cerrar Desktop se cancelan el socket, los
 latidos y cualquier reintento.
+
+### Vera Clip: local primero
+
+Vera Clip no necesita el relay cuando comparte equipo con Vera Desktop. Recibe
+una capacidad estrecha, escribe por loopback y conserva a la persona propietaria
+como autora de la incorporación; `import` distingue el material de su fuente.
+
+```mermaid
+flowchart LR
+    C[Vera Clip] -->|1. localhost + capture| L[Vera local]
+    C -.->|2. respaldo opcional| R[Vera Conecta]
+    R -.-> D[Vera Desktop]
+    D --> L
+    L -->|participant: propietario<br/>channel: import| G[(Grafo)]
+```
+
+El relay es transporte alternativo, no una copia central ni la ruta por defecto.
+La guía de autorización y revocación está en [Vera Clip](vera-clip.md).
 
 ---
 

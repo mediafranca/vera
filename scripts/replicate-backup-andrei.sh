@@ -29,30 +29,35 @@ export RESTIC_FROM_PASSWORD_COMMAND="$password_command"
 # El respaldo local es independiente y ya está verificado. Esta tarea sólo
 # replica sus snapshots a Andrei; si el portátil remoto está dormido, el fallo
 # no invalida ni bloquea la copia conservada en Alexei.
-"$restic_binary" \
-  --limit-download "$bandwidth_kib" \
-  --limit-upload "$bandwidth_kib" \
-  -r "$destination_repository" \
-  copy \
-  --from-repo "$source_repository" \
-  --host alexei \
-  --tag vera-sqlite \
-  --retry-lock 5m
+for tag in vera-sqlite vera-objects; do
+  "$restic_binary" \
+    --limit-download "$bandwidth_kib" \
+    --limit-upload "$bandwidth_kib" \
+    -r "$destination_repository" \
+    copy \
+    --from-repo "$source_repository" \
+    --host alexei \
+    --tag "$tag" \
+    --retry-lock 5m
 
-"$restic_binary" \
-  --limit-download "$bandwidth_kib" \
-  --limit-upload "$bandwidth_kib" \
-  -r "$destination_repository" \
-  forget \
-  --host alexei \
-  --tag vera-sqlite \
-  --keep-tag pre-exposure-compaction \
-  --keep-daily 7 \
-  --keep-weekly 4 \
-  --keep-monthly 6 \
-  --prune
+  "$restic_binary" \
+    --limit-download "$bandwidth_kib" \
+    --limit-upload "$bandwidth_kib" \
+    -r "$destination_repository" \
+    forget \
+    --host alexei \
+    --tag "$tag" \
+    --keep-tag pre-exposure-compaction \
+    --keep-daily 7 \
+    --keep-weekly 4 \
+    --keep-monthly 6
+done
 
-"$restic_binary" -r "$destination_repository" snapshots \
-  --host alexei \
-  --tag vera-sqlite \
-  --latest 1
+"$restic_binary" -r "$destination_repository" prune
+
+for tag in vera-sqlite vera-objects; do
+  "$restic_binary" -r "$destination_repository" snapshots \
+    --host alexei \
+    --tag "$tag" \
+    --latest 1
+done

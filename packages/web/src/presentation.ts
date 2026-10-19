@@ -26,6 +26,53 @@ interface LoadedPresentationStyle {
   warnings: string[];
 }
 
+interface ParkedFrameSource {
+  src: string | null;
+  srcdoc: string | null;
+}
+
+/**
+ * Los recintos ejecutables viven en procesos separados del navegador. Una
+ * presentación larga no debe arrancarlos todos a la vez —menos aún mientras
+ * la misma página sigue montada detrás del escenario— porque Chrome puede
+ * terminar mostrando su «carita triste» en SVG y p5 perfectamente válidos.
+ *
+ * La fuente queda en memoria, no en atributos data: un p5 completo puede ser
+ * grande y duplicarlo dentro del DOM sólo cambiaría presión de proceso por
+ * presión de memoria.
+ */
+const parkedFrameSources = new WeakMap<HTMLIFrameElement, ParkedFrameSource>();
+
+function framesWithin(root: ParentNode): HTMLIFrameElement[] {
+  const direct = root instanceof HTMLIFrameElement ? [root] : [];
+  return [...direct, ...root.querySelectorAll<HTMLIFrameElement>('iframe')];
+}
+
+function parkFrames(root: ParentNode): void {
+  for (const frame of framesWithin(root)) {
+    if (!parkedFrameSources.has(frame)) {
+      const source = { src: frame.getAttribute('src'), srcdoc: frame.getAttribute('srcdoc') };
+      if (source.src === null && source.srcdoc === null) continue;
+      parkedFrameSources.set(frame, source);
+    }
+    frame.removeAttribute('src');
+    frame.removeAttribute('srcdoc');
+  }
+}
+
+function activateFrames(root: ParentNode): void {
+  for (const frame of framesWithin(root)) {
+    const source = parkedFrameSources.get(frame);
+    if (source === undefined) continue;
+    if (source.srcdoc !== null && frame.getAttribute('srcdoc') !== source.srcdoc) {
+      frame.setAttribute('srcdoc', source.srcdoc);
+    }
+    if (source.src !== null && frame.getAttribute('src') !== source.src) {
+      frame.setAttribute('src', source.src);
+    }
+  }
+}
+
 export function presentationRevision(page: Pick<PageView, 'lastEditedAt' | 'blocks'>): string {
   return `${page.lastEditedAt ?? 0}:${page.blocks.length}`;
 }
@@ -74,19 +121,6 @@ async function presentationStyles(page: PageView): Promise<LoadedPresentationSty
   };
 }
 
-export function isPresentation(
-  properties: readonly { key: string; value: string }[],
-  kindProperty: string,
-): boolean {
-  // La ontología nombra la clase; este adaptador le da una proyección. Reveal
-  // no forma parte del significado guardado en el corpus.
-  // @guarantee DeclaredPresentationsOfferPresentationProminently
-  const kind = properties
-    .find((property) => property.key.trim().toLowerCase() === kindProperty.trim().toLowerCase())
-    ?.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-  return kind === 'presentacion';
-}
-
 function treeOf(blocks: readonly BlockView[]): PresentationNode[] {
   const nodes = new Map<string, PresentationNode>();
   for (const block of blocks) nodes.set(block.stableId, { block, children: [] });
@@ -122,40 +156,52 @@ function renderNode(node: PresentationNode, options: RenderOptions, depth = 0): 
   return host;
 }
 
-type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'map' | 'table' | 'video';
+type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'iframe' | 'map' | 'table' | 'video';
 
-/**
- * El único contenido visual de una lámina, si ésta es espacial y no prosa con
- * una ilustración intercalada.
- *
- * La diferencia evita que una imagen dentro de una explicación convierta toda
- * la lámina en un lienzo. Sólo una raíz cuyo cuerpo consiste en un medio —con
- * los envoltorios Markdown inevitables `p` y `a`— abandona la medida de lectura.
- */
-function spatialMedium(body: HTMLElement): SpatialMedium | null {
-  if (body.children.length !== 1) return null;
-  let only = body.firstElementChild as HTMLElement | null;
-  if (only === null) return null;
-
-  if (only.matches('.executable')) return 'executable';
-  if (only.matches('.embedded-map')) return 'map';
-  if (only.matches('.drawn')) return 'drawing';
-  if (only.matches('.mermaid-figure')) return 'diagram';
-  if (only.matches('.table-scroll, table')) return 'table';
-  if (only.matches('video')) return 'video';
-  if (only.matches('img, svg')) return 'image';
+function spatialKind(host: HTMLElement): SpatialMedium | null {
+  let medium = host;
+  if (medium.matches('.executable')) return 'executable';
+  if (medium.matches('.embed') && medium.querySelector(':scope > iframe') !== null) return 'iframe';
+  if (medium.matches('.embedded-map')) return 'map';
+  if (medium.matches('.drawn')) return 'drawing';
+  if (medium.matches('.mermaid-figure')) return 'diagram';
+  if (medium.matches('.table-scroll, table')) return 'table';
+  if (medium.matches('video')) return 'video';
+  if (medium.matches('img, svg')) return 'image';
 
   for (const wrapper of ['P', 'A']) {
-    if (only.tagName !== wrapper || only.children.length !== 1) continue;
-    if ([...only.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '')) {
+    if (medium.tagName !== wrapper || medium.children.length !== 1) continue;
+    if ([...medium.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '')) {
       return null;
     }
-    only = only.firstElementChild as HTMLElement;
+    medium = medium.firstElementChild as HTMLElement;
   }
 
-  if (only.matches('img, svg')) return 'image';
-  if (only.matches('video')) return 'video';
+  if (medium.matches('img, svg')) return 'image';
+  if (medium.matches('video')) return 'video';
   return null;
+}
+
+/**
+ * Reconoce una superficie visual única, sola o acompañada por un título y un
+ * pie breves. Más de un medio, listas o descendientes mantienen la lámina en
+ * lectura documental: maximizarla inventaría una composición que no fue escrita.
+ */
+function spatialMedium(body: HTMLElement): SpatialMedium | null {
+  if (body.parentElement?.querySelector(':scope > .presentation-children') !== null) return null;
+  const children = [...body.children] as HTMLElement[];
+  const candidates = children.flatMap((host) => {
+    const kind = spatialKind(host);
+    return kind === null ? [] : [{ host, kind }];
+  });
+  if (candidates.length !== 1) return null;
+  const { host, kind } = candidates[0]!;
+  const accessories = children.filter((child) => child !== host);
+  if (accessories.length > 2 || accessories.some((child) => !child.matches('h1, h2, h3, h4, h5, h6, p'))) {
+    return null;
+  }
+  host.classList.add('presentation-primary-medium');
+  return kind;
 }
 
 /** Marca sólo las láminas cuyo medio debe medir contra el viewport. */
@@ -188,6 +234,19 @@ export async function presentPage(
   if (roots.length === 0) return;
   let governedStyle = await presentationStyles(sourcePage);
   const syncFrames = (): void => { dispatchEvent(new Event('vera-sync-executable-frames')); };
+
+  // La página ordinaria permanece detrás del escenario. Suspender sus recintos
+  // evita ejecutar dos veces cada SVG, p5 e iframe durante la presentación.
+  const sourceSurface = document.querySelector<HTMLElement>('#text');
+  if (sourceSurface !== null) parkFrames(sourceSurface);
+  const sourceFrameWatch = sourceSurface === null ? null : new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof HTMLElement) parkFrames(node);
+      }
+    }
+  });
+  sourceFrameWatch?.observe(sourceSurface!, { childList: true, subtree: true });
 
   const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
@@ -260,8 +319,6 @@ export async function presentPage(
     warning.textContent = governedStyle.warnings.join(' · ');
     overlay.append(warning);
   }
-  document.body.append(overlay);
-
   const fillSlides = (): void => {
     slides.replaceChildren();
     for (const root of roots) {
@@ -277,10 +334,15 @@ export async function presentPage(
         notes.innerHTML = renderMarkdown(gloss, options);
         slide.append(notes);
       }
+      // El slide aún está desconectado: aparcar aquí impide incluso el primer
+      // arranque fugaz de un iframe oculto al incorporarlo a la presentación.
+      parkFrames(slide);
       slides.append(slide);
     }
   };
   fillSlides();
+
+  document.body.append(overlay);
 
   decorateCodeBlocks(overlay);
   await renderMermaid(overlay);
@@ -314,6 +376,14 @@ export async function presentPage(
   const sourceUrl = new URL(window.location.href);
   sourceUrl.searchParams.delete('present');
   const currentBlock = (): string | null => deck.getCurrentSlide()?.dataset['block'] ?? null;
+  const syncCurrentSlideFrames = (): void => {
+    const current = deck.getCurrentSlide();
+    for (const slide of deck.getSlides()) {
+      if (slide === current) activateFrames(slide);
+      else parkFrames(slide);
+    }
+    syncFrames();
+  };
   const updateNotes = (): void => {
     const block = currentBlock();
     const gloss = block === null ? '' : sourcePage.glosses?.[block]?.content.trim() ?? '';
@@ -328,10 +398,12 @@ export async function presentPage(
     if (closed) return;
     closed = true;
     window.clearInterval(revisionWatch);
+    sourceFrameWatch?.disconnect();
     removeEventListener('keydown', onKey, true);
     const block = currentBlock();
     await deck.destroy();
     overlay.remove();
+    if (sourceSurface !== null && sourceSurface.isConnected) activateFrames(sourceSurface);
     document.documentElement.classList.remove('presenting');
     history.replaceState(history.state, '', presentationLocation(sourceUrl, block ?? '', false));
     const source = block === null ? null : document.querySelector<HTMLElement>(`[data-block="${CSS.escape(block)}"]`);
@@ -388,6 +460,7 @@ export async function presentPage(
         const index = roots.findIndex((root) => root.block.stableId === block);
         if (index >= 0) deck.slide(index);
       }
+      syncCurrentSlideFrames();
       refresh.hidden = true;
       refresh.title = 'Actualizar';
       refresh.setAttribute('aria-label', refresh.title);
@@ -407,16 +480,8 @@ export async function presentPage(
   addEventListener('keydown', onKey, true);
   document.documentElement.classList.add('presenting');
   await deck.initialize();
-  deck.on('overviewshown', () => {
-    // En lectura corriente los recintos siguen siendo perezosos. Sólo al pedir
-    // la vista general Safari recibe la orden de producir una miniatura de cada
-    // uno; el puente de p5 detiene enseguida los que no están activos.
-    for (const frame of overlay.querySelectorAll<HTMLIFrameElement>('iframe[loading="lazy"]')) {
-      frame.loading = 'eager';
-    }
-    syncFrames();
-  });
-  deck.on('overviewhidden', syncFrames);
+  deck.on('overviewshown', syncCurrentSlideFrames);
+  deck.on('overviewhidden', syncCurrentSlideFrames);
   if (initialBlock !== null) {
     const initial = deck.getSlides().find((slide) => slide.dataset['block'] === initialBlock);
     if (initial !== undefined) {
@@ -424,7 +489,8 @@ export async function presentPage(
       deck.slide(indices.h, indices.v);
     }
   }
-  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); syncFrames(); });
+  deck.on('slidechanged', () => { updateNotes(); writeDeepLink(); syncCurrentSlideFrames(); });
+  syncCurrentSlideFrames();
   updateNotes();
   writeDeepLink();
   revisionWatch = window.setInterval(() => {

@@ -9,7 +9,7 @@ import {
 import { renderGraph } from './graph/render.ts';
 import { renderGraph3D } from './graph/render3d.ts';
 import { renderGraphD4 } from './graph/renderD4.ts';
-import { graphOfThread, threadSettings } from './graph/thread.ts';
+import { threadSettings } from './graph/thread.ts';
 import type { ThreadSettings } from './graph/render.ts';
 import type { GraphData } from './graph/types.ts';
 
@@ -131,7 +131,7 @@ if (config === null || root === null || map === null || status === null) {
       route ??= embeddedThread(page, data);
       const thread = await route;
       if (current !== turn) return;
-      present(graphOfThread(data, thread), reach, thread);
+      present(data, reach, thread);
       status.textContent = reach < config.reach ? `Ampliando a alcance ${reach + 1}…` : '';
       if (reach < config.reach) requestAnimationFrame(() => void draw(reach + 1));
     } catch {

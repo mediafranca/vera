@@ -56,29 +56,173 @@ function distanceToSegment(point: Point, from: Point, to: Point): number {
 }
 
 /**
- * Quita los trazos que toca la goma y devuelve cuáles fueron, con su lugar.
- *
- * Es una goma vectorial: retira el gesto entero al tocarlo. No corta la línea en
- * cientos de fragmentos ni convierte el dibujo en píxeles.
+ * Interpola también la presión: un corte nuevo sigue perteneciendo al gesto.
  */
-export function eraseStrokesAt(
-  strokes: Stroke[],
-  point: Point,
+function pointBetween(from: Point, to: Point, at: number): Point {
+  return {
+    x: from.x + (to.x - from.x) * at,
+    y: from.y + (to.y - from.y) * at,
+    pressure: from.pressure + (to.pressure - from.pressure) * at,
+  };
+}
+
+/**
+ * Dónde entra y sale un segmento del corredor de la goma.
+ *
+ * La distancia desde un punto que recorre un segmento hasta otro segmento es
+ * convexa. Buscamos primero su mínimo y después las dos fronteras por bisección;
+ * así el borrado no depende de cuántos eventos alcanzó a entregar el navegador.
+ */
+function intervalInsideEraser(
+  from: Point,
+  to: Point,
+  eraserFrom: Point,
+  eraserTo: Point,
   radius: number,
-): Array<{ stroke: Stroke; index: number }> {
-  const removed: Array<{ stroke: Stroke; index: number }> = [];
+): [number, number] | null {
+  if (
+    Math.max(from.x, to.x) < Math.min(eraserFrom.x, eraserTo.x) - radius ||
+    Math.min(from.x, to.x) > Math.max(eraserFrom.x, eraserTo.x) + radius ||
+    Math.max(from.y, to.y) < Math.min(eraserFrom.y, eraserTo.y) - radius ||
+    Math.min(from.y, to.y) > Math.max(eraserFrom.y, eraserTo.y) + radius
+  ) return null;
+  const distanceAt = (at: number): number =>
+    distanceToSegment(pointBetween(from, to, at), eraserFrom, eraserTo);
+  if (distanceAt(0) < radius && distanceAt(1) < radius) return [0, 1];
+  let left = 0;
+  let right = 1;
+  for (let step = 0; step < 36; step += 1) {
+    const a = left + (right - left) / 3;
+    const b = right - (right - left) / 3;
+    if (distanceAt(a) <= distanceAt(b)) right = b;
+    else left = a;
+  }
+  const nearest = (left + right) / 2;
+  if (distanceAt(nearest) >= radius) return null;
+
+  let enter = 0;
+  if (distanceAt(0) >= radius) {
+    left = 0;
+    right = nearest;
+    for (let step = 0; step < 36; step += 1) {
+      const middle = (left + right) / 2;
+      if (distanceAt(middle) < radius) right = middle;
+      else left = middle;
+    }
+    enter = right;
+  }
+
+  let leave = 1;
+  if (distanceAt(1) >= radius) {
+    left = nearest;
+    right = 1;
+    for (let step = 0; step < 36; step += 1) {
+      const middle = (left + right) / 2;
+      if (distanceAt(middle) < radius) left = middle;
+      else right = middle;
+    }
+    leave = left;
+  }
+  return [enter, leave];
+}
+
+function samePoint(one: Point, another: Point): boolean {
+  return one.x === another.x && one.y === another.y && one.pressure === another.pressure;
+}
+
+/** Recorta un trazo y devuelve null cuando la goma no lo tocó. */
+function eraseFromStroke(
+  stroke: Stroke,
+  eraserFrom: Point,
+  eraserTo: Point,
+  radius: number,
+): Stroke[] | null {
+  if (stroke.length === 1) {
+    return distanceToSegment(stroke[0]!, eraserFrom, eraserTo) < radius ? [] : null;
+  }
+
+  const fragments: Stroke[] = [];
+  let current: Stroke | null = null;
+  let touched = false;
+  const append = (point: Point): void => {
+    current ??= [];
+    if (!samePoint(current.at(-1) ?? point, point) || current.length === 0) current.push(point);
+  };
+  const finish = (): void => {
+    if (current !== null && current.length > 1) fragments.push(current);
+    current = null;
+  };
+
+  for (let index = 1; index < stroke.length; index += 1) {
+    const from = stroke[index - 1]!;
+    const to = stroke[index]!;
+    const inside = intervalInsideEraser(from, to, eraserFrom, eraserTo, radius);
+    if (inside === null) {
+      append(from);
+      append(to);
+      continue;
+    }
+
+    touched = true;
+    const [enter, leave] = inside;
+    if (enter > 0) {
+      append(from);
+      append(pointBetween(from, to, enter));
+    }
+    finish();
+    if (leave < 1) {
+      append(pointBetween(from, to, leave));
+      append(to);
+    }
+  }
+  finish();
+  return touched ? fragments : null;
+}
+
+/**
+ * Recorta de todos los trazos el corredor continuo recorrido por la goma.
+ *
+ * Los fragmentos siguen siendo trazos ordinarios: no nace una entidad nueva ni
+ * se rasteriza el dibujo. Devuelve si algo cambió para agrupar la pasada entera
+ * en una sola acción de deshacer.
+ */
+export function eraseStrokesBetween(
+  strokes: Stroke[],
+  from: Point,
+  to: Point,
+  radius: number,
+): boolean {
+  let changed = false;
   for (let index = strokes.length - 1; index >= 0; index -= 1) {
     const stroke = strokes[index]!;
-    const touched = stroke.some((sample, at) => {
-      if (Math.hypot(point.x - sample.x, point.y - sample.y) <= radius) return true;
-      const next = stroke[at + 1];
-      return next !== undefined && distanceToSegment(point, sample, next) <= radius;
-    });
-    if (!touched) continue;
-    removed.unshift({ stroke, index });
-    strokes.splice(index, 1);
+    const fragments = eraseFromStroke(stroke, from, to, radius);
+    if (fragments === null) continue;
+    strokes.splice(index, 1, ...fragments);
+    changed = true;
   }
-  return removed;
+  return changed;
+}
+
+/** Un apoyo inmóvil es un corredor de longitud cero. */
+export function eraseStrokesAt(strokes: Stroke[], point: Point, radius: number): boolean {
+  return eraseStrokesBetween(strokes, point, point, radius);
+}
+
+export type CanvasPointerIntent = 'ink' | 'navigate' | 'ignore';
+
+/**
+ * Separa intención de dispositivo antes de que una palma pueda tocar el dibujo.
+ */
+export function canvasPointerIntent(
+  pointerType: string,
+  penDetected: boolean,
+  touchCount: number,
+  touchGuarded: boolean,
+): CanvasPointerIntent {
+  if (pointerType !== 'touch') return 'ink';
+  if (touchGuarded) return 'ignore';
+  if (touchCount > 1) return 'navigate';
+  return penDetected ? 'ignore' : 'ink';
 }
 
 /**
@@ -99,10 +243,8 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
 
     const controls = document.createElement('div');
     controls.className = 'canvas-controls';
-    const tools = document.createElement('div');
-    tools.className = 'canvas-tools';
-    tools.setAttribute('role', 'group');
-    tools.setAttribute('aria-label', 'herramienta de dibujo');
+    controls.setAttribute('role', 'toolbar');
+    controls.setAttribute('aria-label', 'controles del dibujo');
     const pencil = document.createElement('button');
     pencil.type = 'button';
     pencil.className = 'canvas-button canvas-tool active';
@@ -117,10 +259,21 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
     eraser.title = 'borrador';
     eraser.setAttribute('aria-label', 'borrar trazos');
     eraser.setAttribute('aria-pressed', 'false');
-    tools.append(pencil, eraser);
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'canvas-button canvas-tool';
+    undo.innerHTML = icon('arrow-back-up');
+    undo.title = 'deshacer';
+    undo.setAttribute('aria-label', 'deshacer en el dibujo');
+    const redo = document.createElement('button');
+    redo.type = 'button';
+    redo.className = 'canvas-button canvas-tool';
+    redo.innerHTML = icon('arrow-forward-up');
+    redo.title = 'rehacer';
+    redo.setAttribute('aria-label', 'rehacer en el dibujo');
     const done = document.createElement('button');
     done.type = 'button';
-    done.className = 'canvas-button done';
+    done.className = 'canvas-button canvas-tool done';
     /*
      * El visto, y no la palabra «listo».
      *
@@ -133,7 +286,7 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
     done.innerHTML = icon('check');
     done.title = 'listo';
     done.setAttribute('aria-label', 'listo, guardar el dibujo');
-    controls.append(tools, done);
+    controls.append(pencil, eraser, undo, redo, done);
     shell.append(controls);
     document.body.append(shell);
 
@@ -266,8 +419,12 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
     const history: CanvasAction[] = [];
     const future: CanvasAction[] = [];
     const drawing = new Map<number, Stroke>();
-    const erasing = new Set<number>();
+    const erasing = new Map<number, Point>();
     const erased = new Map<number, Stroke[]>();
+    const pointerTypes = new Map<number, string>();
+    const activePens = new Set<number>();
+    let penDetected = false;
+    let touchGuardUntil = 0;
     /** Punteros cuyo trazo ya se convirtió en recta durante este apoyo. */
     const straightening = new Set<number>();
     /** Los dos dedos de un pellizco, mientras dure. */
@@ -280,6 +437,39 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
      */
     let twoFingers: { at: number; x: number; y: number; moved: number } | null = null;
     let pinchFrom: { gap: number; midX: number; midY: number; scale: number; panX: number; panY: number } | null = null;
+
+    const touchIsGuarded = (at: number): boolean => activePens.size > 0 || at < touchGuardUntil;
+
+    controls.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'touch' || !touchIsGuarded(event.timeStamp)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+
+    const syncHistoryControls = (): void => {
+      undo.disabled = history.length === 0 && strokes.length === 0;
+      redo.disabled = future.length === 0;
+    };
+
+    /** Revierte cualquier marca que un contacto táctil alcanzó a empezar. */
+    const cancelTouchMutations = (): void => {
+      for (const [pointer, started] of drawing) {
+        if (pointerTypes.get(pointer) !== 'touch') continue;
+        const at = strokes.indexOf(started);
+        if (at !== -1) strokes.splice(at, 1);
+        const action = history.findLastIndex((one) => one.kind === 'draw' && one.stroke === started);
+        if (action !== -1) history.splice(action, 1);
+        drawing.delete(pointer);
+        straightening.delete(pointer);
+      }
+      for (const [pointer, before] of erased) {
+        if (pointerTypes.get(pointer) !== 'touch') continue;
+        strokes.splice(0, strokes.length, ...before);
+        erased.delete(pointer);
+        erasing.delete(pointer);
+      }
+      syncHistoryControls();
+    };
 
     const sample = (event: PointerEvent): Point => {
       const point = at(event);
@@ -300,55 +490,60 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
       // largo o impreciso de la palma no puede convertirse en selección,
       // arrastre o menú contextual del navegador.
       event.preventDefault();
+      pointerTypes.set(event.pointerId, event.pointerType);
+      if (event.pointerType === 'pen') {
+        penDetected = true;
+        activePens.add(event.pointerId);
+        touchGuardUntil = Number.POSITIVE_INFINITY;
+        cancelTouchMutations();
+        pinching.clear();
+        pinchFrom = null;
+        twoFingers = null;
+      }
       if (event.pointerType === 'touch') {
         pinching.set(event.pointerId, { x: event.clientX, y: event.clientY });
-        if (pinching.size === 2) {
-          /*
-           * El segundo dedo convierte en otra cosa lo que el primero empezó.
-           *
-           * Y hay que quitarlo de los trazos, no sólo dejar de seguirlo: el
-           * primer dedo ya había apoyado, así que existe un trazo de un punto.
-           * Sin esto, acercar la imagen dejaba un lunar en el dibujo, y tocar
-           * con dos dedos deshacía ese lunar en vez del trazo anterior.
-           */
-          for (const started of drawing.values()) {
-            const at = strokes.indexOf(started);
-            if (at !== -1) strokes.splice(at, 1);
-            const action = history.findLastIndex((one) => one.kind === 'draw' && one.stroke === started);
-            if (action !== -1) history.splice(action, 1);
-          }
-          drawing.clear();
-          for (const before of erased.values()) {
-            strokes.splice(0, strokes.length, ...before);
-          }
-          erased.clear();
-          erasing.clear();
-          straightening.clear();
-          const [a, b] = [...pinching.values()];
-          if (a !== undefined && b !== undefined) {
-            twoFingers = { at: Date.now(), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, moved: 0 };
-            pinchFrom = {
-              gap: Math.hypot(a.x - b.x, a.y - b.y),
-              midX: (a.x + b.x) / 2,
-              midY: (a.y + b.y) / 2,
-              scale,
-              panX,
-              panY,
-            };
-          }
-          paint();
-          return;
-        }
       }
-      if (pinching.size > 1) return;
+      const intent = canvasPointerIntent(
+        event.pointerType,
+        penDetected,
+        pinching.size,
+        event.pointerType === 'touch' && touchIsGuarded(event.timeStamp),
+      );
+      if (intent === 'ignore') return;
+      if (intent === 'navigate') {
+        /*
+         * El segundo dedo convierte en otra cosa lo que el primero empezó.
+         *
+         * Y hay que quitarlo de los trazos, no sólo dejar de seguirlo: el
+         * primer dedo ya había apoyado, así que existe un trazo de un punto.
+         * Sin esto, acercar la imagen dejaba un lunar en el dibujo, y tocar
+         * con dos dedos deshacía ese lunar en vez del trazo anterior.
+         */
+        cancelTouchMutations();
+        const [a, b] = [...pinching.values()];
+        if (a !== undefined && b !== undefined) {
+          twoFingers = { at: Date.now(), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, moved: 0 };
+          pinchFrom = {
+            gap: Math.hypot(a.x - b.x, a.y - b.y),
+            midX: (a.x + b.x) / 2,
+            midY: (a.y + b.y) / 2,
+            scale,
+            panX,
+            panY,
+          };
+        }
+        paint();
+        return;
+      }
       canvas.setPointerCapture(event.pointerId);
       if (tool === 'eraser') {
         const point = sample(event);
         eraserPoint = point;
         future.length = 0;
-        erasing.add(event.pointerId);
+        erasing.set(event.pointerId, point);
         erased.set(event.pointerId, [...strokes]);
         eraseStrokesAt(strokes, point, ERASER_RADIUS / scale);
+        syncHistoryControls();
         paint();
         return;
       }
@@ -358,13 +553,16 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
       drawing.set(event.pointerId, stroke);
       strokes.push(stroke);
       history.push({ kind: 'draw', stroke, index: strokes.length - 1 });
+      syncHistoryControls();
       paint();
     });
 
     canvas.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch' && touchIsGuarded(event.timeStamp)) return;
       if (pinching.has(event.pointerId)) {
         pinching.set(event.pointerId, { x: event.clientX, y: event.clientY });
       }
+      if (event.pointerType === 'touch' && penDetected && pinching.size < 2) return;
       if (pinchFrom !== null && pinching.size === 2) {
         const [a, b] = [...pinching.values()];
         if (a === undefined || b === undefined) return;
@@ -388,9 +586,16 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
         return;
       }
       if (tool === 'eraser') {
-        eraserPoint = sample(event);
-        if (erasing.has(event.pointerId)) {
-          eraseStrokesAt(strokes, eraserPoint, ERASER_RADIUS / scale);
+        const many = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
+        const points = many.length > 0 ? many : [event];
+        for (const one of points) {
+          const point = sample(one as PointerEvent);
+          const previous = erasing.get(event.pointerId);
+          eraserPoint = point;
+          if (previous !== undefined) {
+            eraseStrokesBetween(strokes, previous, point, ERASER_RADIUS / scale);
+            erasing.set(event.pointerId, point);
+          }
         }
         paint();
         return;
@@ -436,8 +641,12 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
        */
       if (twoFingers !== null && pinching.size === 2) {
         const quick = Date.now() - twoFingers.at < 350;
-        if (quick && twoFingers.moved < 14) undoStroke();
+        if (!penDetected && quick && twoFingers.moved < 14) undoStroke();
         twoFingers = null;
+      }
+      if (event.pointerType === 'pen') {
+        activePens.delete(event.pointerId);
+        touchGuardUntil = event.timeStamp + 700;
       }
       pinching.delete(event.pointerId);
       if (pinching.size < 2) pinchFrom = null;
@@ -460,6 +669,8 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
         const at = strokes.indexOf(stroke);
         if (at !== -1) strokes.splice(at, 1);
       }
+      pointerTypes.delete(event.pointerId);
+      syncHistoryControls();
     };
     canvas.addEventListener('pointerup', liftPointer);
     canvas.addEventListener('pointercancel', liftPointer);
@@ -491,6 +702,7 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
         strokes.splice(0, strokes.length, ...action.before);
       }
       if (action !== undefined) future.push(action);
+      syncHistoryControls();
       paint();
     };
     const redoStroke = (): void => {
@@ -502,8 +714,12 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
         strokes.splice(0, strokes.length, ...action.after);
       }
       history.push(action);
+      syncHistoryControls();
       paint();
     };
+
+    undo.addEventListener('click', undoStroke);
+    redo.addEventListener('click', redoStroke);
 
     const shut = (): void => {
       window.removeEventListener('resize', resize);
@@ -539,6 +755,7 @@ export function openCanvas(already: readonly Stroke[] = []): Promise<CanvasResul
     window.addEventListener('resize', resize);
     resize();
     frameWhatIsThere();
+    syncHistoryControls();
     paint();
   });
 }

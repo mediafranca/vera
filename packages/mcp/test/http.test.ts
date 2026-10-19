@@ -5,7 +5,7 @@ import { after, before, describe, it } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import { handlePublicMCP } from '../src/http.ts';
+import { createMCPHandler, handlePublicMCP } from '../src/http.ts';
 
 let api = '';
 let door = '';
@@ -46,6 +46,30 @@ const initialize = {
 };
 
 describe('la puerta MCP pública', () => {
+  it('puede ligarse explícitamente a la Vera local que hospeda Desktop', async () => {
+    const handler = createMCPHandler(api);
+    const embedded = createServer((request, response) => void handler(request, response));
+    await new Promise<void>((resolve) => embedded.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = embedded.address();
+      assert(address !== null && typeof address !== 'string');
+      const response = await fetch(`http://127.0.0.1:${address.port}/mcp`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          authorization: 'Bearer bueno',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(initialize),
+      });
+      assert.equal(response.status, 200);
+      const payload = await response.json() as { result?: { serverInfo?: { name?: string } } };
+      assert.equal(payload.result?.serverInfo?.name, 'vera');
+    } finally {
+      await new Promise<void>((resolve, reject) => embedded.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
   it('rechaza antes del protocolo una petición sin credencial', async () => {
     const response = await fetch(door, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(initialize),

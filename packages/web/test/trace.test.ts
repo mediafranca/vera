@@ -5,6 +5,7 @@ import {
   clearTrace,
   dropped,
   loadTrace,
+  movedBeside,
   movedTo,
   retainingPages,
   saveTrace,
@@ -72,6 +73,12 @@ describe('rastro durable y componible', () => {
     const arranged = movedTo(steps, 2, 0);
     assert.equal(arranged[0]?.page, 'c');
     assert.deepEqual(dropped(arranged, 1).map((step) => step.page), ['c', 'b']);
+  });
+
+  it('inserta antes o después de la marca visible sin desfase al quitar el origen', () => {
+    assert.deepEqual(movedBeside(steps, 0, 1, 'after').map((step) => step.page), ['b', 'a', 'c']);
+    assert.deepEqual(movedBeside(steps, 2, 1, 'before').map((step) => step.page), ['a', 'c', 'b']);
+    assert.deepEqual(movedBeside(steps, 1, 1, 'before').map((step) => step.page), ['a', 'b', 'c']);
   });
 
   it('retira identidades huérfanas sin alterar el orden de las páginas vivas', () => {

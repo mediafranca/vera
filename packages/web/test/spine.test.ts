@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runs, spineForce, straighten, type Moving } from '../src/graph/spine.ts';
+import { runs, spineForce, straighten, straightenableRuns, type Moving } from '../src/graph/spine.ts';
 
 /** Un punto quieto en el sitio que se le da. */
 const at = (x: number, y: number, z?: number): Moving =>
@@ -25,6 +25,15 @@ const at = (x: number, y: number, z?: number): Moving =>
  * entonces cosas sobre una física que el mapa no usa.
  */
 const DECAY = 0.6;
+
+describe('qué tramos admiten una columna vertebral', () => {
+  it('conserva orgánico un recorrido que vuelve a la misma página', () => {
+    const a = at(0, 0);
+    const b = at(20, 15);
+    const c = at(40, 0);
+    assert.deepEqual(straightenableRuns([[a, b, c], [a, b, a]]), [[a, b, c]]);
+  });
+});
 
 function step(chain: Moving[], alpha = 1): void {
   straighten(chain, alpha);

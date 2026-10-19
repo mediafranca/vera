@@ -106,6 +106,49 @@ export interface Trail {
   argues: boolean;
 }
 
+/**
+ * Proyecta un recorrido sobre el universo que una lectura puede conocer.
+ *
+ * La ruta conserva su forma y sus ordinales, pero una parada fuera del ámbito
+ * se vuelve indistinguible de un puente que no resuelve. No se elimina: hacerlo
+ * juntaría falsamente las paradas públicas que estaban separadas por material
+ * privado. Tampoco viajan por ese corte la clase, relación o testimonio que el
+ * grafo privado pudiera conocer.
+ */
+export function projectTrail(
+  trail: Trail,
+  visible: (page: string) => boolean,
+): Trail {
+  const route = trail.route.map((node): TrailNode => ({
+    ...node,
+    page: node.page !== null && visible(node.page) ? node.page : null,
+  }));
+  const byOrdinal = new Map(route.map((node) => [node.ordinal, node]));
+  const crossings = trail.crossings.map((crossing): TrailCrossing => {
+    const from = byOrdinal.get(crossing.from.ordinal)!;
+    const to = byOrdinal.get(crossing.to.ordinal)!;
+    if (from.page !== null && to.page !== null) return { ...crossing, from, to };
+    return {
+      ...crossing,
+      from,
+      to,
+      connective: '',
+      testimony: null,
+      citation: null,
+      kind: 'across_open_ground',
+      spokenFor: false,
+      blocks: [],
+    };
+  });
+  return {
+    ...trail,
+    route,
+    crossings,
+    broken: route.filter((node) => node.page === null),
+    argues: crossings.some((crossing) => crossing.connective !== ''),
+  };
+}
+
 /** ¿Esta página dice de sí misma que ya alcanzó el estado argumento? */
 export function isTrail(
   properties: readonly { key: string; value: string }[],

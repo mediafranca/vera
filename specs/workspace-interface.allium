@@ -63,6 +63,12 @@ contract NativeMarkdownEditing {
         -- bridge, opening delegates to the operating system's default browser;
         -- cancelling leaves the current page and its editing state untouched.
 
+    @invariant ExternalLinksBelongToTheSameReadingLanguage
+        -- Internal and external links use the same governed link colour in page
+        -- bodies, excerpts, concept listings and properties. A web destination
+        -- is distinguished by the decorative Lucide `external-link` mark placed
+        -- inline at the end of its label, not by browser blue or visited purple.
+
     @invariant SourceRemainsMarkdown
         -- Editing produces portable Markdown rather than an opaque editor format.
 
@@ -119,15 +125,18 @@ contract NativeMarkdownEditing {
         -- of the Markdown renderer.
 
     @invariant FormattingIsOneEditingTool
-        -- While a Markdown block is being edited, `/formato` reveals one bar
-        -- above its source. Its observable order is the split heading control;
+        -- While a Markdown block is being edited, its bullet becomes a tools
+        -- control and the formatting bar begins collapsed. Activating that
+        -- control reveals one bar above the source of that same block. Its
+        -- observable order is the split heading control;
         -- bold, italic, strikethrough, underline, superscript and subscript;
         -- quotation and code; then Vera internal link and external web link. H1
         -- is the heading control's visible primary action; the adjacent arrow
         -- reveals H2 through H6 in a vertical list. Italic is presented as an
         -- italic `I`, strikethrough as a struck `S`, and underline as an
         -- underlined `U`. These appearances do not replace accessible names.
-        -- Closing the bar leaves the same source, selection and caret in place.
+        -- Closing or reopening the bar leaves the same source, selection and
+        -- caret in place. Leaving the editor restores the block's ordinary bullet.
 
     @invariant FormattingWritesPortableMarkdown
         -- An internal link wraps selected text as `[[…]]`; with no selection it
@@ -156,19 +165,24 @@ contract NativeMarkdownEditing {
         -- Mermaid, drawing or media. Executable and specialised behaviours begin
         -- only through their explicit block command or recognised attachment.
 
-    @invariant FormattingFloatsWithoutMovingTheText
-        -- The formatting bar floats above the block being edited and occupies no
-        -- space in the document flow: opening or closing it moves neither that
-        -- block's source nor any block below it. It stays horizontally aligned
-        -- with the editor. While a block taller than the viewport is edited, the
-        -- bar remains at the top of the visible text pane instead of scrolling
-        -- outside the screen.
+    @invariant FormattingStaysWithTheEditedBlock
+        -- While collapsed, the formatting tool occupies only the bullet's usual
+        -- place. While a block taller than the viewport is edited, that tool
+        -- remains at the top of the visible text pane so the bar can always be
+        -- opened or closed. When opened, the bar takes its own row above the
+        -- source inside the edited block and stays horizontally aligned with that
+        -- editor. The bar travels in the ordinary flow with the beginning of the
+        -- source instead of floating over text; scrolling down leaves it above,
+        -- and returning to the beginning reveals it before the first line. Tool
+        -- and bar are bounded by the edited block and never enter a neighbour.
+        -- The collapsed tool is a circular control aligned exactly with the
+        -- centre of the block bullet and large enough to remain legible without
+        -- shifting the bullet, fold control or source from their ordinary axes.
 
     @invariant FormattingNeverCoversWhatIsBeingWritten
-        -- Floating cannot make the bar an obstacle. It never covers the caret,
-        -- the current selection, an autocomplete result or the line being
-        -- edited; when the available edge cannot hold it, it moves, collapses or
-        -- closes rather than asking the participant to write underneath it.
+        -- The bar never covers the source, caret, current selection or an
+        -- autocomplete result. It occupies its own row before the source rather
+        -- than asking the participant to read or write underneath it.
 }
 
 -- A block has one primary way of being read, but no stored type field is needed.
@@ -179,16 +193,32 @@ contract BlockBehaviourPresentation {
 
     @invariant TheCurrentBlockBehavioursAreNamed
         -- Vera distinguishes standard Markdown, explicit executable HTML, audio,
-        -- video, YouTube clip, embedded map, hand drawing, p5.js, SVG, query,
-        -- Mermaid and Markdown table blocks.
+        -- video, YouTube clip, Google Maps address, embedded map, hand drawing,
+        -- p5.js, SVG, query, Mermaid and Markdown table blocks.
         -- Each is presented and edited according to its own behaviour.
 
     @invariant BehaviourIsDerivedRatherThanDuplicated
-        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, embedded
-        -- maps, HTML, p5.js and SVG are recognised from their complete preserved
+        -- Markdown tables, queries, Mermaid, drawings, YouTube clips, Google
+        -- Maps addresses, embedded maps, HTML, p5.js and SVG are recognised from their complete preserved
         -- source; audio and video are recognised from their native attachment.
         -- Vera does not keep a second mutable type label that can disagree with
         -- the content.
+
+    @invariant DerivedBlocksShareOneSourceControl
+        -- Every editable block whose complete textual source produces a
+        -- specialised representation offers the same control below that
+        -- representation. Activating it replaces the representation with the
+        -- exact canonical source in that block; the control in the same place
+        -- then returns to the representation. The control is outside the
+        -- represented object, so it never covers a drawing, diagram, video,
+        -- map or executable surface.
+
+    @invariant SourceEditingIsAllowedToChangeTheBehaviour
+        -- Source mode is an editor, not a read-only inspector. Saving uses the
+        -- ordinary block history and derives the next behaviour from the new
+        -- source. If it no longer forms a valid specialised block, Vera keeps
+        -- the authored source readable and editable as safe Markdown rather
+        -- than retaining an obsolete representation or silently repairing it.
 
     @invariant AYouTubeClipNamesItsInterval
         -- A deliberate `clip` block preserves the YouTube address and names a
@@ -227,10 +257,86 @@ contract BlockBehaviourPresentation {
         -- complete source is a Markdown table. It remains portable Markdown and
         -- changing it back to ordinary prose needs no conversion or lost data.
 
+    @invariant ATableHasAVisualEditorAndItsSource
+        -- Activating a rendered Markdown table opens a rectangular cell editor
+        -- rather than asking the participant to maintain pipes and padding by
+        -- hand. The shared source control remains available as a distinct route
+        -- to the exact Markdown. Both routes edit the same block and returning
+        -- to the representation records one ordinary block revision.
+
+    @invariant TableEditingKeepsThePortableShape
+        -- The visual editor can add or remove rows and columns and set each
+        -- column to left, centre or right alignment. `/tabla` lets the participant
+        -- choose the visible rows, columns and whether headers occupy the first
+        -- row or first column before inserting it. The editor can later transpose
+        -- between those header axes without losing cell content. It serialises a header, an
+        -- alignment divider and rectangular body rows as portable Markdown;
+        -- it introduces no opaque table identity, column-width syntax, merged
+        -- cells or private metadata. A blank Markdown header row is the portable
+        -- convention for row headers in the first column.
+
+    @invariant TableCellsKeepSmallMarkdown
+        -- Every cell edits one line of inline Markdown. Bold, italic, code and
+        -- links remain authored source rather than rich-text state. Tab and
+        -- Shift-Tab traverse cells, Enter moves down the current column, and a
+        -- rectangular tab-separated paste fills the grid from the active cell.
+
+    @invariant TableColumnsRemainLegible
+        -- Ordinary words in a rendered Markdown table are never broken between
+        -- arbitrary letters merely to keep the table inside the reading column.
+        -- Every column keeps a readable minimum width; when those minima no
+        -- longer fit, the table scrolls horizontally inside its own frame rather
+        -- than squeezing one or more columns into vertical strings of letters.
+        -- This presentation adds no width syntax to the portable Markdown.
+
     @invariant SpecialisedBlocksKeepTheirOwnEditor
-        -- Editing opens the source, canvas or media controls appropriate to the
-        -- derived behaviour. It never sends drawing coordinates, executable
-        -- source or a query through the ordinary prose formatter.
+        -- Source mode presents specialised text without prose-formatting tools.
+        -- A drawing additionally offers its canvas, so editing points and
+        -- pressures directly does not replace editing the same source through
+        -- hand gestures. Native media without textual source keeps its own media
+        -- controls and does not pretend to have code.
+}
+
+-- Reading aloud is another presentation of the words already on the page. It
+-- does not create an audio attachment, a revision or a second textual source.
+contract SpokenReading {
+    read_page: (page: core/Page) -> Any
+    read_block: (block: core/Block) -> Any
+    stop: () -> Any
+
+    @invariant APageIsReadInItsAuthoredOrder
+        -- Page reading begins with the title and continues through non-empty
+        -- blocks in their outline order. Long blocks may be prepared in smaller
+        -- fragments, but those fragments never change or reorder their words.
+
+    @invariant EveryBlockCanBeHeardOnItsOwn
+        -- Every non-empty block offers the same voice independently of page
+        -- reading. Starting another block or the whole page stops the current
+        -- reading; its one control can pause and continue the audio it began.
+
+    @invariant SpeechIsAProjectionNotAContribution
+        -- Listening creates no block, revision, asset or operation. The words
+        -- stay on this Vera while the configured local voice prepares them, and
+        -- cached audio is derived from the exact text rather than stored as a
+        -- second mutable source.
+
+    @invariant DerivedAudioCannotAccumulateWithoutBound
+        -- Reusable spoken audio is a bounded, expiring cache rather than a
+        -- second archive. Vera may discard the least recently used or oldest
+        -- derived audio at any time; hearing it again regenerates it from the
+        -- current text without changing the corpus.
+
+    @invariant PreparingSpeechDoesNotMoveTheWriting
+        -- While the local model has not produced playable audio, a status stays
+        -- anchored to the initiating control without changing the block's
+        -- measure or moving its text. The control can still stop the wait; a
+        -- failure leaves the written page intact and says what could not be heard.
+
+    @invariant RepeatedGesturesDoNotBecomeAHiddenQueue
+        -- At most one fragment is being synthesized and at most the latest
+        -- requested fragment may wait behind it. Stopping or replacing a read
+        -- rejects obsolete requests rather than accumulating work the reader can
+        -- no longer see.
 }
 
 contract BlockManipulation {
@@ -372,6 +478,13 @@ contract BlockManipulation {
         -- A selection and a caret are two different answers to "what does the
         -- next keystroke act on", and only one of them can be right. Beginning
         -- to write clears the selection; making a selection leaves the writing.
+
+    @invariant ASelectedMoveKeepsItsPlace
+        -- Indenting, outdenting or moving a selected range may rebuild a long
+        -- page progressively. The selected blocks remain selected and the
+        -- reader stays at the same visible passage while every drawing batch
+        -- arrives; an early partial drawing never sends the viewport to the
+        -- beginning of the page.
 }
 
 -- History is evidence about a block, not another descendant of that block.
@@ -522,6 +635,11 @@ contract PageFrontMatter {
         -- hides the complete property sheet without changing the page. The same
         -- control and state are used in private and public reading surfaces.
 
+    @invariant PageActionsShareOneHeaderLine
+        -- The property disclosure, Presentar when available, and the page menu
+        -- form one aligned action row beside the title. None is independently
+        -- overlaid on the header or positioned by a separate vertical origin.
+
     @invariant EveryWrittenPropertyCanBeRemovedWhereItIsRead
         -- Every editable property row presents a visible removal control beside
         -- its value, including without pointer hover. Removing it submits the
@@ -553,6 +671,7 @@ contract ResponsiveWorkspace {
 -- después y Vera dice qué está haciendo mientras tanto.
 contract ProgressivePageReading {
     open: (page: core/Page) -> core/Page
+    refresh: (page: core/Page) -> core/Page
 
     @invariant AUsablePageArrivesBeforeItsEnrichment
         -- As soon as the page title, properties and blocks are available, Vera
@@ -565,6 +684,14 @@ contract ProgressivePageReading {
         -- content, editing state and reading position already on screen. The
         -- page does not disappear, return to its beginning or pretend to have
         -- been opened a second time.
+
+    @invariant PullingFromTheBeginningRequestsTheCanonicalPage
+        -- On a touch reading surface, pulling downward from the beginning makes
+        -- the refresh intention and its threshold visible. Releasing beyond the
+        -- threshold requests the current canonical page and presents that
+        -- revision without adding a navigation step. A pull begun after the
+        -- beginning remains ordinary scrolling; a failed request preserves the
+        -- readable page already on screen and reports the failure.
 
     @invariant BackgroundWorkExplainsItself
         -- While derived information is still being prepared, a discreet status
@@ -613,6 +740,12 @@ contract InstallableWebApplication {
         -- previous complete shell running; it never mixes an old document with
         -- missing assets from a newer build and never turns an update into a blank
         -- installed application.
+
+    @invariant RunningShellCanDiscoverANewerBuild
+        -- The public and private origins both expose the uncached application
+        -- document used to compare build fingerprints. A window or installed
+        -- PWA that stayed open can therefore discover a newer script or style
+        -- and reload instead of remaining silently on an obsolete client.
 
     @invariant OfflineReadingAndWriting
         -- An authenticated participant can read available graph content and
@@ -1245,6 +1378,7 @@ surface VeraWorkspace {
         fulfils EditablePresentation
         fulfils NativeMarkdownEditing
         fulfils BlockBehaviourPresentation
+        fulfils SpokenReading
         fulfils BlockManipulation
         fulfils PageFrontMatter
         fulfils ResponsiveWorkspace
@@ -1303,6 +1437,13 @@ surface VeraWorkspace {
         -- on a phone renders as it did on the desk. The remaining choices name
         -- the system's own faces on purpose: those are meant to differ per
         -- device, and resolving them differently is them working.
+
+    @guarantee FrontMatterVisibilityIsAClientMode
+        -- Showing or hiding front matter is one client preference, like colour
+        -- scheme or layout, and never a property of an individual Page. The
+        -- gesture changes every page currently visible in the workspace and the
+        -- remembered choice applies to pages rendered later. It creates no graph
+        -- mutation and is not synchronized to another client.
 
     @guarantee PresentationSurvivesTheServer
         -- Presentation is read and drawn from what the device already holds, and
@@ -1441,6 +1582,13 @@ surface VeraWorkspace {
         -- gloss that wrote it, with predominantly horizontal Bézier tangents.
         -- Markdown remains rendered rather than becoming source notation.
 
+    @guarantee SpatialMapsDoNotCarryHiddenProse
+        -- 2D and 3D receive node geometry and relationships without the page
+        -- lines that only D4 can display. Entering D4 requests those lines for
+        -- the current reach; returning to a spatial map returns to the lighter
+        -- projection. The public map may begin fetching as soon as its canonical
+        -- focus is known, in parallel with the page index and readable text.
+
     @guarantee D4CompactsWithoutDiscarding
         -- A page projects only the sentences that originate a reference, gloss
         -- or explained relation visible at the current degree. Unrelated prose
@@ -1529,6 +1677,17 @@ surface VeraWorkspace {
         -- Ordenar el rastro es la primera mitad de componer un argumento y ocurre
         -- antes de que nadie haya decidido componer ninguno. Por eso vive aquí y
         -- no en trail.allium: es una cosa que se hace mientras se lee.
+        --
+        -- Mientras se arrastra, una línea vertical de acento ocupa el intersticio
+        -- anterior o posterior donde caerá el paso. La marca desaparece al
+        -- soltar o cancelar y el orden resultante coincide con ese intersticio:
+        -- se señala una posición de inserción, no una pastilla receptora.
+
+    @guarantee EveryTraceStepKeepsItsNameLegible
+        -- El asa de arrastre, el título y la eliminación se leen como una sola
+        -- unidad compacta. El asa queda próxima al nombre sin perder su blanco
+        -- interactivo; cuando el espacio no alcanza, el título termina en una
+        -- elipsis visible en vez de quedar cortado como si faltara contenido.
 
     @guarantee TheTraceSurvivesRefresh
         -- El rastro completo sobrevive a recargar o cerrar la interfaz. La última

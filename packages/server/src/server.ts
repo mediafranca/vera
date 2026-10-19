@@ -15,6 +15,7 @@ import {
   TESTIMONY_KEY,
   VeraGraph,
   isArgumentWork,
+  projectTrail,
   readTrail,
   type Trail,
   answersIn,
@@ -81,6 +82,7 @@ import {
   type Store,
 } from '@vera/store';
 import { composeBooklet, composePaper, toPdf } from './paper.ts';
+import { googleMapEmbedUrl, resolveGoogleMapPoint } from './google-map.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
@@ -93,6 +95,7 @@ import {
   listCredentials,
   resolveSecret,
   revokeCredential,
+  renameCredential,
   credentialById,
   scopeRefusal,
   type Credential,
@@ -156,6 +159,7 @@ import { readLinks } from './process.ts';
 import { describeStructure, readingPasses, readStructure } from './structure.ts';
 import { describePlan, planTabularity } from './tabularity.ts';
 import { transcribeAudio } from './transcribe.ts';
+import type { SpeechSynthesizer } from './speech.ts';
 import { renderPage } from '@vera/store/projection';
 import {
   p5FrameDocument,
@@ -270,6 +274,8 @@ export interface ServerOptions {
   webRoot?: string;
   /** Almacén de objetos direccionado por hash, donde viven los binarios. */
   objectsRoot?: string;
+  /** Voz local derivada: no escribe en el grafo ni abandona la máquina. */
+  speech?: SpeechSynthesizer;
   owner?: { id: ParticipantId; name: string };
   /**
    * En qué puerto quedó escuchando, para poder decirlo.
@@ -296,6 +302,8 @@ export interface ServerOptions {
   publicSite?: { title: string; canonicalDomain: string };
   /** Origen loopback de la única ruta MCP expuesta por el dominio público. */
   publicMcpOrigin?: string;
+  /** Puerta MCP autenticada embebida por Vera Desktop para el relay saliente. */
+  localMcpHandler?: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>;
   /** Directorio estable que Tailscale Serve o el alojamiento público sirven. */
   publicOutput?: string;
   /** Iconos y manifiesto que acompañan a la proyección pública. */
@@ -526,6 +534,18 @@ function readOperation(body: SubmitBody): { error: string } | {
   if (typeof kind !== 'string' || !CHANGE_KINDS.has(kind)) {
     return { error: `change.kind must be one of ${[...CHANGE_KINDS].join(', ')}` };
   }
+  if (kind === 'set_property') {
+    const property = change as { propertyKey?: unknown; propertyValue?: unknown };
+    if (typeof property.propertyKey !== 'string' || typeof property.propertyValue !== 'string') {
+      return { error: 'set_property needs propertyKey and propertyValue strings' };
+    }
+  }
+  if (kind === 'remove_property') {
+    const property = change as { propertyKey?: unknown };
+    if (typeof property.propertyKey !== 'string') {
+      return { error: 'remove_property needs a propertyKey string' };
+    }
+  }
 
   let evidence: OriginEvidence | undefined;
   if (body.evidence !== undefined && body.evidence !== null) {
@@ -546,6 +566,7 @@ function readOperation(body: SubmitBody): { error: string } | {
 
 export function createVeraServer(options: ServerOptions): VeraServer {
   const store = openStore({ path: options.databasePath, graphName: 'mind' });
+  let librarianDispatchInProgress = false;
 
   const dispatchLibrarianRequest = async (id: string): Promise<void> => {
     if (options.librarianHook === undefined) {
@@ -567,10 +588,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       markLibrarianDispatched(store, id, false, error instanceof Error ? error.message : 'OpenClaw no respondió');
     }
   };
+  const dispatchNextLibrarianRequest = async (): Promise<void> => {
+    if (librarianDispatchInProgress) return;
+    librarianDispatchInProgress = true;
+    try {
+      const [id] = pendingLibrarianDispatches(store);
+      if (id !== undefined) await dispatchLibrarianRequest(id);
+    } finally {
+      librarianDispatchInProgress = false;
+    }
+  };
   const retryLibrarianDispatches = setInterval(() => {
-    for (const id of pendingLibrarianDispatches(store)) void dispatchLibrarianRequest(id);
+    void dispatchNextLibrarianRequest();
   }, 30_000);
   retryLibrarianDispatches.unref();
+  void dispatchNextLibrarianRequest();
 
   /*
    * El grafo en memoria se reconstruye del log al arrancar y responde las
@@ -919,6 +951,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /** Cada propiedad de este corpus, con qué clase de campo es. */
   const declaredProperties = () => readPropertyDeclarations(declaredIn('properties'));
 
+  /** Cada clase de cosa, con qué propiedades la constituyen. */
+  const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
+
   /**
    * Qué se puede contestar a una propiedad en esta página.
    *
@@ -932,20 +967,37 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const declaration = declaredProperties().find(
       (one) => titleKey(one.name) === titleKey(key),
     );
-    if (declaration === undefined || declaration.values.length === 0) return observed;
+    if (declaration === undefined) return observed;
 
-    const used = new Map(observed.map((one) => [titleKey(one.value), one] as const));
-    const declared = declaration.values.map((value) => ({
+    /*
+     * `tipo` no mantiene una segunda lista en Propiedades: sus respuestas son
+     * exactamente las clases declaradas en VERA: Objetos. Duplicarlas aquí
+     * permitiría que ambas páginas discreparan y volvería a introducir la
+     * errata que esto evita —por ejemplo, ofrecer `Nota` y `nota` como si
+     * fueran dos clases. Los demás dominios cerrados sí toman sus `valores::`
+     * de la declaración de la propiedad.
+     */
+    const values =
+      titleKey(declaration.role ?? '') === 'kind'
+        ? declaredObjects().map((one) => one.name)
+        : declaration.values;
+    if (values.length === 0) return observed;
+
+    // Las variantes de caja y diacríticos son una sola respuesta; sus usos se
+    // suman bajo la grafía canónica en vez de competir en el desplegable.
+    const used = new Map<string, number>();
+    for (const one of observed) {
+      const named = titleKey(one.value);
+      used.set(named, (used.get(named) ?? 0) + one.uses);
+    }
+    const declared = values.map((value) => ({
       value,
-      uses: used.get(titleKey(value))?.uses ?? 0,
+      uses: used.get(titleKey(value)) ?? 0,
       declared: true,
     }));
-    const named = new Set(declaration.values.map(titleKey));
+    const named = new Set(values.map(titleKey));
     return [...declared, ...observed.filter((one) => !named.has(titleKey(one.value)))];
   };
-
-  /** Cada clase de cosa, con qué propiedades la constituyen. */
-  const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
 
   /** Cada tipo de arista que este corpus ofrece al escribir una relación. */
   const declaredRelations = () => readRelationDeclarations(declaredIn('relations'));
@@ -1343,6 +1395,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const publicAccess = publicOrigin;
 
     /*
+     * Vera Desktop recibe sobres MCP por su WebSocket saliente y los deposita
+     * aquí. La página GET /mcp sigue describiendo conexiones; sólo POST habla
+     * protocolo. El manejador vuelve a autenticar el bearer antes de enumerar
+     * herramientas o leer el corpus.
+     */
+    if (!publicOrigin && request.method === 'POST' && path === '/mcp' && options.localMcpHandler !== undefined) {
+      await options.localMcpHandler(request, response);
+      return;
+    }
+
+    /*
      * La puerta pública es una sola grieta deliberada en el origen público.
      *
      * Se reenvía antes del guard de `anybody`, porque éste rechaza todo POST;
@@ -1466,12 +1529,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const publicSharedPath = publicSharedSpace !== null && canReadScopedSpace;
       const safe =
         path === '/' ||
+        path === '/index.html' ||
         path === '/health' ||
         path === '/pages' ||
         path === '/buscar' ||
         path === '/search' ||
         path === '/search/pages' ||
         path === '/query' ||
+        path === '/embeds/google-map' ||
         path === '/p5-frame.html' ||
         path === '/p5.min.js' ||
         path.startsWith('/pages/') ||
@@ -1675,6 +1740,52 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     };
 
     /*
+     * Leer en voz alta es una proyección efímera del texto, no una edición ni
+     * un archivo del corpus. La puerta es privada y estrecha: un fragmento por
+     * vez, para poder detener una página entre bloques.
+     */
+    if (request.method === 'POST' && path === '/speech') {
+      if (publicAccess) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      if (options.speech === undefined) {
+        send(response, 503, { error: 'la voz local no está configurada' });
+        return;
+      }
+      const body = await readSmallJson(4 * 1024);
+      const text = typeof body['text'] === 'string' ? body['text'].trim().replace(/\s+/g, ' ') : '';
+      if (text.length === 0 || text.length > 300) {
+        send(response, 422, { error: 'el fragmento debe tener entre 1 y 300 caracteres' });
+        return;
+      }
+      const controller = new AbortController();
+      const stop = (): void => controller.abort();
+      request.once('aborted', stop);
+      response.once('close', stop);
+      let spoken: Awaited<ReturnType<SpeechSynthesizer['speak']>>;
+      try {
+        spoken = await options.speech.speak(text, controller.signal);
+      } catch (problem) {
+        if (controller.signal.aborted || (problem instanceof Error && problem.name === 'AbortError')) return;
+        throw problem;
+      } finally {
+        request.off('aborted', stop);
+        response.off('close', stop);
+      }
+      if (controller.signal.aborted || response.destroyed) return;
+      response.writeHead(200, {
+        'content-type': spoken.mediaType,
+        'content-length': spoken.bytes.byteLength,
+        'cache-control': 'private, max-age=31536000, immutable',
+        'x-vera-speech-cache': spoken.cached ? 'hit' : 'miss',
+        'x-content-type-options': 'nosniff',
+      });
+      response.end(spoken.bytes);
+      return;
+    }
+
+    /*
      * Puerta estrecha de Vera Clip.
      *
      * La captura nace en la bitácora del día como un subárbol importado. El
@@ -1682,7 +1793,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * estables: perder la respuesta y reenviar nunca duplica el depósito.
      */
     if (request.method === 'POST' && path === '/captures') {
-      if (presentedCredential !== null && !presentedCredential.scopes.includes('capture')) {
+      if (presentedCredential === null) {
+        send(response, 401, { error: 'la captura requiere una credencial delegada por la persona propietaria' });
+        return;
+      }
+      if (!presentedCredential.scopes.includes('capture')) {
         send(response, 403, { error: 'la credencial no tiene alcance capture' });
         return;
       }
@@ -1811,7 +1926,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         sourceBlockId: block?.stableId ?? null,
         contextSnapshot: snapshot,
       });
-      await dispatchLibrarianRequest(created.id);
+      await dispatchNextLibrarianRequest();
       send(response, 201, librarianRequest(store, created.id));
       return;
     }
@@ -1864,6 +1979,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         removeLibrarianRequest(store, id);
         send(response, 200, { status: 'removed', id });
+        void dispatchNextLibrarianRequest();
         return;
       }
       if (request.method === 'POST' && action === 'claim') {
@@ -1876,7 +1992,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (request.method === 'POST' && action === 'reply') {
         if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
         let body: Record<string, unknown>;
-        try { body = await readSmallJson(); }
+        // Una respuesta sobre bloque debe reenviar su contenido completo. Las
+        // transcripciones y otros bloques documentales superan legítimamente
+        // el límite pequeño de 64 KiB usado por formularios ordinarios.
+        try { body = await readSmallJson(2_100_000); }
         catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         const changes = Array.isArray(body.changes) ? body.changes as Change[] : [];
@@ -1923,6 +2042,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes: [] });
           if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
           send(response, 201, answered);
+          void dispatchNextLibrarianRequest();
           return;
         }
         /*
@@ -1962,6 +2082,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
         send(response, 201, answered);
+        void dispatchNextLibrarianRequest();
         return;
       }
     }
@@ -3253,14 +3374,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
 
         /*
-         * La identidad se deriva del nombre con que se declara el cliente.
-         *
-         * Pedirla aparte sería pedir dos veces lo mismo con dos formas distintas,
-         * y la forma exacta —`participant:chatgpt`— es una convención del
-         * almacén que no tiene por qué saberse para conectar una IA.
+         * Una IA habla como un participante propio. Una herramienta de captura
+         * no: demuestra qué cliente ejecutó el gesto, pero quien incorpora el
+         * material sigue siendo la persona propietaria y el canal será import.
          */
-        const participant = `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
-        if (graph.participant(participant) === undefined) {
+        const participant = deal === 'capturar'
+          ? owner
+          : `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
+        if (deal !== 'capturar' && graph.participant(participant) === undefined) {
           saveParticipant(store, { id: participant, name, kind: 'agent' });
           graph.addParticipant({ id: participant, name, kind: 'agent' });
           graph.admit(participant);
@@ -3511,6 +3632,38 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
       send(response, 200, revoked);
+      return;
+    }
+
+    if (request.method === 'PATCH' && /^\/agents\/credentials\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) {
+        send(response, 403, blocked);
+        return;
+      }
+      const id = decodeURIComponent(path.split('/')[3] ?? '');
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: { label?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const label = typeof body.label === 'string' ? body.label.trim() : '';
+        if (label === '') {
+          send(response, 400, { error: 'el alias de una credencial no puede quedar vacío' });
+          return;
+        }
+        const renamed = renameCredential(store, id, label);
+        if (renamed === null) {
+          send(response, 404, { error: `no existe la credencial ${id}` });
+          return;
+        }
+        send(response, 200, renamed);
+      });
       return;
     }
 
@@ -5967,6 +6120,34 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const participant = publicAccess ? ANYBODY : (url.searchParams.get('participant') ?? owner.id);
 
     try {
+      if (path === '/embeds/google-map') {
+        const authorised = embedHosts().some((host) => {
+          const named = host.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          return named !== '' && ('google.com' === named || 'google.com'.endsWith(`.${named}`));
+        });
+        if (!authorised) {
+          send(response, 404, { error: 'Google Maps no está autorizado como incrustación' });
+          return;
+        }
+        try {
+          const point = await resolveGoogleMapPoint(url.searchParams.get('url') ?? '');
+          if (point === null) {
+            send(response, 422, { error: 'la dirección no contiene un lugar reconocible' });
+            return;
+          }
+          response.writeHead(302, {
+            location: googleMapEmbedUrl(point),
+            'cache-control': 'private, max-age=86400',
+            'referrer-policy': 'no-referrer',
+            'x-content-type-options': 'nosniff',
+          });
+          response.end();
+        } catch {
+          send(response, 502, { error: 'Google Maps no respondió' });
+        }
+        return;
+      }
+
       if (path === '/health') {
         const visiblePages = publicAccess
           ? graph.pages().filter((page) => isPublicPage(page.id))
@@ -6412,9 +6593,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            * su hilo llegaran en momentos distintos y la página parpadeara al
            * abrirse. Cuando la página no lo declara, viaja nulo y no cuesta nada.
            */
-          // Un recorrido puede atravesar páginas que no pertenecen al sitio.
-          // Hasta tener una proyección parcial honesta, no se entrega a anybody.
-          trail: publicAccess ? null : trailOf(page.id),
+          // El argumento publicado conserva su figura sin ensanchar el sitio:
+          // una parada fuera del ámbito permanece como corte opaco, en vez de
+          // desaparecer y fabricar una continuidad que el autor nunca escribió.
+          trail: (() => {
+            const trail = trailOf(page.id);
+            return trail === null || !publicAccess
+              ? trail
+              : projectTrail(trail, isPublicPage);
+          })(),
           visibility: page.visibility,
           publication: publicationView(page.id),
           createdAt: page.createdAt,
@@ -6817,6 +7004,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (path.startsWith('/graph/')) {
         const centre = decodeURIComponent(path.slice('/graph/'.length));
         const depth = Number(url.searchParams.get('depth') ?? '2');
+        // 2D y 3D sólo necesitan geometría. Las frases que D4 convierte en
+        // hojas se entregan únicamente cuando esa vista las pide; enviarlas en
+        // cada mapa público hacía viajar cientos de kilobytes invisibles.
+        const d4 = url.searchParams.get('detail') === 'd4';
         // El dueño puede mirar el mismo subgrafo publicado sin dejar de ser
         // dueño. Esto filtra sólo el mapa; no cambia la autoridad de la petición.
         const publishedMap = publicAccess || url.searchParams.get('published') === '1';
@@ -6886,11 +7077,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               trail: trailOf(id) !== null,
               degree: neighbours.get(id)?.size ?? 0,
               blockCount: graph.blocksOf(id).length,
-              lines: graph.blocksOf(id).map((block) => ({
-                block: block.stableId,
-                content: block.content,
-                gloss: graph.gloss(block.stableId)?.content ?? null,
-              })),
+              ...(d4 ? {
+                lines: graph.blocksOf(id).map((block) => ({
+                  block: block.stableId,
+                  content: block.content,
+                  gloss: graph.gloss(block.stableId)?.content ?? null,
+                })),
+              } : {}),
             })),
             links,
           });
@@ -6988,13 +7181,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             trail: trailOf(node.page) !== null,
             degree: node.degree,
             blockCount: node.blockCount,
-            lines: graph.blocksOf(node.page)
-              .filter((block) => neededBlocks.has(block.stableId))
-              .map((block) => ({
-                block: block.stableId,
-                content: block.content,
-                gloss: graph.gloss(block.stableId)?.content ?? null,
-              })),
+            ...(d4 ? {
+              lines: graph.blocksOf(node.page)
+                .filter((block) => neededBlocks.has(block.stableId))
+                .map((block) => ({
+                  block: block.stableId,
+                  content: block.content,
+                  gloss: graph.gloss(block.stableId)?.content ?? null,
+                })),
+            } : {}),
           })),
           links: responseLinks,
         });
@@ -7146,6 +7341,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     store,
     close: () => {
       clearInterval(retryLibrarianDispatches);
+      options.speech?.close();
       store.close();
     },
   };

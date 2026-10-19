@@ -21,7 +21,7 @@ describe('memoria inicial distribuida', () => {
     assert.equal(first.version, STARTER_MEMORY_VERSION);
     assert.equal(first.applied, STARTER_CHANGES.length);
     assert.equal(first.duplicates, 0);
-    assert.equal(first.pages, 8);
+    assert.equal(first.pages, 9);
     assert.ok(first.blocks > 30);
 
     const store = openStore({ path: databasePath, graphName: 'mind' });
@@ -38,8 +38,17 @@ describe('memoria inicial distribuida', () => {
         'VERA — Primeros pasos',
         'VERA — Principios',
         'VERA — Teclado y atajos',
+        'VERA: Conexiones',
       ].sort(),
     );
+    const connections = graph.pages().find((page) => page.title === 'VERA: Conexiones');
+    assert.ok(connections);
+    assert.ok(graph.propertiesOf(connections.id).some((property) =>
+      property.key === 'special-kind' && property.value === 'connections'
+    ));
+    assert.ok(graph.blocksOf(connections.id).some((block) =>
+      /^## Conexiones/.test(block.content)
+    ));
     const authored = graph.operations().filter((operation) =>
       operation.originId.startsWith(`starter-memory:v${STARTER_MEMORY_VERSION}:`)
     );

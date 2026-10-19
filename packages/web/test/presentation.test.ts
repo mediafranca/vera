@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 
-import { isPresentation, presentationLocation, presentationRevision } from '../src/presentation.ts';
+import { presentationLocation, presentationRevision } from '../src/presentation.ts';
 import {
   presentationThemeTitle,
   scopedPresentationStylesheet,
@@ -10,14 +10,28 @@ import {
 } from '../src/presentation-style.ts';
 
 describe('páginas que se pueden presentar', () => {
-  it('reconoce el tipo gobernado aunque cambien mayúsculas o acentos', () => {
-    assert.equal(isPresentation([{ key: 'tipo', value: 'Presentación' }], 'tipo'), true);
-    assert.equal(isPresentation([{ key: 'TIPO', value: 'presentacion' }], 'tipo'), true);
+  it('ofrece presentar cualquier página desde su menú y no desde el encabezado', () => {
+    const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const icons = readFileSync(new URL('../src/icons.ts', import.meta.url), 'utf8');
+    assert.match(outliner, /label: 'Presentar',\s*\n\s*icon: 'presentation'/);
+    assert.doesNotMatch(outliner, /className = 'present-page'/);
+    assert.doesNotMatch(outliner, /canPresentPage|declaredPresentation/);
+    assert.match(outliner, /run: \(\) => void presentOutlinerPage\(page, callbacks\)/);
+    assert.match(outliner, /esta página todavía no contiene ninguna lámina/);
+    assert.match(icons, /presentation:\s*\n\s*'<path d="M2 3h20"\/>'/);
   });
 
-  it('no convierte una página ordinaria en presentación', () => {
-    assert.equal(isPresentation([{ key: 'tipo', value: 'Concepto' }], 'tipo'), false);
-    assert.equal(isPresentation([], 'tipo'), false);
+  it('conserva la entrada profunda sin depender del antiguo botón', () => {
+    const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+    assert.match(main, /presentOutlinerPage\(openView, callbacksFor\(openView\), presentationBlock\)/);
+    assert.doesNotMatch(main, /querySelector<HTMLButtonElement>\('\.present-page'\)/);
+  });
+
+  it('retira los procesadores automáticos de los menús de página y bloque', () => {
+    const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(outliner, /label: 'Procesar la página'/);
+    assert.doesNotMatch(outliner, /label: 'Procesar el bloque'/);
+    assert.match(outliner, /label: 'Solicitar al bibliotecario'/);
   });
 
   it('da a cada lámina una dirección estable y vuelve a la fuente señalada', () => {
@@ -58,8 +72,13 @@ describe('páginas que se pueden presentar', () => {
     assert.match(styles, /section\.presentation-spatial \{[\s\S]*?overflow: hidden;/);
     assert.match(styles, /width: calc\(100vw - var\(--presentation-slide-inline\) - var\(--presentation-slide-inline\)\) !important;/);
     assert.match(styles, /height: calc\(100dvh - var\(--presentation-slide-top\) - var\(--presentation-slide-bottom\)\) !important;/);
+    assert.match(styles, /--presentation-slide-top: clamp\(4rem, 7vh, 5\.5rem\);/);
+    assert.match(styles, /--presentation-slide-bottom: clamp\(4rem, 7vh, 5\.5rem\);/);
+    assert.match(styles, /> \.presentation-block > \.body \{[\s\S]*?display: flex;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.body > \.presentation-primary-medium \{[\s\S]*?flex: 1 1 0;[\s\S]*?min-height: 0 !important;/);
     assert.match(styles, /\.presentation-spatial \.body :is\(img, video\) \{[\s\S]*?width: auto !important;[\s\S]*?height: auto !important;[\s\S]*?max-width: calc\(100vw[\s\S]*?max-height: calc\(100dvh/);
     assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?height: 100% !important;/);
+    assert.match(styles, /\.presentation-spatial \.body \.embed iframe \{[\s\S]*?height: 100% !important;/);
     assert.match(styles, /\.presentation-spatial \.body \.embedded-map iframe \{[\s\S]*?height: 100% !important;/);
     assert.match(styles, /\.presentation-spatial > \.presentation-block > \.body:hover \{\s*background: transparent !important;/);
     assert.match(styles, /\.presentation-spatial \.body \.executable iframe \{[\s\S]*?border: 0 !important;[\s\S]*?box-shadow: none !important;/);
@@ -74,10 +93,13 @@ describe('páginas que se pueden presentar', () => {
   it('trata imágenes, dibujos, diagramas y ejecutables como láminas espaciales', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
     for (const kind of ['executable', 'embedded-map', 'drawn', 'mermaid-figure']) {
-      assert.match(source, new RegExp(`only\\.matches\\('\\.${kind}'\\)`));
+      assert.match(source, new RegExp(`medium\\.matches\\('\\.${kind}'\\)`));
     }
-    assert.match(source, /only\.matches\('\.table-scroll, table'\)/);
-    assert.match(source, /only\.matches\('img, svg'\)/);
+    assert.match(source, /medium\.matches\('\.embed'\).*querySelector\(':scope > iframe'\)/);
+    assert.match(source, /medium\.matches\('\.table-scroll, table'\)/);
+    assert.match(source, /medium\.matches\('img, svg'\)/);
+    assert.match(source, /accessories\.length > 2/);
+    assert.match(source, /presentation-primary-medium/);
     assert.match(
       readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
       /presentation-medium="table"[\s\S]*?overflow: auto;[\s\S]*?\.body table \{[\s\S]*?font-size: clamp\(0\.9rem, 1\.5vw, 1\.2rem\) !important;[\s\S]*?word-break: normal !important;[\s\S]*?min-width: clamp\(8rem, 12vw, 10rem\);/,
@@ -89,8 +111,20 @@ describe('páginas que se pueden presentar', () => {
     assert.match(source, /slide\.append\(renderNode\(root, options\)\)/);
     assert.doesNotMatch(source, /dataset\['presentationColumn'\]/);
     assert.match(source, /deck\.on\('overviewshown'/);
-    assert.match(source, /frame\.loading = 'eager'/);
+    assert.doesNotMatch(source, /frame\.loading = 'eager'/);
     assert.doesNotMatch(source, /viewDistance: 1_000/);
+  });
+
+  it('mantiene un solo recinto visual activo y suspende la copia de la página', () => {
+    const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
+    assert.match(source, /const parkedFrameSources = new WeakMap/);
+    assert.match(source, /if \(sourceSurface !== null\) parkFrames\(sourceSurface\)/);
+    assert.match(source, /sourceFrameWatch\?\.observe\(sourceSurface!, \{ childList: true, subtree: true \}\)/);
+    assert.match(source, /sourceFrameWatch\?\.disconnect\(\)/);
+    assert.match(source, /parkFrames\(slide\);\s*\n\s*slides\.append\(slide\)/);
+    assert.match(source, /if \(slide === current\) activateFrames\(slide\);\s*\n\s*else parkFrames\(slide\)/);
+    assert.match(source, /sourceSurface\.isConnected\) activateFrames\(sourceSurface\)/);
+    assert.match(source, /deck\.on\('slidechanged'.*syncCurrentSlideFrames/);
   });
 
   it('vuelve a resolver la hoja gobernada al actualizar y detecta sus cambios', () => {

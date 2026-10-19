@@ -12,11 +12,45 @@ const MAP_APPEARANCE = 'vera-embedded-map-appearance';
 const MIN_HEIGHT = 24;
 const MAX_HEIGHT = 2400;
 
+interface FrameAppearance {
+  scheme: 'light' | 'dark';
+  tokens: Record<string, string>;
+  fontFaces?: string;
+}
+
+const FRAME_FONTS = [
+  { family: 'IBM Plex Sans', path: '/fonts/plex-sans-variable.woff2', weight: '100 700', style: 'normal' },
+  { family: 'IBM Plex Sans', path: '/fonts/plex-sans-variable-italic.woff2', weight: '100 700', style: 'italic' },
+  { family: 'IBM Plex Mono', path: '/fonts/plex-mono-400.woff2', weight: '400', style: 'normal' },
+  { family: 'IBM Plex Mono', path: '/fonts/plex-mono-600.woff2', weight: '600', style: 'normal' },
+] as const;
+
+let frameFontFaces: Promise<string> | null = null;
+
+function base64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  }
+  return btoa(binary);
+}
+
+/** Las fuentes cruzan el origen opaco como datos, sin abrirle salida a CSS. */
+function fontsForFrames(): Promise<string> {
+  frameFontFaces ??= Promise.all(FRAME_FONTS.map(async (font) => {
+    const response = await fetch(font.path);
+    if (!response.ok) throw new Error(`no se pudo cargar ${font.path}`);
+    const encoded = base64(new Uint8Array(await response.arrayBuffer()));
+    return `@font-face{font-family:${JSON.stringify(font.family)};src:url(data:font/woff2;base64,${encoded}) format("woff2");font-weight:${font.weight};font-style:${font.style};font-display:swap}`;
+  })).then((faces) => faces.join(''), () => '');
+  return frameFontFaces;
+}
+
 function frames(): HTMLIFrameElement[] {
   return [...document.querySelectorAll<HTMLIFrameElement>('iframe[data-executable-frame]')];
 }
 
-function appearance(): { scheme: 'light' | 'dark'; tokens: Record<string, string> } {
+function appearance(): FrameAppearance {
   const root = document.documentElement;
   const computed = getComputedStyle(root);
   const tokens: Record<string, string> = {};
@@ -24,11 +58,17 @@ function appearance(): { scheme: 'light' | 'dark'; tokens: Record<string, string
   return { scheme: root.dataset['scheme'] === 'dark' ? 'dark' : 'light', tokens };
 }
 
+async function executableAppearance(): Promise<FrameAppearance> {
+  const current = appearance();
+  const fontFaces = await fontsForFrames();
+  return fontFaces === '' ? current : { ...current, fontFaces };
+}
+
 function send(frame: HTMLIFrameElement): void {
   const slide = frame.closest<HTMLElement>('.vera-presentation .slides section:not(.stack)');
-  frame.contentWindow?.postMessage({
+  void executableAppearance().then((current) => frame.contentWindow?.postMessage({
     type: MESSAGE,
-    appearance: appearance(),
+    appearance: current,
     // Fuera del presentador un recinto visible conserva su comportamiento. En
     // una presentación sólo anima el de la lámina actual; los demás conservan
     // su último cuadro como miniatura sin quemar Safari por detrás.
@@ -37,7 +77,7 @@ function send(frame: HTMLIFrameElement): void {
     // recibe esa diferencia para poder escalar canvas y SVG al viewport, en vez
     // de conservar el tamaño editorial de la página ordinaria.
     presentation: slide !== null,
-  }, '*');
+  }, '*'));
 }
 
 const wiredMaps = new WeakSet<HTMLIFrameElement>();

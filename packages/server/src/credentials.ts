@@ -160,6 +160,16 @@ export function revokeCredential(store: Store, id: string): Credential | null {
   return credentialById(store, id);
 }
 
+/** Cambia sólo el alias humano; identidad, secreto y permisos siguen intactos. */
+export function renameCredential(store: Store, id: string, label: string): Credential | null {
+  const clean = label.trim();
+  if (clean === '') throw new Error('el alias de una credencial no puede quedar vacío');
+  store.db
+    .prepare(`UPDATE access_tokens SET label = ? WHERE id = ? AND graph_id = ?`)
+    .run(clean, id, store.graphId);
+  return credentialById(store, id);
+}
+
 export function credentialById(store: Store, id: string): Credential | null {
   const row = store.db
     .prepare(

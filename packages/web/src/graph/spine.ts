@@ -99,6 +99,21 @@ export function runs<T>(stops: readonly (T | null | undefined)[]): T[][] {
   return all;
 }
 
+/**
+ * Los tramos que admiten una columna vertebral sin contradecir su recorrido.
+ *
+ * Volver a una página es una forma del argumento, no un dato que haya que
+ * borrar. En el mapa, sin embargo, esa página es un solo nodo: pedirle al mismo
+ * objeto que ocupe dos lugares de una fila hace que los resortes tiren contra
+ * sí mismos y estiren el vecindario entero. Ese tramo conserva su hilo y su
+ * orden visibles, pero se queda en la disposición orgánica del mapa.
+ */
+export function straightenableRuns<T>(chains: readonly (readonly T[])[]): T[][] {
+  return chains
+    .filter((chain) => new Set(chain).size === chain.length)
+    .map((chain) => [...chain]);
+}
+
 /** Si toda la cadena tiene tercera coordenada. Una a medias se trata como plana. */
 function deep(chain: readonly Moving[]): boolean {
   return chain.every((one) => typeof one.z === "number" && typeof one.vz === "number");

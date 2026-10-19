@@ -127,6 +127,61 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function escapeAttribute(text: string): string {
+  return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+interface ExternalReferences {
+  html: string;
+  notes: string;
+}
+
+/**
+ * Vuelve legibles fuera de la pantalla las direcciones de los vínculos externos.
+ *
+ * El texto enlazado conserva su forma y recibe un número; la dirección completa
+ * queda reunida al pie del documento. Se trabaja sobre el HTML ya dibujado para
+ * no confundir vínculos HTTP(S) con wikis, anclas o citas de bloque. Una imagen
+ * enlazada tampoco es «texto de enlace» y se deja intacta.
+ */
+function externalReferences(html: string): ExternalReferences {
+  const urls: string[] = [];
+  const numbered = new Map<string, number>();
+  const body = html.replace(
+    /<a\b([^>]*\bhref="(https?:\/\/[^\"]+)"[^>]*)>([\s\S]*?)<\/a>/gi,
+    (whole, attributes: string, quotedUrl: string, label: string) => {
+      if (/<img\b/i.test(label)) return whole;
+      const url = unquoteAttribute(quotedUrl);
+      let number = numbered.get(url);
+      if (number === undefined) {
+        number = urls.length + 1;
+        numbered.set(url, number);
+        urls.push(url);
+      }
+      return (
+        `<a${attributes}>${label}</a>` +
+        `<sup class="external-ref"><a href="#external-url-${number}" ` +
+        `aria-label="dirección externa ${number}">${number}</a></sup>`
+      );
+    },
+  );
+  if (urls.length === 0) return { html: body, notes: '' };
+
+  const items = urls
+    .map(
+      (url, index) =>
+        `<li id="external-url-${index + 1}"><a href="${escapeAttribute(url)}">` +
+        `${escapeHtml(url)}</a></li>`,
+    )
+    .join('');
+  return {
+    html: body,
+    notes:
+      `<section class="external-notes"><h2>Enlaces externos</h2>` +
+      `<ol>${items}</ol></section>`,
+  };
+}
+
 /*
  * La hoja de estilo del papel, que es corta a propósito.
  *
@@ -346,8 +401,31 @@ h1.paper-title {
   background: none;
 }
 
-/* Los enlaces se leen, no se pulsan: en papel un color no lleva a ninguna parte. */
+/* El texto enlazado sigue reconocible; la dirección legible va numerada al pie. */
 .b a { color: #000; text-decoration: underline; }
+
+.external-ref {
+  margin-inline-start: 0.08em;
+  font-size: 0.7em;
+  line-height: 0;
+  vertical-align: super;
+}
+.external-ref a { color: #000; text-decoration: none; }
+
+.external-notes {
+  margin-top: 1.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid #999;
+  font-size: 8.5pt;
+}
+.external-notes h2 {
+  margin: 0 0 0.35rem;
+  font-size: 10.5pt;
+  font-weight: 600;
+}
+.external-notes ol { margin: 0; padding-left: 1.5em; }
+.external-notes li { padding-left: 0.2em; overflow-wrap: anywhere; }
+.external-notes a { color: #000; text-decoration: none; }
 
 /* Lo que corre no corre en el papel. Queda dónde estaba, que es lo único que un
    papel puede llevar de una incrustación. */
@@ -569,7 +647,7 @@ export function paperHtml(options: PaperOptions): string {
     };
   }
 
-  const body = inReadingOrder(options.blocks)
+  const renderedBody = inReadingOrder(options.blocks)
     .filter(({ block }) => block.content.trim() !== '')
     .map(({ block, depth }) => {
       const sangría =
@@ -578,6 +656,8 @@ export function paperHtml(options: PaperOptions): string {
       return `<div class="b"${sangría}>${drawn(text, options.diagrams ?? new Map())}</div>`;
     })
     .join('\n');
+  const referenced = externalReferences(renderedBody);
+  const body = `${referenced.html}\n${referenced.notes}`;
 
   return (
     `<!doctype html>\n<html lang="es">\n<head>\n<meta charset="utf-8">\n` +
@@ -820,6 +900,32 @@ export async function toPdf(
   try {
     workshop = await mkdtemp(join(tmpdir(), 'vera-paper-'));
     const out = join(workshop, 'pagina.pdf');
+    const page = join(workshop, 'pagina.html');
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`el papel respondió ${response.status}`);
+    let html = await response.text();
+
+    /*
+     * Chrome tarda unos veinticinco segundos en decidir que una página HTTP
+     * local terminó de cargar, incluso cuando Vera la sirvió en milisegundos.
+     * Se le entrega el mismo documento como archivo autosuficiente: las fuentes
+     * y los objetos locales se incrustan, y por eso no cambia la tipografía ni
+     * se pierde una imagen.
+     */
+    const resources = new Set<string>();
+    for (const found of html.matchAll(
+      /(?:url\(\s*['"]?|src=['"])(\/(?:fonts|media)\/[^'"\)\s]+)/g,
+    )) {
+      if (found[1] !== undefined) resources.add(found[1]);
+    }
+    for (const resource of resources) {
+      const fetched = await fetch(new URL(resource, url));
+      if (!fetched.ok) continue;
+      const type = fetched.headers.get('content-type')?.split(';')[0] || 'application/octet-stream';
+      const data = Buffer.from(await fetched.arrayBuffer()).toString('base64');
+      html = html.split(resource).join(`data:${type};base64,${data}`);
+    }
+    await writeFile(page, html, 'utf8');
     await run(
       presence.binary,
       [
@@ -837,7 +943,7 @@ export async function toPdf(
         // Tiempo virtual: el reloj de la página corre acelerado hasta agotarlo,
         // así se esperan las fuentes y las imágenes sin esperarlas de verdad.
         '--virtual-time-budget=5000',
-        url,
+        `file://${page}`,
       ],
       { timeout: options.timeoutMs ?? 60_000, maxBuffer: 8 * 1024 * 1024 },
     );

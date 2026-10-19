@@ -219,7 +219,9 @@ export interface Command {
     | 'zotero'
     | 'dibujar'
     | 'proceso'
-    | 'formato';
+    | 'formato'
+    | 'tabla'
+    | 'iframe';
   /** Se oculta de la portada del menú, pero sigue disponible por su nombre. */
   group?: 'formato';
 }
@@ -238,7 +240,13 @@ export const COMMANDS: Command[] = [
   { name: 'cita', hint: 'cita', inserts: '> ', caret: 2, group: 'formato' },
   { name: 'codigo', hint: 'bloque de código', inserts: '```\n\n```', caret: 4, group: 'formato' },
   { name: 'html', hint: 'HTML ejecutable y aislado', inserts: '```html-live\n\n```', caret: 13 },
-  { name: 'iframe', hint: 'Incrustación externa autorizada', inserts: '```iframe\n\n```', caret: 10 },
+  {
+    name: 'iframe',
+    hint: 'incrustación externa: indicar URL y alto',
+    inserts: '',
+    caret: 0,
+    acts: 'iframe',
+  },
   {
     name: 'clip',
     hint: 'fragmento de YouTube entre dos tiempos',
@@ -260,11 +268,10 @@ export const COMMANDS: Command[] = [
   },
   { name: 'mermaid', hint: 'diagrama', inserts: '```mermaid\n\n```', caret: 11 },
   { name: 'mediawiki', hint: 'wikitext', inserts: '```mediawiki\n\n```', caret: 13 },
-  { name: 'tabla', hint: 'tabla de dos columnas', inserts: '| a | b |\n| --- | --- |\n|  |  |', caret: 2 },
+  { name: 'tabla', hint: 'tabla: elegir tamaño y cabeceras', inserts: '', caret: 0, acts: 'tabla' },
   { name: 'linea', hint: 'línea horizontal', inserts: '---', caret: 3, group: 'formato' },
   { name: 'lista', hint: 'lista con viñetas', inserts: '- ', caret: 2, group: 'formato' },
   { name: 'numerada', hint: 'lista numerada', inserts: '1. ', caret: 3, group: 'formato' },
-  { name: 'tarea', hint: 'casilla por hacer', inserts: '- [ ] ', caret: 6, group: 'formato' },
   { name: 'nota', hint: 'referencia a nota al pie', inserts: '[^1]', caret: 3, group: 'formato' },
   { name: 'pagina', hint: 'enlace a otra página', inserts: '[[]]', caret: 2, group: 'formato' },
   /*
@@ -354,6 +361,20 @@ export const COMMANDS: Command[] = [
 /** Lo que un comando hace además de escribir, si hace algo. */
 export function actionOf(name: string): Command['acts'] | undefined {
   return COMMANDS.find((command) => command.name === name)?.acts;
+}
+
+/** Fuente portable que deja `/iframe` después de validar su pequeño formulario. */
+export function iframeSource(address: string, height: number): string | null {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || !Number.isInteger(height) || height < 120 || height > 2000) {
+    return null;
+  }
+  return `\`\`\`iframe\n<iframe src="${url.href}" height="${height}"></iframe>\n\`\`\``;
 }
 
 /** Filtra por lo escrito. Sin consulta se ofrecen todos. */
