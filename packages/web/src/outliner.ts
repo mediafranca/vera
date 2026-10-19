@@ -3482,6 +3482,25 @@ export function isFencedCodeContent(source: string): boolean {
 }
 
 /**
+ * Aplica el modo de metadatos a todas las páginas contenidas en una superficie.
+ *
+ * La elección vive en el cliente, no en cada página. Una lectura continua puede
+ * tener varios encabezados montados a la vez: todos deben responder al mismo
+ * gesto para que «con metadatos» y «sin metadatos» sean modos de la vista.
+ */
+export function applyFrontMatterMode(root: ParentNode, open: boolean): void {
+  root.querySelectorAll<HTMLElement>('.page-metadata').forEach((metadata) => {
+    metadata.hidden = !open;
+  });
+  root.querySelectorAll<HTMLButtonElement>('.properties-toggle').forEach((toggle) => {
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Ocultar propiedades' : 'Mostrar propiedades');
+    toggle.title = open ? 'Ocultar propiedades' : 'Mostrar propiedades';
+    toggle.classList.toggle('open', open);
+  });
+}
+
+/**
  * Una representación que nace de la fuente completa del bloque.
  *
  * Se decide sobre el DOM que ya produjo el dominio: repetir aquí los parsers de
@@ -4191,18 +4210,10 @@ export function renderOutliner(
   metadata.className = 'page-metadata';
   metadata.hidden = true;
 
-  const showProperties = (open: boolean): void => {
-    metadata.hidden = !open;
-    propertiesToggle.setAttribute('aria-expanded', String(open));
-    propertiesToggle.setAttribute('aria-label', open ? 'Ocultar propiedades' : 'Mostrar propiedades');
-    propertiesToggle.title = open ? 'Ocultar propiedades' : 'Mostrar propiedades';
-    propertiesToggle.classList.toggle('open', open);
-  };
   const chooseProperties = (open: boolean): void => {
     session.setFrontMatterOpen(open);
-    showProperties(open);
+    applyFrontMatterMode(document, open);
   };
-  showProperties(session.frontMatterOpen());
   propertiesToggle.addEventListener('click', () => chooseProperties(metadata.hidden));
 
   /*
@@ -4869,6 +4880,7 @@ export function renderOutliner(
   metadata.append(properties);
   if (!readOnly) metadata.append(add);
   header.append(metadata);
+  applyFrontMatterMode(header, session.frontMatterOpen());
 
   /*
    * Lo que se puede hacer con la página entera, en un menú.

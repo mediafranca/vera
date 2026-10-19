@@ -50,7 +50,7 @@ describe('entrada segura a D4', () => {
 });
 
 describe('despliegue del front matter', () => {
-  it('nace cerrado y conserva exactamente la última elección del lector', () => {
+  it('nace cerrado y conserva como preferencia del cliente la última elección', () => {
     const storage = new MemoryStorage();
     globalThis.localStorage = storage as unknown as Storage;
 

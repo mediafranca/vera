@@ -3452,9 +3452,9 @@ function wireTheme(): void {
   showGraphReach();
 
   /*
-   * Los diarios no son ruido opcional dentro de una vecindad. El interruptor
-   * sólo autoriza a dibujar el día que ya está seleccionado y ocupa el foco;
-   * ningún otro día aparece jamás como vecino.
+   * Los diarios pueden dominar una vecindad, pero el interruptor hace justamente
+   * lo que promete: los admite o los retira del mapa visible. El día que ocupa
+   * el foco permanece aunque se apaguen, porque sigue siendo el centro del mapa.
    */
   const journalSwitch = $<HTMLInputElement>('#map-journals');
   $('#map-journals-icon').innerHTML = icon('calendar');

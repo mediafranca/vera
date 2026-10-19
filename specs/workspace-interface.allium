@@ -1431,6 +1431,13 @@ surface VeraWorkspace {
         -- the system's own faces on purpose: those are meant to differ per
         -- device, and resolving them differently is them working.
 
+    @guarantee FrontMatterVisibilityIsAClientMode
+        -- Showing or hiding front matter is one client preference, like colour
+        -- scheme or layout, and never a property of an individual Page. The
+        -- gesture changes every page currently visible in the workspace and the
+        -- remembered choice applies to pages rendered later. It creates no graph
+        -- mutation and is not synchronized to another client.
+
     @guarantee PresentationSurvivesTheServer
         -- Presentation is read and drawn from what the device already holds, and
         -- reconciled with what is remembered afterwards. Opening Vera never

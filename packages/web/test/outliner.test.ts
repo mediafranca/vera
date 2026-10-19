@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildNeighbourhoods,
   buildTree,
+  applyFrontMatterMode,
   bodyBlocks,
   blockRemovalOrder,
   externalDestination,
@@ -75,6 +76,37 @@ describe('tipografía del fuente cercado', () => {
   it('no vuelve monoespaciado un bloque de prosa que sólo contiene un ejemplo', () => {
     assert.equal(isFencedCodeContent('Una explicación.\n```ts\nconst x = 1\n```'), false);
     assert.equal(isFencedCodeContent('texto ordinario'), false);
+  });
+});
+
+describe('modo global del front matter', () => {
+  it('abre o cierra todos los metadatos y sus controles en la superficie', () => {
+    const metadata = [{ hidden: true }, { hidden: true }];
+    const controls = [false, false].map(() => {
+      const attributes = new Map<string, string>();
+      const control = {
+        attributes,
+        title: '',
+        open: false,
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        classList: { toggle: (_name: string, open: boolean) => { control.open = open; } },
+      };
+      return control;
+    });
+    const root = {
+      querySelectorAll: (selector: string) => selector === '.page-metadata' ? metadata : controls,
+    } as unknown as ParentNode;
+
+    applyFrontMatterMode(root, true);
+    assert.deepEqual(metadata.map((one) => one.hidden), [false, false]);
+    assert.deepEqual(controls.map((one) => one.attributes.get('aria-expanded')), ['true', 'true']);
+    assert.deepEqual(controls.map((one) => one.title), ['Ocultar propiedades', 'Ocultar propiedades']);
+    assert.deepEqual(controls.map((one) => one.open), [true, true]);
+
+    applyFrontMatterMode(root, false);
+    assert.deepEqual(metadata.map((one) => one.hidden), [true, true]);
+    assert.deepEqual(controls.map((one) => one.attributes.get('aria-expanded')), ['false', 'false']);
+    assert.deepEqual(controls.map((one) => one.open), [false, false]);
   });
 });
 

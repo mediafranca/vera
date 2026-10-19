@@ -395,11 +395,12 @@ surface GraphNavigation {
         -- A reference to a page that does not exist stays legible on its block. Vera
         -- neither discards it nor silently creates the page it names.
 
-    @guarantee AJournalAppearsOnlyAsTheChosenFocus
-        -- The journal switch never admits days as neighbours. With the switch
-        -- on or off, a day appears only when that same day is selected as the
-        -- centre. The chosen focus takes precedence over the switch so the map
-        -- never loses the centre that gives its neighbourhood meaning.
+    @guarantee TheJournalSwitchChangesTheVisibleNeighbourhood
+        -- With the journal switch on, days that belong to the requested
+        -- neighbourhood appear as nodes and keep their incident edges. With it
+        -- off, neighbouring days are removed. A day already chosen as the centre
+        -- remains visible either way, so the map never loses the focus that
+        -- gives its neighbourhood meaning.
 
     @guarantee NamingAPageAndWritingItAreOneGesture
         -- Following a reference to a page that does not exist creates it and

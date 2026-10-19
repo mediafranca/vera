@@ -911,8 +911,9 @@ surface PublicVeraWorkspace {
 
     @guarantee PublicPropertyVisibilityIsLocalReadingState
         -- Showing or hiding properties changes only this PublicWorkspace. It
-        -- creates no graph mutation, publication, revision, operation or shared
-        -- preference, and it never enlarges which properties `anybody` may read.
+        -- changes every page currently visible there, creates no graph mutation,
+        -- publication, revision, operation or shared preference, and never
+        -- enlarges which properties `anybody` may read.
 }
 
 surface HistoricalSiteMigration {
