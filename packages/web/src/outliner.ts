@@ -8312,61 +8312,6 @@ function startEditing(
     formatBar.append(button);
   }
 
-  const headings = document.createElement('div');
-  headings.className = 'format-heading';
-  const headingButtons: HTMLButtonElement[] = [];
-  const updateHeadingState = (): void => {
-    const level = /^#{1,6} /.exec(editor.value)?.[0].trim().length ?? 0;
-    for (const [index, button] of headingButtons.entries()) {
-      button.setAttribute('aria-pressed', String(level === index + 1));
-    }
-  };
-  const chooseHeading = (
-    prefix: '# ' | '## ' | '### ' | '#### ' | '##### ' | '###### ',
-  ): void => {
-    applyFormat(resolveBlockFormat(prefix, editor.value));
-    updateHeadingState();
-  };
-  const headingMain = document.createElement('button');
-  headingMain.type = 'button';
-  headingMain.className = 'format-action format-heading-main';
-  headingMain.innerHTML = icon('heading-1');
-  headingMain.title = 'encabezado de nivel 1';
-  headingMain.setAttribute('aria-label', 'encabezado de nivel 1');
-  headingMain.addEventListener('mousedown', (event) => event.preventDefault());
-  headingMain.addEventListener('click', () => chooseHeading('# '));
-  headingButtons.push(headingMain);
-
-  const headingChoices = document.createElement('details');
-  headingChoices.className = 'format-heading-choices';
-  const headingToggle = document.createElement('summary');
-  headingToggle.className = 'format-action format-heading-toggle';
-  headingToggle.innerHTML = icon('chevron-down');
-  headingToggle.title = 'otros niveles de encabezado';
-  headingToggle.setAttribute('aria-label', 'otros niveles de encabezado');
-  headingToggle.addEventListener('mousedown', (event) => event.preventDefault());
-  const headingMenu = document.createElement('div');
-  headingMenu.className = 'format-heading-menu';
-  const headingLevels = ['## ', '### ', '#### ', '##### ', '###### '] as const;
-  for (const [index, prefix] of headingLevels.entries()) {
-    const heading = document.createElement('button');
-    heading.type = 'button';
-    heading.className = 'format-heading-option';
-    heading.innerHTML = icon(`heading-${index + 2}` as IconName);
-    heading.setAttribute('aria-label', `encabezado de nivel ${index + 2}`);
-    heading.addEventListener('mousedown', (event) => event.preventDefault());
-    heading.addEventListener('click', () => {
-      headingChoices.removeAttribute('open');
-      chooseHeading(prefix);
-    });
-    headingButtons.push(heading);
-    headingMenu.append(heading);
-  }
-  headingChoices.append(headingToggle, headingMenu);
-  headings.append(headingMain, headingChoices);
-  updateHeadingState();
-  formatBar.prepend(headings);
-
   const requested = typeof placement === 'number' ? placement : placement.start;
   const at = Math.min(requested, editor.value.length);
   /*

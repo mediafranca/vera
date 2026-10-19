@@ -265,7 +265,6 @@ export const COMMANDS: Command[] = [
   { name: 'linea', hint: 'línea horizontal', inserts: '---', caret: 3, group: 'formato' },
   { name: 'lista', hint: 'lista con viñetas', inserts: '- ', caret: 2, group: 'formato' },
   { name: 'numerada', hint: 'lista numerada', inserts: '1. ', caret: 3, group: 'formato' },
-  { name: 'tarea', hint: 'casilla por hacer', inserts: '- [ ] ', caret: 6, group: 'formato' },
   { name: 'nota', hint: 'referencia a nota al pie', inserts: '[^1]', caret: 3, group: 'formato' },
   { name: 'pagina', hint: 'enlace a otra página', inserts: '[[]]', caret: 2, group: 'formato' },
   /*

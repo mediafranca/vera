@@ -200,6 +200,20 @@ describe('completionFor', () => {
     assert.equal(actionOf('tabla'), 'tabla');
   });
 
+  it('/tarea tiene una sola definición y escribe la marca canónica', () => {
+    const tasks = COMMANDS.filter((command) => command.name === 'tarea');
+    assert.equal(tasks.length, 1);
+    assert.deepEqual(
+      completionFor({ trigger: 'comando', queryStart: 1 }, 'tarea', '/tar', 4),
+      { buffer: '[ ] ', cursor: 4 },
+    );
+  });
+
+  it('no repite nombres en la lista que comparte con Configuración → Teclado', () => {
+    const names = COMMANDS.map((command) => command.name);
+    assert.equal(new Set(names).size, names.length);
+  });
+
   it('conserva lo que había alrededor', () => {
     // `[[` ocupa los índices 6 y 7, así que la consulta empieza en el 8.
     const open: Open = { trigger: 'pagina', queryStart: 8 };

@@ -296,6 +296,15 @@ describe('barra de formato', () => {
     assert.match(styles, /\.format-action \.icon \{[\s\S]*?z-index:\s*2;/);
   });
 
+  it('ofrece sólo herramientas inline y omite la jerarquía de encabezados', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /format-heading|headingLevels|chooseHeading|icon\('heading-[1-6]'\)/);
+    assert.doesNotMatch(styles, /\.format-heading/);
+    assert.match(source, /icon: 'bold'/);
+    assert.match(source, /icon: 'external-link'/);
+  });
+
   it('nace colapsada y un botón exterior la gobierna sin quitarle el menú a la viñeta', () => {
     const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
