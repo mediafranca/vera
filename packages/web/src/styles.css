@@ -3571,6 +3571,19 @@ html.presenting body {
 .table-shape-dialog legend { margin-bottom: .4rem; color: var(--text-dim); font-size: .8rem; }
 .table-shape-dialog fieldset label { display: flex; align-items: center; gap: .35rem; font-size: .85rem; }
 
+.iframe-dialog-fields { display: grid; gap: .75rem; }
+.iframe-dialog-fields label { display: grid; gap: .3rem; font-size: .8rem; color: var(--text-dim); }
+.iframe-dialog-fields input {
+  min-width: 0;
+  padding: .55rem .6rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.iframe-dialog-note { margin: 0; color: var(--text-dim); font-size: .78rem; line-height: 1.4; }
+
 .block-menu {
   position: absolute;
   z-index: 40;
