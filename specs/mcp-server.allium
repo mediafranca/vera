@@ -67,6 +67,13 @@ contract MCPIsADoorAndNotASecondMemory {
         -- que el loopback trate al proceso como dueño: perder autenticación no
         -- puede convertirse en ganar autoridad.
 
+    @invariant AVisualFormIsNotAConfigurationFile
+        -- Cuando Vera ofrece conectar Codex mediante su formulario, entrega
+        -- nombres de campo y valores de campo. Propiedades TOML como
+        -- http_headers o bearer_token_env_var sólo aparecen en la alternativa
+        -- config.toml: pegarlas como nombres de encabezado produciría una
+        -- configuración plausible que jamás presenta la credencial.
+
     @invariant TheServerNeedsNoModel
         -- Descubrir, buscar, leer, autorizar y escribir son deterministas. Un
         -- servidor que necesitara un modelo para decidir qué entregar tendría

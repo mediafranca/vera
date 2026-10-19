@@ -9350,6 +9350,77 @@ html[data-working-slow='true']::after {
   color: var(--text);
 }
 
+.connect-born h4 {
+  margin: 0.25rem 0 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+}
+
+.connect-fields {
+  width: 100%;
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(0, 1.2fr);
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+.connect-fields dt,
+.connect-fields dd {
+  margin: 0;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.connect-fields dt {
+  padding-right: 0.8rem;
+  color: var(--text-dim);
+}
+
+.connect-fields dd {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: var(--text);
+}
+
+.connect-fields code {
+  overflow-wrap: anywhere;
+}
+
+.connect-born details {
+  width: 100%;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--rule);
+}
+
+.connect-born details > summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .connect-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .connect-fields dt {
+    padding-bottom: 0.05rem;
+    border-bottom: 0;
+  }
+
+  .connect-fields dd {
+    padding-top: 0.15rem;
+  }
+}
+
 .connect-next {
   margin: 0.2rem 0 0;
   padding-left: 1.35rem;

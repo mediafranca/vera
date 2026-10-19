@@ -106,12 +106,23 @@ describe('la configuración HTTPS pública', () => {
     assert.equal(said.mcpServers.vera.command, undefined);
   });
 
-  it('Codex recibe TOML con el secreto fuera del archivo', () => {
+  it('Codex distingue el formulario visual del TOML', () => {
     const made = clientRecipe('codex', 'https://vera.example/mcp', 'codex-andrei', 'secreto');
     assert.equal(made.tokenSeparate, true);
     assert.match(made.recipe, /bearer_token_env_var = "VERA_MCP_TOKEN"/);
     assert.match(made.recipe, /X-Vera-Client/);
     assert.ok(!made.recipe.includes('secreto'));
+    assert.deepEqual(made.visual, {
+      name: 'vera',
+      transport: 'HTTP secuenciable',
+      url: 'https://vera.example/mcp',
+      bearerTokenEnvironmentVariable: '',
+      headers: [
+        { name: 'Authorization', value: 'Bearer secreto' },
+        { name: 'X-Vera-Client', value: 'codex-andrei' },
+      ],
+      environmentHeaders: [],
+    });
   });
 
   it('ChatGPT no recibe una receta Bearer que no puede ejecutar', () => {

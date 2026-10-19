@@ -37,6 +37,21 @@ export type Write = (change: Change) => Promise<boolean>;
 
 export type MCPClientKind = 'codex' | 'chatgpt' | 'claude' | 'generic';
 
+export interface CodexVisualRecipe {
+  name: 'vera';
+  transport: 'HTTP secuenciable';
+  url: string;
+  bearerTokenEnvironmentVariable: '';
+  headers: readonly { name: string; value: string }[];
+  environmentHeaders: readonly [];
+}
+
+export interface MCPClientRecipe {
+  recipe: string;
+  tokenSeparate: boolean;
+  visual?: CodexVisualRecipe;
+}
+
 /**
  * La receta que realmente acepta cada cliente remoto.
  *
@@ -50,7 +65,7 @@ export function clientRecipe(
   url: string,
   client: string,
   token: string,
-): { recipe: string; tokenSeparate: boolean } {
+): MCPClientRecipe {
   if (kind === 'codex') {
     return {
       recipe: [
@@ -60,6 +75,17 @@ export function clientRecipe(
         `http_headers = { "X-Vera-Client" = ${JSON.stringify(client)} }`,
       ].join('\n'),
       tokenSeparate: true,
+      visual: {
+        name: 'vera',
+        transport: 'HTTP secuenciable',
+        url,
+        bearerTokenEnvironmentVariable: '',
+        headers: [
+          { name: 'Authorization', value: `Bearer ${token}` },
+          { name: 'X-Vera-Client', value: client },
+        ],
+        environmentHeaders: [],
+      },
     };
   }
   if (kind === 'chatgpt') {
@@ -1152,30 +1178,71 @@ function connectForm(
               made.client,
               made.secret,
             );
-        const value = document.createElement('pre');
-        value.className = 'connect-json';
-        const code = document.createElement('code');
-        code.textContent = recipe === null
-          ? `VERA_URL=${connect?.url ?? 'http://127.0.0.1:4173'}\n` +
-            `VERA_CLIENT=${made.client}\n` +
-            `VERA_TOKEN=${made.secret}`
-          : recipe.recipe;
-        value.append(code);
-        const copy = document.createElement('button');
-        copy.type = 'button';
-        copy.className = 'connect-copy';
-        copy.textContent = 'copiar configuración';
-        copy.addEventListener('click', () => {
-          void navigator.clipboard?.writeText(code.textContent ?? '').then(() => {
-            copy.textContent = 'copiado';
+        born.append(warn);
+        if (recipe?.visual !== undefined) {
+          const visualTitle = document.createElement('h4');
+          visualTitle.textContent = 'Formulario de Codex — recomendado';
+          const visualNote = document.createElement('p');
+          visualNote.className = 'connect-says';
+          visualNote.textContent =
+            'Escribe estos valores como campos. No copies nombres de config.toml dentro del formulario.';
+          const visual = document.createElement('dl');
+          visual.className = 'connect-fields';
+          const addValue = (label: string, shown: string, copied = shown): void => {
+            const term = document.createElement('dt');
+            term.textContent = label;
+            const value = document.createElement('dd');
+            const code = document.createElement('code');
+            code.textContent = shown;
+            value.append(code);
+            if (copied !== '') {
+              const copy = document.createElement('button');
+              copy.type = 'button';
+              copy.className = 'connect-copy';
+              copy.textContent = 'copiar';
+              copy.addEventListener('click', () => {
+                void navigator.clipboard?.writeText(copied).then(() => (copy.textContent = 'copiado'));
+              });
+              value.append(copy);
+            }
+            visual.append(term, value);
+          };
+          addValue('Nombre', recipe.visual.name);
+          addValue('Tipo', recipe.visual.transport);
+          addValue('URL', recipe.visual.url);
+          addValue('Variable de entorno del token portador', '(dejar vacío)', '');
+          for (const header of recipe.visual.headers) {
+            addValue(`Encabezado · ${header.name}`, header.value);
+          }
+          addValue('Encabezados desde variables de entorno', '(dejar vacío)', '');
+          const visualSteps = document.createElement('ol');
+          visualSteps.className = 'connect-next';
+          visualSteps.innerHTML =
+            '<li>Elimina cualquier fila cuyo nombre sea <code>http_headers</code> o <code>VERA_MCP_TOKEN</code>.</li>' +
+            '<li>Agrega los dos encabezados anteriores, guarda y reinicia Codex.</li>' +
+            '<li>Abre una conversación nueva y pide <code>vera_quien_soy</code>.</li>';
+          born.append(visualTitle, visualNote, visual, visualSteps);
+
+          const alternative = document.createElement('details');
+          const summary = document.createElement('summary');
+          summary.textContent = 'Alternativa avanzada: config.toml con variable de entorno';
+          const value = document.createElement('pre');
+          value.className = 'connect-json';
+          const code = document.createElement('code');
+          code.textContent = recipe.recipe;
+          value.append(code);
+          const copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'connect-copy';
+          copy.textContent = 'copiar config.toml';
+          copy.addEventListener('click', () => {
+            void navigator.clipboard?.writeText(code.textContent ?? '').then(() => (copy.textContent = 'copiado'));
           });
-        });
-        born.append(warn, value, copy);
-        if (recipe?.tokenSeparate) {
           const tokenNote = document.createElement('p');
           tokenNote.className = 'connect-says';
           tokenNote.textContent =
-            'Guarda el token como variable VERA_MCP_TOKEN en Codex. No lo pegues dentro de config.toml.';
+            'Esta alternativa sólo funciona si VERA_MCP_TOKEN ya existe en el entorno que inicia Codex. ' +
+            'La casilla “Encabezados desde variables de entorno” no crea esa variable.';
           const copyToken = document.createElement('button');
           copyToken.type = 'button';
           copyToken.className = 'connect-copy';
@@ -1183,22 +1250,33 @@ function connectForm(
           copyToken.addEventListener('click', () => {
             void navigator.clipboard?.writeText(made.secret).then(() => (copyToken.textContent = 'copiado'));
           });
-          born.append(tokenNote, copyToken);
-        }
-        const next = document.createElement('ol');
-        next.className = 'connect-next';
-        if (clientKind.value === 'codex') {
-          next.innerHTML =
-            '<li>Pega el bloque en <code>~/.codex/config.toml</code>.</li>' +
-            '<li>Guarda el token como <code>VERA_MCP_TOKEN</code> en el entorno de Codex.</li>' +
-            '<li>Reinicia Codex y comprueba Vera en sus servidores MCP.</li>';
+          alternative.append(summary, value, copy, tokenNote, copyToken);
+          born.append(alternative);
         } else {
+          const value = document.createElement('pre');
+          value.className = 'connect-json';
+          const code = document.createElement('code');
+          code.textContent = recipe === null
+            ? `VERA_URL=${connect?.url ?? 'http://127.0.0.1:4173'}\n` +
+              `VERA_CLIENT=${made.client}\n` +
+              `VERA_TOKEN=${made.secret}`
+            : recipe.recipe;
+          value.append(code);
+          const copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'connect-copy';
+          copy.textContent = 'copiar configuración';
+          copy.addEventListener('click', () => {
+            void navigator.clipboard?.writeText(code.textContent ?? '').then(() => (copy.textContent = 'copiado'));
+          });
+          const next = document.createElement('ol');
+          next.className = 'connect-next';
           next.innerHTML =
             '<li>Abre “Añadir servidor MCP” en el cliente.</li>' +
             '<li>Pega la configuración y reinicia o vuelve a analizar las herramientas.</li>' +
             '<li>Haz una lectura breve y vuelve aquí para comprobar “último uso”.</li>';
+          born.append(value, copy, next);
         }
-        born.append(next);
         notify(`${made.label} conectada`);
       })
       .catch((error: Error) => {
