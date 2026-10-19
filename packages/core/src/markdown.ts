@@ -1118,15 +1118,18 @@ export function renderMarkdown(source: string, options: RenderOptions = {}): str
         const value = alignment(index);
         return value === 'left' ? '' : ` data-align="${value}"`;
       };
-      const headRow = head.map((cell, index) =>
-        `<th${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`,
-      ).join('');
+      const rowHeaders = head.every((cell) => cell.trim() === '');
+      const headRow = rowHeaders ? '' : `<thead><tr>${head.map((cell, index) =>
+        `<th scope="col"${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`,
+      ).join('')}</tr></thead>`;
       const rows = body
         .map((row) => `<tr>${row.map((cell, index) =>
-          `<td${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</td>`,
+          rowHeaders && index === 0
+            ? `<th scope="row"${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</th>`
+            : `<td${alignmentAttribute(index)}>${inlineMarkdown(cell, options)}</td>`,
         ).join('')}</tr>`)
         .join('');
-      html += `<div class="table-scroll"><table><thead><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      html += `<div class="table-scroll"><table>${headRow}<tbody>${rows}</tbody></table></div>`;
       continue;
     }
 

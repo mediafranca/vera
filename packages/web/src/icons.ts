@@ -89,6 +89,38 @@ const SHAPES = {
 
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
 
+  // Lucide: la familia completa de formato comparte caja, trazo y lenguaje.
+  bold:
+    '<path d="M14 12a4 4 0 0 0 0-8H6v16h9a4 4 0 0 0 0-8Z"/><path d="M6 12h9"/>',
+  italic: '<line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/>',
+  strikethrough:
+    '<path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" x2="20" y1="12" y2="12"/>',
+  underline:
+    '<path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="20" y2="20"/>',
+  superscript:
+    '<path d="m4 19 8-8"/><path d="m12 19-8-8"/><path d="M20 12h-4c0-1.5.44-2 2.5-3.5S21 6 20.5 5s-1.5-1.5-2.5-1.5c-1.5 0-2.5 1-2.5 2.5"/>',
+  subscript:
+    '<path d="m4 5 8 8"/><path d="m12 5-8 8"/><path d="M20 19h-4c0-1.5.44-2 2.5-3.5S21 13 20.5 12s-1.5-1.5-2.5-1.5c-1.5 0-2.5 1-2.5 2.5"/>',
+  quote:
+    '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>' +
+    '<path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  link:
+    '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>' +
+    '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  'heading-1': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>',
+  'heading-2': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/>',
+  'heading-3': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17.5 10.5c1.7-.7 3.5.2 3.5 1.5 0 1.5-1.5 2-3 2"/><path d="M17 17.5c2.5 1 4-.2 4-1.5 0-1.5-1.5-2-3-2"/>',
+  'heading-4': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17 10v4h4"/><path d="M20 10v8"/>',
+  'heading-5': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 10h-4v4h2a2 2 0 0 1 0 4h-2.5"/>',
+  'heading-6': '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><circle cx="19" cy="16" r="2"/><path d="M20 10c-2 0-3 1-3 4v2"/>',
+  'rows-3': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/>',
+  'columns-3': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 21V3"/><path d="M15 21V3"/>',
+  'circle-plus': '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
+  'circle-minus': '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+  'align-center': '<path d="M17 10H7"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M17 18H7"/>',
+  'align-right': '<path d="M21 10H7"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H7"/>',
+
   // El visto. Va con la cruz: aceptar y descartar son dos gestos, no uno con dos
   // estados, y se dibujan como los dos que son.
   check: '<polyline points="20 6 9 17 4 12"/>',

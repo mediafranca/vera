@@ -266,10 +266,14 @@ contract BlockBehaviourPresentation {
 
     @invariant TableEditingKeepsThePortableShape
         -- The visual editor can add or remove rows and columns and set each
-        -- column to left, centre or right alignment. It serialises a header, an
+        -- column to left, centre or right alignment. `/tabla` lets the participant
+        -- choose the visible rows, columns and whether headers occupy the first
+        -- row or first column before inserting it. The editor can later transpose
+        -- between those header axes without losing cell content. It serialises a header, an
         -- alignment divider and rectangular body rows as portable Markdown;
         -- it introduces no opaque table identity, column-width syntax, merged
-        -- cells or private metadata.
+        -- cells or private metadata. A blank Markdown header row is the portable
+        -- convention for row headers in the first column.
 
     @invariant TableCellsKeepSmallMarkdown
         -- Every cell edits one line of inline Markdown. Bold, italic, code and

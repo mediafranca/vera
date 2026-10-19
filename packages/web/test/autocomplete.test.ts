@@ -194,6 +194,12 @@ describe('completionFor', () => {
     assert.equal(actionOf('fecha'), 'elegir-fecha');
   });
 
+  it('/tabla pregunta tamaño y cabeceras antes de escribir', () => {
+    const open: Open = { trigger: 'comando', queryStart: 1 };
+    assert.deepEqual(completionFor(open, 'tabla', '/tab', 4), { buffer: '', cursor: 0 });
+    assert.equal(actionOf('tabla'), 'tabla');
+  });
+
   it('conserva lo que había alrededor', () => {
     // `[[` ocupa los índices 6 y 7, así que la consulta empieza en el 8.
     const open: Open = { trigger: 'pagina', queryStart: 8 };

@@ -39,7 +39,7 @@ describe('tabla Markdown portable', () => {
 
   it('proyecta la alineación declarada sin inventar ancho persistente', () => {
     const html = renderMarkdown('| A | B | C |\n| --- | :---: | ---: |\n| 1 | 2 | 3 |');
-    assert.match(html, /<th>A<\/th><th data-align="center">B<\/th><th data-align="right">C<\/th>/);
+    assert.match(html, /<th scope="col">A<\/th><th scope="col" data-align="center">B<\/th><th scope="col" data-align="right">C<\/th>/);
     assert.doesNotMatch(html, /width=/);
   });
 });

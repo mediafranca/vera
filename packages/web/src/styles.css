@@ -761,7 +761,7 @@ button { touch-action: manipulation; }
    */
   position: sticky;
   top: calc(0.65rem + var(--format-bar-measured-height) + var(--format-bar-gap));
-  z-index: 12;
+  z-index: 90;
   display: flex;
   flex-wrap: wrap;
   box-sizing: border-box;
@@ -791,7 +791,7 @@ button { touch-action: manipulation; }
 .format-bar-anchor {
   position: absolute;
   inset: 0;
-  z-index: 12;
+  z-index: 90;
   overflow: visible;
   pointer-events: none;
 }
@@ -805,6 +805,10 @@ button { touch-action: manipulation; }
 }
 
 .format-action {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
   flex: 1 1 2.35rem;
   min-width: 1.7rem;
   height: var(--format-bar-height);
@@ -814,6 +818,14 @@ button { touch-action: manipulation; }
   color: inherit;
   font: 600 .9rem/1 var(--font-ui);
   cursor: pointer;
+}
+
+.format-action .icon {
+  position: relative;
+  z-index: 2;
+  width: 1.05rem;
+  height: 1.05rem;
+  pointer-events: none;
 }
 
 .format-action:last-child {
@@ -3622,6 +3634,35 @@ html.presenting body {
   box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
 }
 
+.table-shape-dialog {
+  width: min(25rem, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: .55rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  box-shadow: 0 .8rem 2.4rem rgb(0 0 0 / 25%);
+  font-family: var(--font-ui);
+}
+
+.table-shape-dialog::backdrop { background: rgb(0 0 0 / 28%); }
+.table-shape-dialog form { display: grid; gap: 1rem; }
+.table-shape-dialog h2 { margin: 0; font: 600 1rem/1.25 var(--font-ui); }
+.table-shape-dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.table-shape-dimensions label { display: grid; gap: .3rem; font-size: .8rem; color: var(--text-dim); }
+.table-shape-dimensions input {
+  min-width: 0;
+  padding: .45rem .55rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.table-shape-dialog fieldset { display: flex; gap: 1rem; margin: 0; padding: 0; border: 0; }
+.table-shape-dialog legend { margin-bottom: .4rem; color: var(--text-dim); font-size: .8rem; }
+.table-shape-dialog fieldset label { display: flex; align-items: center; gap: .35rem; font-size: .85rem; }
+
 .block-menu {
   position: absolute;
   z-index: 40;
@@ -6076,7 +6117,7 @@ body.settings-open #text {
 .format-tools-trigger {
   position: sticky;
   top: 0.65rem;
-  z-index: 13;
+  z-index: 91;
   display: grid;
   place-items: center;
   align-self: flex-start;
@@ -7713,6 +7754,8 @@ html[data-working-slow='true']::after {
 }
 
 .table-editor-action {
+  display: grid;
+  place-items: center;
   appearance: none;
   min-height: 2rem;
   padding: .35rem .55rem;
@@ -7724,6 +7767,8 @@ html[data-working-slow='true']::after {
   cursor: pointer;
   white-space: nowrap;
 }
+
+.table-editor-action .icon { width: 1rem; height: 1rem; }
 
 .table-editor-action:hover,
 .table-editor-action:focus-visible,

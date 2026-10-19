@@ -230,6 +230,20 @@ describe('barra de formato', () => {
     assert.match(styles, /\.format-action \{[\s\S]*?flex: 1 1 2\.35rem;[\s\S]*?min-width: 1\.7rem;/);
   });
 
+  it('usa una sola familia Lucide y deja sus trazos por encima del texto', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    for (const name of [
+      'bold', 'italic', 'strikethrough', 'underline', 'superscript', 'subscript',
+      'quote', 'code', 'link', 'external-link',
+    ]) {
+      assert.match(source, new RegExp(`icon: '${name}'`));
+    }
+    assert.doesNotMatch(source, /icon: 'brackets'.*enlace interno/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?z-index:\s*90;/);
+    assert.match(styles, /\.format-action \.icon \{[\s\S]*?z-index:\s*2;/);
+  });
+
   it('nace colapsada y un botón exterior la gobierna sin quitarle el menú a la viñeta', () => {
     const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');

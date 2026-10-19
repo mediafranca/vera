@@ -473,7 +473,7 @@ describe('una tabla larga en el papel', () => {
       title: 'Tabla',
       blocks: [bloque('block:1', null, 0, '| Nombre | Valor |\n| --- | --- |\n| uno | 1 |')],
     });
-    assert.match(html, /<table><thead><tr><th>Nombre<\/th><th>Valor<\/th><\/tr><\/thead>/);
+    assert.match(html, /<table><thead><tr><th scope="col">Nombre<\/th><th scope="col">Valor<\/th><\/tr><\/thead>/);
     assert.match(html, /\.b thead \{ display: table-header-group; \}/);
     const tableRule = /\.b table \{([^}]*)\}/.exec(html)?.[1] ?? '';
     assert.ok(!tableRule.includes('break-inside'), 'la tabla completa sigue siendo indivisible');

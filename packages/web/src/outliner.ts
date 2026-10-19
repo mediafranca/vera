@@ -48,7 +48,12 @@ import {
 import { scrollDeltaFor, sourceOffsetFor } from './caret.ts';
 import { parseOutlineClipboard } from './outline-clipboard.ts';
 import { selectedSiblingMove } from './selection-movement.ts';
-import { mountMarkdownTableEditor, type TableCellAddress } from './table-editor.ts';
+import {
+  mountMarkdownTableEditor,
+  newMarkdownTableSource,
+  type TableCellAddress,
+  type TableHeaderAxis,
+} from './table-editor.ts';
 import { sourceSelection, type SourceSelection } from './source-selection.ts';
 import { completeInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
@@ -1427,6 +1432,90 @@ function pickDate(anchor: HTMLElement, onPick: (date: string) => void): void {
   } catch {
     // El navegador exige un gesto suyo para abrirlo. El campo ya está enfocado.
   }
+}
+
+/** `/tabla` decide forma y eje antes de escribir una sola tubería. */
+function pickTableShape(
+  anchor: HTMLElement,
+  onPick: (rows: number, columns: number, axis: TableHeaderAxis) => void,
+  onDismiss: () => void,
+): void {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'table-shape-dialog';
+  const form = document.createElement('form');
+  form.method = 'dialog';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Crear tabla';
+  const dimensions = document.createElement('div');
+  dimensions.className = 'table-shape-dimensions';
+  const numberField = (labelText: string): HTMLInputElement => {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '2';
+    input.max = '20';
+    input.value = '2';
+    input.inputMode = 'numeric';
+    label.append(input);
+    dimensions.append(label);
+    return input;
+  };
+  const rows = numberField('Filas');
+  const columns = numberField('Columnas');
+
+  const axis = document.createElement('fieldset');
+  const legend = document.createElement('legend');
+  legend.textContent = 'Cabeceras';
+  axis.append(legend);
+  for (const [value, labelText] of [
+    ['row', 'Primera fila'],
+    ['column', 'Primera columna'],
+  ] as const) {
+    const label = document.createElement('label');
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'table-header-axis';
+    radio.value = value;
+    radio.checked = value === 'row';
+    label.append(radio, labelText);
+    axis.append(label);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancelar';
+  const create = document.createElement('button');
+  create.type = 'submit';
+  create.className = 'dialog-primary-action';
+  create.textContent = 'Crear';
+  actions.append(cancel, create);
+  form.append(title, dimensions, axis, actions);
+  dialog.append(form);
+  document.body.append(dialog);
+
+  cancel.addEventListener('click', () => dialog.close('cancel'));
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dialog.close('cancel');
+  });
+  dialog.addEventListener('close', () => {
+    const chosen = dialog.returnValue !== 'cancel';
+    const pickedAxis = form.querySelector<HTMLInputElement>(
+      'input[name="table-header-axis"]:checked',
+    )?.value === 'column' ? 'column' : 'row';
+    const pickedRows = Number(rows.value);
+    const pickedColumns = Number(columns.value);
+    dialog.remove();
+    if (chosen) onPick(pickedRows, pickedColumns, pickedAxis);
+    else onDismiss();
+  });
+  dialog.showModal();
+  rows.focus();
+  rows.select();
 }
 
 /** Envía un cambio sin recargar. Devuelve si se aplicó. */
@@ -8153,20 +8242,20 @@ function startEditing(
   autosize();
 
   type FormatAction = (
-    | { label: string; title: string; marker: string }
-    | { label: string; title: string; prefix: '> ' }
+    | { icon: IconName; title: string; marker: string }
+    | { icon: IconName; title: string; prefix: '> ' }
     | { icon: IconName; title: string; link: 'internal' | 'external' }
   ) & { className?: string };
   const formatActions: FormatAction[] = [
-    { label: 'B', title: 'negrita', marker: '**' },
-    { label: 'I', title: 'cursiva', marker: '*', className: 'format-italic' },
-    { label: 'S', title: 'tachado', marker: '~~', className: 'format-strike' },
-    { label: 'U', title: 'subrayado', marker: '++', className: 'format-underline' },
-    { label: 'X²', title: 'superíndice', marker: '^', className: 'format-superscript' },
-    { label: 'X₂', title: 'subíndice', marker: '~', className: 'format-subscript' },
-    { label: '❝', title: 'cita', prefix: '> ' },
-    { label: '</>', title: 'código en línea', marker: '`' },
-    { icon: 'brackets', title: 'enlace interno', link: 'internal' },
+    { icon: 'bold', title: 'negrita', marker: '**' },
+    { icon: 'italic', title: 'cursiva', marker: '*', className: 'format-italic' },
+    { icon: 'strikethrough', title: 'tachado', marker: '~~', className: 'format-strike' },
+    { icon: 'underline', title: 'subrayado', marker: '++', className: 'format-underline' },
+    { icon: 'superscript', title: 'superíndice', marker: '^', className: 'format-superscript' },
+    { icon: 'subscript', title: 'subíndice', marker: '~', className: 'format-subscript' },
+    { icon: 'quote', title: 'cita', prefix: '> ' },
+    { icon: 'code', title: 'código en línea', marker: '`' },
+    { icon: 'link', title: 'enlace interno', link: 'internal' },
     { icon: 'external-link', title: 'enlace externo', link: 'external' },
   ];
   const applyFormat = (formatted: ReturnType<typeof resolveFormat>): void => {
@@ -8180,8 +8269,7 @@ function startEditing(
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `format-action${action.className === undefined ? '' : ` ${action.className}`}`;
-    if ('icon' in action) button.innerHTML = icon(action.icon);
-    else button.textContent = action.label;
+    button.innerHTML = icon(action.icon);
     button.title = action.title;
     button.setAttribute('aria-label', action.title);
     // Mantener la selección del textarea es parte del gesto de formato.
@@ -8217,7 +8305,7 @@ function startEditing(
   const headingMain = document.createElement('button');
   headingMain.type = 'button';
   headingMain.className = 'format-action format-heading-main';
-  headingMain.textContent = 'H₁';
+  headingMain.innerHTML = icon('heading-1');
   headingMain.title = 'encabezado de nivel 1';
   headingMain.setAttribute('aria-label', 'encabezado de nivel 1');
   headingMain.addEventListener('mousedown', (event) => event.preventDefault());
@@ -8239,7 +8327,7 @@ function startEditing(
     const heading = document.createElement('button');
     heading.type = 'button';
     heading.className = 'format-heading-option';
-    heading.textContent = `H${index + 2}`;
+    heading.innerHTML = icon(`heading-${index + 2}` as IconName);
     heading.setAttribute('aria-label', `encabezado de nivel ${index + 2}`);
     heading.addEventListener('mousedown', (event) => event.preventDefault());
     heading.addEventListener('click', () => {
@@ -8357,6 +8445,7 @@ function startEditing(
   // caer exactamente en ese bloque. Mientras el selector está abierto, ese blur
   // pertenece al gesto de adjuntar y no debe cerrar la edición.
   let choosingAttachment = false;
+  let choosingTable = false;
   // Una salida estructural no vuelve a dibujar aquí: la página se recarga entera
   // y sería dibujar algo que está a punto de desaparecer.
   let leaving = false;
@@ -8524,6 +8613,29 @@ function startEditing(
     if (acts === 'formato') {
       scheduleSave();
       editor.focus();
+      return;
+    }
+
+    if (acts === 'tabla') {
+      const at = applied.cursor;
+      // El temporizador nació al teclear `/tabla`; la elección modal todavía no
+      // ha escrito nada y no debe guardar el comando a medio consumir.
+      window.clearTimeout(timer);
+      choosingTable = true;
+      pickTableShape(editor, (rows, columns, axis) => {
+        choosingTable = false;
+        const written = newMarkdownTableSource(rows, columns, axis);
+        editor.value = editor.value.slice(0, at) + written + editor.value.slice(at);
+        const after = at + written.length;
+        editor.setSelectionRange(after, after);
+        session.type(editor.value);
+        autosize();
+        scheduleSave();
+        editor.focus();
+      }, () => {
+        choosingTable = false;
+        editor.focus();
+      });
       return;
     }
 
@@ -8883,7 +8995,7 @@ function startEditing(
 
   editor.addEventListener('blur', () => {
     closeList();
-    if (choosingAttachment) return;
+    if (choosingAttachment || choosingTable) return;
     leave();
   });
 

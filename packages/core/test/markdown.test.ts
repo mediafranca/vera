@@ -517,7 +517,7 @@ describe('renderMarkdown', () => {
     it('exige la fila separadora', () => {
       const html = renderMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |');
       assert.match(html, /<table>/);
-      assert.match(html, /<th>a<\/th><th>b<\/th>/);
+      assert.match(html, /<th scope="col">a<\/th><th scope="col">b<\/th>/);
       assert.match(html, /<td>1<\/td><td>2<\/td>/);
     });
 
@@ -528,6 +528,13 @@ describe('renderMarkdown', () => {
 
     it('envuelve la tabla para que desborde sola', () => {
       assert.match(renderMarkdown('| a |\n| --- |\n| 1 |'), /<div class="table-scroll">/);
+    });
+
+    it('interpreta la fila Markdown vacía como cabeceras en la primera columna', () => {
+      const html = renderMarkdown('|  |  |\n| --- | --- |\n| A | 1 |\n| B | 2 |');
+      assert.ok(!html.includes('<thead>'));
+      assert.match(html, /<th scope="row">A<\/th><td>1<\/td>/);
+      assert.match(html, /<th scope="row">B<\/th><td>2<\/td>/);
     });
   });
 
