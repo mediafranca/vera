@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 
-import { canPresentPage, presentationLocation, presentationRevision } from '../src/presentation.ts';
+import { presentationLocation, presentationRevision } from '../src/presentation.ts';
 import {
   presentationThemeTitle,
   scopedPresentationStylesheet,
@@ -10,25 +10,28 @@ import {
 } from '../src/presentation-style.ts';
 
 describe('páginas que se pueden presentar', () => {
-  it('reconoce el tipo gobernado aunque cambien mayúsculas o acentos', () => {
-    assert.equal(canPresentPage([{ key: 'tipo', value: 'Presentación' }], 'tipo'), true);
-    assert.equal(canPresentPage([{ key: 'TIPO', value: 'presentacion' }], 'tipo'), true);
-    assert.equal(canPresentPage([{ key: 'tipo', value: 'argumento' }], 'tipo'), true);
-  });
-
-  it('no presenta una preparación ni una página ordinaria', () => {
-    assert.equal(canPresentPage([{ key: 'tipo', value: 'preparación argumental' }], 'tipo'), false);
-    assert.equal(canPresentPage([{ key: 'tipo', value: 'Concepto' }], 'tipo'), false);
-    assert.equal(canPresentPage([], 'tipo'), false);
-  });
-
-  it('usa el icono Lucide Presentation en toda entrada al visor', () => {
+  it('ofrece presentar cualquier página desde su menú y no desde el encabezado', () => {
     const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
     const icons = readFileSync(new URL('../src/icons.ts', import.meta.url), 'utf8');
-    assert.match(outliner, /present\.innerHTML = icon\('presentation'\)/);
     assert.match(outliner, /label: 'Presentar',\s*\n\s*icon: 'presentation'/);
-    assert.match(outliner, /present\.setAttribute\('aria-label', 'Presentar'\)/);
+    assert.doesNotMatch(outliner, /className = 'present-page'/);
+    assert.doesNotMatch(outliner, /canPresentPage|declaredPresentation/);
+    assert.match(outliner, /run: \(\) => void presentOutlinerPage\(page, callbacks\)/);
+    assert.match(outliner, /esta página todavía no contiene ninguna lámina/);
     assert.match(icons, /presentation:\s*\n\s*'<path d="M2 3h20"\/>'/);
+  });
+
+  it('conserva la entrada profunda sin depender del antiguo botón', () => {
+    const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+    assert.match(main, /presentOutlinerPage\(openView, callbacksFor\(openView\), presentationBlock\)/);
+    assert.doesNotMatch(main, /querySelector<HTMLButtonElement>\('\.present-page'\)/);
+  });
+
+  it('retira los procesadores automáticos de los menús de página y bloque', () => {
+    const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(outliner, /label: 'Procesar la página'/);
+    assert.doesNotMatch(outliner, /label: 'Procesar el bloque'/);
+    assert.match(outliner, /label: 'Solicitar al bibliotecario'/);
   });
 
   it('da a cada lámina una dirección estable y vuelve a la fuente señalada', () => {

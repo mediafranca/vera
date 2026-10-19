@@ -82,7 +82,7 @@ import { renderTrailBand, trailMarks, type TrailMark } from './trail-page.ts';
 import { pendingLine, saySeconds } from './waiting.ts';
 import { speechParts, speechText, stopReading, wireReadingButton } from './read-aloud.ts';
 import { createPage } from './pages.ts';
-import { canPresentPage, presentPage } from './presentation.ts';
+import { presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
 import {
@@ -3446,6 +3446,33 @@ export function blockResolver(page: PageView): RenderOptions['resolveBlock'] {
   };
 }
 
+function renderOptionsFor(page: PageView): RenderOptions {
+  const options: RenderOptions = { embedHosts };
+  const asset = assetResolver(page);
+  if (asset !== undefined) options.resolveAsset = asset;
+  const block = blockResolver(page);
+  if (block !== undefined) options.resolveBlock = block;
+  const pending = new Set(page.pendingLinks ?? []);
+  if (pending.size > 0) options.pageExists = (title) => !pending.has(title);
+  return options;
+}
+
+/** Abre la proyección espacial de una página sin depender de un botón en el DOM. */
+export function presentOutlinerPage(
+  page: PageView,
+  callbacks: Pick<OutlinerCallbacks, 'onNavigate' | 'scheme' | 'onScheme'>,
+  initialBlock: string | null = null,
+): Promise<void> {
+  if (!page.blocks.some((block) => block.parent === null)) {
+    toast('esta página todavía no contiene ninguna lámina');
+    return Promise.resolve();
+  }
+  return presentPage(page, renderOptionsFor(page), callbacks.onNavigate, initialBlock, {
+    scheme: callbacks.scheme,
+    onScheme: callbacks.onScheme,
+  });
+}
+
 /**
  * Decide si componer los bloques en más de una pintura.
  *
@@ -3683,13 +3710,7 @@ export function renderOutliner(
       callbacks.onReload(null, reloadAfterServerWriting());
     },
   };
-  const options: RenderOptions = { embedHosts };
-  const asset = assetResolver(page);
-  if (asset !== undefined) options.resolveAsset = asset;
-  const block = blockResolver(page);
-  if (block !== undefined) options.resolveBlock = block;
-  const pending = new Set(page.pendingLinks ?? []);
-  if (pending.size > 0) options.pageExists = (title) => !pending.has(title);
+  const options = renderOptionsFor(page);
 
   /**
    * Los extractos siguen siendo palabras del corpus, no texto de interfaz.
@@ -4173,33 +4194,11 @@ export function renderOutliner(
     toast,
   );
   headingActions.append(readPage);
-  const declaredPresentation = canPresentPage(page.properties, corpusNames().kind);
-  {
-    // @guarantee DeclaredPresentationsOfferPresentationProminently
-    const present = document.createElement('button');
-    present.type = 'button';
-    present.className = 'present-page';
-    present.innerHTML = icon('presentation');
-    present.setAttribute('aria-label', 'Presentar');
-    present.title = 'Presentar';
-    present.hidden = !declaredPresentation;
-    present.addEventListener('click', () => {
-      void presentPage(page, options, callbacks.onNavigate, present.dataset['initialBlock'] ?? null, {
-        scheme: callbacks.scheme,
-        onScheme: callbacks.onScheme,
-      });
-      delete present.dataset['initialBlock'];
-    });
-    headingActions.append(present);
-  }
-  const presentationActions: MenuAction[] = declaredPresentation ? [{
+  const presentationActions: MenuAction[] = [{
     label: 'Presentar',
     icon: 'presentation',
-    run: () => void presentPage(page, options, callbacks.onNavigate, null, {
-      scheme: callbacks.scheme,
-      onScheme: callbacks.onScheme,
-    }),
-  }] : [];
+    run: () => void presentOutlinerPage(page, callbacks),
+  }];
   header.append(heading);
 
   // El front matter no es decoración: son propiedades del grafo, y se editan.
@@ -5001,15 +5000,6 @@ export function renderOutliner(
         label: 'Solicitar al bibliotecario',
         icon: 'message-square',
         run: () => void askLibrarian(page, null, callbacks),
-      },
-      {
-        // Deliberado y sobre esta página, nunca de oficio: resolver un enlace es
-        // preguntarle al servidor que lo tiene, y eso le dice que aquí alguien
-        // está leyendo sobre esto.
-        label: 'Procesar la página',
-        icon: 'cpu',
-        ...(special ? { blocked: 'una página especial se edita deliberadamente y no se procesa' } : {}),
-        run: () => void processPage(page, toast, callbacks),
       },
       ...presentationActions,
       {
@@ -5997,14 +5987,6 @@ export function renderOutliner(
             label: 'Solicitar al bibliotecario',
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
-          },
-          {
-            label: 'Procesar el bloque',
-            icon: 'cpu',
-            ...(node.block.content.trim() === ''
-              ? { blocked: 'un bloque vacío no pide nada' }
-              : {}),
-            run: () => void processBlock(node.block, row, toast, callbacks),
           },
         ],
         [

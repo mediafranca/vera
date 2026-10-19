@@ -41,10 +41,9 @@ describe('prioridad móvil', () => {
     assert.match(styles, /\.page-heading \.page-title\s*\{[^}]*min-width:\s*0[^}]*overflow-wrap:\s*anywhere/s);
   });
 
-  it('alinea frontmatter, presentación y menú en una sola hilera', () => {
+  it('alinea frontmatter y menú en una sola hilera', () => {
     assert.match(outliner, /heading\.append\(title, headingActions\)/);
     assert.match(outliner, /headingActions\.append\(propertiesToggle\)/);
-    assert.match(outliner, /headingActions\.append\(present\)/);
     assert.match(outliner, /headingActions\.append\(more\)/);
     assert.doesNotMatch(outliner, /header\.append\(more\)/);
     assert.match(styles, /\.page-heading-actions\s*\{[^}]*display:\s*flex[^}]*align-items:\s*center/s);

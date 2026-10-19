@@ -74,19 +74,6 @@ async function presentationStyles(page: PageView): Promise<LoadedPresentationSty
   };
 }
 
-export function canPresentPage(
-  properties: readonly { key: string; value: string }[],
-  kindProperty: string,
-): boolean {
-  // La ontología nombra la clase; este adaptador le da una proyección. Reveal
-  // no forma parte del significado guardado en el corpus.
-  // @guarantee DeclaredPresentationsOfferPresentationProminently
-  const kind = properties
-    .find((property) => property.key.trim().toLowerCase() === kindProperty.trim().toLowerCase())
-    ?.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-  return kind === 'presentacion' || kind === 'argumento';
-}
-
 function treeOf(blocks: readonly BlockView[]): PresentationNode[] {
   const nodes = new Map<string, PresentationNode>();
   for (const block of blocks) nodes.set(block.stableId, { block, children: [] });

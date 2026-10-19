@@ -1908,33 +1908,6 @@ button { touch-action: manipulation; }
   padding-top: 0.1rem;
 }
 
-.present-page {
-  display: inline-grid;
-  place-items: center;
-  margin: 0;
-  width: 2rem;
-  height: 2rem;
-  padding: 0.4rem;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--bg);
-  font: 600 0.78rem/1 var(--font-ui);
-  cursor: pointer;
-}
-
-.present-page .icon {
-  width: 1rem;
-  height: 1rem;
-}
-
-.present-page:hover,
-.present-page:focus-visible {
-  background: var(--text);
-  border-color: var(--text);
-  outline: none;
-}
-
 .read-page,
 .read-block {
   display: inline-grid;

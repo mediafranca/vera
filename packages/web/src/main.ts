@@ -31,6 +31,7 @@ import {
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
+  presentOutlinerPage,
   renderOutliner,
   speakInto,
   type OutlinerCallbacks,
@@ -1784,11 +1785,7 @@ async function applyRoute(): Promise<void> {
     gesture: 'opened_directly',
   });
   if (presentationBlock !== null) {
-    const present = document.querySelector<HTMLButtonElement>('.present-page');
-    if (present !== null) {
-      present.dataset['initialBlock'] = presentationBlock;
-      present.click();
-    }
+    if (openView !== null) void presentOutlinerPage(openView, callbacksFor(openView), presentationBlock);
   }
 }
 
