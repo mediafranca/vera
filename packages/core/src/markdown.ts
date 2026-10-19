@@ -264,6 +264,7 @@ export function embedIn(
     // Debajo, de dónde viene: un rectángulo que corre programa ajeno sin decir de
     // quién es se parece demasiado a una parte de Vera, y no lo es.
     `<figcaption>${presentation.caption === undefined ? '' : `${escapeHtml(presentation.caption)} · `}incrustado desde ${escapeHtml(host)}` +
+    `<a class="wiki embed-policy" data-page="VERA: Incrustaciones" href="#">orígenes autorizados</a>` +
     (host === 'www.youtube-nocookie.com'
       ? `<button type="button" class="youtube-transcript" data-youtube-source="${quoteAttribute(escapeHtml(presentation.youtubeSource ?? source))}">Traer transcripción</button>`
       : '') +

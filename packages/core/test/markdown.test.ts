@@ -844,7 +844,10 @@ describe('incrustaciones', () => {
 
   it('dice de dónde viene', () => {
     // @invariant AnEmbedIsNotAnonymous.
-    assert.match(renderMarkdown(embed, allowed), /incrustado desde eadpucv\.github\.io/);
+    const html = renderMarkdown(embed, allowed);
+    assert.match(html, /incrustado desde eadpucv\.github\.io/);
+    assert.match(html, /class="wiki embed-policy" data-page="VERA: Incrustaciones"/);
+    assert.match(html, />orígenes autorizados<\/a>/);
   });
 
   it('respeta el alto que se le puso, y si no tiene le da uno', () => {

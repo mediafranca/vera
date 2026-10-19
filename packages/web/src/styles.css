@@ -7141,6 +7141,12 @@ html[data-working-slow='true']::after {
   gap: 0.65rem;
 }
 
+.embed figcaption .embed-policy {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.15em;
+}
+
 .embed details,
 .embedded-map details {
   font: .78rem/1.4 var(--font-ui);
