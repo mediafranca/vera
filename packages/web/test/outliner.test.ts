@@ -24,6 +24,7 @@ import {
   needsProgressiveComposition,
   nearestContinuityFocus,
   nodeMarkdown,
+  offeredPropertyOptions,
   pageReferenceRows,
   projectedReferenceText,
   referenceExcerptAddsContext,
@@ -39,6 +40,25 @@ const block = (stableId: string, parent: string | null, position: number, conten
   parent,
   position,
   content,
+});
+
+describe('vocabularios de propiedades', () => {
+  it('muestra entero un vocabulario gobernado aunque tenga más de doce respuestas', () => {
+    const offered = Array.from({ length: 17 }, (_, index) => ({
+      value: `Tipo ${index + 1}`,
+      uses: 0,
+      declared: true,
+    }));
+    assert.deepEqual(offeredPropertyOptions(offered), offered);
+  });
+
+  it('limita a doce respuestas la cola de un vocabulario inferido', () => {
+    const offered = Array.from({ length: 17 }, (_, index) => ({
+      value: `Uso ${index + 1}`,
+      uses: 17 - index,
+    }));
+    assert.deepEqual(offeredPropertyOptions(offered), offered.slice(0, 12));
+  });
 });
 
 describe('tipografía del fuente cercado', () => {

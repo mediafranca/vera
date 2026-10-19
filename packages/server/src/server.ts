@@ -950,6 +950,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /** Cada propiedad de este corpus, con qué clase de campo es. */
   const declaredProperties = () => readPropertyDeclarations(declaredIn('properties'));
 
+  /** Cada clase de cosa, con qué propiedades la constituyen. */
+  const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
+
   /**
    * Qué se puede contestar a una propiedad en esta página.
    *
@@ -963,20 +966,37 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const declaration = declaredProperties().find(
       (one) => titleKey(one.name) === titleKey(key),
     );
-    if (declaration === undefined || declaration.values.length === 0) return observed;
+    if (declaration === undefined) return observed;
 
-    const used = new Map(observed.map((one) => [titleKey(one.value), one] as const));
-    const declared = declaration.values.map((value) => ({
+    /*
+     * `tipo` no mantiene una segunda lista en Propiedades: sus respuestas son
+     * exactamente las clases declaradas en VERA: Objetos. Duplicarlas aquí
+     * permitiría que ambas páginas discreparan y volvería a introducir la
+     * errata que esto evita —por ejemplo, ofrecer `Nota` y `nota` como si
+     * fueran dos clases. Los demás dominios cerrados sí toman sus `valores::`
+     * de la declaración de la propiedad.
+     */
+    const values =
+      titleKey(declaration.role ?? '') === 'kind'
+        ? declaredObjects().map((one) => one.name)
+        : declaration.values;
+    if (values.length === 0) return observed;
+
+    // Las variantes de caja y diacríticos son una sola respuesta; sus usos se
+    // suman bajo la grafía canónica en vez de competir en el desplegable.
+    const used = new Map<string, number>();
+    for (const one of observed) {
+      const named = titleKey(one.value);
+      used.set(named, (used.get(named) ?? 0) + one.uses);
+    }
+    const declared = values.map((value) => ({
       value,
-      uses: used.get(titleKey(value))?.uses ?? 0,
+      uses: used.get(titleKey(value)) ?? 0,
       declared: true,
     }));
-    const named = new Set(declaration.values.map(titleKey));
+    const named = new Set(values.map(titleKey));
     return [...declared, ...observed.filter((one) => !named.has(titleKey(one.value)))];
   };
-
-  /** Cada clase de cosa, con qué propiedades la constituyen. */
-  const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
 
   /** Cada tipo de arista que este corpus ofrece al escribir una relación. */
   const declaredRelations = () => readRelationDeclarations(declaredIn('relations'));

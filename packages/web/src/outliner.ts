@@ -1388,6 +1388,19 @@ function isChoosable(offered: { value: string; uses: number; declared?: boolean 
 }
 
 /**
+ * Las respuestas que caben en el menú de una propiedad.
+ *
+ * Un vocabulario gobernado se muestra entero: recortarlo haría que una clase
+ * declarada existiera en la ontología pero no en el lugar donde se elige. En
+ * uno inferido conservamos el límite, porque su cola son usos históricos que
+ * se pueden corregir escribiendo otro valor, no opciones que Vera recomiende.
+ */
+export function offeredPropertyOptions<T extends { declared?: boolean }>(offered: T[]): T[] {
+  const declared = offered.filter((one) => one.declared === true);
+  return declared.length > 0 ? declared : offered.slice(0, OFFERED_AT_MOST);
+}
+
+/**
  * Elegir un día en el calendario.
  *
  * Usa el selector del propio navegador y no uno dibujado aquí. Un calendario es
@@ -4605,10 +4618,10 @@ export function renderOutliner(
           // corpus ya usa, y debajo, separado, lo único que es un gesto de la
           // interfaz. Sin la raya, «escribir otro…» se lee como un valor más.
           openBlockMenu(choose, [
-            // Los más dichos, y sólo esos. La cola larga de una propiedad son sus
-            // erratas; ofrecerlas al mismo nivel que los términos las volvería a
-            // sembrar, que es cómo se llegó a tener treinta y ocho tipos.
-            offered.slice(0, OFFERED_AT_MOST).map((option) => ({
+            // Un vocabulario gobernado entero; si todavía se infiere de los usos,
+            // sólo su cabeza. La cola histórica de una propiedad son a menudo
+            // erratas, y ofrecerlas al mismo nivel volvería a sembrarlas.
+            offeredPropertyOptions(offered).map((option) => ({
               label: option.value === property.value ? `${option.value} ·` : option.value,
               run: () => void answer(option.value),
             })),
