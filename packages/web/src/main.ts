@@ -36,7 +36,10 @@ import {
   speakInto,
   type OutlinerCallbacks,
 } from './outliner.ts';
-import { holdViewport as holdTextViewport, restoreViewport as restoreTextViewport } from './viewport.ts';
+import {
+  holdViewport as holdTextViewport,
+  restoreViewportThroughComposition as restoreTextViewport,
+} from './viewport.ts';
 import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
 import { isDay, today } from './autocomplete.ts';

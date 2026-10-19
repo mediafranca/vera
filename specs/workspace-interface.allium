@@ -478,6 +478,13 @@ contract BlockManipulation {
         -- A selection and a caret are two different answers to "what does the
         -- next keystroke act on", and only one of them can be right. Beginning
         -- to write clears the selection; making a selection leaves the writing.
+
+    @invariant ASelectedMoveKeepsItsPlace
+        -- Indenting, outdenting or moving a selected range may rebuild a long
+        -- page progressively. The selected blocks remain selected and the
+        -- reader stays at the same visible passage while every drawing batch
+        -- arrives; an early partial drawing never sends the viewport to the
+        -- beginning of the page.
 }
 
 -- History is evidence about a block, not another descendant of that block.

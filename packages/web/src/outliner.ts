@@ -103,7 +103,7 @@ import {
 import { audioUrl, voice, type Recording } from './voice.ts';
 import { type NavigationGesture } from './trace.ts';
 import { openMediaDetails } from './media-dialog.ts';
-import { holdViewport, restoreViewport } from './viewport.ts';
+import { holdViewport, restoreViewportThroughComposition } from './viewport.ts';
 import { systemNotice as toast } from './system-notice.ts';
 import {
   composePictos, executeProcess, looksLikeProcess, PICTOS_SYMBOLS,
@@ -5544,7 +5544,7 @@ export function renderOutliner(
             : [...page.folded, node.block.stableId];
           renderOutliner(container, page, callbacks, focus, focusRoot, true,
             transparentBlockTraceability);
-          restoreViewport(container, viewport);
+          restoreViewportThroughComposition(container, viewport);
           return;
         }
         void toggleFold(
