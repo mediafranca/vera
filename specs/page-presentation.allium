@@ -58,6 +58,15 @@ contract PagePresentationProjection {
         -- The slide viewer changes their spatial context, not their meaning,
         -- custody, safety boundary or canonical source.
 
+    @invariant OnlyTheVisibleSlideKeepsALiveMediaContext
+        -- While the viewer is open, only media belonging to the visible slide
+        -- keeps a live browser context. Media on the page behind the viewer and
+        -- on inactive slides is fully suspended, not merely hidden or stripped
+        -- of its address. Returning to a slide recreates its derived context from
+        -- the same held source revision; leaving recreates the ordinary page's
+        -- contexts. A long presentation therefore cannot accumulate invisible
+        -- SVG, p5.js, Mermaid, map or remote-iframe processes.
+
     @invariant AViewerFailureCannotHideThePage
         -- If a slide, media resource or specialised block cannot be presented,
         -- the viewer identifies that block and still permits navigation and exit.
