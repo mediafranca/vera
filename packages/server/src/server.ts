@@ -2361,13 +2361,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
         if (
-        body.ifRevisions !== undefined &&
-        (typeof body.ifRevisions !== 'object' || body.ifRevisions === null || Array.isArray(body.ifRevisions))
-      ) {
-        send(response, 400, { error: 'ifRevisions, if given, must map block ids to revision ids' });
-        return;
-      }
-      const ifRevisions = (body.ifRevisions ?? {}) as Record<string, unknown>;
+          body.ifRevisions !== undefined
+          && (typeof body.ifRevisions !== 'object'
+            || body.ifRevisions === null
+            || Array.isArray(body.ifRevisions))
+        ) {
+          send(response, 400, { error: 'ifRevisions, if given, must map block ids to revision ids' });
+          return;
+        }
+        const ifRevisions = (body.ifRevisions ?? {}) as Record<string, unknown>;
         if (
           body.expectedSequence !== undefined
           && (!Number.isSafeInteger(body.expectedSequence) || Number(body.expectedSequence) < 0)

@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('veraExternalEditing', {
   read: (sessionId: string) => ipcRenderer.invoke('vera-external-editing:read', sessionId),
   close: (sessionId: string, status: 'accepted' | 'discarded') =>
     ipcRenderer.invoke('vera-external-editing:close', sessionId, status),
+  editors: () => ipcRenderer.invoke('vera-external-editing:editors'),
+  chooseEditor: (kind: string) => ipcRenderer.invoke('vera-external-editing:choose-editor', kind),
+  clearEditor: (kind: string) => ipcRenderer.invoke('vera-external-editing:clear-editor', kind),
   onChanged: (listener: (change: unknown) => void) => {
     ipcRenderer.on('vera-external-editing:changed', (_event, change) => listener(change));
   },

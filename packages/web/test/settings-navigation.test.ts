@@ -10,6 +10,7 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 describe('arquitectura de configuración', () => {
   it('separa destinos administrativos de ajustes personales', () => {
     assert.match(settings, /label: 'Vera'/);
+    assert.match(settings, /label: 'Editores externos'/);
     assert.match(settings, /label: 'Teclado'/);
     assert.match(settings, /label: 'Apariencia'/);
     assert.doesNotMatch(settings, /id: 'archivos', label: 'Archivos'/);
@@ -23,6 +24,13 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /el acceso local sigue funcionando sin iniciar sesión/);
     assert.match(settings, /No es un interruptor sobre este corpus/);
     assert.match(settings, /antes de migrar se registra y comprueba una passkey administrativa/);
+  });
+
+  it('asocia editores por tipo y por dispositivo sin escribir rutas en el grafo', () => {
+    assert.match(settings, /Estas asociaciones pertenecen a este dispositivo/);
+    assert.match(settings, /Markdown[\s\S]*Mermaid[\s\S]*SVG[\s\S]*p5\.js \/ JavaScript/);
+    assert.match(settings, /chooseEditor\(row\.key\)/);
+    assert.match(settings, /Usar la del sistema/);
   });
 
   it('presenta páginas del sistema sin exponer el espacio de nombres ni la taxonomía técnica', () => {

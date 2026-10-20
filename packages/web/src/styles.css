@@ -5207,6 +5207,39 @@ body.settings-open #text {
   line-height: 1.5;
 }
 
+.external-editor-settings {
+  display: grid;
+  gap: .55rem;
+}
+
+.external-editor-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .8rem;
+  align-items: center;
+  padding: .7rem .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.external-editor-setting > div:first-child { display: grid; gap: .18rem; min-width: 0; }
+.external-editor-setting span { color: var(--text-dim); font-size: .74rem; }
+.external-editor-setting code { overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; }
+.external-editor-setting > div:last-child { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: end; }
+.external-editor-setting button {
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: .35rem .55rem;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .external-editor-setting { grid-template-columns: 1fr; }
+  .external-editor-setting > div:last-child { justify-content: start; }
+}
+
 .media-search {
   box-sizing: border-box;
   width: 100%;

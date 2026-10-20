@@ -31,7 +31,7 @@ import {
   type TokenImportMode,
 } from './tokens.ts';
 
-export type Section = 'memoria' | 'teclado' | 'apariencia';
+export type Section = 'memoria' | 'editores' | 'teclado' | 'apariencia';
 
 export interface SettingsHandlers {
   scheme(): ColourScheme;
@@ -57,6 +57,7 @@ export interface SettingsHandlers {
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'memoria', label: 'Vera' },
+  { id: 'editores', label: 'Editores externos' },
   { id: 'teclado', label: 'Teclado' },
   { id: 'apariencia', label: 'Apariencia' },
 ];
@@ -135,8 +136,94 @@ export function renderSettings(
   host.append(body);
 
   if (active === 'memoria') drawMemory(body, handlers);
+  else if (active === 'editores') void drawExternalEditors(body);
   else if (active === 'teclado') drawKeyboard(body);
   else drawAppearance(body, tokens, handlers);
+}
+
+type ExternalEditorsBridge = {
+  editors(): Promise<Record<string, string>>;
+  chooseEditor(kind: string): Promise<Record<string, string>>;
+  clearEditor(kind: string): Promise<Record<string, string>>;
+};
+
+const externalEditorsBridge = (): ExternalEditorsBridge | null =>
+  (window as unknown as { veraExternalEditing?: ExternalEditorsBridge }).veraExternalEditing ?? null;
+
+const EXTERNAL_EDITOR_ROWS = [
+  { key: 'markdown', label: 'Markdown', note: 'Páginas y bloques comunes (.md)' },
+  { key: 'mermaid', label: 'Mermaid', note: 'Fuente de diagramas (.mmd)' },
+  { key: 'svg', label: 'SVG', note: 'Gráficos vectoriales (.svg)' },
+  { key: 'html', label: 'HTML', note: 'Recintos HTML ejecutables (.html)' },
+  { key: 'javascript', label: 'p5.js / JavaScript', note: 'Bocetos y programas (.js)' },
+  { key: 'process', label: 'Proceso', note: 'Definiciones declarativas (.yaml)' },
+  { key: 'mediawiki', label: 'MediaWiki', note: 'Fuente wiki (.wiki)' },
+  { key: 'code', label: 'Código', note: 'Otros lenguajes según su extensión' },
+] as const;
+
+async function drawExternalEditors(host: HTMLElement): Promise<void> {
+  heading(
+    host,
+    'Editores externos',
+    'Estas asociaciones pertenecen a este dispositivo; no se guardan en el grafo ni se sincronizan.',
+  );
+  const bridge = externalEditorsBridge();
+  if (bridge === null) {
+    const note = document.createElement('p');
+    note.className = 'settings-note';
+    note.textContent = 'La PWA usa Descargar borrador / Importar resultado. Las aplicaciones directas se configuran en Vera Desktop.';
+    host.append(note);
+    return;
+  }
+
+  let editors = await bridge.editors();
+  const list = document.createElement('div');
+  list.className = 'external-editor-settings';
+  for (const row of EXTERNAL_EDITOR_ROWS) {
+    const item = document.createElement('section');
+    item.className = 'external-editor-setting';
+    const description = document.createElement('div');
+    const label = document.createElement('strong');
+    label.textContent = row.label;
+    const note = document.createElement('span');
+    note.textContent = row.note;
+    const selected = document.createElement('code');
+    const refresh = (): void => {
+      selected.textContent = editors[row.key] ?? 'Aplicación predeterminada del sistema';
+    };
+    refresh();
+    description.append(label, note, selected);
+    const actions = document.createElement('div');
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.textContent = 'Elegir aplicación';
+    choose.onclick = () => {
+      choose.disabled = true;
+      void bridge.chooseEditor(row.key).then((next) => {
+        editors = next;
+        refreshControls();
+      }).finally(() => { choose.disabled = false; });
+    };
+    const useSystem = document.createElement('button');
+    useSystem.type = 'button';
+    useSystem.textContent = 'Usar la del sistema';
+    const refreshControls = (): void => {
+      refresh();
+      useSystem.disabled = editors[row.key] === undefined;
+    };
+    refreshControls();
+    useSystem.onclick = () => {
+      useSystem.disabled = true;
+      void bridge.clearEditor(row.key).then((next) => {
+        editors = next;
+        refreshControls();
+      });
+    };
+    actions.append(choose, useSystem);
+    item.append(description, actions);
+    list.append(item);
+  }
+  host.append(list);
 }
 
 type SharedPermission = 'read' | 'contribute' | 'edit';

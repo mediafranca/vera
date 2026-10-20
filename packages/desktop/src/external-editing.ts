@@ -45,7 +45,7 @@ export type DesktopExternalEditView = {
   manifest: DesktopExternalEditManifest;
 };
 
-type Launch = (path: string) => Promise<void>;
+type Launch = (path: string, kind: string) => Promise<void>;
 type Changed = (sessionId: string, content: string) => void;
 
 const safeSegment = (value: string, label: string): string => {
@@ -97,7 +97,7 @@ export class DesktopExternalEditing {
     atomicText(manifestPath, `${JSON.stringify(input.manifest, null, 2)}\n`);
     this.#files.set(sessionId, source);
     this.#observe(sessionId, folder, source);
-    await this.#launch(source);
+    await this.#launch(source, input.manifest.target.kind);
     return this.read(sessionId);
   }
 

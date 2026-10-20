@@ -33,14 +33,15 @@ describe('puente Desktop de edición externa', () => {
   it('crea fuente y manifiesto lateral y abre sólo la fuente', async () => {
     const root = mkdtempSync(join(tmpdir(), 'vera-external-'));
     roots.push(root);
-    const opened: string[] = [];
-    const bridge = new DesktopExternalEditing(root, async (path) => { opened.push(path); }, () => {});
+    const opened: { path: string; kind: string }[] = [];
+    const bridge = new DesktopExternalEditing(root, async (path, kind) => { opened.push({ path, kind }); }, () => {});
 
     const view = await bridge.open(input());
     assert.equal(view.content, '# Página\n\n- bloque');
     assert.equal(view.manifest.target.page, 'page:uno');
     assert.equal(opened.length, 1);
-    assert.equal(opened[0]?.endsWith('Página.md'), true);
+    assert.equal(opened[0]?.path.endsWith('Página.md'), true);
+    assert.equal(opened[0]?.kind, 'page_markdown');
     assert.equal(readFileSync(join(root, 'session:uno', 'manifest.json'), 'utf8').includes('block:uno'), true);
     bridge.stopAll();
   });
@@ -129,5 +130,26 @@ describe('puente Desktop de edición externa', () => {
     const bridge = new DesktopExternalEditing(root, async () => {}, () => {});
     await assert.rejects(() => bridge.open({ ...input(), sessionId: '../fuera' }), /no es seguro/);
     await assert.rejects(() => bridge.open({ ...input(), fileName: '..' }), /no es seguro/);
+  });
+});
+
+describe('asociaciones locales de editores', () => {
+  const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const preloadSource = readFileSync(new URL('../src/preload.ts', import.meta.url), 'utf8');
+
+  it('persisten fuera del grafo y el renderer sólo accede por IPC', () => {
+    assert.match(mainSource, /external-editors\.json/);
+    assert.match(mainSource, /mode: 0o600/);
+    assert.match(preloadSource, /vera-external-editing:choose-editor/);
+    assert.match(preloadSource, /vera-external-editing:clear-editor/);
+  });
+
+  it('agrupa página y bloque Markdown bajo una asociación por dispositivo', () => {
+    assert.match(mainSource, /kind === 'page_markdown' \|\| kind === 'block_markdown'/);
+    assert.match(mainSource, /return 'markdown'/);
+  });
+
+  it('usa la aplicación del sistema cuando no hay una elección local', () => {
+    assert.match(mainSource, /editor === undefined[\s\S]*shell\.openPath\(path\)/);
   });
 });
