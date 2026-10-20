@@ -36,7 +36,7 @@ import {
 } from './client.ts';
 import { TOOLS, toolNamed, type Ask, type Write, type WriteBatch } from './tools.ts';
 
-const VERSION = '0.5.0';
+const VERSION = '0.6.1';
 
 /**
  * Lo que un cliente lee antes de decidir cómo usar esto.

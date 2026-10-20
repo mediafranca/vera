@@ -41,7 +41,6 @@ pids() { pgrep -f "node .*${ENTRADA}" 2>/dev/null || true; }
 gestionado_por_systemd() {
   command -v systemctl >/dev/null 2>&1 || return 1
   [ -n "$(systemctl --user show "$UNIDAD" -p FragmentPath --value 2>/dev/null)" ] || return 1
-  [ "$(systemctl --user show "$UNIDAD" -p WorkingDirectory --value 2>/dev/null)" = "$PWD" ]
 }
 
 esperar_vivo() {
@@ -53,9 +52,10 @@ esperar_vivo() {
 }
 
 if gestionado_por_systemd; then
+  DIRECTORIO_SERVIDO="$(systemctl --user show "$UNIDAD" -p WorkingDirectory --value)"
   case "${1:-restart}" in
     start)
-      dice 'Arrancando mediante systemd'
+      dice "Arrancando mediante systemd desde ${DIRECTORIO_SERVIDO}"
       systemctl --user start "$UNIDAD"
       esperar_vivo || alto "systemd no dejó a Vera respondiendo en el puerto ${PUERTO}"
       bien "escuchando en http://localhost:${PUERTO}"
@@ -68,7 +68,7 @@ if gestionado_por_systemd; then
       exit 0
       ;;
     restart)
-      dice 'Reiniciando mediante systemd'
+      dice "Reiniciando mediante systemd desde ${DIRECTORIO_SERVIDO}"
       systemctl --user restart "$UNIDAD"
       esperar_vivo || alto "systemd no dejó a Vera respondiendo en el puerto ${PUERTO}"
       bien "escuchando en http://localhost:${PUERTO}"
@@ -76,7 +76,7 @@ if gestionado_por_systemd; then
       ;;
     status)
       if systemctl --user is-active --quiet "$UNIDAD" && vivo; then
-        bien "en pie en el puerto ${PUERTO} (pid $(systemctl --user show "$UNIDAD" -p MainPID --value))"
+        bien "en pie en el puerto ${PUERTO}, desde ${DIRECTORIO_SERVIDO} (pid $(systemctl --user show "$UNIDAD" -p MainPID --value))"
         exit 0
       fi
       printf '%s\n' '  apagado'
