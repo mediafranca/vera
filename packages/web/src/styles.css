@@ -10383,6 +10383,38 @@ html[data-working-slow='true']::after {
 
 .activity-list a { color: var(--accent); }
 
+.external-editing-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  border: 1px solid var(--rule);
+  border-radius: .6rem;
+  padding: 1.25rem;
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 1rem 4rem color-mix(in srgb, black 28%, transparent);
+}
+
+.external-editing-dialog::backdrop {
+  background: color-mix(in srgb, black 26%, transparent);
+}
+
+.external-editing-dialog h2 { margin: 0 0 .7rem; font-size: 1.05rem; }
+.external-editing-status { margin: 0; color: var(--text-dim); line-height: 1.45; }
+.external-editing-actions { display: flex; justify-content: flex-end; gap: .55rem; margin-top: 1.2rem; }
+.external-editing-actions button {
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  padding: .45rem .7rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.external-editing-actions button:disabled { opacity: .45; cursor: default; }
+.external-editing-actions .external-editing-accept:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .activity-days {
   display: grid;
   gap: .55rem;

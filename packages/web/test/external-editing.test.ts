@@ -3,14 +3,20 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   browserExternalSessionStorage,
   createExternalSessionStore,
+  externalPageBlockOrder,
+  planExternalPageEdits,
   reconcileExternalText,
   type ExternalSessionSnapshot,
   type ExternalSessionStorage,
 } from '../src/external-editing.ts';
+
+const dialogSource = readFileSync(new URL('../src/external-editing-dialog.ts', import.meta.url), 'utf8');
+const outlinerSource = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
 
 const memory = (initial: ExternalSessionSnapshot | null = null): ExternalSessionStorage & {
   snapshot(): ExternalSessionSnapshot | null;
@@ -155,6 +161,15 @@ describe('sesión temporal-durable', () => {
     assert.equal(stale.status, 'attention_required');
   });
 
+  it('puede llevar a atención un rechazo del servidor sin fingir una nueva base', () => {
+    const store = createExternalSessionStore(memory(), () => 10, () => 'session:1');
+    const session = store.open({ device: 'alexei', target, baseSequence: 7, source: 'hola' });
+    store.save(session.id, 'hola, mundo');
+    const attention = store.requireAttention(session.id);
+    assert.equal(attention.status, 'attention_required');
+    assert.equal(attention.manifest.baseSequence, 7);
+  });
+
   it('aceptar y descartar son cierres explícitos', () => {
     let next = 0;
     const store = createExternalSessionStore(memory(), () => 10, () => `session:${++next}`);
@@ -165,5 +180,76 @@ describe('sesión temporal-durable', () => {
     const reopened = store.open({ device: 'alexei', target, baseSequence: 8, source: 'nuevo' });
     assert.notEqual(reopened.id, accepted.id);
     assert.equal(store.discard(reopened.id).status, 'discarded');
+  });
+});
+
+describe('aceptación atómica de una página Markdown', () => {
+  const blocks = [
+    { stableId: 'block:raiz', content: 'Raíz', parent: null, position: 0 },
+    { stableId: 'block:hijo', content: 'Hijo\ncon segunda línea', parent: 'block:raiz', position: 0 },
+    { stableId: 'block:otro', content: 'Otro', parent: null, position: 1 },
+  ];
+  const base = [
+    'tipo:: nota',
+    '',
+    '- Raíz',
+    '  color:: azul',
+    '\t- Hijo',
+    '\t  con segunda línea',
+    '- Otro',
+    '',
+  ].join('\n');
+
+  it('produce sólo ediciones de contenido conservando identidades y propiedades', () => {
+    const external = base.replace('- Raíz', '- Raíz corregida').replace('\t  con segunda línea', '\t  ampliado');
+    assert.deepEqual(planExternalPageEdits(base, external, blocks), {
+      kind: 'ready',
+      edits: [
+        { kind: 'edit_block', block: 'block:raiz', content: 'Raíz corregida' },
+        { kind: 'edit_block', block: 'block:hijo', content: 'Hijo\nampliado' },
+      ],
+    });
+  });
+
+  it('lleva a conciliación una alteración estructural', () => {
+    const plan = planExternalPageEdits(base, base.replace('\t- Hijo', '- Hijo'), blocks);
+    assert.equal(plan.kind, 'divergent');
+    if (plan.kind === 'divergent') assert.match(plan.reason, /estructura|jerarquía/);
+  });
+
+  it('lleva a conciliación propiedades alteradas en vez de volverlas texto', () => {
+    const blockProperty = planExternalPageEdits(base, base.replace('color:: azul', 'color:: rojo'), blocks);
+    assert.equal(blockProperty.kind, 'divergent');
+    const pageProperty = planExternalPageEdits(base, base.replace('tipo:: nota', 'tipo:: ensayo'), blocks);
+    assert.equal(pageProperty.kind, 'divergent');
+  });
+
+  it('respeta el orden del árbol aunque la vista plana venga desordenada', () => {
+    const external = base.replace('- Otro', '- Otro editado');
+    const plan = planExternalPageEdits(base, external, [blocks[2]!, blocks[1]!, blocks[0]!]);
+    assert.deepEqual(plan, {
+      kind: 'ready',
+      edits: [{ kind: 'edit_block', block: 'block:otro', content: 'Otro editado' }],
+    });
+    assert.deepEqual(externalPageBlockOrder([blocks[2]!, blocks[1]!, blocks[0]!]), [
+      'block:raiz', 'block:hijo', 'block:otro',
+    ]);
+  });
+});
+
+describe('superficie de edición externa', () => {
+  it('se ofrece desde el menú de la página sólo cuando Desktop entrega el puente', () => {
+    assert.match(outlinerSource, /Editar en aplicación externa/);
+    assert.match(outlinerSource, /callbacks\.onExternalEditPage === undefined/);
+  });
+
+  it('guardar no escribe y Aceptar envía el plan con su secuencia base', () => {
+    assert.match(dialogSource, /store\.save\(change\.sessionId, change\.content\)/);
+    assert.match(dialogSource, /api\.submitCanonicalBatch\([\s\S]*session\.manifest\.baseSequence/);
+    assert.match(dialogSource, /bridge\(\)\?\.close\(session\.id, 'accepted'\)/);
+  });
+
+  it('reanuda desde el archivo en disco si Luca guardó mientras Vera estaba cerrada', () => {
+    assert.match(dialogSource, /opened\.content === session\.draft \? session : store\.save/);
   });
 });

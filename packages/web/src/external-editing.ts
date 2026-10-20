@@ -68,6 +68,17 @@ export type ExternalSessionSnapshot = {
   sessions: ExternalEditSession[];
 };
 
+export type ExternalPageBlock = {
+  stableId: string;
+  content: string;
+  parent: string | null;
+  position: number;
+};
+
+export type ExternalPageEditPlan =
+  | { kind: 'ready'; edits: { kind: 'edit_block'; block: string; content: string }[] }
+  | { kind: 'divergent'; reason: string };
+
 export type ExternalSessionStorage = {
   load(): ExternalSessionSnapshot | null;
   save(snapshot: ExternalSessionSnapshot): void;
@@ -219,6 +230,7 @@ export function createExternalSessionStore(
   }): ExternalEditSession;
   save(id: string, draft: string): ExternalEditSession;
   advance(id: string, canonical: string, sequence: number): ExternalEditSession;
+  requireAttention(id: string): ExternalEditSession;
   accept(id: string, currentSequence: number): ExternalEditSession;
   discard(id: string): ExternalEditSession;
 } {
@@ -314,6 +326,12 @@ export function createExternalSessionStore(
       });
     },
 
+    requireAttention(id) {
+      const session = get(id);
+      if (terminal(session.status)) throw new Error('La sesión externa ya está cerrada');
+      return replace({ ...session, status: 'attention_required', updatedAt: clock() });
+    },
+
     accept(id, currentSequence) {
       const session = get(id);
       if (session.status !== 'ready' || session.divergence !== null) {
@@ -335,4 +353,118 @@ export function createExternalSessionStore(
 
 export function targetsMatch(left: ExternalEditTarget, right: ExternalEditTarget): boolean {
   return sameTarget(left, right);
+}
+
+type ProjectedBlock = { depth: number; lines: string[] };
+
+function projectedBlocks(source: string): { preamble: string[]; blocks: ProjectedBlock[] } | null {
+  const lines = source.replace(/\r\n?/g, '\n').replace(/\s+$/, '').split('\n');
+  const preamble: string[] = [];
+  const blocks: ProjectedBlock[] = [];
+  let current: ProjectedBlock | null = null;
+
+  for (const line of lines) {
+    const head = /^(\t*)- (.*)$/.exec(line);
+    if (head !== null) {
+      current = { depth: (head[1] ?? '').length, lines: [head[2] ?? ''] };
+      blocks.push(current);
+      continue;
+    }
+    if (current === null) {
+      preamble.push(line);
+      continue;
+    }
+    const continuation = `${'\t'.repeat(current.depth)}  `;
+    if (!line.startsWith(continuation)) return null;
+    current.lines.push(line.slice(continuation.length));
+  }
+  return { preamble, blocks };
+}
+
+/** Orden de la proyección: profundidad primero, hermanos por posición. */
+function projectedOrder(blocks: readonly ExternalPageBlock[]): ExternalPageBlock[] | null {
+  const children = new Map<string | null, ExternalPageBlock[]>();
+  const known = new Set(blocks.map((block) => block.stableId));
+  for (const block of blocks) {
+    if (block.parent !== null && !known.has(block.parent)) return null;
+    const siblings = children.get(block.parent) ?? [];
+    siblings.push(block);
+    children.set(block.parent, siblings);
+  }
+  for (const siblings of children.values()) {
+    siblings.sort((left, right) =>
+      left.position - right.position || left.stableId.localeCompare(right.stableId));
+  }
+
+  const ordered: ExternalPageBlock[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | null): void => {
+    for (const block of children.get(parent) ?? []) {
+      if (seen.has(block.stableId)) continue;
+      seen.add(block.stableId);
+      ordered.push(block);
+      walk(block.stableId);
+    }
+  };
+  walk(null);
+  return ordered.length === blocks.length ? ordered : null;
+}
+
+export function externalPageBlockOrder(blocks: readonly ExternalPageBlock[]): string[] | null {
+  return projectedOrder(blocks)?.map((block) => block.stableId) ?? null;
+}
+
+/**
+ * Traduce una página Markdown aceptada al primer lote seguro de edición.
+ *
+ * Este corte sólo cambia el texto de bloques existentes. Estructura,
+ * propiedades y número de bloques deben permanecer byte por byte; si no, el
+ * cambio se lleva a conciliación en vez de adivinar identidades.
+ */
+export function planExternalPageEdits(
+  baseMarkdown: string,
+  externalMarkdown: string,
+  pageBlocks: readonly ExternalPageBlock[],
+): ExternalPageEditPlan {
+  const base = projectedBlocks(baseMarkdown);
+  const external = projectedBlocks(externalMarkdown);
+  const ordered = projectedOrder(pageBlocks);
+  if (base === null || external === null || ordered === null) {
+    return { kind: 'divergent', reason: 'la estructura Markdown no se puede relacionar con el árbol de Vera' };
+  }
+  if (base.preamble.join('\n') !== external.preamble.join('\n')) {
+    return { kind: 'divergent', reason: 'cambiaron propiedades de la página; este corte sólo acepta texto de bloques' };
+  }
+  if (base.blocks.length !== ordered.length || external.blocks.length !== ordered.length) {
+    return { kind: 'divergent', reason: 'se agregaron o quitaron bloques; hace falta conciliar la estructura' };
+  }
+
+  const edits: { kind: 'edit_block'; block: string; content: string }[] = [];
+  for (let at = 0; at < ordered.length; at += 1) {
+    const block = ordered[at];
+    const before = base.blocks[at];
+    const after = external.blocks[at];
+    if (block === undefined || before === undefined || after === undefined) {
+      return { kind: 'divergent', reason: 'la correspondencia de bloques está incompleta' };
+    }
+    if (before.depth !== after.depth) {
+      return { kind: 'divergent', reason: 'cambió la jerarquía de los bloques' };
+    }
+
+    const original = block.content.split('\n');
+    if (!original.every((line, lineAt) => before.lines[lineAt] === line)) {
+      return { kind: 'divergent', reason: `la base ya no corresponde a ${block.stableId}` };
+    }
+    const metadata = before.lines.slice(original.length);
+    if (
+      metadata.length > after.lines.length
+      || metadata.some((line, offset) => after.lines[after.lines.length - metadata.length + offset] !== line)
+    ) {
+      return { kind: 'divergent', reason: `cambiaron propiedades de ${block.stableId}` };
+    }
+    const contentLines = metadata.length === 0 ? after.lines : after.lines.slice(0, -metadata.length);
+    const content = contentLines.join('\n');
+    if (content !== block.content) edits.push({ kind: 'edit_block', block: block.stableId, content });
+  }
+  return { kind: 'ready', edits };
 }

@@ -28,7 +28,7 @@ export type DesktopExternalEditManifest = {
   };
   baseSequence: number;
   stableBlockIds: string[];
-  status: 'active' | 'accepted' | 'discarded';
+  status: 'active' | 'ready' | 'attention_required' | 'accepted' | 'discarded';
 };
 
 export type DesktopExternalEditInput = {

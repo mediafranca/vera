@@ -276,6 +276,8 @@ function wireExternalLinks(container: HTMLElement): void {
 
 export interface OutlinerCallbacks {
   onNavigate(title: string): void;
+  /** Abre una sesión vinculada en el editor local de este dispositivo. */
+  onExternalEditPage?(page: PageView): void | Promise<void>;
   /** La sesión es una persona capaz de mantener su conversación privada. */
   canAskLibrarian?: boolean;
   /** Apariencia compartida con el presentador, para que no invente una segunda
@@ -5125,6 +5127,11 @@ export function renderOutliner(
         icon: 'copy',
         run: () => void copyPageMarkdown(page.id),
       },
+      ...(callbacks.onExternalEditPage === undefined ? [] : [{
+        label: 'Editar en aplicación externa',
+        icon: 'external-link',
+        run: () => void callbacks.onExternalEditPage?.(page),
+      } satisfies MenuAction]),
       {
         label: 'Descargar como .md',
         icon: 'download',
