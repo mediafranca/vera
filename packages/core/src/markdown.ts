@@ -285,7 +285,7 @@ function youtubeVideo(source: string): { id: string; source: string } | null {
     if (host === 'youtu.be') id = url.pathname.slice(1).split('/')[0] ?? '';
     if (host === 'youtube.com' || host === 'm.youtube.com') {
       if (url.pathname === '/watch') id = url.searchParams.get('v') ?? '';
-      else id = /^\/(?:shorts|embed)\/([^/?]+)/.exec(url.pathname)?.[1] ?? '';
+      else id = /^\/(?:shorts|embed|live)\/([^/?]+)/.exec(url.pathname)?.[1] ?? '';
     }
     return /^[\w-]{6,20}$/.test(id) ? { id, source } : null;
   } catch {

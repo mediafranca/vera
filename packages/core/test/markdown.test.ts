@@ -745,9 +745,13 @@ describe('incrustaciones', () => {
     }
   });
 
-  it('reconoce watch, shorts y no incrusta una URL mezclada con prosa', () => {
+  it('reconoce watch, shorts, live y no incrusta una URL mezclada con prosa', () => {
     assert.match(renderMarkdown('https://www.youtube.com/watch?v=dQw4w9WgXcQ', allowed), /youtube-nocookie/);
     assert.match(renderMarkdown('https://youtube.com/shorts/dQw4w9WgXcQ', allowed), /youtube-nocookie/);
+    assert.match(
+      renderMarkdown('https://www.youtube.com/live/VsIP56rnDKg?si=ySQb9s5QOGMn2irS', allowed),
+      /youtube-nocookie\.com\/embed\/VsIP56rnDKg/,
+    );
     assert.ok(!renderMarkdown('mira https://youtu.be/dQw4w9WgXcQ', allowed).includes('<iframe'));
   });
 

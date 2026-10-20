@@ -26,50 +26,54 @@ interface LoadedPresentationStyle {
   warnings: string[];
 }
 
-interface ParkedFrameSource {
-  src: string | null;
-  srcdoc: string | null;
-}
-
 /**
  * Los recintos ejecutables viven en procesos separados del navegador. Una
  * presentación larga no debe arrancarlos todos a la vez —menos aún mientras
  * la misma página sigue montada detrás del escenario— porque Chrome puede
  * terminar mostrando su «carita triste» en SVG y p5 perfectamente válidos.
  *
- * La fuente queda en memoria, no en atributos data: un p5 completo puede ser
- * grande y duplicarlo dentro del DOM sólo cambiaría presión de proceso por
- * presión de memoria.
+ * Quitar `src` o `srcdoc` no basta: el iframe sigue montado y Chrome conserva
+ * su contexto de navegación. Se reemplaza por un marcador inerte y se conserva
+ * el elemento —con su fuente— fuera del DOM. Al volver a la lámina, reinsertarlo
+ * crea un contexto nuevo; no queda un renderer invisible acumulándose detrás.
  */
-const parkedFrameSources = new WeakMap<HTMLIFrameElement, ParkedFrameSource>();
+const parkedFrameMarkers = new WeakMap<HTMLIFrameElement, HTMLElement>();
+const framesByMarker = new WeakMap<HTMLElement, HTMLIFrameElement>();
+
+function frameMarker(frame: HTMLIFrameElement): HTMLElement {
+  const held = parkedFrameMarkers.get(frame);
+  if (held !== undefined) return held;
+  const marker = document.createElement('span');
+  marker.className = 'presentation-frame-placeholder';
+  marker.hidden = true;
+  marker.setAttribute('aria-hidden', 'true');
+  parkedFrameMarkers.set(frame, marker);
+  framesByMarker.set(marker, frame);
+  return marker;
+}
 
 function framesWithin(root: ParentNode): HTMLIFrameElement[] {
   const direct = root instanceof HTMLIFrameElement ? [root] : [];
   return [...direct, ...root.querySelectorAll<HTMLIFrameElement>('iframe')];
 }
 
+function markersWithin(root: ParentNode): HTMLElement[] {
+  const direct = root instanceof HTMLElement && root.matches('.presentation-frame-placeholder') ? [root] : [];
+  return [...direct, ...root.querySelectorAll<HTMLElement>('.presentation-frame-placeholder')];
+}
+
 function parkFrames(root: ParentNode): void {
   for (const frame of framesWithin(root)) {
-    if (!parkedFrameSources.has(frame)) {
-      const source = { src: frame.getAttribute('src'), srcdoc: frame.getAttribute('srcdoc') };
-      if (source.src === null && source.srcdoc === null) continue;
-      parkedFrameSources.set(frame, source);
-    }
-    frame.removeAttribute('src');
-    frame.removeAttribute('srcdoc');
+    if (frame.parentNode === null) continue;
+    frame.replaceWith(frameMarker(frame));
   }
 }
 
 function activateFrames(root: ParentNode): void {
-  for (const frame of framesWithin(root)) {
-    const source = parkedFrameSources.get(frame);
-    if (source === undefined) continue;
-    if (source.srcdoc !== null && frame.getAttribute('srcdoc') !== source.srcdoc) {
-      frame.setAttribute('srcdoc', source.srcdoc);
-    }
-    if (source.src !== null && frame.getAttribute('src') !== source.src) {
-      frame.setAttribute('src', source.src);
-    }
+  for (const marker of markersWithin(root)) {
+    const frame = framesByMarker.get(marker);
+    if (frame === undefined || marker.parentNode === null) continue;
+    marker.replaceWith(frame);
   }
 }
 
@@ -161,7 +165,10 @@ type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'iframe' |
 function spatialKind(host: HTMLElement): SpatialMedium | null {
   let medium = host;
   if (medium.matches('.executable')) return 'executable';
-  if (medium.matches('.embed') && medium.querySelector(':scope > iframe') !== null) return 'iframe';
+  if (
+    medium.matches('.embed') &&
+    medium.querySelector(':scope > :is(iframe, .presentation-frame-placeholder)') !== null
+  ) return 'iframe';
   if (medium.matches('.embedded-map')) return 'map';
   if (medium.matches('.drawn')) return 'drawing';
   if (medium.matches('.mermaid-figure')) return 'diagram';
