@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
 import { DesktopConecta, type ConectaState, type SecureConectaStore } from './conecta.ts';
+import {
+  DesktopExternalEditing,
+  type DesktopExternalEditInput,
+} from './external-editing.ts';
 import { createMCPHandler } from '../../mcp/src/http.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +34,7 @@ const webRoot = app.isPackaged ? join(process.resourcesPath, 'web') : join(ROOT,
 const setupPage = join(HERE, 'setup.html');
 const preload = join(HERE, 'preload.cjs');
 const conectaSecretPath = join(dataRoot, 'secrets', 'vera-conecta.bin');
+const externalEditsRoot = join(dataRoot, 'external-edits');
 
 if (app.isPackaged) {
   process.env['VERA_SCHEMA'] = join(process.resourcesPath, 'schema.sql');
@@ -44,6 +49,16 @@ let installOnQuit = false;
 let preparingQuit = false;
 let downloadingUpdate = false;
 let conecta: DesktopConecta | null = null;
+const externalEditing = new DesktopExternalEditing(
+  externalEditsRoot,
+  async (path) => {
+    const failure = await shell.openPath(path);
+    if (failure !== '') throw new Error(failure);
+  },
+  (sessionId, content) => {
+    window?.webContents.send('vera-external-editing:changed', { sessionId, content });
+  },
+);
 
 const secureConectaStore = (): SecureConectaStore => ({
   available: () =>
@@ -245,6 +260,29 @@ ipcMain.handle('vera-conecta:revoke-client', async (_event, principalId: unknown
   return { ok: true };
 });
 
+ipcMain.handle('vera-external-editing:open', async (_event, raw: unknown) => {
+  if (raw === null || typeof raw !== 'object') throw new Error('la sesión externa no es válida');
+  const input = raw as Partial<DesktopExternalEditInput>;
+  if (
+    typeof input.sessionId !== 'string'
+    || typeof input.fileName !== 'string'
+    || typeof input.content !== 'string'
+    || input.manifest === null
+    || typeof input.manifest !== 'object'
+  ) throw new Error('la sesión externa está incompleta');
+  return externalEditing.open(input as DesktopExternalEditInput);
+});
+ipcMain.handle('vera-external-editing:read', (_event, sessionId: unknown) => {
+  if (typeof sessionId !== 'string') throw new Error('la sesión externa no es válida');
+  return externalEditing.read(sessionId);
+});
+ipcMain.handle('vera-external-editing:close', (_event, sessionId: unknown, status: unknown) => {
+  if (typeof sessionId !== 'string' || (status !== 'accepted' && status !== 'discarded')) {
+    throw new Error('el cierre de la sesión externa no es válido');
+  }
+  return externalEditing.close(sessionId, status);
+});
+
 app.whenReady().then(() => {
   createWindow();
   void enableAutomaticUpdates();
@@ -263,6 +301,7 @@ app.on('before-quit', (event) => {
 
   event.preventDefault();
   preparingQuit = true;
+  externalEditing.stopAll();
   if (updateTimer !== null) clearInterval(updateTimer);
   void closeVera().finally(() => {
     if (installOnQuit && installDownloadedUpdate !== null) installDownloadedUpdate();

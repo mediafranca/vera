@@ -477,6 +477,51 @@ describe('POST /operations/batch', () => {
     const pages = (await get('/pages')) as { title: string }[];
     assert.equal(pages.some((page) => page.title === 'No debe quedar'), false);
   });
+
+  it('rechaza entero un lote preparado sobre una secuencia que ya no es actual', async () => {
+    const before = await post({
+      originId: 'batch:fence:base',
+      participant: OWNER,
+      channel: 'typed_text',
+      change: { kind: 'create_page', stableId: 'page:batch-fence-base', title: 'Base del lote cercado', visibility: 'private' },
+    });
+    assert.equal(before.status, 201, JSON.stringify(before.json));
+    const expectedSequence = before.json['sequence'] as number;
+
+    await write({ kind: 'create_page', stableId: 'page:batch-fence-concurrent', title: 'Cambio concurrente', visibility: 'private' });
+    const result = await postBatch({
+      originId: 'batch:fence:stale',
+      participant: OWNER,
+      expectedSequence,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-fence-never', title: 'No debe nacer tras conflicto', visibility: 'private' },
+      ],
+    });
+
+    assert.equal(result.status, 409, JSON.stringify(result.json));
+    assert.match(result.json['reason'] as string, /hay que conciliar/);
+    const pages = (await get('/pages')) as { id: string }[];
+    assert.equal(pages.some((page) => page.id === 'page:batch-fence-never'), false);
+  });
+
+  it('permite reintentar un lote ya aplicado aunque la secuencia base haya quedado atrás', async () => {
+    const activity = await get('/activity') as { activity: { sequence: number }[] };
+    const expectedSequence = Math.max(0, ...activity.activity.map((one) => one.sequence));
+    const body = {
+      originId: 'batch:fence:retry',
+      participant: OWNER,
+      expectedSequence,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-fence-retry', title: 'Reintento cercado', visibility: 'private' },
+      ],
+    };
+    const first = await postBatch(body);
+    assert.equal(first.status, 201, JSON.stringify(first.json));
+    await write({ kind: 'create_page', stableId: 'page:batch-fence-after', title: 'Después del lote cercado', visibility: 'private' });
+    const retry = await postBatch(body);
+    assert.equal(retry.status, 200, JSON.stringify(retry.json));
+    assert.equal(retry.json['status'], 'duplicate');
+  });
 });
 
 describe('POST /captures', () => {

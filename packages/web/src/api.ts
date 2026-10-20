@@ -1388,6 +1388,7 @@ export const api = {
       change: Change;
       channel?: 'typed_text' | 'drawn' | 'walked';
     }[],
+    expectedSequence?: number,
   ): Promise<SubmitBatchResult> {
     if (entries.length === 0) return { status: 'rejected', reason: 'el lote está vacío' };
     if (proposeInsteadOfWriting) {
@@ -1405,6 +1406,7 @@ export const api = {
           originId: origin,
           changes: entries.map((entry) => named(entry.change)),
           channels: entries.map((entry) => entry.channel ?? 'typed_text'),
+          ...(expectedSequence === undefined ? {} : { expectedSequence }),
         }),
       });
     } catch (error) {
