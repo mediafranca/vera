@@ -32,12 +32,10 @@ type DesktopExternalEditingBridge = {
 const bridge = (): DesktopExternalEditingBridge | null =>
   (window as unknown as { veraExternalEditing?: DesktopExternalEditingBridge }).veraExternalEditing ?? null;
 
-export const canEditExternally = (): boolean => bridge() !== null;
-
 const store = createExternalSessionStore(browserExternalSessionStorage(localStorage));
 type ReviewSubject =
-  | { kind: 'page'; page: PageView }
-  | { kind: 'block'; page: PageView; block: BlockView; projection: ExternalBlockProjection };
+  | { kind: 'page'; page: PageView; fileName: string }
+  | { kind: 'block'; page: PageView; block: BlockView; projection: ExternalBlockProjection; fileName: string };
 
 const subjects = new Map<string, ReviewSubject>();
 const dialogs = new Map<string, HTMLDialogElement>();
@@ -45,6 +43,15 @@ let listening = false;
 
 const safeFileName = (title: string): string =>
   `${title.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Página'}.md`;
+
+function downloadWorkingFile(fileName: string, content: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 async function pageMarkdown(page: string): Promise<string> {
   const response = await fetch(`/pages/${encodeURIComponent(page)}/markdown`);
@@ -85,6 +92,27 @@ function draw(session: ExternalEditSession): void {
 
   const actions = document.createElement('div');
   actions.className = 'external-editing-actions';
+  if (bridge() === null) {
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.textContent = 'Descargar borrador';
+    download.onclick = () => downloadWorkingFile(subject.fileName, session.draft);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.hidden = true;
+    const importResult = document.createElement('button');
+    importResult.type = 'button';
+    importResult.textContent = 'Importar resultado';
+    importResult.onclick = () => input.click();
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file === undefined) return;
+      void file.text().then((content) => draw(store.save(session.id, content))).catch(() => {
+        toast('no se pudo leer el archivo editado');
+      });
+    };
+    actions.append(download, importResult, input);
+  }
   const later = document.createElement('button');
   later.type = 'button';
   later.textContent = 'Cerrar por ahora';
@@ -161,10 +189,6 @@ export async function editPageExternally(
   baseSequence: number,
 ): Promise<void> {
   const desktop = bridge();
-  if (desktop === null) {
-    toast('la edición vinculada requiere Vera Desktop; en la PWA usa Descargar como .md');
-    return;
-  }
   listen();
   let source: string;
   try {
@@ -174,17 +198,24 @@ export async function editPageExternally(
     return;
   }
   const session = store.open({
-    device: 'desktop',
+    device: desktop === null ? 'pwa' : 'desktop',
     target: { graph, kind: 'page_markdown', page: page.id },
     baseSequence,
     source,
     stableBlockIds: externalPageBlockOrder(page.blocks) ?? page.blocks.map((block) => block.stableId),
   });
-  subjects.set(session.id, { kind: 'page', page });
+  const fileName = safeFileName(page.title);
+  subjects.set(session.id, { kind: 'page', page, fileName });
+  if (desktop === null) {
+    downloadWorkingFile(fileName, session.draft);
+    draw(session);
+    toast('borrador descargado; importa aquí el resultado cuando termines');
+    return;
+  }
   try {
     const opened = await desktop.open({
       sessionId: session.id,
-      fileName: safeFileName(page.title),
+      fileName,
       content: session.draft,
       manifest: {
         version: 1,
@@ -208,25 +239,28 @@ export async function editBlockExternally(
   baseSequence: number,
 ): Promise<void> {
   const desktop = bridge();
-  if (desktop === null) {
-    toast('la edición vinculada requiere Vera Desktop');
-    return;
-  }
   listen();
   const projection = projectExternalBlock(block.content);
   const session = store.open({
-    device: 'desktop',
+    device: desktop === null ? 'pwa' : 'desktop',
     target: { graph, kind: projection.kind, block: block.stableId },
     baseSequence,
     source: projection.source,
     stableBlockIds: [block.stableId],
   });
-  subjects.set(session.id, { kind: 'block', page, block, projection });
   const shortId = block.stableId.replace(/^block:/, '').slice(0, 12) || 'bloque';
+  const fileName = `${safeFileName(page.title).replace(/\.md$/i, '')} — ${shortId}.${projection.extension}`;
+  subjects.set(session.id, { kind: 'block', page, block, projection, fileName });
+  if (desktop === null) {
+    downloadWorkingFile(fileName, session.draft);
+    draw(session);
+    toast('borrador descargado; importa aquí el resultado cuando termines');
+    return;
+  }
   try {
     const opened = await desktop.open({
       sessionId: session.id,
-      fileName: `${safeFileName(page.title).replace(/\.md$/i, '')} — ${shortId}.${projection.extension}`,
+      fileName,
       content: session.draft,
       manifest: {
         version: 1,

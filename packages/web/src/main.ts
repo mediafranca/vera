@@ -26,7 +26,7 @@ import {
   type Replica,
 } from './replica.ts';
 import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
-import { canEditExternally, editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
+import { editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
   focusAfterChange,
@@ -1643,19 +1643,17 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
   return {
     // Pulsar el nombre de otra página dentro del texto que se lee.
     onNavigate: (title) => void openTitle(title, 'followed_reference'),
-    ...(canEditExternally() ? {
-      onExternalEditPage: () => editPageExternally(
-        page,
-        corpus?.graph ?? 'Vera',
-        corpus?.lastSequence ?? 0,
-      ),
-      onExternalEditBlock: (_current, block) => editBlockExternally(
-        page,
-        block,
-        corpus?.graph ?? 'Vera',
-        corpus?.lastSequence ?? 0,
-      ),
-    } : {}),
+    onExternalEditPage: () => editPageExternally(
+      page,
+      corpus?.graph ?? 'Vera',
+      corpus?.lastSequence ?? 0,
+    ),
+    onExternalEditBlock: (_current, block) => editBlockExternally(
+      page,
+      block,
+      corpus?.graph ?? 'Vera',
+      corpus?.lastSequence ?? 0,
+    ),
     canAskLibrarian: corpus?.canAskLibrarian === true,
     scheme: () => workspace.scheme,
     onScheme: (next) => {

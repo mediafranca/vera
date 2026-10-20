@@ -240,7 +240,7 @@ describe('aceptación atómica de una página Markdown', () => {
 });
 
 describe('superficie de edición externa', () => {
-  it('se ofrece desde el menú de la página sólo cuando Desktop entrega el puente', () => {
+  it('se ofrece desde el menú de la página', () => {
     assert.match(outlinerSource, /Editar en aplicación externa/);
     assert.match(outlinerSource, /callbacks\.onExternalEditPage === undefined/);
   });
@@ -258,6 +258,13 @@ describe('superficie de edición externa', () => {
 
   it('reanuda desde el archivo en disco si Luca guardó mientras Vera estaba cerrada', () => {
     assert.match(dialogSource, /opened\.content === session\.draft \? session : store\.save/);
+  });
+
+  it('en la PWA descarga el borrador e importa el resultado en la misma sesión', () => {
+    assert.match(dialogSource, /desktop === null \? 'pwa' : 'desktop'/);
+    assert.match(dialogSource, /Descargar borrador/);
+    assert.match(dialogSource, /Importar resultado/);
+    assert.match(dialogSource, /file\.text\(\)\.then\(\(content\) => draw\(store\.save\(session\.id, content\)\)\)/);
   });
 });
 
