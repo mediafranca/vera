@@ -46,7 +46,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "electron": "^44.1.1",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^27.0.0-alpha.11",
     "esbuild": "^0.28.2",
     "fast-check": "^4.1.1",
     "typescript": "^5.9.0"
@@ -65,24 +65,26 @@
         "repo": "vera"
       }
     ],
-    "files": [
-      "dist/desktop/**",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "packages/web/dist",
-        "to": "web"
-      },
-      {
-        "from": "schema/schema.sql",
-        "to": "schema.sql"
-      },
-      {
-        "from": "node_modules/p5/lib/p5.min.js",
-        "to": "p5.min.js"
-      }
-    ],
+    "fileOptions": {
+      "files": [
+        "dist/desktop/**",
+        "package.json"
+      ],
+      "extraResources": [
+        {
+          "from": "packages/web/dist",
+          "to": "web"
+        },
+        {
+          "from": "schema/schema.sql",
+          "to": "schema.sql"
+        },
+        {
+          "from": "node_modules/p5/lib/p5.min.js",
+          "to": "p5.min.js"
+        }
+      ]
+    },
     "win": {
       "target": [
         "nsis",
@@ -96,9 +98,11 @@
       ],
       "category": "public.app-category.productivity",
       "minimumSystemVersion": "12.0",
-      "hardenedRuntime": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
+      "sign": {
+        "hardenedRuntime": true,
+        "entitlements": "build/entitlements.mac.plist",
+        "entitlementsInherit": "build/entitlements.mac.plist"
+      },
       "notarize": true
     },
     "linux": {
