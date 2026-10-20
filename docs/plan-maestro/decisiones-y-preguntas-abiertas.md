@@ -1,12 +1,48 @@
 # Decisiones vigentes y preguntas abiertas
 
-Estado al escribirlo: 2026-08-30. Este registro no duplica las preguntas
+Estado revisado: 2026-10-20. Este registro no duplica las preguntas
 abiertas que ya viven declaradas dentro de cada spec (`open question "…"`) ni
 las páginas de decisión del corpus de Vera. Reúne dos cosas distintas: (1)
 preguntas que esta auditoría encontró y que **no estaban visibles** en ningún
 documento antes de hoy, y (2) las preguntas ya declaradas en specs que son
 bloqueantes concretas para la fase 1 y merecen quedar citadas aquí porque el
 plan de ejecución las referencia por número.
+
+## Cola actual de decisiones estructurales
+
+Allium conserva 183 preguntas abiertas después de retirar una que la
+implementación ya contestó. No son 183 tareas equivalentes. Éstas son las cinco
+decisiones que hoy condicionan más trabajo posterior, en este orden:
+
+1. **Concurrencia estructural y precondición de revisión.** Decidir qué
+   precondición acompaña una edición (`sequence`, revisión del bloque o hash de
+   lo leído) y qué operaciones sobre el mismo sujeto pueden fusionarse sin
+   intervención. Es la misma frontera en `mcp-server.allium`,
+   `offline-reconciliation.allium`, `argument-workbench.allium` y
+   `page-processing.allium`. El incidente de movimientos concurrentes entre
+   Alexei y Andrei mostró que no es una hipótesis académica.
+2. **Una sola frontera de lectura para API y MCP.** Resolver primero la
+   autorización de lectura en la API para que MCP herede exactamente la misma
+   frontera. Cerrarla sólo en el adaptador dejaría una puerta HTTP más ancha y
+   dos modelos de seguridad incompatibles (`mcp-server.allium`).
+3. **Secretos de servicios en respaldo y reposo.** Elegir entre cifrar sólo
+   `service_secrets`, excluirlos del respaldo o exigir reconexión después de
+   restaurar. La exploración de cifrar toda la base ya se descartó por costo y
+   riesgo de pérdida; no debe reabrirse inadvertidamente (`E-4` y
+   `service-connections.allium`).
+4. **Reautenticación para actos sensibles.** Determinar si editar de forma
+   destructiva, publicar y administrar concesiones requieren una passkey fresca
+   o basta la sesión vigente (`shared-space-access.allium`). Esta decisión debe
+   preceder una expansión de la administración remota.
+5. **Conservado pero inactivo.** Especificar el gesto que envía una página o
+   bloque valioso a un recinto de archivo —la “página mágica” o subconsciente—
+   sin borrarlo ni mantenerlo ejecutándose. Hay que decidir identidad,
+   procedencia, retorno y diferencia respecto de papelera, favoritos y páginas
+   comunes antes de ponerle un comando.
+
+Las preguntas de interacción local, presentación y vocabulario siguen en cada
+spec, pero no bloquean estas cinco. Esta cola se reordena cuando una decisión se
+cierra; no se agregan números nuevos a `E-*` sólo para cambiar prioridades.
 
 ## Hallazgos nuevos de esta auditoría (no declarados antes)
 
@@ -144,8 +180,9 @@ exactamente lo que el método del repositorio busca evitar.
 ### E-7. Cifras técnicas desactualizadas en documentos y en el perfil FONDEF
 Tres lugares afirman cifras de specs/tests que ya no son ciertas:
 - [[VERA — FONDEF IDeA I+D 2027]] (2026-08-24): "35 especificaciones Allium,
-  1.206 pruebas automatizadas aprobadas". Hoy: **38 specs, 1298 pruebas**.
-- `docs/test-obligations.md:39,52`: "34 specs". Hoy: **38**.
+  1.206 pruebas automatizadas aprobadas". Al auditarse: **38 specs, 1298
+  pruebas**.
+- `docs/test-obligations.md:39,52`: "34 specs". Al auditarse: **38**.
 - `docs/plan-recorridos.md:3` y `docs/plan-local-first.md:3` son snapshots
   fechados correctamente formulados como tales — no son un problema, son el
   patrón correcto que los dos documentos anteriores no siguieron.

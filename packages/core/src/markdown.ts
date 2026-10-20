@@ -358,6 +358,7 @@ export function embedIn(
   );
 }
 
+/** @invariant AnOfficialYouTubeAddressMayBecomeAVideo */
 function youtubeVideo(source: string): { id: string; source: string } | null {
   if (!/^https:\/\//i.test(source)) return null;
   try {
