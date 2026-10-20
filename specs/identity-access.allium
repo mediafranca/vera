@@ -449,10 +449,10 @@ surface OwnerPublicPreviewBoundary {
 -- Open Questions
 ------------------------------------------------------------
 
--- Answered: people authenticate with passkeys or a federated Vera identity;
--- sessions and invitations are specified in shared-space-access.allium. The
--- machine that holds the corpus remains the owner's recovery authority.
-open question "How does Herbert authorize, identify and revoke each agent?"
+-- Answered: Herbert issues each agent a named, revocable credential with
+-- explicit scopes. The credential determines identity rather than request
+-- claims, and the owner can inspect its last use, rename its alias without
+-- changing authority, and revoke it. See agent-participation.allium.
 -- Answered: a human may have several passkeys, while the server keeps bounded,
 -- revocable sessions rather than an eternal bearer credential.
 -- Answered: collaborator authority is capability-based and scoped to a named
