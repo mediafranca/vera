@@ -9,7 +9,9 @@ import {
   browserExternalSessionStorage,
   createExternalSessionStore,
   externalPageBlockOrder,
+  planExternalBlockEdit,
   planExternalPageEdits,
+  projectExternalBlock,
   reconcileExternalText,
   type ExternalSessionSnapshot,
   type ExternalSessionStorage,
@@ -243,6 +245,11 @@ describe('superficie de edición externa', () => {
     assert.match(outlinerSource, /callbacks\.onExternalEditPage === undefined/);
   });
 
+  it('se ofrece también desde el menú de cada bloque', () => {
+    assert.match(outlinerSource, /onExternalEditBlock\?\.\(page, node\.block\)/);
+    assert.match(outlinerSource, /callbacks\.onExternalEditBlock === undefined/);
+  });
+
   it('guardar no escribe y Aceptar envía el plan con su secuencia base', () => {
     assert.match(dialogSource, /store\.save\(change\.sessionId, change\.content\)/);
     assert.match(dialogSource, /api\.submitCanonicalBatch\([\s\S]*session\.manifest\.baseSequence/);
@@ -251,5 +258,54 @@ describe('superficie de edición externa', () => {
 
   it('reanuda desde el archivo en disco si Luca guardó mientras Vera estaba cerrada', () => {
     assert.match(dialogSource, /opened\.content === session\.draft \? session : store\.save/);
+  });
+});
+
+describe('proyección externa según el tipo de bloque', () => {
+  const cases = [
+    ['```mermaid\ngraph TD\nA-->B\n```', 'mermaid', 'mmd'],
+    ['```svg\n<svg></svg>\n```', 'svg', 'svg'],
+    ['```html-live\n<button>sí</button>\n```', 'html', 'html'],
+    ['```p5js\ncreateCanvas(40, 40)\n```', 'javascript', 'js'],
+    ['```proceso\ndefinición: pictos/producir\n```', 'process', 'yaml'],
+    ['```mediawiki\n== Título ==\n```', 'mediawiki', 'wiki'],
+    ['```typescript\nconst n: number = 1\n```', 'code', 'ts'],
+  ] as const;
+
+  for (const [content, kind, extension] of cases) {
+    it(`materializa ${kind} como .${extension} y restituye su cercado`, () => {
+      const projection = projectExternalBlock(content);
+      assert.equal(projection.kind, kind);
+      assert.equal(projection.extension, extension);
+      assert.equal(projection.restore(projection.source), content);
+    });
+  }
+
+  it('trata un bloque ordinario como Markdown completo', () => {
+    const projection = projectExternalBlock('Texto con **énfasis**');
+    assert.equal(projection.kind, 'block_markdown');
+    assert.equal(projection.extension, 'md');
+    assert.equal(projection.restore('Otro'), 'Otro');
+  });
+
+  it('acepta la fuente editada restituyendo el tipo y la identidad del bloque', () => {
+    const content = '```svg\n<svg viewBox="0 0 10 10"></svg>\n```';
+    const projection = projectExternalBlock(content);
+    assert.deepEqual(
+      planExternalBlockEdit(
+        projection.source,
+        '<svg viewBox="0 0 20 20"></svg>',
+        'block:figura',
+        projection,
+      ),
+      {
+        kind: 'ready',
+        edits: [{
+          kind: 'edit_block',
+          block: 'block:figura',
+          content: '```svg\n<svg viewBox="0 0 20 20"></svg>\n```',
+        }],
+      },
+    );
   });
 });

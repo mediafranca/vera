@@ -278,6 +278,8 @@ export interface OutlinerCallbacks {
   onNavigate(title: string): void;
   /** Abre una sesión vinculada en el editor local de este dispositivo. */
   onExternalEditPage?(page: PageView): void | Promise<void>;
+  /** Materializa la fuente del bloque según su tipo y la abre localmente. */
+  onExternalEditBlock?(page: PageView, block: BlockView): void | Promise<void>;
   /** La sesión es una persona capaz de mantener su conversación privada. */
   canAskLibrarian?: boolean;
   /** Apariencia compartida con el presentador, para que no invente una segunda
@@ -6079,6 +6081,11 @@ export function renderOutliner(
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
           },
+          ...(callbacks.onExternalEditBlock === undefined ? [] : [{
+            label: 'Editar en aplicación externa',
+            icon: 'external-link',
+            run: () => void callbacks.onExternalEditBlock?.(page, node.block),
+          } satisfies MenuAction]),
         ],
         [
           {

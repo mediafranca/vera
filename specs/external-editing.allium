@@ -60,13 +60,19 @@ contract LinkedExternalEditing {
         -- El editor puede previsualizar lo que entiende, pero conserva sintaxis,
         -- front matter y referencias que no entiende. No inventa metadatos de Vera
         -- dentro de Markdown ni sustituye Mermaid por el SVG de su vista previa.
+
+    @invariant ABlockTravelsAsItsAuthoredSource
+        -- Un bloque ordinario viaja como Markdown. Un cercado Mermaid, SVG, HTML,
+        -- p5.js, proceso, MediaWiki o código viaja como la fuente interior con una
+        -- extensión congruente; al aceptar, Vera restituye el cercado original.
+        -- La vista renderizada nunca se ofrece al editor como si fuese la fuente.
 }
 
 ------------------------------------------------------------
 -- Enumerations and values
 ------------------------------------------------------------
 
-enum EditableKind { page_markdown | block_markdown | svg | mermaid | html | javascript }
+enum EditableKind { page_markdown | block_markdown | svg | mermaid | html | javascript | code | process | mediawiki }
 enum ExternalSessionStatus { active | attention_required | ready | accepted | discarded | failed }
 enum DraftFreshness { current | vera_advanced | rebased | divergent }
 
@@ -396,3 +402,4 @@ surface LinkedEditReview {
 
 open question "¿Cuándo puede retirarse automáticamente el material de una sesión aceptada o descartada sin impedir recuperación forense ni llenar el disco?"
 open question "¿Qué protocolo opcional permitiría a Luca recibir avisos de refresco y estado sin convertirlo en autoridad ni requisito para otros editores?"
+open question "Cuando una imagen administrada se edita desde uno de sus bloques, ¿se reemplaza el archivo compartido en todos sus usos o se crea una copia vinculada sólo a ese bloque?"

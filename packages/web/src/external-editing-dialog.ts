@@ -1,9 +1,12 @@
-import { api, type PageView } from './api.ts';
+import { api, type BlockView, type PageView } from './api.ts';
 import {
   browserExternalSessionStorage,
   createExternalSessionStore,
   externalPageBlockOrder,
+  planExternalBlockEdit,
   planExternalPageEdits,
+  projectExternalBlock,
+  type ExternalBlockProjection,
   type ExternalEditSession,
 } from './external-editing.ts';
 import { systemNotice as toast } from './system-notice.ts';
@@ -32,7 +35,11 @@ const bridge = (): DesktopExternalEditingBridge | null =>
 export const canEditExternally = (): boolean => bridge() !== null;
 
 const store = createExternalSessionStore(browserExternalSessionStorage(localStorage));
-const pages = new Map<string, PageView>();
+type ReviewSubject =
+  | { kind: 'page'; page: PageView }
+  | { kind: 'block'; page: PageView; block: BlockView; projection: ExternalBlockProjection };
+
+const subjects = new Map<string, ReviewSubject>();
 const dialogs = new Map<string, HTMLDialogElement>();
 let listening = false;
 
@@ -46,8 +53,9 @@ async function pageMarkdown(page: string): Promise<string> {
 }
 
 function draw(session: ExternalEditSession): void {
-  const page = pages.get(session.id);
-  if (page === undefined) return;
+  const subject = subjects.get(session.id);
+  if (subject === undefined) return;
+  const page = subject.page;
   const prior = dialogs.get(session.id);
   const dialog = prior ?? document.createElement('dialog');
   dialog.className = 'external-editing-dialog';
@@ -55,10 +63,19 @@ function draw(session: ExternalEditSession): void {
   dialog.innerHTML = '';
 
   const title = document.createElement('h2');
-  title.textContent = `Edición externa · ${page.title}`;
+  title.textContent = subject.kind === 'page'
+    ? `Edición externa · ${page.title}`
+    : `Edición externa · bloque de ${page.title}`;
   const status = document.createElement('p');
   status.className = 'external-editing-status';
-  const plan = planExternalPageEdits(session.base, session.draft, page.blocks);
+  const plan = subject.kind === 'page'
+    ? planExternalPageEdits(session.base, session.draft, page.blocks)
+    : planExternalBlockEdit(
+        session.base,
+        session.draft,
+        subject.block.stableId,
+        subject.projection,
+      );
   const changed = plan.kind === 'ready' ? plan.edits.length : 0;
   status.textContent = plan.kind === 'divergent'
     ? `Requiere atención: ${plan.reason}`
@@ -80,7 +97,7 @@ function draw(session: ExternalEditSession): void {
     void bridge()?.close(session.id, 'discarded');
     dialog.close();
     dialogs.delete(session.id);
-    pages.delete(session.id);
+    subjects.delete(session.id);
     toast('edición externa descartada; el archivo quedó conservado');
   };
   const accept = document.createElement('button');
@@ -106,7 +123,7 @@ function draw(session: ExternalEditSession): void {
       void bridge()?.close(session.id, 'accepted');
       dialog.close();
       dialogs.delete(session.id);
-      pages.delete(session.id);
+      subjects.delete(session.id);
       toast(`aceptados ${plan.edits.length} cambios como un solo lote`);
       window.dispatchEvent(new CustomEvent('vera:external-editing-accepted', {
         detail: { page: page.id },
@@ -163,11 +180,53 @@ export async function editPageExternally(
     source,
     stableBlockIds: externalPageBlockOrder(page.blocks) ?? page.blocks.map((block) => block.stableId),
   });
-  pages.set(session.id, page);
+  subjects.set(session.id, { kind: 'page', page });
   try {
     const opened = await desktop.open({
       sessionId: session.id,
       fileName: safeFileName(page.title),
+      content: session.draft,
+      manifest: {
+        version: 1,
+        sessionId: session.id,
+        target: session.target,
+        baseSequence: session.manifest.baseSequence,
+        stableBlockIds: session.manifest.stableBlockIds,
+        status: session.status === 'accepted' || session.status === 'discarded' ? 'active' : session.status,
+      },
+    });
+    draw(opened.content === session.draft ? session : store.save(session.id, opened.content));
+  } catch (error) {
+    toast(`no se pudo abrir el editor externo: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export async function editBlockExternally(
+  page: PageView,
+  block: BlockView,
+  graph: string,
+  baseSequence: number,
+): Promise<void> {
+  const desktop = bridge();
+  if (desktop === null) {
+    toast('la edición vinculada requiere Vera Desktop');
+    return;
+  }
+  listen();
+  const projection = projectExternalBlock(block.content);
+  const session = store.open({
+    device: 'desktop',
+    target: { graph, kind: projection.kind, block: block.stableId },
+    baseSequence,
+    source: projection.source,
+    stableBlockIds: [block.stableId],
+  });
+  subjects.set(session.id, { kind: 'block', page, block, projection });
+  const shortId = block.stableId.replace(/^block:/, '').slice(0, 12) || 'bloque';
+  try {
+    const opened = await desktop.open({
+      sessionId: session.id,
+      fileName: `${safeFileName(page.title).replace(/\.md$/i, '')} — ${shortId}.${projection.extension}`,
       content: session.draft,
       manifest: {
         version: 1,

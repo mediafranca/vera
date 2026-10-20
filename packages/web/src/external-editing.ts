@@ -13,7 +13,83 @@ export type ExternalEditableKind =
   | 'svg'
   | 'mermaid'
   | 'html'
-  | 'javascript';
+  | 'javascript'
+  | 'code'
+  | 'process'
+  | 'mediawiki';
+
+export type ExternalBlockProjection = {
+  kind: Exclude<ExternalEditableKind, 'page_markdown'>;
+  extension: string;
+  source: string;
+  restore(source: string): string;
+};
+
+const CODE_EXTENSIONS: Readonly<Record<string, string>> = {
+  bash: 'sh',
+  c: 'c',
+  cpp: 'cpp',
+  css: 'css',
+  go: 'go',
+  javascript: 'js',
+  js: 'js',
+  json: 'json',
+  jsx: 'jsx',
+  python: 'py',
+  py: 'py',
+  rust: 'rs',
+  rs: 'rs',
+  sh: 'sh',
+  sql: 'sql',
+  ts: 'ts',
+  tsx: 'tsx',
+  typescript: 'ts',
+  xml: 'xml',
+  yaml: 'yaml',
+  yml: 'yml',
+};
+
+/**
+ * Materializa la fuente que corresponde al tipo real de un bloque.
+ *
+ * El editor externo no necesita cargar el cercado Markdown para trabajar sobre
+ * un SVG o un programa. `restore` vuelve a poner exactamente el prefijo y el
+ * cierre originales, de modo que aceptar conserva el lenguaje y el blanco que
+ * pertenecen al bloque.
+ */
+export function projectExternalBlock(content: string): ExternalBlockProjection {
+  const fenced = /^(\s*```([^\n`]*)\n)([\s\S]*?)(\n```\s*)$/.exec(content);
+  if (fenced === null) {
+    return {
+      kind: 'block_markdown',
+      extension: 'md',
+      source: content,
+      restore: (source) => source,
+    };
+  }
+
+  const language = (fenced[2] ?? '').trim().toLowerCase();
+  const source = fenced[3] ?? '';
+  const prefix = fenced[1] ?? '```\n';
+  const suffix = fenced[4] ?? '\n```';
+  const restore = (next: string): string => `${prefix}${next}${suffix}`;
+
+  if (language === 'mermaid') return { kind: 'mermaid', extension: 'mmd', source, restore };
+  if (language === 'svg') return { kind: 'svg', extension: 'svg', source, restore };
+  if (language === 'html-live' || language === 'html') {
+    return { kind: 'html', extension: 'html', source, restore };
+  }
+  if (language === 'p5js') return { kind: 'javascript', extension: 'js', source, restore };
+  if (language === 'proceso') return { kind: 'process', extension: 'yaml', source, restore };
+  if (language === 'mediawiki') return { kind: 'mediawiki', extension: 'wiki', source, restore };
+
+  return {
+    kind: 'code',
+    extension: CODE_EXTENSIONS[language] ?? 'txt',
+    source,
+    restore,
+  };
+}
 
 export type ExternalEditTarget = {
   graph: string;
@@ -78,6 +154,20 @@ export type ExternalPageBlock = {
 export type ExternalPageEditPlan =
   | { kind: 'ready'; edits: { kind: 'edit_block'; block: string; content: string }[] }
   | { kind: 'divergent'; reason: string };
+
+export function planExternalBlockEdit(
+  base: string,
+  draft: string,
+  block: string,
+  projection: ExternalBlockProjection,
+): ExternalPageEditPlan {
+  return {
+    kind: 'ready',
+    edits: draft === base
+      ? []
+      : [{ kind: 'edit_block', block, content: projection.restore(draft) }],
+  };
+}
 
 export type ExternalSessionStorage = {
   load(): ExternalSessionSnapshot | null;

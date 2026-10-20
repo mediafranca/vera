@@ -26,7 +26,7 @@ import {
   type Replica,
 } from './replica.ts';
 import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
-import { canEditExternally, editPageExternally } from './external-editing-dialog.ts';
+import { canEditExternally, editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
   focusAfterChange,
@@ -1646,6 +1646,12 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
     ...(canEditExternally() ? {
       onExternalEditPage: () => editPageExternally(
         page,
+        corpus?.graph ?? 'Vera',
+        corpus?.lastSequence ?? 0,
+      ),
+      onExternalEditBlock: (_current, block) => editBlockExternally(
+        page,
+        block,
         corpus?.graph ?? 'Vera',
         corpus?.lastSequence ?? 0,
       ),
