@@ -95,7 +95,10 @@ describe('páginas que se pueden presentar', () => {
     for (const kind of ['executable', 'embedded-map', 'drawn', 'mermaid-figure']) {
       assert.match(source, new RegExp(`medium\\.matches\\('\\.${kind}'\\)`));
     }
-    assert.match(source, /medium\.matches\('\.embed'\).*querySelector\(':scope > iframe'\)/);
+    assert.match(
+      source,
+      /medium\.matches\('\.embed'\)[\s\S]*?querySelector\(':scope > :is\(iframe, \.presentation-frame-placeholder\)'\)/,
+    );
     assert.match(source, /medium\.matches\('\.table-scroll, table'\)/);
     assert.match(source, /medium\.matches\('img, svg'\)/);
     assert.match(source, /accessories\.length > 2/);
@@ -117,7 +120,12 @@ describe('páginas que se pueden presentar', () => {
 
   it('mantiene un solo recinto visual activo y suspende la copia de la página', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
-    assert.match(source, /const parkedFrameSources = new WeakMap/);
+    assert.match(source, /const parkedFrameMarkers = new WeakMap/);
+    assert.match(source, /const framesByMarker = new WeakMap/);
+    assert.match(source, /frame\.replaceWith\(frameMarker\(frame\)\)/);
+    assert.match(source, /marker\.replaceWith\(frame\)/);
+    assert.doesNotMatch(source, /frame\.removeAttribute\('src(?:doc)?'\)/);
+    assert.match(source, /\.presentation-frame-placeholder/);
     assert.match(source, /if \(sourceSurface !== null\) parkFrames\(sourceSurface\)/);
     assert.match(source, /sourceFrameWatch\?\.observe\(sourceSurface!, \{ childList: true, subtree: true \}\)/);
     assert.match(source, /sourceFrameWatch\?\.disconnect\(\)/);
