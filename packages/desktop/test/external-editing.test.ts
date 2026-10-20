@@ -1,5 +1,6 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -67,6 +68,49 @@ describe('puente Desktop de edición externa', () => {
     renameSync(temporary, source);
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.deepEqual(changes, ['guardado atómico']);
+    bridge.stopAll();
+  });
+
+  it('entrega la ruta a un editor real y observa su guardado atómico', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'vera-external-'));
+    roots.push(root);
+    let changed!: (content: string) => void;
+    const saved = new Promise<string>((resolve) => { changed = resolve; });
+    const bridge = new DesktopExternalEditing(
+      root,
+      async (path) => {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(process.execPath, [
+            '-e',
+            [
+              "const { renameSync, writeFileSync } = require('node:fs')",
+              "const source = process.argv[1]",
+              "const temporary = `${source}.editor-tmp`",
+              "writeFileSync(temporary, '# Página\\n\\n- editado por el editor externo')",
+              'renameSync(temporary, source)',
+            ].join(';'),
+            path,
+          ]);
+          child.once('error', reject);
+          child.once('exit', (code) => code === 0
+            ? resolve()
+            : reject(new Error(`el editor terminó con ${code}`)));
+        });
+      },
+      (_id, content) => changed(content),
+    );
+
+    const view = await bridge.open(input());
+    assert.equal(view.fileName, 'Página.md');
+    assert.equal(
+      await Promise.race([
+        saved,
+        new Promise<string>((_resolve, reject) => {
+          setTimeout(() => reject(new Error('Vera no observó el guardado')), 1_000).unref();
+        }),
+      ]),
+      '# Página\n\n- editado por el editor externo',
+    );
     bridge.stopAll();
   });
 
