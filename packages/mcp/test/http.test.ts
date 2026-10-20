@@ -63,8 +63,9 @@ describe('la puerta MCP pública', () => {
         body: JSON.stringify(initialize),
       });
       assert.equal(response.status, 200);
-      const payload = await response.json() as { result?: { serverInfo?: { name?: string } } };
+      const payload = await response.json() as { result?: { serverInfo?: { name?: string; version?: string } } };
       assert.equal(payload.result?.serverInfo?.name, 'vera');
+      assert.equal(payload.result?.serverInfo?.version, '0.6.1');
     } finally {
       await new Promise<void>((resolve, reject) => embedded.close((error) => error ? reject(error) : resolve()));
     }
