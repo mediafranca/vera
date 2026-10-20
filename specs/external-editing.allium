@@ -66,6 +66,13 @@ contract LinkedExternalEditing {
         -- p5.js, proceso, MediaWiki o código viaja como la fuente interior con una
         -- extensión congruente; al aceptar, Vera restituye el cercado original.
         -- La vista renderizada nunca se ofrece al editor como si fuese la fuente.
+
+    @invariant ManagedFilesAreEditedFromTheirRecord
+        -- Una imagen raster, un PDF, audio u otro archivo administrado no abre una
+        -- sesión binaria desde el menú del bloque que lo incrusta. Pulsar el objeto
+        -- lleva a su ficha en Archivos, donde vive la acción de edición externa.
+        -- Aceptar reemplaza el recurso administrado conservando su identidad y, por
+        -- ello, actualiza de manera explícita todos sus usos catalogados.
 }
 
 ------------------------------------------------------------
@@ -402,4 +409,3 @@ surface LinkedEditReview {
 
 open question "¿Cuándo puede retirarse automáticamente el material de una sesión aceptada o descartada sin impedir recuperación forense ni llenar el disco?"
 open question "¿Qué protocolo opcional permitiría a Luca recibir avisos de refresco y estado sin convertirlo en autoridad ni requisito para otros editores?"
-open question "Cuando una imagen administrada se edita desde uno de sus bloques, ¿se reemplaza el archivo compartido en todos sus usos o se crea una copia vinculada sólo a ese bloque?"
