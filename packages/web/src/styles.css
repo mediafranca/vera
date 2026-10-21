@@ -3714,7 +3714,7 @@ html.presenting body {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  min-height: 2.25rem;
+  min-height: 2.5rem;
   padding: 0.4rem 0.75rem;
   border: 1px solid var(--rule);
   border-radius: 0.35rem;
@@ -8898,21 +8898,32 @@ html[data-working-slow='true']::after {
   overflow-wrap: anywhere;
 }
 
-/* Un botón cuyo texto envuelve se lee como dos: «retira / r». Son dos palabras
-   como mucho y caben, o la columna está mal repartida, que se arregla en su
-   tabla y no aquí. */
+/* Acciones táctiles y legibles: esta página se usa también desde PWA y no debe
+   exigir puntería de escritorio para autorizar, copiar o revocar. */
 .connect-copy {
   white-space: nowrap;
   appearance: none;
   background: none;
   border: 1px solid var(--rule);
-  border-radius: 3px;
-  padding: 0.05rem 0.4rem;
+  border-radius: 6px;
+  min-height: 2.5rem;
+  padding: 0.42rem 0.72rem;
   font: inherit;
-  font-size: 0.72rem;
-  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
   cursor: pointer;
   flex: none;
+}
+
+.connect-primary {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--rule));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-raised));
+}
+
+.connect-primary:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-raised));
 }
 
 .connect-copy:hover {
@@ -9337,6 +9348,18 @@ html[data-working-slow='true']::after {
   font-size: 0.8rem;
 }
 
+.connection-origin {
+  margin: -0.35rem 0 1.6rem;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+}
+
+.connection-origin code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .connect-field {
   display: flex;
   flex-direction: column;
@@ -9356,8 +9379,9 @@ html[data-working-slow='true']::after {
   color: var(--text);
   background: var(--bg-raised);
   border: 1px solid var(--rule);
-  border-radius: 3px;
-  padding: 0.15rem 0.35rem;
+  border-radius: 5px;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.55rem;
   min-width: 10rem;
 }
 
