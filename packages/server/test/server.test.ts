@@ -542,6 +542,37 @@ describe('POST /captures', () => {
     const page = await get(`/pages/${encodeURIComponent(String(first.json['page']))}`) as { blocks: { content: string }[] };
     assert.equal(page.blocks.filter((block) => block.content === 'Fragmento capturado').length, 1);
     assert.ok(page.blocks.some((block) => block.content.includes('https://example.com/articulo')));
+
+    const history = await get(`/blocks/${encodeURIComponent(String(first.json['block']))}/history`) as {
+      origin: { kind: string; route: string; source: string; sourceKind: string; capturedAt: string } | null;
+      states: { participant: string; channel: string; originId: string; route: string | null }[];
+    };
+    assert.deepEqual(history.origin, {
+      kind: 'capture',
+      route: 'Vera Clip',
+      source: 'https://example.com/articulo',
+      sourceKind: 'selection',
+      capturedAt: '2026-09-16T12:00:00.000Z',
+    });
+    assert.equal(history.states[0]?.participant, OWNER);
+    assert.equal(history.states[0]?.channel, 'import');
+    assert.match(history.states[0]?.originId ?? '', /^capture:/);
+    assert.equal(history.states[0]?.route, 'Vera Clip');
+
+    await write({
+      kind: 'edit_block',
+      block: String(first.json['block']),
+      content: 'Una fuente comentada después de capturarla',
+    });
+    const editedHistory = await get(`/blocks/${encodeURIComponent(String(first.json['block']))}/history`) as {
+      origin: { route: string; source: string } | null;
+      states: { participant: string; channel: string; route: string | null }[];
+    };
+    assert.equal(editedHistory.origin?.route, 'Vera Clip', 'una edición posterior no borra el origen');
+    assert.equal(editedHistory.origin?.source, 'https://example.com/articulo');
+    assert.equal(editedHistory.states.at(-1)?.participant, OWNER);
+    assert.equal(editedHistory.states.at(-1)?.channel, 'typed_text');
+    assert.equal(editedHistory.states.at(-1)?.route, null);
   });
 
   it('rechaza una captura demasiado grande antes de escribir', async () => {

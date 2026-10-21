@@ -300,14 +300,25 @@ export interface BlockState {
   by: string;
   participant: string;
   channel: string;
+  originId: string;
+  route: string | null;
   what: string;
   content: string | null;
+}
+
+export interface BlockHistoricalOrigin {
+  kind: 'capture';
+  route: string;
+  source: string;
+  sourceKind: 'selection' | 'article';
+  capturedAt: string;
 }
 
 export interface BlockHistory {
   block: string;
   alive: boolean;
   now: string | null;
+  origin: BlockHistoricalOrigin | null;
   states: BlockState[];
 }
 

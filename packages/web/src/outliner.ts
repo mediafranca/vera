@@ -2834,6 +2834,21 @@ async function showHistory(
       ? 'nació así y no se ha tocado'
       : `${said.states.length} estados${said.alive ? '' : ' · el bloque ya no está'}`;
   heading.append(title, summary);
+  if (said.origin !== null) {
+    const origin = document.createElement('p');
+    origin.className = 'history-origin';
+    origin.append(`Origen: ${said.origin.route} · captura ${
+      said.origin.sourceKind === 'selection' ? 'de selección' : 'de artículo'
+    } · ${new Date(said.origin.capturedAt).toISOString().slice(0, 16).replace('T', ' ')} · `);
+    const source = document.createElement('a');
+    source.href = said.origin.source;
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
+    source.textContent = new URL(said.origin.source).hostname;
+    source.title = said.origin.source;
+    origin.append(source);
+    heading.append(origin);
+  }
   const shut = document.createElement('button');
   shut.type = 'button';
   shut.className = 'history-close';
@@ -2854,13 +2869,26 @@ async function showHistory(
     line.className = state.content === said.now ? 'history-state now' : 'history-state';
     const when = document.createElement('span');
     when.className = 'history-when';
-    when.append(`${new Date(state.at).toISOString().slice(0, 16).replace('T', ' ')} · ${state.what} · `);
+    when.append(`${new Date(state.at).toISOString().slice(0, 16).replace('T', ' ')} · ${state.what}`);
+    line.append(when);
+    const provenance = document.createElement('div');
+    provenance.className = 'history-provenance';
+    provenance.append('Autor: ');
     const author = document.createElement('a');
     author.href = participantActivityPath(state.participant);
     author.textContent = state.by;
     author.title = `Ver las contribuciones de ${state.by}`;
-    when.append(author);
-    line.append(when);
+    provenance.append(author, ` · Canal: ${historyChannelLabel(state.channel)}`);
+    if (state.route !== null) provenance.append(` · Vía: ${state.route}`);
+    line.append(provenance);
+    const audit = document.createElement('details');
+    audit.className = 'history-audit';
+    const auditLabel = document.createElement('summary');
+    auditLabel.textContent = 'detalle auditable';
+    const auditOrigin = document.createElement('code');
+    auditOrigin.textContent = state.originId;
+    audit.append(auditLabel, auditOrigin);
+    line.append(audit);
     if (state.content !== null) {
       const text = document.createElement('div');
       text.className = 'history-text';
@@ -2892,6 +2920,20 @@ async function showHistory(
   historyInspector = panel;
   placeHistoryInspector(panel, anchor);
   shut.focus();
+}
+
+/** Traduce el canal estable sin esconder su nombre canónico al inspeccionarlo. */
+function historyChannelLabel(channel: string): string {
+  const labels: Record<string, string> = {
+    typed_text: 'escritura directa',
+    import: 'importación',
+    agent_generation: 'generación de agente',
+    authenticated_voice: 'voz autenticada',
+    drawn: 'dibujo',
+    walked: 'recorrido',
+  };
+  const label = labels[channel];
+  return label === undefined ? channel : `${label} (${channel})`;
 }
 
 /**
