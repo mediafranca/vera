@@ -221,6 +221,9 @@ de este repositorio son documentación y se leen como tal.
 
 ## 4. Antes de proponer un cambio
 
+La verificación de specs requiere `allium`, Bash y `jq`, igual que la CI.
+Las advertencias se muestran; los errores y fallos del verificador bloquean el control.
+
 ```sh
 make check      # typecheck + pruebas + allium check, sin publicar nada
 npm run preflight # remoto vigente + cobertura de trazabilidad
