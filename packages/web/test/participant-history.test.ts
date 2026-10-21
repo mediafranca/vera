@@ -11,6 +11,17 @@ describe('autoría navegable en el historial de un bloque', () => {
     assert.match(outliner, /author\.textContent = state\.by/);
   });
 
+  it('separa autor, canal, vía de ingreso, fuente y detalle auditable', () => {
+    assert.match(outliner, /Origen: \$\{said\.origin\.route\}/);
+    assert.match(outliner, /source\.href = said\.origin\.source/);
+    assert.match(outliner, /provenance\.append\('Autor: '\)/);
+    assert.match(outliner, /Canal: \$\{historyChannelLabel\(state\.channel\)\}/);
+    assert.match(outliner, /Vía: \$\{state\.route\}/);
+    assert.match(outliner, /auditOrigin\.textContent = state\.originId/);
+    assert.match(styles, /\.history-provenance \{/);
+    assert.match(styles, /\.history-audit \{/);
+  });
+
   it('abre un único inspector modeless fuera del flujo y devuelve el foco al cerrar', () => {
     assert.match(outliner, /label: 'Ver historial del bloque'/);
     assert.match(outliner, /icon: 'clock'/);

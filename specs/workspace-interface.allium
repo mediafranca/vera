@@ -493,6 +493,24 @@ contract BlockManipulation {
 contract BlockHistoryInspection {
     inspect_history: (block: core/Block) -> core/Block
 
+    @invariant HistoryNamesAuthorshipAndProvenanceSeparately
+        -- Every state says who performed the change and, separately, how it
+        -- entered Vera. A human remains the author when a delegated capture
+        -- tool deposits their material; the tool and contribution channel are
+        -- not flattened into the person's name or hidden behind an opaque id.
+
+    @invariant ImportedMaterialNamesItsRouteAndSource
+        -- When a block descends from captured or imported material, its history
+        -- identifies the route in human language —for example Vera Clip— and
+        -- exposes the original source when the corpus has one. Technical origin
+        -- identifiers remain available as audit detail, not as the only account
+        -- a person receives.
+
+    @invariant LaterEditsDoNotEraseTheOrigin
+        -- A later direct edit reports its own author, channel and route while
+        -- the inspector continues to name how the block first entered Vera.
+        -- Current authorship and historical origin answer different questions.
+
     @invariant HistoryFloatsWithoutChangingTheOutline
         -- Opening a block's history presents one modeless floating inspector and
         -- moves no block, descendant or following content. The inspector begins

@@ -693,6 +693,50 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
   const isPublicPage = (page: string): boolean => publicPageIds().has(page);
 
+  /**
+   * La vía por la que una operación llegó no es su autoría.
+   *
+   * `originId` sigue siendo la llave auditable e idempotente, pero una persona
+   * no debería tener que conocer nuestros prefijos internos para saber que una
+   * captura entró mediante Vera Clip o que una referencia vino de Zotero.
+   */
+  const routeForOrigin = (originId: string): string | null => {
+    if (originId.startsWith('capture:')) return 'Vera Clip';
+    if (originId.startsWith('zotero:')) return 'Zotero';
+    if (originId.startsWith('vera-file:')) return 'archivo administrado por Vera';
+    if (originId.startsWith('voice:')) return 'captura de voz';
+    if (originId.startsWith('librarian:')) return 'bibliotecario de Vera';
+    if (originId.startsWith('local-model:')) return 'modelo local';
+    return null;
+  };
+
+  /** Procedencia duradera del bloque, distinta de quién hizo su última edición. */
+  const historicalOriginOf = (blockId: string): {
+    kind: 'capture';
+    route: string;
+    source: string;
+    sourceKind: 'selection' | 'article';
+    capturedAt: string;
+  } | null => {
+    const captureRoot = /^block:capture:[^:]+/.exec(blockId)?.[0];
+    if (captureRoot === undefined) return null;
+    const sourceId = `${captureRoot}:source`;
+    const sourceCreation = graph.operations().find((operation) =>
+      operation.subjectId === sourceId && operation.submission.change.kind === 'create_block');
+    const source = sourceCreation?.submission.change.kind === 'create_block'
+      ? sourceCreation.submission.change.content
+      : '';
+    const parsed = /^Fuente: (https?:\/\/\S+) · captura de (selección|artículo) · (.+)$/.exec(source);
+    if (parsed === null) return null;
+    return {
+      kind: 'capture',
+      route: 'Vera Clip',
+      source: parsed[1]!,
+      sourceKind: parsed[2] === 'selección' ? 'selection' : 'article',
+      capturedAt: parsed[3]!,
+    };
+  };
+
   /** La publicación que ocupa una ruta canónica legible del sitio. */
   const publicationAtPath = (pathname: string) => {
     const site = publicSite();
@@ -5191,6 +5235,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           by: string;
           participant: string;
           channel: string;
+          originId: string;
+          route: string | null;
           what: string;
           content: string | null;
         }[] = [];
@@ -5209,6 +5255,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             by: graph.participant(one.submission.submittedBy)?.name ?? one.submission.submittedBy,
             participant: one.submission.submittedBy,
             channel: one.submission.channel,
+            originId: one.originId,
+            route: routeForOrigin(one.originId),
             what:
               change.kind === 'create_block'
                 ? 'nació'
@@ -5239,6 +5287,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               by: graph.participant(prior.submission.submittedBy)?.name ?? 'autor desconocido',
               participant: prior.submission.submittedBy,
               channel: prior.submission.channel,
+              originId: prior.originId,
+              route: routeForOrigin(prior.originId),
               what: 'al publicarse',
               content: change.kind === 'create_block' || change.kind === 'edit_block'
                 ? change.content
@@ -5253,6 +5303,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             block: id,
             alive: graph.block(id) !== undefined,
             now: graph.block(id)?.content ?? null,
+            origin: historicalOriginOf(id),
             states: said,
           },
           { surface: 'GET /blocks/:id/history', subject: id, delivered: [id] },

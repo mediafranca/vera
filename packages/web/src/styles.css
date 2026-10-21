@@ -7962,6 +7962,15 @@ html[data-working-slow='true']::after {
 
 .history-head span { display: block; margin-top: 0.12rem; }
 
+.history-origin {
+  margin: 0.4rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.history-origin a,
+.history-provenance a { color: var(--accent); }
+
 .history-states {
   min-height: 0;
   max-height: min(24rem, calc(100dvh - 7rem));
@@ -7997,6 +8006,30 @@ html[data-working-slow='true']::after {
 }
 
 .history-when a { color: var(--accent); }
+
+.history-provenance {
+  margin-top: 0.22rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.history-audit {
+  margin-top: 0.3rem;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.history-audit summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.history-audit code {
+  display: block;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
 
 .activity-participant {
   margin: 0 0 1rem;
