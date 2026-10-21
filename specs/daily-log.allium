@@ -17,6 +17,7 @@
 --   the hand behind an inscription by agent-participation.allium
 
 use "./core.allium" as core
+use "./block-editing.allium" as block
 
 ------------------------------------------------------------
 -- Contracts

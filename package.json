@@ -18,12 +18,12 @@
     "packages/*"
   ],
   "scripts": {
-    "spec": "allium check specs/",
+    "spec": "bash scripts/check-specs.sh",
     "spec:analyse": "allium analyse specs/",
     "traceability:check": "node scripts/check-traceability.mjs",
     "upstream:check": "node scripts/check-upstream.mjs --fetch",
     "preflight": "npm run upstream:check && npm run traceability:check",
-    "test": "node --test \"packages/*/test/**/*.test.ts\"",
+    "test": "bash scripts/check-specs.test.sh && node --test \"packages/*/test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/web",
     "build": "npm run build --workspace @vera/web",
     "build:desktop": "npm run build && node scripts/build-desktop.mjs",
