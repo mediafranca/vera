@@ -7,7 +7,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { clientRecipe, credentialState, publicLaunch, remoteLaunch } from '../src/mcp-page.ts';
+import {
+  captureAuthorization,
+  clientRecipe,
+  credentialState,
+  publicLaunch,
+  remoteLaunch,
+} from '../src/mcp-page.ts';
 import type { MCPConnect } from '../src/api.ts';
 
 const connect = (overrides: Partial<MCPConnect> = {}): MCPConnect => ({
@@ -25,6 +31,19 @@ const connect = (overrides: Partial<MCPConnect> = {}): MCPConnect => ({
 });
 
 describe('la configuración para otro equipo', () => {
+  it('autoriza Vera Clip contra el origen desde el que se abrió Vera', () => {
+    const said = JSON.parse(captureAuthorization(
+      'https://vera.tuatara-carat.ts.net/connections',
+      'vera-clip',
+      'secret',
+    ));
+    assert.deepEqual(said, {
+      url: 'https://vera.tuatara-carat.ts.net',
+      client: 'vera-clip',
+      credential: 'secret',
+    });
+  });
+
   it('lanza ssh contra este equipo, y no node', () => {
     // El proceso corre aquí: por eso no hay que instalar nada allá.
     const said = JSON.parse(remoteLaunch(connect(), 'claude-desktop'));
