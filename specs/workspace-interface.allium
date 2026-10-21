@@ -786,6 +786,11 @@ contract InstallableWebApplication {
 enum WorkspaceLayout { text_only | graph_only | split }
 enum GraphViewMode { graph_2d | graph_3d | graph_d4 }
 enum ColourScheme { light | dark }
+
+-- Importar puede respetar lo que ya existe o declarar que el archivo es la
+-- apariencia completa. La diferencia debe ser una elección visible: dos
+-- botones que hacen cosas distintas sin decirlo serían una trampa de respaldo.
+enum TokenImportMode { merge | replace }
 enum MapContentScope { own_space | published }
 enum BlockBehaviour { markdown | html | audio | video | clip | map | drawing | p5js | svg | query | mermaid | table }
 enum SearchPresentation { completion | full_results }
@@ -863,6 +868,22 @@ entity DesignToken {
     name: String
     light_value: String
     dark_value: String
+}
+
+-- Un respaldo portable de apariencia, deliberadamente más estrecho que el
+-- workspace. No lleva el esquema que este aparato está mostrando, ni la
+-- disposición, la cámara, credenciales o contenido del corpus.
+value PortableDesignToken {
+    name: String
+    light_value: String
+    dark_value: String
+}
+
+value DesignTokenPackage {
+    format: String
+    version: Integer
+    exported_at: Timestamp
+    tokens: List<PortableDesignToken>
 }
 
 entity SearchResult {
@@ -1206,6 +1227,59 @@ rule ParticipantEditsDesignToken {
         token.dark_value = dark_value
 }
 
+rule ParticipantExportsDesignTokens {
+    when: ExportDesignTokens(participant, workspace)
+
+    requires: workspace.participant = participant
+
+    ensures: DesignTokenPackage.created(
+        format: "vera.design-tokens",
+        version: 1,
+        exported_at: now,
+        tokens: portable_tokens(workspace.theme.tokens)
+    )
+
+    @invariant AppearanceOnly
+        -- The package contains the complete named light/dark token set and its
+        -- schema identity. It excludes documents, graph data, credentials,
+        -- colour-scheme choice and every device or workspace preference.
+}
+
+rule ParticipantImportsDesignTokens {
+    when: ImportDesignTokens(participant, workspace, package, mode)
+
+    requires: workspace.participant = participant
+    requires: package.format = "vera.design-tokens"
+    requires: package.version = 1
+    requires: mode in TokenImportMode
+
+    ensures:
+        -- Merge changes only supported tokens present in the package. Replace
+        -- first restores the current canonical reserve and then overlays those
+        -- same supported tokens. Unknown token names never become live CSS.
+        workspace.theme.tokens = imported_tokens(
+            current: workspace.theme.tokens,
+            defaults: canonical_tokens(workspace.theme),
+            package: package,
+            mode: mode
+        )
+
+    @invariant PreviewBeforeMutation
+        -- Before applying anything, Vera names the package, reports unsupported
+        -- entries and shows the exact light/dark values that will change for the
+        -- selected mode. Cancel leaves the design system untouched.
+
+    @invariant InvalidPackagesFailClosed
+        -- A wrong format or version, duplicate token, missing light/dark value,
+        -- empty value or resource-bearing CSS is rejected without partially
+        -- changing the design system.
+
+    @invariant ImportCanBeUndone
+        -- Immediately before a successful import Vera stores one local backup
+        -- of the complete previous token set. Restoring it is one explicit act
+        -- and synchronizes the restored values like any other token edit.
+}
+
 -- Preguntarle a una página lo que se le pregunta a toda página.
 --
 -- El orden es fijo y las cuatro primeras están siempre, contestadas o no: qué es,
@@ -1387,6 +1461,8 @@ surface VeraWorkspace {
         OpenPageFrontMatter(participant, workspace, page)
         OpenMobileGraphNode(participant, workspace, page)
         EditDesignToken(participant, workspace, token, light_value, dark_value)
+        ExportDesignTokens(participant, workspace)
+        ImportDesignTokens(participant, workspace, package, mode)
         SearchGraph(participant, workspace, text)
         OpenFullSearchResults(participant, workspace, text)
         QueryGraph(participant, workspace, expression)

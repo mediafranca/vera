@@ -3568,9 +3568,17 @@ function wireTheme(): void {
         applyTokens(tokens, workspace.scheme);
         void refreshGraph();
       },
+      onTokensImported: (next) => {
+        tokens = next;
+        saveTokens(tokens);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
       onReset: () => {
         localStorage.removeItem('vera.tokens');
         tokens = loadTokens();
+        saveTokens(tokens);
         applyTokens(tokens, workspace.scheme);
         openSettings();
       },
