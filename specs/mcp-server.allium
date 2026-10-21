@@ -133,6 +133,12 @@ contract PublicMCPFailsClosed {
         -- sesión anónima y nunca se aprovecha la compatibilidad del loopback que
         -- asume al dueño.
 
+    @invariant RestrictedClientsCanPresentTheSameCredential
+        -- Un cliente que reserva la cabecera Authorization puede presentar el
+        -- mismo secreto mediante x-auth-token. La puerta lo valida como bearer
+        -- antes del protocolo y lo traduce internamente; la cabecera alternativa
+        -- no crea otra clase de credencial, identidad ni alcance.
+
     @invariant OnlyTheMCPRouteIsPublic
         -- La publicación expone una ruta HTTPS dedicada. No vuelve públicas la
         -- aplicación privada, la API, POST /operations ni los secretos usados
