@@ -1416,7 +1416,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (publicOrigin && path === '/mcp' && options.publicMcpOrigin !== undefined) {
       const target = new URL('/mcp', options.publicMcpOrigin);
       const headers: Record<string, string> = {};
-      for (const name of ['authorization', 'content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'x-vera-client']) {
+      for (const name of [
+        'authorization',
+        'x-auth-token',
+        'content-type',
+        'accept',
+        'mcp-session-id',
+        'mcp-protocol-version',
+        'x-vera-client',
+      ]) {
         const value = request.headers[name];
         if (typeof value === 'string') headers[name] = value;
       }
