@@ -13,8 +13,9 @@ import {
   credentialState,
   publicLaunch,
   remoteLaunch,
+  visibleCredentials,
 } from '../src/mcp-page.ts';
-import type { MCPConnect } from '../src/api.ts';
+import type { CredentialView, MCPConnect } from '../src/api.ts';
 
 const connect = (overrides: Partial<MCPConnect> = {}): MCPConnect => ({
   transport: 'stdio',
@@ -160,5 +161,25 @@ describe('el estado de un acceso', () => {
   it('distingue el uso real y la revocación', () => {
     assert.match(credentialState({ status: 'active', lastUsedAt: Date.now() }).label, /^activa · usada /);
     assert.equal(credentialState({ status: 'revoked', lastUsedAt: null }).label, 'revocada');
+  });
+
+  it('deja las revocadas en la auditoría pero fuera de la página operativa', () => {
+    const credential = (id: string, status: CredentialView['status']): CredentialView => ({
+      id,
+      participant: `participant:${id}`,
+      scopes: ['read'],
+      status,
+      label: id,
+      issuedAt: 1,
+      expiresAt: null,
+      revokedAt: status === 'revoked' ? 2 : null,
+      lastUsedAt: null,
+      confinement: null,
+    });
+    assert.deepEqual(
+      visibleCredentials([credential('vigente', 'active'), credential('retirada', 'revoked')])
+        .map((one) => one.id),
+      ['vigente'],
+    );
   });
 });
