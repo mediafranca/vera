@@ -14,11 +14,17 @@ const MAX_BODY = Number(process.env.VERA_MCP_HTTP_MAX_BODY ?? String(1024 * 1024
 
 function bearer(request: IncomingMessage): string | null {
   const authorization = request.headers.authorization;
-  if (authorization === undefined) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(authorization);
-  if (match === null) return null;
-  const token = match[1].trim();
-  return token === '' ? null : token;
+  const alternate = request.headers['x-auth-token'];
+  const bearerMatch = authorization === undefined ? null : /^Bearer\s+(.+)$/i.exec(authorization);
+  const bearerToken = bearerMatch?.[1].trim() ?? null;
+  const alternateToken = typeof alternate === 'string' ? alternate.trim() : null;
+
+  if (bearerToken !== null && bearerToken !== '') {
+    if (alternateToken !== null && alternateToken !== '' && alternateToken !== bearerToken) return null;
+    return bearerToken;
+  }
+  if (authorization !== undefined) return null;
+  return alternateToken === null || alternateToken === '' ? null : alternateToken;
 }
 
 function answer(response: ServerResponse, status: number, body: unknown, headers = {}): void {

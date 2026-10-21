@@ -125,4 +125,30 @@ describe('la puerta MCP pública', () => {
     });
     assert.equal(response.status, 200);
   });
+
+  it('acepta x-auth-token cuando el cliente reserva Authorization', async () => {
+    const response = await fetch(door, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'x-auth-token': 'bueno',
+      },
+      body: JSON.stringify(initialize),
+    });
+    assert.equal(response.status, 200);
+  });
+
+  it('rechaza cabeceras de autenticación contradictorias', async () => {
+    const response = await fetch(door, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer bueno',
+        'content-type': 'application/json',
+        'x-auth-token': 'otra',
+      },
+      body: JSON.stringify(initialize),
+    });
+    assert.equal(response.status, 401);
+  });
 });
