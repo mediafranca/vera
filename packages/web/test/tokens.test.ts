@@ -2,14 +2,26 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { DEFAULT_TOKENS, reachForGraphViewChange, session } from '../src/tokens.ts';
+import {
+  DEFAULT_TOKENS,
+  clearTokenImportBackup,
+  loadTokenImportBackup,
+  parseDesignTokenPackage,
+  planDesignTokenImport,
+  reachForGraphViewChange,
+  saveTokenImportBackup,
+  serialiseDesignTokenPackage,
+  session,
+} from '../src/tokens.ts';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
   getItem(key: string): string | null { return this.values.get(key) ?? null; }
   setItem(key: string, value: string): void { this.values.set(key, value); }
+  removeItem(key: string): void { this.values.delete(key); }
 }
 
 const previous = globalThis.localStorage;
@@ -120,5 +132,87 @@ describe('superficies del sistema de diseño', () => {
   it('cada superficie elevada usa el token gobernado que Vera realmente define', () => {
     assert.ok(DEFAULT_TOKENS.some((token) => token.name === '--bg-raised'));
     assert.doesNotMatch(styles, /var\(--surface\b/);
+  });
+
+  it('exporta un paquete legible y versionado sin preferencias del aparato', () => {
+    const source = serialiseDesignTokenPackage(DEFAULT_TOKENS, new Date('2026-10-21T20:00:00.000Z'));
+    const parsed = JSON.parse(source) as Record<string, unknown>;
+
+    assert.equal(parsed['format'], 'vera.design-tokens');
+    assert.equal(parsed['version'], 1);
+    assert.equal(parsed['exportedAt'], '2026-10-21T20:00:00.000Z');
+    assert.deepEqual(parsed['tokens'], DEFAULT_TOKENS);
+    assert.equal('scheme' in parsed, false);
+    assert.equal('layout' in parsed, false);
+    assert.equal('credentials' in parsed, false);
+  });
+
+  it('previsualiza la diferencia entre fusionar y reemplazar antes de importar', () => {
+    const current = DEFAULT_TOKENS.map((token) => ({ ...token }));
+    current.find((token) => token.name === '--accent')!.light = '#010203';
+    current.find((token) => token.name === '--text-size')!.dark = '22px';
+    const packageText = JSON.stringify({
+      format: 'vera.design-tokens',
+      version: 1,
+      exportedAt: '2026-10-21T20:00:00.000Z',
+      tokens: [{ name: '--accent', light: '#abcdef', dark: '#123456' }],
+    });
+    const imported = parseDesignTokenPackage(packageText);
+    const merge = planDesignTokenImport(current, imported, 'merge');
+    const replace = planDesignTokenImport(current, imported, 'replace');
+
+    assert.equal(merge.changes.length, 1);
+    assert.equal(merge.tokens.find((token) => token.name === '--text-size')!.dark, '22px');
+    assert.equal(replace.changes.length, 2);
+    assert.equal(
+      replace.tokens.find((token) => token.name === '--text-size')!.dark,
+      DEFAULT_TOKENS.find((token) => token.name === '--text-size')!.dark,
+    );
+  });
+
+  it('omite tokens futuros, pero rechaza duplicados y valores que cargan recursos', () => {
+    const packageOf = (tokens: unknown[]) => JSON.stringify({
+      format: 'vera.design-tokens', version: 1,
+      exportedAt: '2026-10-21T20:00:00.000Z', tokens,
+    });
+    const future = parseDesignTokenPackage(packageOf([
+      { name: '--accent', light: '#abcdef', dark: '#123456' },
+      { name: '--future-token', light: '1', dark: '2' },
+    ]));
+    assert.deepEqual(future.unsupported, ['--future-token']);
+    assert.throws(
+      () => parseDesignTokenPackage(packageOf([
+        { name: '--accent', light: '#abcdef', dark: '#123456' },
+        { name: '--accent', light: '#fedcba', dark: '#654321' },
+      ])),
+      /más de una vez/,
+    );
+    assert.throws(
+      () => parseDesignTokenPackage(packageOf([
+        { name: '--font-body', light: 'url(https://tracker.example/font)', dark: 'system-ui' },
+      ])),
+      /inválido/,
+    );
+  });
+
+  it('respalda automáticamente el estado anterior y permite retirarlo al deshacer', () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+    const current = DEFAULT_TOKENS.map((token) => ({ ...token }));
+    current[0]!.light = '#010203';
+
+    saveTokenImportBackup(current);
+    assert.deepEqual(loadTokenImportBackup(), current);
+    clearTokenImportBackup();
+    assert.equal(loadTokenImportBackup(), null);
+  });
+
+  it('hace encontrables exportación, vista previa, modos y deshacer', () => {
+    assert.match(settings, /Exportar tokens…/);
+    assert.match(settings, /Importar respaldo…/);
+    assert.match(settings, /Vista previa de la importación/);
+    assert.match(settings, /Fusionar con la apariencia actual/);
+    assert.match(settings, /Reemplazar la apariencia actual/);
+    assert.match(settings, /Deshacer la última importación/);
   });
 });

@@ -5464,6 +5464,46 @@ body.settings-open #text {
   border-color: var(--warm);
 }
 
+.token-portability {
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.token-portability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.token-portability-actions .settings-reset { margin-top: 0; }
+
+.token-import-preview {
+  margin-top: 0.9rem;
+  padding: 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--bg-raised);
+}
+
+.token-import-preview h4 { margin: 0 0 0.35rem; font-size: 0.9rem; }
+.token-import-mode { display: grid; grid-template-columns: 1fr minmax(14rem, auto); gap: 0.75rem; align-items: center; margin: 0.8rem 0; }
+.token-import-mode select { min-width: 0; padding: 0.35rem; color: var(--text); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; font: inherit; }
+.token-import-warning,
+.token-import-error { color: var(--warm); line-height: 1.45; }
+.token-import-summary { margin: 0.45rem 0; font-weight: 600; }
+.token-import-differences details { margin: 0.55rem 0 0.8rem; }
+.token-import-differences summary { color: var(--accent); cursor: pointer; }
+.token-import-list { display: grid; gap: 0.45rem; margin: 0.6rem 0 0; padding-left: 1.2rem; }
+.token-import-list li { overflow-wrap: anywhere; }
+.token-import-list code { display: block; color: var(--accent); font: 0.72rem/1.4 var(--font-mono); }
+.token-import-list span { color: var(--text-dim); font-size: 0.72rem; }
+
+@media (max-width: 640px) {
+  .token-import-mode { grid-template-columns: 1fr; }
+}
+
 /* Acciones de la página. Discretas: están para cuando se buscan, no para
    competir con el texto. */
 .page-actions {

@@ -15,6 +15,37 @@ export interface DesignToken {
   dark: string;
 }
 
+export const DESIGN_TOKEN_PACKAGE_FORMAT = 'vera.design-tokens';
+export const DESIGN_TOKEN_PACKAGE_VERSION = 1;
+
+export interface DesignTokenPackage {
+  format: typeof DESIGN_TOKEN_PACKAGE_FORMAT;
+  version: typeof DESIGN_TOKEN_PACKAGE_VERSION;
+  exportedAt: string;
+  tokens: DesignToken[];
+}
+
+export type TokenImportMode = 'merge' | 'replace';
+
+export interface ParsedDesignTokenPackage {
+  package: DesignTokenPackage;
+  supported: DesignToken[];
+  unsupported: string[];
+}
+
+export interface DesignTokenChange {
+  name: string;
+  before: { light: string; dark: string };
+  after: { light: string; dark: string };
+}
+
+export interface DesignTokenImportPlan {
+  mode: TokenImportMode;
+  tokens: DesignToken[];
+  changes: DesignTokenChange[];
+  unsupported: string[];
+}
+
 const PLEX_SANS = "'IBM Plex Sans', system-ui, sans-serif";
 const PLEX_MONO = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
 
@@ -132,6 +163,142 @@ export const DEFAULT_TOKENS: DesignToken[] = [
   { name: '--font-ui', light: 'system-ui, sans-serif', dark: PLEX_SANS },
   { name: '--font-mono', light: PLEX_MONO, dark: 'ui-monospace, "SF Mono", Menlo, monospace' },
 ];
+
+const IMPORT_BACKUP_KEY = 'vera.tokens.importBackup';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * A token travels as text, but it cannot carry another resource or escape into
+ * a second CSS declaration. `style.setProperty` already keeps the value inside
+ * one property; these checks also make the portable file safe to inspect and
+ * apply in older clients that may serialise it differently.
+ */
+function safeTokenValue(value: unknown, token: DesignToken): value is string {
+  if (typeof value !== 'string' || value.trim() === '' || value.length > 512) return false;
+  if (/[\u0000-\u001f\u007f{};]/.test(value) || /url\s*\(|@import/i.test(value)) return false;
+  if (kindOf(token) === 'color') return /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value.trim());
+  return true;
+}
+
+export function designTokenPackage(
+  tokens: DesignToken[],
+  exportedAt = new Date(),
+): DesignTokenPackage {
+  return {
+    format: DESIGN_TOKEN_PACKAGE_FORMAT,
+    version: DESIGN_TOKEN_PACKAGE_VERSION,
+    exportedAt: exportedAt.toISOString(),
+    tokens: tokens.map((token) => ({ ...token })),
+  };
+}
+
+export function serialiseDesignTokenPackage(tokens: DesignToken[], exportedAt = new Date()): string {
+  return `${JSON.stringify(designTokenPackage(tokens, exportedAt), null, 2)}\n`;
+}
+
+/**
+ * Lee primero y no toca estado. Ésta es la puerta común de la importación y del
+ * respaldo de deshacer, para que ninguno pueda saltarse la validación.
+ */
+export function parseDesignTokenPackage(source: string): ParsedDesignTokenPackage {
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw new Error('El archivo no contiene JSON válido.');
+  }
+  if (!isRecord(value) || value['format'] !== DESIGN_TOKEN_PACKAGE_FORMAT) {
+    throw new Error('El archivo no es un respaldo de tokens de Vera.');
+  }
+  if (value['version'] !== DESIGN_TOKEN_PACKAGE_VERSION) {
+    throw new Error(`Vera no conoce la versión ${String(value['version'])} de este respaldo.`);
+  }
+  if (typeof value['exportedAt'] !== 'string' || !Number.isFinite(Date.parse(value['exportedAt']))) {
+    throw new Error('El respaldo no declara una fecha de exportación válida.');
+  }
+  if (!Array.isArray(value['tokens']) || value['tokens'].length === 0) {
+    throw new Error('El respaldo no contiene tokens.');
+  }
+
+  const defaults = new Map(DEFAULT_TOKENS.map((token) => [token.name, token]));
+  const seen = new Set<string>();
+  const supported: DesignToken[] = [];
+  const unsupported: string[] = [];
+
+  for (const entry of value['tokens']) {
+    if (!isRecord(entry) || typeof entry['name'] !== 'string') {
+      throw new Error('El respaldo contiene un token sin nombre.');
+    }
+    const name = entry['name'];
+    if (seen.has(name)) throw new Error(`El token ${name} aparece más de una vez.`);
+    seen.add(name);
+
+    const known = defaults.get(name);
+    if (known === undefined) {
+      unsupported.push(name);
+      continue;
+    }
+    if (!safeTokenValue(entry['light'], known) || !safeTokenValue(entry['dark'], known)) {
+      throw new Error(`El token ${name} contiene un valor claro u oscuro inválido.`);
+    }
+    supported.push({ name, light: entry['light'].trim(), dark: entry['dark'].trim() });
+  }
+  if (supported.length === 0) {
+    throw new Error('El respaldo no contiene ningún token compatible con esta versión de Vera.');
+  }
+
+  return {
+    package: {
+      format: DESIGN_TOKEN_PACKAGE_FORMAT,
+      version: DESIGN_TOKEN_PACKAGE_VERSION,
+      exportedAt: value['exportedAt'],
+      tokens: supported.map((token) => ({ ...token })),
+    },
+    supported,
+    unsupported,
+  };
+}
+
+export function planDesignTokenImport(
+  current: DesignToken[],
+  imported: ParsedDesignTokenPackage,
+  mode: TokenImportMode,
+): DesignTokenImportPlan {
+  const base = mode === 'replace' ? DEFAULT_TOKENS : current;
+  const incoming = new Map(imported.supported.map((token) => [token.name, token]));
+  const tokens = base.map((token) => ({ ...(incoming.get(token.name) ?? token) }));
+  const before = new Map(current.map((token) => [token.name, token]));
+  const changes = tokens.flatMap((token): DesignTokenChange[] => {
+    const held = before.get(token.name);
+    if (held === undefined || (held.light === token.light && held.dark === token.dark)) return [];
+    return [{
+      name: token.name,
+      before: { light: held.light, dark: held.dark },
+      after: { light: token.light, dark: token.dark },
+    }];
+  });
+  return { mode, tokens, changes, unsupported: [...imported.unsupported] };
+}
+
+export function saveTokenImportBackup(tokens: DesignToken[]): void {
+  localStorage.setItem(IMPORT_BACKUP_KEY, serialiseDesignTokenPackage(tokens));
+}
+
+export function loadTokenImportBackup(): DesignToken[] | null {
+  const held = localStorage.getItem(IMPORT_BACKUP_KEY);
+  if (held === null) return null;
+  try {
+    return parseDesignTokenPackage(held).supported;
+  } catch {
+    return null;
+  }
+}
+
+export function clearTokenImportBackup(): void {
+  localStorage.removeItem(IMPORT_BACKUP_KEY);
+}
 
 const TOKENS_KEY = 'vera.tokens';
 const SCHEME_KEY = 'vera.scheme';

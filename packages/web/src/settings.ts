@@ -15,11 +15,20 @@ import { api, type CatalogAsset, type PageSummary, type PublicationSiteView } fr
 import { icon } from './icons.ts';
 import { openMediaDetails } from './media-dialog.ts';
 import {
+  clearTokenImportBackup,
   DEFAULT_TOKENS,
   FONT_STACKS,
   kindOf,
+  loadTokenImportBackup,
+  parseDesignTokenPackage,
+  planDesignTokenImport,
+  saveTokenImportBackup,
+  serialiseDesignTokenPackage,
   type ColourScheme,
   type DesignToken,
+  type DesignTokenImportPlan,
+  type ParsedDesignTokenPackage,
+  type TokenImportMode,
 } from './tokens.ts';
 
 export type Section = 'memoria' | 'teclado' | 'apariencia';
@@ -29,6 +38,7 @@ export interface SettingsHandlers {
   /** Cambiar entre el esquema claro y el oscuro. */
   onScheme(next: ColourScheme): void;
   onTokenChange(token: DesignToken, value: string): void;
+  onTokensImported(tokens: DesignToken[]): void;
   onReset(): void;
   onClose(): void;
   onOpenFiles(): void;
@@ -1137,6 +1147,195 @@ function drawKeyboard(host: HTMLElement): void {
   table(host, TRIGGERS);
 }
 
+function downloadDesignTokenPackage(tokens: DesignToken[]): void {
+  const contents = serialiseDesignTokenPackage(tokens);
+  const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
+  const link = document.createElement('a');
+  const day = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `vera-tokens-${day}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function drawTokenImportPreview(
+  host: HTMLElement,
+  current: DesignToken[],
+  imported: ParsedDesignTokenPackage,
+  handlers: SettingsHandlers,
+): void {
+  host.replaceChildren();
+  host.className = 'token-import-preview';
+
+  const title = document.createElement('h4');
+  title.textContent = 'Vista previa de la importación';
+  const origin = document.createElement('p');
+  origin.className = 'settings-note';
+  const exported = new Date(imported.package.exportedAt).toLocaleString('es-CL');
+  origin.textContent = `${imported.supported.length} tokens compatibles · exportados ${exported}.`;
+  host.append(title, origin);
+
+  if (imported.unsupported.length > 0) {
+    const warning = document.createElement('p');
+    warning.className = 'token-import-warning';
+    warning.textContent =
+      `${imported.unsupported.length} tokens de otra versión se omitirán: ${imported.unsupported.join(', ')}.`;
+    host.append(warning);
+  }
+
+  const modeLabel = document.createElement('label');
+  modeLabel.className = 'token-import-mode';
+  const modeText = document.createElement('span');
+  modeText.textContent = 'Cómo aplicarlo';
+  const mode = document.createElement('select');
+  const choices: { value: TokenImportMode; label: string }[] = [
+    { value: 'merge', label: 'Fusionar con la apariencia actual' },
+    { value: 'replace', label: 'Reemplazar la apariencia actual' },
+  ];
+  for (const choice of choices) {
+    const option = document.createElement('option');
+    option.value = choice.value;
+    option.textContent = choice.label;
+    mode.append(option);
+  }
+  modeLabel.append(modeText, mode);
+  host.append(modeLabel);
+
+  const consequence = document.createElement('p');
+  consequence.className = 'settings-note';
+  const differences = document.createElement('div');
+  differences.className = 'token-import-differences';
+  host.append(consequence, differences);
+
+  const actions = document.createElement('div');
+  actions.className = 'token-portability-actions';
+  const apply = document.createElement('button');
+  apply.type = 'button';
+  apply.className = 'settings-action';
+  apply.textContent = 'Aplicar importación';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'settings-reset';
+  cancel.textContent = 'Cancelar';
+  actions.append(apply, cancel);
+  host.append(actions);
+
+  let plan: DesignTokenImportPlan;
+  const paint = (): void => {
+    plan = planDesignTokenImport(current, imported, mode.value as TokenImportMode);
+    consequence.textContent = plan.mode === 'merge'
+      ? 'Sólo cambiarán los tokens presentes en el respaldo; los demás conservarán su valor actual.'
+      : 'Los tokens ausentes volverán a la reserva canónica de Vera antes de aplicar el respaldo.';
+    differences.replaceChildren();
+    const summary = document.createElement('p');
+    summary.className = 'token-import-summary';
+    summary.textContent = plan.changes.length === 0
+      ? 'No hay diferencias que aplicar.'
+      : `${plan.changes.length} tokens cambiarán.`;
+    differences.append(summary);
+    if (plan.changes.length > 0) {
+      const details = document.createElement('details');
+      details.open = plan.changes.length <= 8;
+      const heading = document.createElement('summary');
+      heading.textContent = 'Ver valores antes y después';
+      const list = document.createElement('ul');
+      list.className = 'token-import-list';
+      for (const change of plan.changes) {
+        const item = document.createElement('li');
+        const name = document.createElement('code');
+        name.textContent = change.name;
+        const values = document.createElement('span');
+        values.textContent =
+          `claro: ${change.before.light} → ${change.after.light}; ` +
+          `oscuro: ${change.before.dark} → ${change.after.dark}`;
+        item.append(name, values);
+        list.append(item);
+      }
+      details.append(heading, list);
+      differences.append(details);
+    }
+    apply.disabled = plan.changes.length === 0;
+  };
+
+  mode.addEventListener('change', paint);
+  apply.addEventListener('click', () => {
+    saveTokenImportBackup(current);
+    handlers.onTokensImported(plan.tokens);
+  });
+  cancel.addEventListener('click', () => host.remove());
+  paint();
+}
+
+function drawTokenPortability(
+  host: HTMLElement,
+  tokens: DesignToken[],
+  handlers: SettingsHandlers,
+): void {
+  const section = document.createElement('section');
+  section.className = 'token-portability';
+  const title = document.createElement('h3');
+  title.textContent = 'Respaldo y traslado';
+  const note = document.createElement('p');
+  note.className = 'settings-note';
+  note.textContent =
+    'Exporta los valores claros y oscuros en un JSON legible. No incluye documentos, credenciales ni preferencias de este aparato.';
+  const actions = document.createElement('div');
+  actions.className = 'token-portability-actions';
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.className = 'settings-action';
+  exportButton.textContent = 'Exportar tokens…';
+  exportButton.addEventListener('click', () => downloadDesignTokenPackage(tokens));
+  const importButton = document.createElement('button');
+  importButton.type = 'button';
+  importButton.className = 'settings-action';
+  importButton.textContent = 'Importar respaldo…';
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json,.json';
+  input.hidden = true;
+  const status = document.createElement('div');
+  status.setAttribute('aria-live', 'polite');
+  importButton.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => void (async () => {
+    const file = input.files?.[0];
+    input.value = '';
+    if (file === undefined) return;
+    status.replaceChildren();
+    if (file.size > 1_000_000) {
+      status.textContent = 'El archivo es demasiado grande para ser un respaldo de tokens.';
+      status.className = 'token-import-error';
+      return;
+    }
+    try {
+      const imported = parseDesignTokenPackage(await file.text());
+      drawTokenImportPreview(status, tokens, imported, handlers);
+    } catch (error) {
+      status.className = 'token-import-error';
+      status.textContent = error instanceof Error ? error.message : 'No se pudo leer el respaldo.';
+    }
+  })());
+  actions.append(exportButton, importButton);
+
+  const backup = loadTokenImportBackup();
+  if (backup !== null) {
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'settings-reset';
+    restore.textContent = 'Deshacer la última importación';
+    restore.addEventListener('click', () => {
+      clearTokenImportBackup();
+      handlers.onTokensImported(backup);
+    });
+    actions.append(restore);
+  }
+
+  section.append(title, note, actions, input, status);
+  host.append(section);
+}
+
 function drawAppearance(
   host: HTMLElement,
   tokens: DesignToken[],
@@ -1342,6 +1541,7 @@ function drawAppearance(
   }
 
   host.append(list, advanced);
+  drawTokenPortability(host, tokens, handlers);
 
   const reset = document.createElement('button');
   reset.type = 'button';
