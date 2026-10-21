@@ -921,8 +921,8 @@ function captureConnectForm(
   const explanation = document.createElement('p');
   explanation.className = 'connect-says';
   explanation.textContent =
-    'Autoriza esta instalación de Vera Clip para depositar directamente en la Vera local. ' +
-    'La selección no pasa por Internet; Conecta queda como respaldo para otro dispositivo.';
+    'Autoriza esta instalación de Vera Clip para depositar directamente en esta Vera. ' +
+    'La autorización usa la misma dirección con la que abriste Vera; Conecta queda como respaldo opcional.';
 
   const authorize = document.createElement('button');
   authorize.type = 'button';
@@ -946,11 +946,7 @@ function captureConnectForm(
         const value = document.createElement('pre');
         value.className = 'connect-json';
         const code = document.createElement('code');
-        code.textContent = JSON.stringify({
-          url: 'http://127.0.0.1:4173',
-          client: made.client,
-          credential: made.secret,
-        }, null, 2);
+        code.textContent = captureAuthorization(window.location.origin, made.client, made.secret);
         value.append(code);
         const copy = document.createElement('button');
         copy.type = 'button';
@@ -970,6 +966,14 @@ function captureConnectForm(
       },
     );
   });
+}
+
+export function captureAuthorization(origin: string, client: string, credential: string): string {
+  return JSON.stringify({
+    url: new URL(origin).origin,
+    client,
+    credential,
+  }, null, 2);
 }
 
 /**
