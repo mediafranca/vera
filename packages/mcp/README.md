@@ -15,13 +15,22 @@ identidad y los alcances de la credencial.
 | --- | --- |
 | `vera_quien_soy` | Comprueba la conexión, la identidad y los alcances. La primera llamada. |
 | `vera_buscar` | Extractos de todo el corpus, con la página y el bloque de donde salieron. |
-| `vera_leer_pagina` | Una página entera, con su sangría, sus propiedades y su vecindad. |
+| `vera_consultar` | Consulta estructurada de propiedades, texto y enlaces, con resultados y cursor. |
+| `vera_leer_pagina` | Una página por tramos, con sangría, autoría, revisión y cursor; la vecindad es optativa. |
 | `vera_historia_bloque` | Todo lo que un bloque dijo alguna vez, incluido lo borrado. |
 | `vera_vecindario` | El mapa alrededor de una página. |
 | `vera_indice` | Los títulos del corpus. |
 | `vera_preparar_escritura` | Lee juntas las reglas vivas para agentes y la ontología antes de escribir. |
 | `vera_escribir` | Crea páginas o bloques y gestiona propiedades mediante una operación atribuida e idempotente. |
+| `vera_editar_bloque_propio` | Corrige palabras vigentes del mismo agente con la revisión exacta que leyó; falla ante conflictos. |
+| `vera_escribir_lote` | Aplica una intervención nueva como lote atómico e idempotente. |
 | `vera_ontologia` | Cómo está clasificada esta memoria. |
+
+La revisión de un bloque es el identificador de la última operación que lo tocó.
+Una edición de agente sin esa revisión falla; una revisión obsoleta devuelve un
+conflicto y el contenido vigente. La herramienta estrecha sólo reescribe palabras
+del mismo participante. Una credencial administrativa no cercada conserva su
+autoridad amplia, pero también debe presentar la revisión exacta.
 
 ## Cómo se conecta cada cliente
 

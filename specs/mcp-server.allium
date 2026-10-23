@@ -22,11 +22,14 @@
 -- Dependencies: Participant, Operation y ContributionChannel los gobierna
 --   core.allium; la credencial y su alcance, agent-participation.allium
 
--- LOTE IMPLEMENTADO — 2026-08-31
+-- LOTES IMPLEMENTADOS — 2026-08-31 y 2026-10-23
 -- La puerta MCP y la API canónica admiten un lote atómico con identidades
 -- estables internas, una operación por cambio e idempotencia del gesto entero.
--- Sigue pendiente la precondición de revisión necesaria para editar sin pisar;
--- por eso el lote de agentes aún no edita, mueve ni elimina contenido.
+-- La lectura entrega revisiones y cursores, la consulta estructurada cruza la
+-- puerta y una identidad agente puede reescribir el texto que actualmente le
+-- pertenece sólo si nombra la revisión exacta que leyó. Mover, eliminar,
+-- proponer cambios sobre palabras ajenas y subir binarios siguen fuera de este
+-- corte.
 
 use "./core.allium" as core
 
@@ -278,6 +281,14 @@ contract AWriteCanBeRepeatedWithoutRepeating {
         -- y no mezcla por su cuenta. Un agente que sobrescribe lo que no leyó no
         -- está editando: está pisando.
 
+    @invariant AConfinedOrNarrowCorrectionOnlyRewritesCurrentOwnWords
+        -- Una credencial cercada o la herramienta estrecha de corrección puede
+        -- cambiar un bloque sólo cuando la autoría vigente es suya. Haber creado
+        -- la página o escrito una versión antigua no vuelve propias las palabras
+        -- que otra identidad dejó después. Una credencial administrativa no
+        -- cercada conserva su autoridad amplia, pero también debe nombrar la
+        -- revisión exacta que leyó.
+
     @invariant ABatchIsValidatedBeforeAnythingChanges
         -- Vera valida autoridad, límites, precondiciones, referencias y cada
         -- cambio del lote antes de aplicar el primero. Si uno no puede aplicarse,
@@ -389,6 +400,8 @@ value Proposal {
     origin: String
     change: core/Change
     -- Contra qué estado se escribe. Sin esto no hay edición segura.
+    -- La última operación de revisión que la lectura entregó para el bloque.
+    -- Es obligatoria al reescribir texto mediante una identidad agente.
     precondition: String?
     purpose: String?
 }
@@ -426,6 +439,8 @@ value Session {
 config {
     max_batch_changes: Integer = 1_000
     max_batch_bytes: Integer = 2_097_152
+    max_page_blocks_per_read: Integer = 200
+    max_query_results_per_read: Integer = 100
 }
 
 ------------------------------------------------------------
@@ -517,6 +532,17 @@ surface MemoryOverMCP {
         -- motivo. Nunca se corta una página fingiendo que se leyó entera: quien
         -- lea después va a razonar sobre lo que cree tener.
 
+    @guarantee QueryAndPageResultsAreStructured
+        -- Una consulta y una lectura de página entregan además de prosa un
+        -- resultado estructurado validable: identidades, revisiones, conteos,
+        -- tramo servido y siguiente cursor. Un cliente no necesita volver a
+        -- analizar Markdown para saber qué bloque leyó ni cómo continuar.
+
+    @guarantee ReadingARevisionEnablesOneSafeRewrite
+        -- Cada bloque servido nombra su revisión vigente. Reescribirlo exige
+        -- devolver esa revisión; si ya cambió, la puerta responde conflicto con
+        -- la revisión y el contenido actuales, sin aplicar nada.
+
     @guarantee ToolsDescribeTheirEffects
         -- La descripción de cada herramienta nombra qué hace, qué límites tiene
         -- y qué riesgo corre. Ampliar la autoridad de una herramienta exige
@@ -567,7 +593,10 @@ open question "¿Cuál es la unidad de concesión: página, proyecto, espacio de
 
 open question "¿Cómo se representa una propuesta dentro del grafo, si una propuesta no es todavía contenido y tampoco es una operación aplicada?"
 
-open question "¿Qué precondición de revisión expone el núcleo para editar: la secuencia, una revisión propia del bloque, o el hash de lo que se leyó?"
+-- Resuelta el 2026-10-23: la precondición pública es el identificador de la
+-- última operación de revisión del bloque. Ya pertenece al registro canónico,
+-- cambia cuando el bloque se escribe o se mueve y no introduce un segundo
+-- sistema de versiones.
 
 open question "¿Qué lecturas se conservan con detalle, cuáles sólo como huella, y durante cuánto tiempo?"
 

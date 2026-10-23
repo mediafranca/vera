@@ -50,7 +50,7 @@ async function call(
 /** Una escritura, con o sin credencial. */
 async function submit(
   change: unknown,
-  options: { secret?: string; participant?: string; channel?: string } = {},
+  options: { secret?: string; participant?: string; channel?: string; ifRevision?: string } = {},
 ): Promise<Reply> {
   counter += 1;
   return call('/operations', {
@@ -60,6 +60,7 @@ async function submit(
       originId: `agent-test:${counter}`,
       ...(options.participant === undefined ? {} : { participant: options.participant }),
       ...(options.channel === undefined ? {} : { channel: options.channel }),
+      ...(options.ifRevision === undefined ? {} : { ifRevision: options.ifRevision }),
       change,
     },
   });
@@ -420,7 +421,15 @@ describe('lo generado se distingue de lo escrito', () => {
     );
     const block = created.json['subjectId'] as string;
 
-    await submit({ kind: 'edit_block', block, content: 'reescrito por el bibliotecario' }, { secret });
+    const before = await call(`/pages/${encodeURIComponent(page)}?stage=readable`);
+    const revision = (before.json['blocks'] as { stableId: string; revision: string }[])
+      .find((one) => one.stableId === block)?.revision;
+    assert.ok(revision !== undefined, JSON.stringify(before.json));
+
+    await submit(
+      { kind: 'edit_block', block, content: 'reescrito por el bibliotecario' },
+      { secret, ifRevision: revision },
+    );
 
     const view = await call(`/pages/${encodeURIComponent(page)}`);
     const hands = view.json['authorship'] as Record<string, { participant: string }>;

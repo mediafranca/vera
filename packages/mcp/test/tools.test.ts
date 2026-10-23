@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { connectionFrom } from '../src/client.ts';
-import { TOOLS, outline, toolNamed, type Ask, type Write, type WriteBatch } from '../src/tools.ts';
+import { TOOLS, outline, toolNamed, type Ask, type Query, type Write, type WriteBatch } from '../src/tools.ts';
 
 /** Una Vera de mentira que anota lo que le preguntan. */
 function fakeVera(answers: Record<string, unknown>) {
@@ -25,16 +25,24 @@ function fakeVera(answers: Record<string, unknown>) {
   return { ask, asked };
 }
 
-const run = (name: string, args: Record<string, unknown>, ask: Ask, write?: Write): Promise<string> => {
+const run = async (
+  name: string,
+  args: Record<string, unknown>,
+  ask: Ask,
+  write?: Write,
+  query?: Query,
+): Promise<string> => {
   const tool = toolNamed(name);
   assert.ok(tool !== undefined, `no existe la herramienta ${name}`);
-  return tool.run(args, ask, write);
+  const result = await tool.run(args, ask, write, undefined, query);
+  return typeof result === 'string' ? result : result.text;
 };
 
 describe('el catálogo', () => {
   it('ofrece escritura individual y por lote, y ninguna de borrado', () => {
     assert.deepEqual(TOOLS.filter((tool) => tool.readOnly === false).map((tool) => tool.name), [
       'vera_escribir',
+      'vera_editar_bloque_propio',
       'vera_escribir_lote',
     ]);
     assert.ok(TOOLS.every((tool) => !/borrar|eliminar|descartar/.test(tool.name)));
@@ -42,6 +50,8 @@ describe('el catálogo', () => {
       TOOLS.map((tool) => tool.name).sort(),
       [
         'vera_buscar',
+        'vera_consultar',
+        'vera_editar_bloque_propio',
         'vera_escribir',
         'vera_escribir_lote',
         'vera_historia_bloque',
@@ -253,6 +263,35 @@ describe('buscar', () => {
   });
 });
 
+describe('consultar', () => {
+  it('entrega la respuesta estructurada y conserva el cursor', async () => {
+    const calls: unknown[] = [];
+    const query: Query = async (input) => {
+      calls.push(input);
+      return {
+        view: 'table',
+        asked: '? tipo=proyecto ; tabla',
+        count: 3,
+        cursor: 0,
+        limit: 2,
+        nextCursor: 2,
+        more: 1,
+        pages: [{ id: 'page:1', title: 'Uno' }, { id: 'page:2', title: 'Dos' }],
+      };
+    };
+    const said = await run(
+      'vera_consultar',
+      { consulta: '? tipo=proyecto ; tabla', cuantos: 2 },
+      fakeVera({}).ask,
+      undefined,
+      query,
+    );
+    assert.deepEqual(calls, [{ source: '? tipo=proyecto ; tabla', cursor: 0, limit: 2 }]);
+    assert.match(said, /3 resultados/);
+    assert.match(said, /cursor_siguiente: 2/);
+  });
+});
+
 describe('leer una página', () => {
   const page = {
     id: 'page:7',
@@ -310,8 +349,51 @@ describe('leer una página', () => {
 
   it('un enlace a una página aún sin escribir se dice como lo que es', async () => {
     const { ask } = fakeVera({ '/pages/Vera': page });
-    const said = await run('vera_leer_pagina', { pagina: 'Vera' }, ask);
+    const said = await run('vera_leer_pagina', { pagina: 'Vera', con_vecinos: true }, ask);
     assert.match(said, /Sin escribir \(aún sin escribir\)/);
+  });
+
+  it('pide un tramo o subárbol y comunica cómo continuar', async () => {
+    const paged = {
+      ...page,
+      blocks: [{ ...page.blocks[1], depth: 1, revision: 'operation:2' }],
+      window: { root: 'b1', cursor: 1, limit: 1, total: 2, nextCursor: null },
+    };
+    const { ask, asked } = fakeVera({ '/pages/Vera': paged });
+    const said = await run(
+      'vera_leer_pagina',
+      { pagina: 'Vera', desde_bloque: 'b1', cursor: 1, cuantos: 1 },
+      ask,
+    );
+    assert.deepEqual(asked[0], {
+      path: '/pages/Vera',
+      parameters: { stage: 'readable', root: 'b1', cursor: 1, limit: 1 },
+    });
+    assert.match(said, /\[b2 @ operation:2\]/);
+    assert.match(said, /1 de 2 bloques/);
+  });
+});
+
+describe('corregir un bloque propio', () => {
+  it('envía texto y revisión por la puerta canónica', async () => {
+    const calls: unknown[] = [];
+    const write: Write = async (origin, change, revision, ownOnly) => {
+      calls.push({ origin, change, revision, ownOnly });
+      return { status: 'applied', sequence: 99, subjectId: 'block:mine' };
+    };
+    const said = await run('vera_editar_bloque_propio', {
+      origen: 'claude:edit:1',
+      bloque: 'block:mine',
+      revision: 'operation:8',
+      contenido: 'Texto corregido',
+    }, fakeVera({}).ask, write);
+    assert.deepEqual(calls, [{
+      origin: 'claude:edit:1',
+      revision: 'operation:8',
+      ownOnly: true,
+      change: { kind: 'edit_block', block: 'block:mine', content: 'Texto corregido' },
+    }]);
+    assert.match(said, /Bloque corregido/);
   });
 });
 

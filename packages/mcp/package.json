@@ -1,7 +1,7 @@
 {
   "name": "@vera/mcp",
   "license": "AGPL-3.0-only",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "La puerta MCP de VERA: una memoria que otras inteligencias pueden leer y escribir con identidad",

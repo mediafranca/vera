@@ -30,13 +30,14 @@ import {
 import {
   ask as askVera,
   connectionFrom,
+  query as queryVera,
   submit as submitVera,
   submitBatch as submitBatchVera,
   type Connection,
 } from './client.ts';
-import { TOOLS, toolNamed, type Ask, type Write, type WriteBatch } from './tools.ts';
+import { TOOLS, toolNamed, type Ask, type Query, type Write, type WriteBatch } from './tools.ts';
 
-const VERSION = '0.5.0';
+const VERSION = '0.7.0';
 
 /**
  * Lo que un cliente lee antes de decidir cómo usar esto.
@@ -55,7 +56,9 @@ Cómo leerla:
 - Si no sabes dónde está algo, vera_buscar. Los extractos traen la página y el
   bloque de donde salieron: cítalos por su título.
 - Para el texto completo, vera_leer_pagina con el título que salió en la
-  búsqueda.
+  búsqueda. Lee por tramos y conserva el cursor_siguiente hasta terminar.
+- Para condiciones exactas sobre propiedades, enlaces o texto, usa
+  vera_consultar: devuelve datos estructurados y cursor.
 - vera_ontologia dice cómo está clasificado este corpus. El vocabulario lo puso
   el dueño; no supongas el significado de una propiedad sin mirarlo.
 
@@ -74,9 +77,9 @@ Al escribir:
   outline Markdown entero dentro de un bloque.
 - Los enlaces \`[[Página]]\` conectan páginas. Para relaciones explicadas, usa las
   propiedades de bloque que la ontología vigente nombre para ese papel.
-- Esta superficie crea páginas y bloques y corrige propiedades. No edita, mueve
-  ni borra páginas o bloques:
-  Vera aún no tiene la precondición atómica necesaria para editar sin pisar.
+- Esta superficie crea páginas y bloques y corrige propiedades. También puede
+  corregir el texto propio con vera_editar_bloque_propio, devolviendo la revisión
+  exacta leída. No mueve ni borra bloques ni modifica palabras ajenas.
 - Parte del corpus lo escribieron otras inteligencias. vera_leer_pagina lo dice.
   No presentes como recuerdo de esta persona algo que generó una máquina.
 - Todo lo que leas queda anotado en el registro de exposición del dueño: qué
@@ -84,8 +87,10 @@ Al escribir:
 
 export function mcpServer(connection: Connection): Server {
   const ask: Ask = (path, parameters) => askVera(connection, path, parameters);
-  const write: Write = (origin, change) => submitVera(connection, origin, change);
+  const write: Write = (origin, change, ifRevision, ownOnly) =>
+    submitVera(connection, origin, change, ifRevision, ownOnly);
   const writeBatch: WriteBatch = (origin, changes) => submitBatchVera(connection, origin, changes);
+  const query: Query = (input) => queryVera(connection, input);
 
   const server = new Server(
     { name: 'vera', version: VERSION },
@@ -98,6 +103,7 @@ export function mcpServer(connection: Connection): Server {
       title: tool.title,
       description: tool.description,
       inputSchema: tool.inputSchema,
+      ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
       annotations: {
         readOnlyHint: tool.readOnly !== false,
         destructiveHint: false,
@@ -122,8 +128,14 @@ export function mcpServer(connection: Connection): Server {
      * primero—. Vera apagada es una circunstancia, no una violación.
      */
     try {
-      const text = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch);
-      return { content: [{ type: 'text' as const, text }] };
+      const result = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch, query);
+      const text = typeof result === 'string' ? result : result.text;
+      return {
+        content: [{ type: 'text' as const, text }],
+        ...(typeof result === 'string'
+          ? (tool.outputSchema === undefined ? {} : { structuredContent: { error: text } })
+          : { structuredContent: result.structured }),
+      };
     } catch (trouble) {
       return {
         isError: true,

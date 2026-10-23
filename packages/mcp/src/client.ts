@@ -83,6 +83,35 @@ export async function ask<T>(
   return ok((await response.json()) as T);
 }
 
+/** Ejecuta el lenguaje estructurado sin poner la pregunta sensible en la URL. */
+export async function query<T>(
+  connection: Connection,
+  input: { source: string; cursor: number; limit: number },
+): Promise<T | Failure> {
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'x-vera-client': connection.client,
+  };
+  if (connection.token !== null) headers.authorization = `Bearer ${connection.token}`;
+  let response: Response;
+  try {
+    response = await fetch(new URL('/query', connection.url), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+  } catch (trouble) {
+    return { status: 0, error: `no hay nadie escuchando en ${connection.url} (${String(trouble)})` };
+  }
+  const body = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+  if (!response.ok) {
+    const said = body as { error?: unknown };
+    return { status: response.status, error: String(said.error ?? response.statusText) };
+  }
+  return body as T;
+}
+
 export interface WriteResult {
   status: 'applied' | 'duplicate';
   sequence: number;
@@ -102,6 +131,8 @@ export async function submit(
   connection: Connection,
   originId: string,
   change: Record<string, unknown>,
+  ifRevision?: string,
+  ownOnly?: boolean,
 ): Promise<WriteResult | Failure> {
   if (connection.token === null) {
     return { status: 403, error: 'MCP sólo escribe con una credencial explícita de agente' };
@@ -118,7 +149,12 @@ export async function submit(
     response = await fetch(new URL('/operations', connection.url), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ originId, change }),
+      body: JSON.stringify({
+        originId,
+        change,
+        ...(ifRevision === undefined ? {} : { ifRevision }),
+        ...(ownOnly === undefined ? {} : { ownOnly }),
+      }),
     });
   } catch (trouble) {
     return { status: 0, error: `no hay nadie escuchando en ${connection.url} (${String(trouble)})` };
@@ -200,6 +236,16 @@ export interface PageBlock {
   parent: string | null;
   position: number;
   content: string;
+  depth?: number;
+  revision?: string | null;
+}
+
+export interface PageWindow {
+  root: string | null;
+  cursor: number;
+  limit: number;
+  total: number;
+  nextCursor: number | null;
 }
 
 export interface Page {
@@ -213,6 +259,7 @@ export interface Page {
   backlinks: { page: string; block: string | null; title: string; excerpt: string }[];
   references: { page: string | null; title: string; block: string; excerpt: string }[];
   authorship: Record<string, { participant?: string; kind: string | null; channel?: string }>;
+  window?: PageWindow;
 }
 
 /**
