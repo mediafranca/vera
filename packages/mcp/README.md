@@ -1,13 +1,132 @@
-# vera-mcp
+# `@vera/mcp`
 
-La puerta MCP de Vera. Un proceso por cliente, lanzado por el cliente, hablando
-por entrada y salida estándar. Sin puerto propio ni nada escuchando. La
-[explicación pública](https://vera.mediafranca.net/vera-puerta-mcp/) vive en
-Vera; aquí queda el contrato operativo del paquete.
+La puerta de Vera para personas y agentes que hablan
+[Model Context Protocol](https://modelcontextprotocol.io/). Forma parte integral
+del monorepo de Vera, comparte su API canónica y su corpus, pero se ejecuta como
+un proceso separado para aislar transporte, autenticación y fallos.
+
+Hoy es un paquete privado del workspace, no un producto ni un repositorio
+independiente. La [explicación pública](https://vera.mediafranca.net/vera-puerta-mcp/)
+vive en Vera; aquí quedan la frontera arquitectónica, el contrato operativo y el
+camino para convertir sus partes generales en infraestructura reutilizable.
 
 La puerta ofrece lectura y escritura no destructiva. Cada lectura queda en el
-registro de exposición y cada escritura pasa por `POST /operations`, con la
-identidad y los alcances de la credencial.
+registro de exposición y cada escritura pasa por la API canónica, con la
+identidad y los alcances de la credencial. MCP nunca abre la base de datos.
+
+## Naturaleza del componente
+
+El nombre provisional de la capacidad general es **Context Graph Gateway** —una
+pasarela de grafo de contexto gobernado—. No es simplemente RAG:
+
+- **recupera** texto, propiedades, vecindades e historia;
+- **compone** contexto con presupuesto, omisiones y cursores explícitos;
+- **conserva procedencia** hasta página, bloque, revisión y autoría;
+- **gobierna autoridad** por identidad, territorio y capacidad;
+- **actúa** mediante operaciones versionadas o propuestas humanas revisables;
+- **registra exposición**: qué contexto salió, hacia quién y por qué superficie.
+
+La recuperación híbrida, los embeddings o Graph RAG pueden vivir dentro del
+compositor. No deben definir el componente ni reemplazar identidades, citas,
+revisiones o consentimiento.
+
+## Frontera
+
+```mermaid
+flowchart LR
+    A[Cliente o agente] --> M[Adaptador MCP]
+    M --> C[Contrato de grafo de contexto]
+    C --> V[Adaptador Vera]
+    V --> API[API canónica de Vera]
+    API --> G[(Corpus, operaciones y auditoría)]
+```
+
+**Vera conserva:** corpus, ontología propia, almacenamiento, participantes,
+credenciales, operaciones, revisiones, propuestas y registro de exposición.
+
+**El contrato reutilizable define:** recursos de contexto, consulta y
+paginación; presupuestos; evidencia y omisiones; precondiciones de revisión;
+concesiones; propuestas y recibos de exposición. No conoce SQLite, títulos
+especiales de Vera ni su interfaz.
+
+**El adaptador MCP traduce:** tools, resources, structured output,
+subscriptions y errores del protocolo. No decide por sí solo quién puede leer o
+escribir.
+
+**`@vera/mcp` integra:** el contrato y el adaptador MCP con la API de Vera. Es la
+implementación de referencia, no una segunda memoria.
+
+### Lo que no debe cruzar la frontera
+
+- leer directamente la base para ahorrar una llamada;
+- duplicar permisos o reglas editoriales dentro del adaptador;
+- mantener una caché que pueda contradecir al corpus;
+- llamar «verdad» a la similitud semántica;
+- exigir MCP a futuros consumidores del contrato;
+- extraer paquetes generales antes de probarlos con un segundo consumidor.
+
+## Arquitectura objetivo
+
+La separación se hará dentro del monorepo antes de considerar otro repositorio:
+
+| Capa | Responsabilidad | Destino probable |
+| --- | --- | --- |
+| Núcleo | Tipos, puertos y contratos de un grafo de contexto gobernado. | `@mediafranca/context-graph` |
+| Adaptador MCP | Traducción del núcleo al protocolo MCP. | `@mediafranca/context-graph-mcp` |
+| Adaptador Vera | Mapeo entre esos puertos y la API canónica de Vera. | `@vera/mcp` |
+
+Los nombres son provisionales. La frontera importa más que bautizar pronto otro
+paquete. Vera seguirá desplegando la puerta como parte integral del producto,
+aunque el núcleo llegue a ser reutilizable por otra iniciativa —por ejemplo un
+piloto con Solid—.
+
+## Roadmap de modularización
+
+### M0 — Explicitar la frontera
+
+- [x] Documentar naturaleza, responsabilidades y antipatrones.
+- [x] Mantener MCP como puerta de la API, no de la base.
+- [ ] Inventariar qué tipos y reglas son generales y cuáles pertenecen a Vera.
+- [ ] Unificar versión de paquete, servidor y documentación en un solo origen.
+
+### M1 — Extraer puertos sin mover paquetes
+
+- [ ] Definir interfaces para consulta, lectura versionada, composición,
+  propuestas, exposición y concesiones.
+- [ ] Hacer que tools y transportes dependan de esos puertos, no de respuestas
+  HTTP específicas de Vera.
+- [ ] Fijar el contrato con pruebas de conformidad independientes del servidor.
+
+### M2 — Separar workspaces dentro del monorepo
+
+- [ ] Crear el núcleo y el adaptador MCP como paquetes internos privados.
+- [ ] Dejar en `@vera/mcp` sólo traducción, configuración y despliegue de Vera.
+- [ ] Mantener una única suite de conformidad para stdio y Streamable HTTP.
+- [ ] Versionar juntos mientras sólo exista un consumidor.
+
+### M3 — Probar un segundo consumidor
+
+- [ ] Implementar un adaptador pequeño sobre otro grafo —Solid es un candidato,
+  no una dependencia asumida—.
+- [ ] Registrar qué conceptos sobreviven sin Vera y cuáles eran accidentales.
+- [ ] Comparar consultas, procedencia, autoridad y revisión humana en ambos.
+
+### M4 — Decidir publicación independiente
+
+- [ ] Publicar paquetes sólo si dos consumidores usan el mismo contrato sin
+  bifurcarlo.
+- [ ] Entonces decidir repositorio propio, gobernanza, nombre, versionado y
+  licencia; antes sería separación administrativa sin independencia real.
+- [ ] Documentar previamente cualquier resultado de investigación o activo
+  intelectual que requiera una estrategia distinta de la divulgación pública.
+
+### M5 — Ampliar el gateway
+
+- [ ] Resources y plantillas URI para páginas, bloques, consultas y medios.
+- [ ] `vera_contexto`: contexto compuesto con evidencia, presupuesto y omisiones.
+- [ ] Suscripciones, archivos gobernados y concesiones legibles.
+- [ ] Evaluar recuperación híbrida y Graph RAG contra preguntas reales, no por
+  prestigio algorítmico.
 
 ## Qué ofrece
 
@@ -23,14 +142,18 @@ identidad y los alcances de la credencial.
 | `vera_preparar_escritura` | Lee juntas las reglas vivas para agentes y la ontología antes de escribir. |
 | `vera_escribir` | Crea páginas o bloques y gestiona propiedades mediante una operación atribuida e idempotente. |
 | `vera_editar_bloque_propio` | Corrige palabras vigentes del mismo agente con la revisión exacta que leyó; falla ante conflictos. |
+| `vera_mover_bloque_propio` | Mueve estructura propia contra la revisión exacta sin cambiar la autoría del texto. |
+| `vera_proponer_edicion` | Deja una corrección sobre palabras ajenas en la cola privada de revisión sin modificar el corpus. |
 | `vera_escribir_lote` | Aplica una intervención nueva como lote atómico e idempotente. |
 | `vera_ontologia` | Cómo está clasificada esta memoria. |
 
 La revisión de un bloque es el identificador de la última operación que lo tocó.
 Una edición de agente sin esa revisión falla; una revisión obsoleta devuelve un
 conflicto y el contenido vigente. La herramienta estrecha sólo reescribe palabras
-del mismo participante. Una credencial administrativa no cercada conserva su
-autoridad amplia, pero también debe presentar la revisión exacta.
+del mismo participante. Mover conserva la autoría. Las palabras ajenas pasan por
+una propuesta que una persona puede aceptar, rechazar o encontrar en conflicto.
+Una credencial administrativa no cercada conserva su autoridad amplia, pero
+también debe presentar la revisión exacta.
 
 ## Cómo se conecta cada cliente
 
