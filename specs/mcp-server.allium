@@ -27,9 +27,10 @@
 -- estables internas, una operación por cambio e idempotencia del gesto entero.
 -- La lectura entrega revisiones y cursores, la consulta estructurada cruza la
 -- puerta y una identidad agente puede reescribir el texto que actualmente le
--- pertenece sólo si nombra la revisión exacta que leyó. Mover, eliminar,
--- proponer cambios sobre palabras ajenas y subir binarios siguen fuera de este
--- corte.
+-- pertenece sólo si nombra la revisión exacta que leyó. El corte siguiente
+-- extiende esa precondición a mover estructura propia y conserva como propuesta
+-- revisable cualquier corrección sobre palabras ajenas. Eliminar y subir
+-- binarios siguen fuera de esta puerta.
 
 use "./core.allium" as core
 
@@ -289,6 +290,13 @@ contract AWriteCanBeRepeatedWithoutRepeating {
         -- cercada conserva su autoridad amplia, pero también debe nombrar la
         -- revisión exacta que leyó.
 
+    @invariant MovingNamesWhatItSawAndLeavesTheHandAlone
+        -- Mover estructura por la herramienta estrecha exige que la autoría
+        -- vigente del bloque sea de quien mueve y que nombre su revisión
+        -- exacta. Aceptarlo cambia página, padre o posición, pero no la mano que
+        -- escribió las palabras. Si cambió entre lectura y movimiento, falla
+        -- con conflicto y no adivina dónde ponerlo.
+
     @invariant ABatchIsValidatedBeforeAnythingChanges
         -- Vera valida autoridad, límites, precondiciones, referencias y cada
         -- cambio del lote antes de aplicar el primero. Si uno no puede aplicarse,
@@ -406,6 +414,24 @@ value Proposal {
     purpose: String?
 }
 
+-- Una intención durable que todavía no pertenece al corpus.
+--
+-- Vive en la cola de revisión y no como bloque: hacerla contenido antes de que
+-- alguien la acepte mentiría sobre lo que Vera dice. La revisión original ata
+-- la propuesta al texto que realmente leyó su autor.
+entity ReviewProposal {
+    graph: core/Graph
+    proposer: core/Participant
+    origin: String
+    change: core/Change
+    target_revision: String
+    purpose: String
+    status: awaiting_review | accepted | rejected | conflicted
+    proposed_at: Timestamp
+    decided_by: core/Participant?
+    decided_at: Timestamp?
+}
+
 value BatchProposal {
     connection: Connection
     origin: String
@@ -498,6 +524,79 @@ rule WritingABatchThroughMCPIsOneCanonicalGesture {
         -- haga una llamada por bloque.
 }
 
+rule ProposingForeignWordsDoesNotWriteThem {
+    when: ProposeThroughMCP(participant, connection, proposal)
+
+    requires: proposal.proposer = participant
+    requires: proposal.change.kind = edit_block
+    requires: proposal.target_revision = current_revision(proposal.change.block)
+
+    ensures:
+        proposal.status = awaiting_review
+
+    @invariant AProposalIsOutsideTheCorpusUntilAccepted
+        -- Crear la propuesta no crea una operación, una revisión ni autoría de
+        -- bloque. Es una intención auditable que una persona puede comparar con
+        -- el estado vigente.
+
+    @invariant TheProposalOriginIsIdempotent
+        -- El mismo participante puede reenviar el mismo origen sin duplicar la
+        -- revisión pendiente. Reutilizarlo para otro cambio es conflicto.
+}
+
+rule OwnerRejectsAReviewProposal {
+    when: ReviewProposal(reviewer, proposal, reject)
+
+    requires: reviewer = proposal.graph.owner
+    requires: proposal.status = awaiting_review
+
+    ensures:
+        proposal.status = rejected
+        proposal.decided_by = reviewer
+        proposal.decided_at = now
+
+    @invariant RejectionDoesNotTouchTheCorpus
+        -- Rechazar no crea operación. La propuesta conserva evidencia sin
+        -- fingir que el texto fue parte del grafo.
+}
+
+rule OwnerAcceptsACurrentReviewProposal {
+    when: ReviewProposal(reviewer, proposal, accept)
+
+    requires: reviewer = proposal.graph.owner
+    requires: proposal.status = awaiting_review
+    requires: proposal.target_revision = current_revision(proposal.change.block)
+
+    ensures:
+        proposal.status = accepted
+        proposal.decided_by = reviewer
+        proposal.decided_at = now
+        applied_atomically(proposal.change, attributed_to: proposal.proposer)
+
+    @invariant AcceptanceWritesAsTheProposer
+        -- Aceptar aplica una operación canónica con la identidad y el canal del
+        -- agente que propuso. Quien revisa queda registrado como decisión, pero
+        -- no se convierte por ello en autor de palabras ajenas.
+
+}
+
+rule AcceptingAStaleReviewProposalFindsConflict {
+    when: ReviewProposal(reviewer, proposal, accept)
+
+    requires: reviewer = proposal.graph.owner
+    requires: proposal.status = awaiting_review
+    requires: proposal.target_revision != current_revision(proposal.change.block)
+
+    ensures:
+        proposal.status = conflicted
+        proposal.decided_by = reviewer
+        proposal.decided_at = now
+
+    @invariant ConflictDoesNotTouchTheCorpus
+        -- Un conflicto no crea operación ni mezcla texto. Es terminal y obliga
+        -- a leer y proponer de nuevo.
+}
+
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
@@ -509,6 +608,7 @@ surface MemoryOverMCP {
     exposes:
         Grant
         Exposure
+        ReviewProposal
 
     contracts:
         fulfils MCPIsADoorAndNotASecondMemory
@@ -520,6 +620,7 @@ surface MemoryOverMCP {
         ReadThroughMCP(participant, connection, subject)
         WriteThroughMCP(participant, connection, proposal)
         WriteBatchThroughMCP(participant, connection, batch)
+        ProposeThroughMCP(participant, connection, proposal)
 
     @guarantee ContextIsComposedAndNotDumped
         -- Lo que sale es el contexto mínimo pertinente, y dice qué incluyó, qué
@@ -576,11 +677,35 @@ surface PublicMemoryOverHTTPS {
     provides:
         ReadThroughMCP(participant, connection, subject)
         WriteThroughMCP(participant, connection, proposal)
+        ProposeThroughMCP(participant, connection, proposal)
 
     @guarantee PublicMeansReachableAndNotAnonymous
         -- Un cliente compatible puede alcanzar la puerta por una URL HTTPS
         -- desde cualquier red. Poder llegar hasta ella no permite cruzarla: la
         -- credencial se comprueba antes de hablar el protocolo.
+}
+
+surface ProposalReview {
+    facing owner: core/Participant
+    context graph: core/Graph
+
+    exposes:
+        ReviewProposal
+
+    provides:
+        ReviewProposal(reviewer, proposal, decision)
+
+    @guarantee TheHumanSeesTheBeforeAndAfter
+        -- La revisión muestra autor, propósito, página, texto leído, reemplazo y
+        -- estado. Un botón «aceptar» sin diff no es revisión: es delegación
+        -- ciega con un paso decorativo.
+
+    @guarantee PendingWorkLivesBesideItsConnection
+        -- La cola aparece en la superficie humana de Conexiones, junto a la
+        -- identidad que recibió autoridad. No depende de que la página también
+        -- pertenezca a un espacio compartido ni de una solicitud al
+        -- bibliotecario.
+
 }
 
 ------------------------------------------------------------
@@ -591,7 +716,10 @@ surface PublicMemoryOverHTTPS {
 -- «VERA — como memoria portable para inteligencias».
 open question "¿Cuál es la unidad de concesión: página, proyecto, espacio de nombres, consulta guardada, o una combinación?"
 
-open question "¿Cómo se representa una propuesta dentro del grafo, si una propuesta no es todavía contenido y tampoco es una operación aplicada?"
+-- Resuelta el 2026-10-23: una propuesta vive fuera del corpus, en una cola de
+-- revisión durable. Sólo su aceptación contra la misma revisión produce una
+-- operación canónica; rechazo y conflicto conservan evidencia sin fingir que el
+-- texto fue parte del grafo.
 
 -- Resuelta el 2026-10-23: la precondición pública es el identificador de la
 -- última operación de revisión del bloque. Ya pertenece al registro canónico,

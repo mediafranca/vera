@@ -7913,6 +7913,16 @@ html[data-working-slow='true']::after {
 .process-proposal-preview pre { font-size: .75rem; max-height: 14rem; overflow: auto; white-space: pre-wrap; }
 .process-proposal-preview .executable { margin-block: 0; }
 .process-proposal-actions { display: flex; gap: .5rem; }
+.connection-proposals { margin-block: 1.5rem; }
+.connection-proposal { border: 1px solid var(--line); border-radius: .5rem; padding: 1rem; margin-block: .75rem; }
+.connection-proposal h4 { margin: 0 0 .25rem; }
+.connection-proposal small { display: block; color: var(--muted); margin-block: .4rem .8rem; }
+.connection-proposal-diff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.connection-proposal-diff pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
+.connection-proposal-before { border-inline-start: .2rem solid var(--danger); }
+.connection-proposal-after { border-inline-start: .2rem solid var(--accent); }
+.connection-proposal-actions { display: flex; gap: .5rem; margin-top: .75rem; }
+@media (max-width: 50rem) { .connection-proposal-diff { grid-template-columns: 1fr; } }
 .process-proposal .process-accept { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 
 @media (max-width: 760px) {

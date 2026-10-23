@@ -21,6 +21,7 @@ import {
   type DiscardRequest,
   type MCPConnect,
   type MCPConnection,
+  type OperationReviewProposal,
   type SeenClient,
 } from './api.ts';
 import { cellIn, editableCell, observedCell, rowIn, section } from './table.ts';
@@ -711,6 +712,59 @@ export async function renderConnections(
 
   connectForm(element, door.connect ?? null, notify);
   await credentialsSection(element, notify);
+
+  const review = document.createElement('section');
+  review.className = 'connection-proposals';
+  element.append(review);
+  const renderProposals = (proposals: readonly OperationReviewProposal[]): void => {
+    review.replaceChildren();
+    const heading = document.createElement('h3'); heading.className = 'governing-title';
+    const pending = proposals.filter((proposal) => proposal.status === 'awaiting_review');
+    heading.textContent = `Propuestas por revisar · ${pending.length}`;
+    const note = document.createElement('p'); note.className = 'governing-note';
+    note.textContent = 'Nada de esta lista cambia el corpus hasta que lo aceptes. Aceptar vuelve a comprobar la revisión que leyó el agente.';
+    review.append(heading, note);
+    if (pending.length === 0) {
+      const empty = document.createElement('p'); empty.className = 'governing-note';
+      empty.textContent = 'No hay propuestas pendientes.'; review.append(empty); return;
+    }
+    for (const proposal of pending) {
+      const card = document.createElement('article'); card.className = 'connection-proposal';
+      const title = document.createElement('h4');
+      title.textContent = `${proposal.proposedByName} propone corregir un bloque`;
+      const purpose = document.createElement('p'); purpose.textContent = proposal.purpose;
+      const meta = document.createElement('small');
+      meta.textContent = `${proposal.pageTitle} · ${proposal.block} · ${new Date(proposal.proposedAt).toLocaleString()}`;
+      const before = document.createElement('pre'); before.className = 'connection-proposal-before';
+      before.textContent = proposal.originalContent;
+      const after = document.createElement('pre'); after.className = 'connection-proposal-after';
+      after.textContent = typeof proposal.change.content === 'string' ? proposal.change.content : '';
+      const labels = document.createElement('div'); labels.className = 'connection-proposal-diff';
+      const old = document.createElement('div'); const oldLabel = document.createElement('strong');
+      oldLabel.textContent = 'Texto leído'; old.append(oldLabel, before);
+      const next = document.createElement('div'); const nextLabel = document.createElement('strong');
+      nextLabel.textContent = 'Texto propuesto'; next.append(nextLabel, after);
+      labels.append(old, next);
+      const actions = document.createElement('div'); actions.className = 'connection-proposal-actions';
+      const accept = document.createElement('button'); accept.type = 'button'; accept.textContent = 'Aceptar';
+      const reject = document.createElement('button'); reject.type = 'button'; reject.textContent = 'Rechazar';
+      const decide = (decision: 'accept' | 'reject') => {
+        accept.disabled = true; reject.disabled = true;
+        void api.decideOperationProposal(proposal.id, decision).then(
+          () => api.operationProposals().then(renderProposals),
+          (error: Error) => {
+            notify(error.message);
+            void api.operationProposals().then(renderProposals, () => {
+              accept.disabled = false; reject.disabled = false;
+            });
+          },
+        );
+      };
+      accept.onclick = () => decide('accept'); reject.onclick = () => decide('reject');
+      actions.append(accept, reject); card.append(title, purpose, meta, labels, actions); review.append(card);
+    }
+  };
+  renderProposals(await api.operationProposals().catch(() => []));
 
   const routes = document.createElement('h3');
   routes.className = 'governing-title';

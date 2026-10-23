@@ -37,6 +37,14 @@ export type WriteBatch = (
   operations: { sequence: number; subjectId: string }[];
 } | Failure>;
 
+export type Propose = (input: {
+  originId: string;
+  block: string;
+  revision: string;
+  content: string;
+  purpose: string;
+}) => Promise<{ status: 'awaiting_review' | 'duplicate'; proposal: string; page: string; block: string } | Failure>;
+
 export interface VeraTool {
   name: string;
   title: string;
@@ -51,6 +59,7 @@ export interface VeraTool {
     write?: Write,
     writeBatch?: WriteBatch,
     query?: Query,
+    propose?: Propose,
   ): Promise<string | ToolRunResult>;
 }
 
@@ -681,6 +690,80 @@ export const TOOLS: readonly VeraTool[] = [
         `${result.status === 'duplicate' ? 'Esa corrección ya estaba aplicada' : 'Bloque corregido'}: ` +
         `${result.subjectId}, operación ${result.sequence}. Vuelve a leerlo antes de otra corrección.`
       );
+    },
+  },
+
+  {
+    name: 'vera_mover_bloque_propio',
+    title: 'Mover un bloque propio sin pisar cambios',
+    readOnly: false,
+    description:
+      'Mueve un bloque cuya autoría vigente pertenece a esta identidad agente. Exige la revisión ' +
+      'exacta entregada por vera_leer_pagina. Cambia página, padre o posición sin transferir la ' +
+      'autoría de sus palabras. Un conflicto no mueve nada.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origen: { type: 'string', minLength: 1, description: 'Identificador único y estable del movimiento.' },
+        bloque: { type: 'string', description: 'Identificador estable block:...' },
+        revision: { type: 'string', minLength: 1, description: 'Revisión @ op:... recibida al leer.' },
+        pagina: { type: 'string', description: 'Identificador estable page:... de destino.' },
+        padre: { type: ['string', 'null'], description: 'Bloque padre de destino o null para la raíz.' },
+        posicion: { type: 'integer', minimum: 0, description: 'Posición entre los hijos del nuevo padre.' },
+      },
+      required: ['origen', 'bloque', 'revision', 'pagina', 'padre', 'posicion'],
+      additionalProperties: false,
+    },
+    async run(args, _ask, write) {
+      const origin = say(args.origen).trim(); const block = say(args.bloque).trim();
+      const revision = say(args.revision).trim(); const page = say(args.pagina).trim();
+      const parent = args.padre === null ? null : say(args.padre).trim();
+      const position = Number(args.posicion);
+      if (origin === '' || block === '' || revision === '' || page === '' ||
+        (args.padre !== null && parent === '') || !Number.isInteger(position) || position < 0) {
+        return 'El movimiento necesita origen, bloque, revision, pagina, padre y posicion válida.';
+      }
+      if (write === undefined) return 'Esta conexión MCP no habilitó la puerta de escritura.';
+      const result = await write(origin, {
+        kind: 'move_block', block, page, parent, position,
+      }, revision, true);
+      if (failed(result)) return `No pude mover ese bloque: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `${result.status === 'duplicate' ? 'Ese movimiento ya estaba aplicado' : 'Bloque movido'}: ` +
+        `${result.subjectId}, operación ${result.sequence}. Vuelve a leerlo antes de otro movimiento.`;
+    },
+  },
+
+  {
+    name: 'vera_proponer_edicion',
+    title: 'Proponer una corrección sobre palabras ajenas',
+    readOnly: false,
+    description:
+      'Deposita una corrección textual en la cola humana de Conexiones, sin cambiar el corpus. ' +
+      'Exige el bloque y la revisión exacta que se leyeron, el texto completo propuesto y un propósito. ' +
+      'Aceptar vuelve a comprobar esa revisión; si el bloque cambió, la propuesta queda en conflicto.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origen: { type: 'string', minLength: 1, description: 'Identificador único y estable de la propuesta.' },
+        bloque: { type: 'string', description: 'Identificador estable block:...' },
+        revision: { type: 'string', minLength: 1, description: 'Revisión @ op:... recibida al leer.' },
+        contenido: { type: 'string', description: 'Texto completo que se propone como reemplazo.' },
+        proposito: { type: 'string', minLength: 1, description: 'Razón humana y concreta del cambio.' },
+      },
+      required: ['origen', 'bloque', 'revision', 'contenido', 'proposito'],
+      additionalProperties: false,
+    },
+    async run(args, _ask, _write, _writeBatch, _query, propose) {
+      const originId = say(args.origen).trim(); const block = say(args.bloque).trim();
+      const revision = say(args.revision).trim(); const purpose = say(args.proposito).trim();
+      if (originId === '' || block === '' || revision === '' || purpose === '' || typeof args.contenido !== 'string') {
+        return 'La propuesta necesita origen, bloque, revision, contenido completo y proposito.';
+      }
+      if (propose === undefined) return 'Esta conexión MCP no habilitó la cola de propuestas.';
+      const result = await propose({ originId, block, revision, content: args.contenido, purpose });
+      if (failed(result)) return `No pude dejar la propuesta: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `${result.status === 'duplicate' ? 'Esa propuesta ya existía' : 'Propuesta enviada a revisión'}: ` +
+        `${result.proposal}. El corpus no cambió.`;
     },
   },
 

@@ -890,3 +890,30 @@ CREATE TABLE IF NOT EXISTS agent_operation_proposals (
     decided_by      TEXT REFERENCES participants (id),
     decided_at      INTEGER
 ) STRICT;
+
+-- Una corrección propuesta por cualquier agente, independiente de una
+-- conversación o espacio compartido. Todavía no es contenido: sólo aceptar
+-- contra la misma revisión crea una operación canónica.
+CREATE TABLE IF NOT EXISTS operation_review_proposals (
+    id                TEXT PRIMARY KEY,
+    graph_id          TEXT NOT NULL REFERENCES graphs (id),
+    proposed_by       TEXT NOT NULL REFERENCES participants (id),
+    origin_id         TEXT NOT NULL,
+    channel           TEXT NOT NULL,
+    page_id           TEXT NOT NULL,
+    block_id          TEXT NOT NULL,
+    change_json       TEXT NOT NULL,
+    target_revision   TEXT NOT NULL,
+    original_content  TEXT NOT NULL,
+    purpose           TEXT NOT NULL,
+    status            TEXT NOT NULL CHECK (
+                        status IN ('awaiting_review','accepted','rejected','conflicted')
+                      ),
+    proposed_at       INTEGER NOT NULL,
+    decided_by        TEXT REFERENCES participants (id),
+    decided_at        INTEGER,
+    UNIQUE (graph_id, proposed_by, origin_id)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS operation_review_proposals_pending
+    ON operation_review_proposals (graph_id, status, proposed_at);

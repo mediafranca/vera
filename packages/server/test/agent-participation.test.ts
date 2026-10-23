@@ -448,7 +448,15 @@ describe('lo generado se distingue de lo escrito', () => {
     );
     const block = created.json['subjectId'] as string;
 
-    const moved = await submit({ kind: 'move_block', block, page, parent: null, position: 0 }, { secret });
+    const before = await call(`/pages/${encodeURIComponent(page)}?stage=readable`);
+    const revision = (before.json['blocks'] as { stableId: string; revision: string }[])
+      .find((one) => one.stableId === block)?.revision;
+    assert.ok(revision !== undefined, JSON.stringify(before.json));
+
+    const moved = await submit(
+      { kind: 'move_block', block, page, parent: null, position: 0 },
+      { secret, ifRevision: revision },
+    );
     assert.equal(moved.status, 201, JSON.stringify(moved.json));
 
     const view = await call(`/pages/${encodeURIComponent(page)}`);

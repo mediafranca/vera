@@ -30,14 +30,15 @@ import {
 import {
   ask as askVera,
   connectionFrom,
+  propose as proposeVera,
   query as queryVera,
   submit as submitVera,
   submitBatch as submitBatchVera,
   type Connection,
 } from './client.ts';
-import { TOOLS, toolNamed, type Ask, type Query, type Write, type WriteBatch } from './tools.ts';
+import { TOOLS, toolNamed, type Ask, type Propose, type Query, type Write, type WriteBatch } from './tools.ts';
 
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 
 /**
  * Lo que un cliente lee antes de decidir cómo usar esto.
@@ -78,8 +79,9 @@ Al escribir:
 - Los enlaces \`[[Página]]\` conectan páginas. Para relaciones explicadas, usa las
   propiedades de bloque que la ontología vigente nombre para ese papel.
 - Esta superficie crea páginas y bloques y corrige propiedades. También puede
-  corregir el texto propio con vera_editar_bloque_propio, devolviendo la revisión
-  exacta leída. No mueve ni borra bloques ni modifica palabras ajenas.
+  corregir y mover bloques propios con una revisión exacta. Para palabras ajenas,
+  vera_proponer_edicion deja un diff humano revisable y no cambia el corpus.
+  Esta puerta no borra bloques.
 - Parte del corpus lo escribieron otras inteligencias. vera_leer_pagina lo dice.
   No presentes como recuerdo de esta persona algo que generó una máquina.
 - Todo lo que leas queda anotado en el registro de exposición del dueño: qué
@@ -91,6 +93,7 @@ export function mcpServer(connection: Connection): Server {
     submitVera(connection, origin, change, ifRevision, ownOnly);
   const writeBatch: WriteBatch = (origin, changes) => submitBatchVera(connection, origin, changes);
   const query: Query = (input) => queryVera(connection, input);
+  const propose: Propose = (input) => proposeVera(connection, input);
 
   const server = new Server(
     { name: 'vera', version: VERSION },
@@ -128,7 +131,7 @@ export function mcpServer(connection: Connection): Server {
      * primero—. Vera apagada es una circunstancia, no una violación.
      */
     try {
-      const result = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch, query);
+      const result = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch, query, propose);
       const text = typeof result === 'string' ? result : result.text;
       return {
         content: [{ type: 'text' as const, text }],

@@ -30,6 +30,7 @@ let client: Client;
 let PORT: number;
 let PAGE: string;
 let OWNER_BLOCK: string;
+let OWNER_CHILD: string;
 let AGENT_SECRET: string;
 
 /*
@@ -77,7 +78,7 @@ before(async () => {
   PAGE = await write({ kind: 'create_page', title: 'La bitácora', visibility: 'private' });
   const first = await write({ kind: 'create_block', page: PAGE, parent: null, content: 'Un pensamiento' });
   OWNER_BLOCK = first;
-  await write({ kind: 'create_block', page: PAGE, parent: first, content: 'Y su matiz' });
+  OWNER_CHILD = await write({ kind: 'create_block', page: PAGE, parent: first, content: 'Y su matiz' });
 
   const agent = await fetch(`http://127.0.0.1:${PORT}/agents`, {
     method: 'POST',
@@ -122,14 +123,19 @@ after(async () => {
 describe('vera-mcp por stdio', () => {
   it('arranca y ofrece su catálogo', async () => {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 12);
+    assert.equal(tools.length, 14);
     assert.ok(tools.some((tool) => tool.name === 'vera_preparar_escritura'));
     assert.ok(tools.some((tool) => tool.name === 'vera_consultar'));
     assert.equal(tools.find((tool) => tool.name === 'vera_escribir')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_editar_bloque_propio')?.annotations?.readOnlyHint, false);
+    assert.equal(tools.find((tool) => tool.name === 'vera_mover_bloque_propio')?.annotations?.readOnlyHint, false);
+    assert.equal(tools.find((tool) => tool.name === 'vera_proponer_edicion')?.annotations?.readOnlyHint, false);
     assert.ok(
       tools
-        .filter((tool) => !['vera_escribir', 'vera_escribir_lote', 'vera_editar_bloque_propio'].includes(tool.name))
+        .filter((tool) => ![
+          'vera_escribir', 'vera_escribir_lote', 'vera_editar_bloque_propio',
+          'vera_mover_bloque_propio', 'vera_proponer_edicion',
+        ].includes(tool.name))
         .every((tool) => tool.annotations?.readOnlyHint === true),
     );
   });
@@ -260,12 +266,136 @@ describe('vera-mcp por stdio', () => {
       revision: owner.revision,
       contenido: 'No debe tocar palabras humanas',
     });
-    assert.match(foreign, /sólo permite a un agente corregir sus propias palabras/);
+    assert.match(foreign, /sólo permite a un agente corregir o mover bloques/);
 
     const final = await call('vera_leer_pagina', { pagina: PAGE, cuantos: 20 });
     assert.match(final, /Versión corregida del agente/);
     assert.doesNotMatch(final, /No debe aplicarse/);
     assert.match(final, /Un pensamiento/);
+  });
+
+  it('mueve estructura propia con revisión y conserva su autoría', async () => {
+    const created = await call('vera_escribir', {
+      origen: 'mcp:connection:test:movable',
+      cambio: { kind: 'create_block', page: PAGE, parent: null, position: 4, content: 'Estructura del agente' },
+    });
+    const id = /(?:block:[^,\s]+)/.exec(created)?.[0]; assert.ok(id !== undefined, created);
+    const read = await client.callTool({ name: 'vera_leer_pagina', arguments: { pagina: PAGE, cuantos: 30 } });
+    const mine = ((read.structuredContent as {
+      blocks?: { stableId: string; revision: string | null }[];
+    }).blocks ?? []).find((block) => block.stableId === id);
+    assert.ok(mine?.revision !== null && mine?.revision !== undefined);
+    const moved = await call('vera_mover_bloque_propio', {
+      origen: 'mcp:connection:test:move-own', bloque: id, revision: mine.revision,
+      pagina: PAGE, padre: null, posicion: 0,
+    });
+    assert.match(moved, /Bloque movido/);
+    const stale = await call('vera_mover_bloque_propio', {
+      origen: 'mcp:connection:test:move-stale', bloque: id, revision: mine.revision,
+      pagina: PAGE, padre: null, posicion: 2,
+    });
+    assert.match(stale, /conflicto de revisión/);
+    const view = await fetch(`http://127.0.0.1:${PORT}/pages/${encodeURIComponent(PAGE)}`).then((one) => one.json()) as {
+      blocks: { stableId: string; position: number }[];
+      authorship: Record<string, { participant: string }>;
+    };
+    assert.equal(view.blocks.find((block) => block.stableId === id)?.position, 0);
+    assert.equal(view.authorship[id]?.participant, 'participant:mcp-test');
+  });
+
+  it('propone palabras ajenas, una persona acepta, y una revisión obsoleta queda en conflicto', async () => {
+    const read = await client.callTool({ name: 'vera_leer_pagina', arguments: { pagina: PAGE, cuantos: 30 } });
+    const blocks = (read.structuredContent as {
+      blocks?: { stableId: string; revision: string | null; content: string }[];
+    }).blocks ?? [];
+    const owner = blocks.find((block) => block.stableId === OWNER_BLOCK);
+    const child = blocks.find((block) => block.stableId === OWNER_CHILD);
+    assert.ok(owner?.revision !== null && owner?.revision !== undefined);
+    assert.ok(child?.revision !== null && child?.revision !== undefined);
+
+    const offered = await call('vera_proponer_edicion', {
+      origen: 'mcp:connection:test:proposal-accepted', bloque: OWNER_BLOCK, revision: owner.revision,
+      contenido: 'Un pensamiento corregido por propuesta', proposito: 'Precisar la formulación',
+    });
+    assert.match(offered, /Propuesta enviada a revisión/);
+    const repeated = await call('vera_proponer_edicion', {
+      origen: 'mcp:connection:test:proposal-accepted', bloque: OWNER_BLOCK, revision: owner.revision,
+      contenido: 'Un pensamiento corregido por propuesta', proposito: 'Precisar la formulación',
+    });
+    assert.match(repeated, /ya existía/);
+    const reused = await call('vera_proponer_edicion', {
+      origen: 'mcp:connection:test:proposal-accepted', bloque: OWNER_BLOCK, revision: owner.revision,
+      contenido: 'Otro texto bajo el mismo origen', proposito: 'Precisar la formulación',
+    });
+    assert.match(reused, /No pude dejar la propuesta/);
+    assert.match(await call('vera_leer_pagina', { pagina: PAGE }), /Un pensamiento\n/);
+    assert.doesNotMatch(await call('vera_leer_pagina', { pagina: PAGE }), /corregido por propuesta/);
+
+    const hidden = await fetch(`http://127.0.0.1:${PORT}/operation-proposals`, {
+      headers: { authorization: `Bearer ${AGENT_SECRET}` },
+    });
+    assert.equal(hidden.status, 403, 'proponer no concede mirar la cola humana');
+
+    const queue = await fetch(`http://127.0.0.1:${PORT}/operation-proposals`).then((one) => one.json()) as
+      { id: string; status: string; originalContent: string; change: { content: string } }[];
+    const pending = queue.find((proposal) => proposal.change.content.includes('corregido por propuesta'));
+    assert.ok(pending !== undefined);
+    assert.equal(pending.originalContent, 'Un pensamiento');
+    const accepted = await fetch(`http://127.0.0.1:${PORT}/operation-proposals/${encodeURIComponent(pending.id)}/accept`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+    });
+    assert.equal(accepted.status, 200, await accepted.text());
+    assert.match(await call('vera_leer_pagina', { pagina: PAGE }), /corregido por propuesta/);
+    const acceptedView = await fetch(`http://127.0.0.1:${PORT}/pages/${encodeURIComponent(PAGE)}`).then((one) => one.json()) as {
+      authorship: Record<string, { participant: string; channel: string }>;
+    };
+    assert.equal(acceptedView.authorship[OWNER_BLOCK]?.participant, 'participant:mcp-test');
+    assert.equal(acceptedView.authorship[OWNER_BLOCK]?.channel, 'agent_generation');
+
+    const staleOffered = await call('vera_proponer_edicion', {
+      origen: 'mcp:connection:test:proposal-stale', bloque: OWNER_CHILD, revision: child.revision,
+      contenido: 'Propuesta que no debe entrar', proposito: 'Probar conflicto',
+    });
+    assert.match(staleOffered, /Propuesta enviada a revisión/);
+    const humanChanged = await fetch(`http://127.0.0.1:${PORT}/operations`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        originId: 'mcp:connection:test:human-intervened',
+        change: { kind: 'edit_block', block: OWNER_CHILD, content: 'El matiz cambió humanamente' },
+      }),
+    });
+    assert.equal(humanChanged.status, 201, await humanChanged.text());
+    const after = await fetch(`http://127.0.0.1:${PORT}/operation-proposals`).then((one) => one.json()) as
+      { id: string; originId: string }[];
+    const stale = after.find((proposal) => proposal.originId === 'mcp:connection:test:proposal-stale');
+    assert.ok(stale !== undefined);
+    const conflicted = await fetch(`http://127.0.0.1:${PORT}/operation-proposals/${encodeURIComponent(stale.id)}/accept`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+    });
+    assert.equal(conflicted.status, 409, await conflicted.text());
+    const final = await call('vera_leer_pagina', { pagina: PAGE });
+    assert.match(final, /El matiz cambió humanamente/);
+    assert.doesNotMatch(final, /Propuesta que no debe entrar/);
+
+    const latest = await client.callTool({ name: 'vera_leer_pagina', arguments: { pagina: PAGE, cuantos: 30 } });
+    const currentOwner = ((latest.structuredContent as {
+      blocks?: { stableId: string; revision: string | null; content: string }[];
+    }).blocks ?? []).find((block) => block.stableId === OWNER_BLOCK);
+    assert.ok(currentOwner?.revision !== null && currentOwner?.revision !== undefined);
+    const rejectedOffer = await call('vera_proponer_edicion', {
+      origen: 'mcp:connection:test:proposal-rejected', bloque: OWNER_BLOCK, revision: currentOwner.revision,
+      contenido: 'Texto rechazado', proposito: 'Probar rechazo',
+    });
+    assert.match(rejectedOffer, /Propuesta enviada a revisión/);
+    const rejectedQueue = await fetch(`http://127.0.0.1:${PORT}/operation-proposals`).then((one) => one.json()) as
+      { id: string; originId: string }[];
+    const rejected = rejectedQueue.find((proposal) => proposal.originId === 'mcp:connection:test:proposal-rejected');
+    assert.ok(rejected !== undefined);
+    const rejection = await fetch(`http://127.0.0.1:${PORT}/operation-proposals/${encodeURIComponent(rejected.id)}/reject`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+    });
+    assert.equal(rejection.status, 200, await rejection.text());
+    assert.doesNotMatch(await call('vera_leer_pagina', { pagina: PAGE }), /Texto rechazado/);
   });
 
   it('una credencial administrativa conserva escritura amplia, pero nunca sin revisión', async () => {
