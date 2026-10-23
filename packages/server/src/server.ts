@@ -113,6 +113,12 @@ import {
 } from './librarian.ts';
 import type { Reading } from './model.ts';
 import {
+  createOperationReviewProposal,
+  decideOperationReviewProposal,
+  operationReviewProposal,
+  operationReviewProposals,
+} from './operation-proposals.ts';
+import {
   ask,
   readPage,
   mergeReadings,
@@ -468,7 +474,7 @@ function boundedInteger(value: string | null, fallback: number, most: number): n
   return Number.isInteger(parsed) ? Math.max(0, Math.min(most, parsed)) : fallback;
 }
 
-function agentEditPrecondition(
+function agentMutationPrecondition(
   graph: VeraGraph,
   who: Submitter,
   change: Change,
@@ -476,7 +482,7 @@ function agentEditPrecondition(
   ownOnly: boolean,
 ): { status: number; reason: string; current?: { revision: string | null; content: string } } | null {
   if (
-    change.kind !== 'edit_block' ||
+    (change.kind !== 'edit_block' && change.kind !== 'move_block') ||
     who.credential === null ||
     graph.participant(who.participant)?.kind !== 'agent'
   ) return null;
@@ -489,13 +495,13 @@ function agentEditPrecondition(
       status: 403,
       reason:
         `el texto vigente de ${change.block} pertenece a ${hand?.participant ?? 'una autoría desconocida'}. ` +
-        'Esta puerta sólo permite a un agente corregir sus propias palabras; proponer cambios ajenos vendrá en otra fase.',
+        'Esta herramienta estrecha sólo permite a un agente corregir o mover bloques cuya autoría vigente es propia.',
     };
   }
   if (typeof expected !== 'string' || expected.trim() === '') {
     return {
       status: 428,
-      reason: 'editar un bloque como agente exige ifRevision, obtenida al leer la página',
+      reason: `${change.kind === 'move_block' ? 'mover' : 'editar'} un bloque como agente exige ifRevision, obtenida al leer la página`,
     };
   }
   const revision = latestBlockRevision(graph, change.block);
@@ -2334,11 +2340,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }
           submitter ??= who;
           const fence = who.credential === null ? null : confinementOf(store, who.credential.id);
-          const precondition = agentEditPrecondition(
+          const precondition = agentMutationPrecondition(
             trial,
             who,
             input.change,
-            input.change.kind === 'edit_block' ? ifRevisions[input.change.block] : undefined,
+            input.change.kind === 'edit_block' || input.change.kind === 'move_block'
+              ? ifRevisions[input.change.block]
+              : undefined,
             fence !== null,
           );
           if (precondition !== null) {
@@ -2478,7 +2486,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }
         }
 
-        const precondition = agentEditPrecondition(
+        const precondition = agentMutationPrecondition(
           graph,
           who,
           input.change,
@@ -3190,6 +3198,119 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (space === null) { send(response, 404, { error: 'el espacio no existe' }); return; }
       const count = revokeParticipantSessions(store, space, decodeURIComponent(parts[4] ?? ''));
       send(response, 200, { status: 'revoked', sessions: count });
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/operation-proposals') {
+      const chunks: Buffer[] = []; request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+          const originId = typeof body['originId'] === 'string' ? body['originId'].trim() : '';
+          const blockId = typeof body['block'] === 'string' ? body['block'].trim() : '';
+          const revision = typeof body['revision'] === 'string' ? body['revision'].trim() : '';
+          const purpose = typeof body['purpose'] === 'string' ? body['purpose'].trim() : '';
+          const content = body['content'];
+          if (originId === '' || blockId === '' || revision === '' || purpose === '' || typeof content !== 'string') {
+            send(response, 400, { error: 'la propuesta necesita originId, block, revision, purpose y content' }); return;
+          }
+          const change: Change = { kind: 'edit_block', block: blockId, content };
+          const who = authorise(store, graph, request.headers.authorization, undefined, 'edit_block');
+          if ('error' in who) { send(response, who.status, { error: who.error }); return; }
+          if (who.credential === null || graph.participant(who.participant)?.kind !== 'agent') {
+            send(response, 403, { error: 'sólo una identidad agente autenticada puede dejar esta propuesta' }); return;
+          }
+          const block = graph.block(blockId);
+          if (block === undefined) { send(response, 404, { error: 'el bloque ya no existe' }); return; }
+          const fence = confinementOf(store, who.credential.id);
+          if (fence !== null) {
+            const refusal = fenceRefusal(store, fence, who.participant, change,
+              (named) => graph.block(named)?.page ?? null);
+            if (refusal !== null) { send(response, refusal.status, { error: refusal.error }); return; }
+          }
+          const current = latestBlockRevision(graph, blockId);
+          if (current !== revision) {
+            send(response, 409, {
+              error: `conflicto de revisión: se leyó ${revision}, pero ${blockId} está en ${current ?? 'ninguna revisión'}`,
+              current: { revision: current, content: block.content },
+            }); return;
+          }
+          const made = createOperationReviewProposal(store, {
+            proposedBy: who.participant,
+            originId,
+            channel: who.channel ?? 'agent_generation',
+            page: block.page,
+            block: blockId,
+            change,
+            targetRevision: revision,
+            originalContent: block.content,
+            purpose,
+          });
+          send(response, made.duplicate ? 200 : 201, {
+            status: made.duplicate ? 'duplicate' : 'awaiting_review',
+            proposal: made.proposal.id,
+            page: block.page,
+            block: blockId,
+          });
+        } catch (error) {
+          send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+        }
+      }); return;
+    }
+
+    if (request.method === 'GET' && path === '/operation-proposals') {
+      const blocked = ownerOnly(); if (blocked !== null) { send(response, 403, blocked); return; }
+      send(response, 200, operationReviewProposals(store));
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/operation-proposals\/[^/]+\/(accept|reject)$/.test(path)) {
+      const blocked = ownerOnly(); if (blocked !== null) { send(response, 403, blocked); return; }
+      const parts = path.split('/');
+      const proposal = operationReviewProposal(store, decodeURIComponent(parts[2] ?? ''));
+      if (proposal === null || proposal.status !== 'awaiting_review') {
+        send(response, 409, { error: 'la propuesta ya no está pendiente' }); return;
+      }
+      if (parts[3] === 'reject') {
+        const changed = decideOperationReviewProposal(store, {
+          id: proposal.id, reviewer: graph.owner!, status: 'rejected',
+        });
+        send(response, changed ? 200 : 409, changed ? { status: 'rejected' } : { error: 'la propuesta ya no está pendiente' });
+        return;
+      }
+      const current = latestBlockRevision(graph, proposal.block);
+      if (current !== proposal.targetRevision) {
+        decideOperationReviewProposal(store, {
+          id: proposal.id, reviewer: graph.owner!, status: 'conflicted',
+        });
+        send(response, 409, {
+          status: 'conflicted',
+          error: 'el bloque cambió después de la propuesta; hay que leerlo y proponer de nuevo',
+          current: { revision: current, content: graph.block(proposal.block)?.content ?? null },
+        });
+        return;
+      }
+      const outcome = graph.submitOperation({
+        originId: `proposal:${proposal.id}`,
+        participant: proposal.proposedBy,
+        channel: proposal.channel,
+        change: proposal.change,
+      });
+      if (outcome.status === 'rejected') { send(response, 422, { error: outcome.reason }); return; }
+      store.db.exec('BEGIN');
+      try {
+        if (outcome.status === 'applied') recordOperation(store, graph, outcome.operation);
+        const decided = decideOperationReviewProposal(store, {
+          id: proposal.id, reviewer: graph.owner!, status: 'accepted',
+        });
+        if (!decided) throw new Error('la propuesta dejó de estar pendiente');
+        store.db.exec('COMMIT');
+      } catch (error) {
+        store.db.exec('ROLLBACK'); graph = loadGraph(store, 'mind');
+        send(response, 500, { error: 'no se pudo aceptar la propuesta', detail: error instanceof Error ? error.message : String(error) });
+        return;
+      }
+      send(response, 200, { status: 'accepted', operation: outcome.status === 'applied' ? outcome.operation.sequence : null });
       return;
     }
 

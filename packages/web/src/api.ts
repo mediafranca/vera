@@ -100,6 +100,7 @@ export interface CatalogAsset extends AssetView {
 export interface BlockRefView {
   id: string;
   page: string;
+  pageTitle: string;
   excerpt: string;
 }
 
@@ -983,6 +984,14 @@ export const api = {
       { method: 'POST', body: JSON.stringify(said) },
     ),
 
+  decideOperationProposal: (id: string, decision: 'accept' | 'reject') =>
+    json<{ status: string }>(
+      `/operation-proposals/${encodeURIComponent(id)}/${decision}`,
+      { method: 'POST' },
+    ),
+
+  operationProposals: () => json<OperationReviewProposal[]>('/operation-proposals'),
+
   /**
    * La clave entera, cuando su dueño pulsa el ojo.
    *
@@ -1763,4 +1772,24 @@ export interface MCPView {
   marked?: DiscardRequest[];
   /** Con qué palabra se marca en este corpus. La declara la ontología. */
   markKey?: string;
+}
+
+export interface OperationReviewProposal {
+  id: string;
+  proposedBy: string;
+  proposedByName: string;
+  originId: string;
+  channel: string;
+  page: string;
+  pageTitle: string;
+  block: string;
+  change: { kind: string; content?: string; [key: string]: unknown };
+  targetRevision: string;
+  originalContent: string;
+  purpose: string;
+  status: 'awaiting_review' | 'accepted' | 'rejected' | 'conflicted';
+  proposedAt: number;
+  decidedBy: string | null;
+  decidedByName: string | null;
+  decidedAt: number | null;
 }

@@ -794,6 +794,36 @@ const compactExposureLog: Migration = {
   },
 };
 
+/** 22 — propuestas generales de agentes, atadas a una revisión del bloque. */
+const addOperationReviewProposals: Migration = {
+  version: 22,
+  name: 'propuestas de operación revisables',
+  apply(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS operation_review_proposals (
+      id TEXT PRIMARY KEY,
+      graph_id TEXT NOT NULL REFERENCES graphs (id),
+      proposed_by TEXT NOT NULL REFERENCES participants (id),
+      origin_id TEXT NOT NULL,
+      channel TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      block_id TEXT NOT NULL,
+      change_json TEXT NOT NULL,
+      target_revision TEXT NOT NULL,
+      original_content TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (
+        status IN ('awaiting_review','accepted','rejected','conflicted')
+      ),
+      proposed_at INTEGER NOT NULL,
+      decided_by TEXT REFERENCES participants (id),
+      decided_at INTEGER,
+      UNIQUE (graph_id, proposed_by, origin_id)
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS operation_review_proposals_pending
+      ON operation_review_proposals (graph_id, status, proposed_at)`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -816,6 +846,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addTransparentBlockTraceability,
   addInteractiveSearchIndexes,
   compactExposureLog,
+  addOperationReviewProposals,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

@@ -123,6 +123,13 @@ export interface BatchWriteResult {
   operations: { sequence: number; subjectId: string }[];
 }
 
+export interface ProposalResult {
+  status: 'awaiting_review' | 'duplicate';
+  proposal: string;
+  page: string;
+  block: string;
+}
+
 /**
  * Escribe por la única puerta canónica. La identidad y el canal no viajan en el
  * cuerpo: Vera los deriva de la credencial.
@@ -169,6 +176,36 @@ export async function submit(
     };
   }
   return body as WriteResult;
+}
+
+/** Deja una corrección ajena en la cola humana; no escribe el corpus. */
+export async function propose(
+  connection: Connection,
+  input: { originId: string; block: string; revision: string; content: string; purpose: string },
+): Promise<ProposalResult | Failure> {
+  if (connection.token === null) {
+    return { status: 403, error: 'MCP sólo propone con una credencial explícita de agente' };
+  }
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'x-vera-client': connection.client,
+    authorization: `Bearer ${connection.token}`,
+  };
+  let response: Response;
+  try {
+    response = await fetch(new URL('/operation-proposals', connection.url), {
+      method: 'POST', headers, body: JSON.stringify(input),
+    });
+  } catch (trouble) {
+    return { status: 0, error: `no hay nadie escuchando en ${connection.url} (${String(trouble)})` };
+  }
+  const body = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+  if (!response.ok) {
+    const said = body as { error?: unknown };
+    return { status: response.status, error: String(said.error ?? response.statusText) };
+  }
+  return body as ProposalResult;
 }
 
 /** Envía muchos cambios en una sola transacción canónica. */

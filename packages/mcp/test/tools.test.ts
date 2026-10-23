@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { connectionFrom } from '../src/client.ts';
-import { TOOLS, outline, toolNamed, type Ask, type Query, type Write, type WriteBatch } from '../src/tools.ts';
+import { TOOLS, outline, toolNamed, type Ask, type Propose, type Query, type Write, type WriteBatch } from '../src/tools.ts';
 
 /** Una Vera de mentira que anota lo que le preguntan. */
 function fakeVera(answers: Record<string, unknown>) {
@@ -31,10 +31,11 @@ const run = async (
   ask: Ask,
   write?: Write,
   query?: Query,
+  propose?: Propose,
 ): Promise<string> => {
   const tool = toolNamed(name);
   assert.ok(tool !== undefined, `no existe la herramienta ${name}`);
-  const result = await tool.run(args, ask, write, undefined, query);
+  const result = await tool.run(args, ask, write, undefined, query, propose);
   return typeof result === 'string' ? result : result.text;
 };
 
@@ -43,6 +44,8 @@ describe('el catálogo', () => {
     assert.deepEqual(TOOLS.filter((tool) => tool.readOnly === false).map((tool) => tool.name), [
       'vera_escribir',
       'vera_editar_bloque_propio',
+      'vera_mover_bloque_propio',
+      'vera_proponer_edicion',
       'vera_escribir_lote',
     ]);
     assert.ok(TOOLS.every((tool) => !/borrar|eliminar|descartar/.test(tool.name)));
@@ -57,8 +60,10 @@ describe('el catálogo', () => {
         'vera_historia_bloque',
         'vera_indice',
         'vera_leer_pagina',
+        'vera_mover_bloque_propio',
         'vera_ontologia',
         'vera_preparar_escritura',
+        'vera_proponer_edicion',
         'vera_quien_soy',
         'vera_vecindario',
       ],
@@ -394,6 +399,45 @@ describe('corregir un bloque propio', () => {
       change: { kind: 'edit_block', block: 'block:mine', content: 'Texto corregido' },
     }]);
     assert.match(said, /Bloque corregido/);
+  });
+});
+
+describe('mover un bloque propio', () => {
+  it('envía estructura y revisión sin cambiar palabras', async () => {
+    const calls: unknown[] = [];
+    const write: Write = async (origin, change, revision, ownOnly) => {
+      calls.push({ origin, change, revision, ownOnly });
+      return { status: 'applied', sequence: 100, subjectId: 'block:mine' };
+    };
+    const said = await run('vera_mover_bloque_propio', {
+      origen: 'claude:move:1', bloque: 'block:mine', revision: 'operation:9',
+      pagina: 'page:2', padre: null, posicion: 3,
+    }, fakeVera({}).ask, write);
+    assert.deepEqual(calls, [{
+      origin: 'claude:move:1', revision: 'operation:9', ownOnly: true,
+      change: { kind: 'move_block', block: 'block:mine', page: 'page:2', parent: null, position: 3 },
+    }]);
+    assert.match(said, /Bloque movido/);
+  });
+});
+
+describe('proponer una edición', () => {
+  it('deja una intención revisable sin usar la puerta de escritura', async () => {
+    const calls: unknown[] = [];
+    const propose: Propose = async (input) => {
+      calls.push(input);
+      return { status: 'awaiting_review', proposal: 'review-proposal:1', page: 'page:1', block: input.block };
+    };
+    const said = await run('vera_proponer_edicion', {
+      origen: 'claude:proposal:1', bloque: 'block:human', revision: 'operation:8',
+      contenido: 'Texto sugerido', proposito: 'Corregir una fecha',
+    }, fakeVera({}).ask, undefined, undefined, propose);
+    assert.deepEqual(calls, [{
+      originId: 'claude:proposal:1', block: 'block:human', revision: 'operation:8',
+      content: 'Texto sugerido', purpose: 'Corregir una fecha',
+    }]);
+    assert.match(said, /Propuesta enviada a revisión/);
+    assert.match(said, /corpus no cambió/);
   });
 });
 
