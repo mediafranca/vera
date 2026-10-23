@@ -16,9 +16,17 @@ export type Ask = <T>(
   parameters?: Record<string, string | number | undefined>,
 ) => Promise<T | Failure>;
 
+export type Query = <T>(input: {
+  source: string;
+  cursor: number;
+  limit: number;
+}) => Promise<T | Failure>;
+
 export type Write = (
   origin: string,
   change: Record<string, unknown>,
+  ifRevision?: string,
+  ownOnly?: boolean,
 ) => Promise<{ status: 'applied' | 'duplicate'; sequence: number; subjectId: string } | Failure>;
 
 export type WriteBatch = (
@@ -35,8 +43,20 @@ export interface VeraTool {
   description: string;
   /** JSON Schema en crudo: la forma que el protocolo pide, sin traductor. */
   inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
   readOnly?: boolean;
-  run(args: Record<string, unknown>, ask: Ask, write?: Write, writeBatch?: WriteBatch): Promise<string>;
+  run(
+    args: Record<string, unknown>,
+    ask: Ask,
+    write?: Write,
+    writeBatch?: WriteBatch,
+    query?: Query,
+  ): Promise<string | ToolRunResult>;
+}
+
+export interface ToolRunResult {
+  text: string;
+  structured: Record<string, unknown>;
 }
 
 /**
@@ -92,12 +112,17 @@ export function outline(
   blocks: readonly Page['blocks'][number][],
   options: { identities?: boolean } = {},
 ): string {
-  return orderedOutline(blocks).map(({ block, depth }) => {
+  const explicitDepth = blocks.every((block) => block.depth !== undefined);
+  const ordered = explicitDepth
+    ? blocks.map((block) => ({ block, depth: block.depth ?? 0 }))
+    : orderedOutline(blocks);
+  return ordered.map(({ block, depth }) => {
     const pad = '  '.repeat(depth);
     // El texto de un bloque puede tener saltos —un dibujo, un bloque de
     // código— y todos se sangran igual, o la sangría deja de decir de quién
     // es hijo qué.
-    const identity = options.identities === true ? `[${block.stableId}] ` : '';
+    const revision = block.revision === undefined || block.revision === null ? '' : ` @ ${block.revision}`;
+    const identity = options.identities === true ? `[${block.stableId}${revision}] ` : '';
     return block.content.split('\n').map((line, index) =>
       `${pad}- ${index === 0 ? identity : ''}${line}`,
     ).join('\n');
@@ -176,14 +201,84 @@ export const TOOLS: readonly VeraTool[] = [
   },
 
   {
-    name: 'vera_leer_pagina',
-    title: 'Leer una página entera',
+    name: 'vera_consultar',
+    title: 'Consultar la estructura del grafo',
     description:
-      'Devuelve una página completa: sus propiedades, todos sus bloques con la sangría que ' +
-      'tienen y su identidad estable en el mismo orden de lectura, quién escribió cada uno ' +
-      'cuando no fue el dueño, y a qué páginas apunta y qué ' +
-      'páginas apuntan a ella. Acepta el título o el identificador. Una página larga puede ' +
-      'venir cortada, y lo dice cuando pasa.',
+      'Ejecuta el lenguaje estructurado de Vera sobre propiedades, enlaces y contenido. ' +
+      'Úsalo cuando la pregunta tenga condiciones precisas, por ejemplo `? tipo=proyecto + ' +
+      'concepto=accesibilidad ; tabla` o `? ~notarización ; bloques`. Devuelve resultados ' +
+      'estructurados, conteo total y cursor; no guarda la consulta ni modifica el corpus.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        consulta: {
+          type: 'string',
+          description: 'Consulta compacta completa, comenzando por `?` y con vista opcional tras `;`.',
+        },
+        cursor: { type: 'integer', description: 'Desplazamiento del tramo. Por omisión 0.', minimum: 0 },
+        cuantos: {
+          type: 'integer',
+          description: 'Resultados por tramo, de 1 a 100. Por omisión 30.',
+          minimum: 1,
+          maximum: 100,
+        },
+      },
+      required: ['consulta'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        view: { type: 'string' },
+        asked: { type: 'string' },
+        count: { type: 'integer' },
+        cursor: { type: 'integer' },
+        limit: { type: 'integer' },
+        nextCursor: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+        more: { type: 'integer' },
+        pages: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        blocks: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      },
+      additionalProperties: true,
+    },
+    async run(args, _ask, _write, _writeBatch, query) {
+      const source = say(args.consulta).trim();
+      if (source === '') return 'Dime qué consulta estructurada ejecutar.';
+      if (query === undefined) return 'Esta conexión MCP no habilitó la puerta de consultas estructuradas.';
+      const cursor = args.cursor === undefined ? 0 : Math.max(0, Math.floor(Number(args.cursor) || 0));
+      const limit = count(args.cuantos, 30, 100);
+      const result = await query<Record<string, unknown>>({ source, cursor, limit });
+      if (failed(result)) return trouble(result);
+      if (typeof result.error === 'string') {
+        return `Vera no entendió la consulta: ${result.error}`;
+      }
+      const view = say(result.view);
+      const total = typeof result.count === 'number' ? result.count : 0;
+      const next = typeof result.nextCursor === 'number' ? result.nextCursor : null;
+      const rows = view === 'blocks'
+        ? (Array.isArray(result.blocks) ? result.blocks : [])
+        : (Array.isArray(result.pages) ? result.pages : []);
+      const lines = rows.map((row) => JSON.stringify(row));
+      return {
+        text:
+          `${total} resultados para ${say(result.asked) || source}; ` +
+          `${rows.length} en este tramo${next === null ? '.' : `; cursor_siguiente: ${next}.`}\n\n` +
+          lines.join('\n'),
+        structured: result,
+      };
+    },
+  },
+
+  {
+    name: 'vera_leer_pagina',
+    title: 'Leer una página por tramos',
+    description:
+      'Devuelve un tramo paginado de una página: sus propiedades y bloques con sangría, identidad ' +
+      'estable y revisión en el orden de lectura, y quién escribió cada uno cuando no fue el dueño. ' +
+      'Opcionalmente añade a qué páginas apunta y qué páginas apuntan a ella. ' +
+      'Acepta el título o el identificador. Usa `cursor_siguiente` para ' +
+      'continuar sin volver a recibir el comienzo; `desde_bloque` limita la lectura a un subárbol.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -193,16 +288,48 @@ export const TOOLS: readonly VeraTool[] = [
         },
         con_vecinos: {
           type: 'boolean',
-          description: 'Añadir la lista de páginas enlazadas y de las que la enlazan. Por omisión sí.',
+          description: 'Añadir la lista de páginas enlazadas y de las que la enlazan. Por omisión no.',
+        },
+        desde_bloque: {
+          type: 'string',
+          description: 'Bloque raíz cuyo subárbol leer. Ausente lee la página entera por tramos.',
+        },
+        cursor: {
+          type: 'integer',
+          description: 'Desplazamiento del siguiente tramo. Por omisión 0.',
+          minimum: 0,
+        },
+        cuantos: {
+          type: 'integer',
+          description: 'Bloques por tramo, de 1 a 200. Por omisión 80.',
+          minimum: 1,
+          maximum: 200,
         },
       },
       required: ['pagina'],
       additionalProperties: false,
     },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        page: { type: 'object', additionalProperties: true },
+        window: { type: 'object', additionalProperties: true },
+        blocks: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      },
+      additionalProperties: false,
+    },
     async run(args, ask) {
       const named = say(args.pagina).trim();
       if (named === '') return 'Dime qué página.';
-      const page = await ask<Page>(`/pages/${encodeURIComponent(named)}`);
+      const safeCursor = args.cursor === undefined ? 0 : Math.max(0, Number(args.cursor) || 0);
+      const most = count(args.cuantos, 80, 200);
+      const page = await ask<Page>(`/pages/${encodeURIComponent(named)}`, {
+        stage: args.con_vecinos === true ? undefined : 'readable',
+        root: say(args.desde_bloque).trim() || undefined,
+        cursor: safeCursor,
+        limit: most,
+      });
       if (failed(page)) {
         return page.status === 404
           ? `No hay ninguna página que se llame «${named}». Prueba con vera_buscar.`
@@ -234,7 +361,7 @@ export const TOOLS: readonly VeraTool[] = [
         parts.push(`\n## Escrito por agentes\n${others.join('\n')}`);
       }
 
-      if (args.con_vecinos !== false) {
+      if (args.con_vecinos === true) {
         const out = page.references.map(
           (one) => `→ ${one.title}${one.page === null ? ' (aún sin escribir)' : ''}`,
         );
@@ -244,7 +371,34 @@ export const TOOLS: readonly VeraTool[] = [
         }
       }
 
-      return cut(parts.filter((one) => one !== '').join('\n'));
+      const window = page.window ?? {
+        root: null,
+        cursor: safeCursor,
+        limit: page.blocks.length,
+        total: page.blocks.length,
+        nextCursor: null,
+      };
+      parts.push(
+        `\n## Tramo\n${page.blocks.length} de ${window.total} bloques; cursor ${window.cursor}; ` +
+        (window.nextCursor === null ? 'lectura completa.' : `cursor_siguiente: ${window.nextCursor}.`),
+      );
+      return {
+        text: cut(parts.filter((one) => one !== '').join('\n')),
+        structured: {
+          page: {
+            id: page.id,
+            title: page.title,
+            visibility: page.visibility,
+            lastEditedAt: page.lastEditedAt,
+            properties: page.properties,
+          },
+          window,
+          blocks: page.blocks.map((block) => ({
+            ...block,
+            authorship: page.authorship[block.stableId] ?? null,
+          })),
+        },
+      };
     },
   },
 
@@ -369,12 +523,25 @@ export const TOOLS: readonly VeraTool[] = [
     description:
       'Lee juntas las reglas vivas para agentes y la ontología vigente del corpus. Debe usarse ' +
       'antes de crear o conectar páginas: evita copiar convenciones antiguas, inventar propiedades ' +
-      'o confundir frontmatter, bloques, jerarquía y enlaces. No modifica nada.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    async run(_args, ask) {
+      'o confundir frontmatter, bloques, jerarquía y enlaces. Devuelve un paquete compacto con ' +
+      'presupuesto explícito; no modifica nada.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        presupuesto_caracteres: {
+          type: 'integer',
+          description: 'Máximo aproximado del paquete, entre 4000 y 30000. Por omisión 12000.',
+          minimum: 4000,
+          maximum: 30000,
+        },
+      },
+      additionalProperties: false,
+    },
+    async run(args, ask) {
       const guideTitle = 'VERA — Escritura por agentes';
+      const budget = Math.max(4_000, count(args.presupuesto_caracteres, 12_000, 30_000));
       const [guide, ontology] = await Promise.all([
-        ask<Page>(`/pages/${encodeURIComponent(guideTitle)}`),
+        ask<Page>(`/pages/${encodeURIComponent(guideTitle)}`, { stage: 'readable', cursor: 0, limit: 60 }),
         ask<unknown>('/ontology'),
       ]);
       if (failed(ontology)) return trouble(ontology);
@@ -387,7 +554,10 @@ export const TOOLS: readonly VeraTool[] = [
           '- las conexiones se escriben como enlaces [[Página]].'
         : `# ${guide.title}\n\n${outline(guide.blocks)}`;
 
-      return cut(`${live}\n\n# Ontología vigente\n\n${JSON.stringify(ontology, null, 2)}`);
+      return cut(
+        `${live}\n\n# Ontología vigente\n\n${JSON.stringify(ontology, null, 2)}`,
+        budget,
+      );
     },
   },
 
@@ -458,6 +628,58 @@ export const TOOLS: readonly VeraTool[] = [
       return (
         `${result.status === 'duplicate' ? 'Ese cambio ya estaba aplicado' : 'Cambio aplicado'}: ` +
         `${result.subjectId}, operación ${result.sequence}.`
+      );
+    },
+  },
+
+  {
+    name: 'vera_editar_bloque_propio',
+    title: 'Corregir un bloque propio sin pisar cambios',
+    readOnly: false,
+    description:
+      'Reescribe el texto de un bloque cuya autoría vigente pertenece a esta identidad agente. ' +
+      'Exige la revisión exacta entregada por vera_leer_pagina; si el bloque cambió, devuelve ' +
+      'conflicto y el estado actual sin aplicar nada. No permite editar palabras ajenas, mover ' +
+      'el bloque ni borrarlo. Cada corrección usa una clave de origen idempotente.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origen: {
+          type: 'string',
+          description: 'Identificador único y estable de esta corrección.',
+          minLength: 1,
+        },
+        bloque: { type: 'string', description: 'Identificador estable block:...' },
+        revision: {
+          type: 'string',
+          description: 'Revisión @ op:... recibida al leer el bloque.',
+          minLength: 1,
+        },
+        contenido: { type: 'string', description: 'Texto completo que reemplazará el contenido actual.' },
+      },
+      required: ['origen', 'bloque', 'revision', 'contenido'],
+      additionalProperties: false,
+    },
+    async run(args, _ask, write) {
+      const origin = say(args.origen).trim();
+      const block = say(args.bloque).trim();
+      const revision = say(args.revision).trim();
+      if (origin === '' || block === '' || revision === '' || typeof args.contenido !== 'string') {
+        return 'La corrección necesita origen, bloque, revision y contenido completo.';
+      }
+      if (write === undefined) return 'Esta conexión MCP no habilitó la puerta de escritura.';
+      const result = await write(
+        origin,
+        { kind: 'edit_block', block, content: args.contenido },
+        revision,
+        true,
+      );
+      if (failed(result)) {
+        return `No pude corregir ese bloque: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      }
+      return (
+        `${result.status === 'duplicate' ? 'Esa corrección ya estaba aplicada' : 'Bloque corregido'}: ` +
+        `${result.subjectId}, operación ${result.sequence}. Vuelve a leerlo antes de otra corrección.`
       );
     },
   },

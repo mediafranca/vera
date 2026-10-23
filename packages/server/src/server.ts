@@ -328,6 +328,10 @@ interface SubmitBody {
   participant?: unknown;
   channel?: unknown;
   evidence?: unknown;
+  /** Última revisión del bloque observada por quien intenta reescribirlo. */
+  ifRevision?: unknown;
+  /** La herramienta estrecha puede pedir un límite adicional aunque la credencial sea amplia. */
+  ownOnly?: unknown;
   change?: unknown;
 }
 
@@ -337,6 +341,8 @@ interface SubmitBatchBody {
   changes?: unknown;
   /** Canal paralelo a cada cambio. Ausente conserva el lote antiguo: todo tecleado. */
   channels?: unknown;
+  /** Precondiciones por bloque para las ediciones incluidas en el lote. */
+  ifRevisions?: unknown;
 }
 
 const MAX_BATCH_CHANGES = 1_000;
@@ -411,6 +417,97 @@ function authorise(
 }
 
 const EXCERPT = 140;
+
+/** La revisión canónica más reciente que tocó un bloque. */
+function latestBlockRevision(graph: VeraGraph, block: string): string | null {
+  return graph.revisions().filter((revision) => revision.block === block).at(-1)?.operation ?? null;
+}
+
+/**
+ * Los bloques en orden de lectura y con profundidad explícita.
+ *
+ * La profundidad viaja porque un tramo puede comenzar dentro de un subárbol:
+ * si sólo llevara `parent`, el cliente no podría reconstruir una sangría cuyo
+ * padre quedó en la página anterior del cursor.
+ */
+function orderedPageBlocks(
+  graph: VeraGraph,
+  page: string,
+  root: string | null,
+): { block: ReturnType<VeraGraph['blocksOf']>[number]; depth: number }[] | null {
+  const blocks = graph.blocksOf(page);
+  if (root !== null && !blocks.some((block) => block.stableId === root)) return null;
+  const children = new Map<string | null, typeof blocks>();
+  for (const block of blocks) {
+    const kin = children.get(block.parent) ?? [];
+    kin.push(block);
+    children.set(block.parent, kin);
+  }
+  for (const kin of children.values()) kin.sort((a, b) => a.position - b.position);
+
+  const ordered: { block: (typeof blocks)[number]; depth: number }[] = [];
+  const walk = (parent: string | null, depth: number): void => {
+    for (const block of children.get(parent) ?? []) {
+      ordered.push({ block, depth });
+      walk(block.stableId, depth + 1);
+    }
+  };
+  if (root === null) walk(null, 0);
+  else {
+    const named = blocks.find((block) => block.stableId === root);
+    if (named === undefined) return null;
+    ordered.push({ block: named, depth: 0 });
+    walk(named.stableId, 1);
+  }
+  return ordered;
+}
+
+function boundedInteger(value: string | null, fallback: number, most: number): number {
+  if (value === null || value.trim() === '') return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? Math.max(0, Math.min(most, parsed)) : fallback;
+}
+
+function agentEditPrecondition(
+  graph: VeraGraph,
+  who: Submitter,
+  change: Change,
+  expected: unknown,
+  ownOnly: boolean,
+): { status: number; reason: string; current?: { revision: string | null; content: string } } | null {
+  if (
+    change.kind !== 'edit_block' ||
+    who.credential === null ||
+    graph.participant(who.participant)?.kind !== 'agent'
+  ) return null;
+
+  const block = graph.block(change.block);
+  if (block === undefined) return { status: 404, reason: 'el bloque ya no existe' };
+  const hand = graph.authorship(change.block);
+  if (ownOnly && hand?.participant !== who.participant) {
+    return {
+      status: 403,
+      reason:
+        `el texto vigente de ${change.block} pertenece a ${hand?.participant ?? 'una autoría desconocida'}. ` +
+        'Esta puerta sólo permite a un agente corregir sus propias palabras; proponer cambios ajenos vendrá en otra fase.',
+    };
+  }
+  if (typeof expected !== 'string' || expected.trim() === '') {
+    return {
+      status: 428,
+      reason: 'editar un bloque como agente exige ifRevision, obtenida al leer la página',
+    };
+  }
+  const revision = latestBlockRevision(graph, change.block);
+  if (revision !== expected) {
+    return {
+      status: 409,
+      reason: `conflicto de revisión: se leyó ${expected}, pero ${change.block} está en ${revision ?? 'ninguna revisión'}`,
+      current: { revision, content: block.content },
+    };
+  }
+  return null;
+}
 
 /** Una línea legible del bloque, sin arrastrar transcripciones enteras. */
 function excerpt(content: string): string {
@@ -2180,6 +2277,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 400, { error: 'channels, if given, must match changes length' });
           return;
         }
+        if (
+          body.ifRevisions !== undefined &&
+          (typeof body.ifRevisions !== 'object' || body.ifRevisions === null || Array.isArray(body.ifRevisions))
+        ) {
+          send(response, 400, { error: 'ifRevisions, if given, must map block ids to revision ids' });
+          return;
+        }
+        const ifRevisions = (body.ifRevisions ?? {}) as Record<string, unknown>;
 
         const inputs = body.changes.map((change, at) =>
           readOperation({
@@ -2229,6 +2334,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }
           submitter ??= who;
           const fence = who.credential === null ? null : confinementOf(store, who.credential.id);
+          const precondition = agentEditPrecondition(
+            trial,
+            who,
+            input.change,
+            input.change.kind === 'edit_block' ? ifRevisions[input.change.block] : undefined,
+            fence !== null,
+          );
+          if (precondition !== null) {
+            send(response, precondition.status, {
+              status: 'rejected',
+              reason: precondition.reason,
+              ...(precondition.current === undefined ? {} : { current: precondition.current }),
+            });
+            return;
+          }
           if (fence !== null) {
             const refusal = fenceRefusal(
               store, fence, who.participant, input.change,
@@ -2288,6 +2408,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as SubmitBody;
         } catch {
           send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        if (body.ownOnly !== undefined && typeof body.ownOnly !== 'boolean') {
+          send(response, 400, { error: 'ownOnly, if given, must be boolean' });
           return;
         }
 
@@ -2352,6 +2476,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             send(response, refusal.status, { status: 'rejected', reason: refusal.error });
             return;
           }
+        }
+
+        const precondition = agentEditPrecondition(
+          graph,
+          who,
+          input.change,
+          body.ifRevision,
+          fence !== null || body.ownOnly === true,
+        );
+        if (precondition !== null) {
+          send(response, precondition.status, {
+            status: 'rejected',
+            reason: precondition.reason,
+            ...(precondition.current === undefined ? {} : { current: precondition.current }),
+          });
+          return;
         }
 
         const protectedPage = pageTouchedBy(
@@ -5991,7 +6131,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
-        let body: { source?: unknown; participant?: unknown; sort?: unknown };
+        let body: {
+          source?: unknown;
+          participant?: unknown;
+          sort?: unknown;
+          cursor?: unknown;
+          limit?: unknown;
+        };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
         } catch {
@@ -6000,6 +6146,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
 
         const source = typeof body.source === 'string' ? body.source : '';
+        const cursor = typeof body.cursor === 'number' && Number.isInteger(body.cursor)
+          ? Math.max(0, body.cursor)
+          : 0;
+        const limit = typeof body.limit === 'number' && Number.isInteger(body.limit)
+          ? Math.max(1, Math.min(MOST_ANSWERS, body.limit))
+          : MOST_ANSWERS;
         const read = readQuery(source);
         if ('error' in read) {
           send(response, 200, { error: read.error, at: read.at, near: read.near });
@@ -6074,12 +6226,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         });
 
         if (read.view === 'blocks') {
+          const blocks = matchingBlocks.slice(cursor, cursor + limit);
           send(response, 200, {
             view: 'blocks',
             asked: writeQuery(read.expression, read.view),
             count: matchingBlocks.length,
-            blocks: matchingBlocks.slice(0, MOST_ANSWERS),
-            more: Math.max(0, matchingBlocks.length - MOST_ANSWERS),
+            cursor,
+            limit,
+            nextCursor: cursor + blocks.length < matchingBlocks.length ? cursor + blocks.length : null,
+            blocks,
+            more: Math.max(0, matchingBlocks.length - cursor - blocks.length),
           });
           return;
         }
@@ -6116,6 +6272,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // Se contesta entero cuánto es y se manda un tramo: una pregunta puede
         // seleccionar dos mil páginas, y ninguna pantalla las lee. Lo recortado
         // se declara, como todo lo demás.
+        const pages = found.slice(cursor, cursor + limit);
         send(response, 200, {
           view: read.view,
           /*
@@ -6131,8 +6288,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           names: { kind: names.kind, topic: names.topic },
           sort: { by, desc },
           count: found.length,
-          pages: found.slice(0, MOST_ANSWERS),
-          more: Math.max(0, found.length - MOST_ANSWERS),
+          cursor,
+          limit,
+          nextCursor: cursor + pages.length < found.length ? cursor + pages.length : null,
+          pages,
+          more: Math.max(0, found.length - cursor - pages.length),
         });
       });
       return;
@@ -6516,7 +6676,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 404, { error: 'no such page' });
           return;
         }
-        const pageBlocks = graph.blocksOf(page.id);
+        const root = url.searchParams.get('root');
+        const ordered = orderedPageBlocks(graph, page.id, root);
+        if (ordered === null) {
+          send(response, 404, { error: 'el bloque raíz no existe en esta página' });
+          return;
+        }
+        const cursor = boundedInteger(url.searchParams.get('cursor'), 0, ordered.length);
+        const requestedLimit = url.searchParams.get('limit');
+        const limit = requestedLimit === null
+          ? ordered.length
+          : Math.max(1, boundedInteger(requestedLimit, 80, 200));
+        const selected = ordered.slice(cursor, cursor + limit);
+        const pageBlocks = selected.map(({ block }) => block);
+        const depths = new Map(selected.map(({ block, depth }) => [block.stableId, depth]));
+        const pageWindow = {
+          root,
+          cursor,
+          limit,
+          total: ordered.length,
+          nextCursor: cursor + selected.length < ordered.length ? cursor + selected.length : null,
+        };
 
         /*
          * La escritura antes que las lecturas que exigen recorrer el grafo.
@@ -6545,7 +6725,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               parent: block.parent,
               position: block.position,
               content: block.content,
-            })).sort((a, b) => a.position - b.position),
+              depth: depths.get(block.stableId) ?? 0,
+              revision: latestBlockRevision(graph, block.stableId),
+            })),
+            window: pageWindow,
             concept: null,
             blockProperties: Object.fromEntries(
               pageBlocks
@@ -6604,7 +6787,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }, {
             surface: 'GET /pages/:id?stage=readable',
             subject: page.id,
-            delivered: [page.id],
+            delivered: [page.id, ...pageBlocks.map((block) => block.stableId)],
           });
           return;
         }
@@ -6679,15 +6862,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                   domainOf(key),
                 ]),
               ),
-          blocks: graph
-            .blocksOf(page.id)
+          blocks: pageBlocks
             .map((block) => ({
               stableId: block.stableId,
               parent: block.parent,
               position: block.position,
               content: block.content,
-            }))
-            .sort((a, b) => a.position - b.position),
+              depth: depths.get(block.stableId) ?? 0,
+              revision: latestBlockRevision(graph, block.stableId),
+            })),
+          window: pageWindow,
           concept: (() => {
             const names = graph.propertyNames;
             const isConcept = graph.propertiesOf(page.id).some(
@@ -6949,11 +7133,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         } : detail, {
           surface: enrichment ? 'GET /pages/:id?stage=enrichment' : 'GET /pages/:id',
           subject: page.id,
-          // Abrir una página se lleva la página entera y sus bloques: eso es lo
-          // que se anota, y no sólo el título por el que se pidió.
+          // Se registra el tramo efectivamente entregado. El cursor existe para
+          // no sacar la página completa, así que atribuírsela entera a la
+          // exposición volvería opaca precisamente la economía que introduce.
           delivered: enrichment
             ? [page.id]
-            : [page.id, ...graph.blocksOf(page.id).map((block) => block.stableId)],
+            : [page.id, ...pageBlocks.map((block) => block.stableId)],
         });
         return;
       }

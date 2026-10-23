@@ -791,16 +791,36 @@ describe('lecturas', () => {
     });
 
     const readable = (await get(`/pages/${encodeURIComponent(page)}?stage=readable`)) as {
-      blocks: { stableId: string; parent: string | null; position: number; content: string }[];
+      blocks: {
+        stableId: string;
+        parent: string | null;
+        position: number;
+        content: string;
+        depth: number;
+        revision: string;
+      }[];
       properties: { key: string; value: string }[];
       authorship: Record<string, unknown>;
       backlinks: unknown[];
       crossingsOut: unknown[];
     };
 
-    assert.deepEqual(readable.blocks, [{
-      stableId: block, parent: null, position: 0, content: 'texto que ya se puede editar',
-    }]);
+    assert.equal(readable.blocks.length, 1);
+    const readableBlock = readable.blocks[0];
+    assert.deepEqual({
+      stableId: readableBlock?.stableId,
+      parent: readableBlock?.parent,
+      position: readableBlock?.position,
+      content: readableBlock?.content,
+      depth: readableBlock?.depth,
+    }, {
+      stableId: block,
+      parent: null,
+      position: 0,
+      content: 'texto que ya se puede editar',
+      depth: 0,
+    });
+    assert.match(readableBlock?.revision ?? '', /^op:/);
     assert.deepEqual(readable.properties, [{ key: 'lang', value: 'es' }]);
     assert.ok(readable.authorship[block], 'la procedencia necesaria para leer viaja en la primera fase');
     assert.deepEqual(readable.backlinks, []);
