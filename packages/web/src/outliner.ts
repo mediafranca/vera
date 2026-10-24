@@ -65,6 +65,7 @@ import { icon, type IconName } from './icons.ts';
 import { when } from './dates.ts';
 import { isConnectionsPage, renderConnections } from './mcp-page.ts';
 import { isActivityPage, participantActivityPath, renderActivityPage } from './activity-page.ts';
+import { isGovernancePage, renderGovernanceIndex } from './governance-page.ts';
 import { isServicePage, pickBibliography, renderService } from './service-page.ts';
 import { isPublicationPage, renderPageSharing, renderPublicationPage } from './publication-page.ts';
 import {
@@ -5234,6 +5235,11 @@ export function renderOutliner(
       return true;
     };
     void renderActivityPage(restore, toast).then((made) => list.before(made));
+  }
+
+  if (isGovernancePage(page.properties)) {
+    void renderGovernanceIndex(page.id, (title) => callbacks.onOpen(title, 'followed_reference'))
+      .then((made) => list.before(made));
   }
 
   /*

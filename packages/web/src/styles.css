@@ -5139,6 +5139,24 @@ body.settings-open #text {
   padding: 1rem 1.1rem 1.2rem;
 }
 
+.appearance-designs {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.appearance-designs h3 { margin: 0 0 .35rem; font-size: .9rem; }
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(7rem, .55fr) minmax(0, 1fr);
+  align-items: center;
+  gap: .65rem;
+  margin: .55rem 0;
+}
+.settings-field > span { color: var(--text-dim); font-size: .78rem; }
+.settings-field select,
+.settings-field input { min-width: 0; width: 100%; box-sizing: border-box; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .7rem; }
+
 .settings-destinations {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5181,6 +5199,20 @@ body.settings-open #text {
 }
 
 .settings-government-list { margin-bottom: 0; }
+
+.governance-index {
+  margin: 1rem 0 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.governance-index h2 { margin: 0 0 .35rem; font-size: 1rem; }
+.governance-index-list { margin-top: .8rem; }
+.governance-index-item small {
+  color: var(--accent);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
 
 .settings-backup {
   margin-top: 1.35rem;

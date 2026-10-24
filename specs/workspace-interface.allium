@@ -38,14 +38,14 @@ contract GraphQuerySupport {
 }
 
 contract EditablePresentation {
-    apply_theme: (theme: Theme) -> ThemeApplication
+    apply_design: (design: Design) -> DesignApplication
 
     @invariant TransparentDesignTokens
-        -- Theme tokens remain directly inspectable and editable. Governed CSS
+        -- Design tokens remain directly inspectable and editable. Governed CSS
         -- sources are pages and belong to governed-stylesheet.allium.
 
     @invariant DualColourScheme
-        -- Every theme provides both light and dark colour schemes.
+        -- Every design provides both light and dark colour schemes.
 }
 
 contract NativeMarkdownEditing {
@@ -189,7 +189,11 @@ contract NativeMarkdownEditing {
 -- Vera derives that behaviour from the source deliberately written in the block
 -- or from the native media attached to it. The source remains the authority.
 contract BlockBehaviourPresentation {
-    behaviour_of: (block: core/Block) -> BlockBehaviour
+    -- The presentation is derived by the renderer; it is not a second domain
+    -- value stored beside the block. Keeping this as a textual observation
+    -- avoids turning the renderer's dispatch table into fictitious corpus
+    -- metadata merely to satisfy the specification.
+    behaviour_of: (block: core/Block) -> String
 
     @invariant TheCurrentBlockBehavioursAreNamed
         -- Vera distinguishes standard Markdown, explicit executable HTML, audio,
@@ -795,9 +799,8 @@ enum ColourScheme { light | dark }
 -- Importar puede respetar lo que ya existe o declarar que el archivo es la
 -- apariencia completa. La diferencia debe ser una elección visible: dos
 -- botones que hacen cosas distintas sin decirlo serían una trampa de respaldo.
-enum TokenImportMode { merge | replace }
+enum TokenImportMode { new | merge | replace }
 enum MapContentScope { own_space | published }
-enum BlockBehaviour { markdown | html | audio | video | clip | map | drawing | p5js | svg | query | mermaid | table }
 enum SearchPresentation { completion | full_results }
 
 -- Qué hizo alguien para llegar a la página en la que está.
@@ -841,7 +844,8 @@ entity Workspace {
     map_content_scope: MapContentScope
     colour_scheme: ColourScheme
     navigation_history: List<TraceStep>
-    theme: Theme
+    designs: Design with workspace = this
+    active_design: Design
 }
 
 -- Un paso del rastro: la llegada más reciente a una página.
@@ -862,14 +866,15 @@ value TraceStep {
     at: Timestamp
 }
 
-entity Theme {
-    graph: core/Graph
+entity Design {
+    workspace: Workspace
+    stable_id: String
     name: String
-    tokens: DesignToken with theme = this
+    tokens: DesignToken with design = this
 }
 
 entity DesignToken {
-    theme: Theme
+    design: Design
     name: String
     light_value: String
     dark_value: String
@@ -888,6 +893,7 @@ value DesignTokenPackage {
     format: String
     version: Integer
     exported_at: Timestamp
+    name: String
     tokens: List<PortableDesignToken>
 }
 
@@ -915,8 +921,8 @@ entity QueryResult {
     matching_pages: Set<core/Page>
 }
 
-entity ThemeApplication {
-    theme: Theme
+entity DesignApplication {
+    design: Design
     scheme: ColourScheme
 }
 
@@ -1020,15 +1026,77 @@ rule ParticipantChangesColourScheme {
     ensures: workspace.colour_scheme = colour_scheme
 }
 
-rule ApplyCurrentWorkspaceTheme {
-    when: ApplyTheme(participant, workspace)
+rule ApplyCurrentWorkspaceDesign {
+    when: ApplyDesign(participant, workspace)
 
     requires: workspace.participant = participant
 
-    ensures: ThemeApplication.created(
-        theme: workspace.theme,
+    ensures: DesignApplication.created(
+        design: workspace.active_design,
         scheme: workspace.colour_scheme
     )
+}
+
+rule ParticipantSelectsDesign {
+    when: SelectDesign(participant, workspace, design)
+
+    requires: workspace.participant = participant
+    requires: design.workspace = workspace
+
+    ensures: workspace.active_design = design
+}
+
+rule ParticipantCreatesDesign {
+    when: CreateDesign(participant, workspace, name)
+
+    requires: workspace.participant = participant
+
+    ensures:
+        let design = Design.created(
+            workspace: workspace,
+            stable_id: new_stable_id(),
+            name: unique_design_name(workspace, name),
+            tokens: canonical_tokens(workspace)
+        )
+        workspace.active_design = design
+}
+
+rule ParticipantDuplicatesDesign {
+    when: DuplicateDesign(participant, workspace, design)
+
+    requires: workspace.participant = participant
+    requires: design.workspace = workspace
+
+    ensures:
+        let copy = Design.created(
+            workspace: workspace,
+            stable_id: new_stable_id(),
+            name: unique_design_name(workspace, "Copia de " + design.name),
+            tokens: copied_tokens(design.tokens)
+        )
+        workspace.active_design = copy
+}
+
+rule ParticipantRenamesDesign {
+    when: RenameDesign(participant, workspace, design, name)
+
+    requires: workspace.participant = participant
+    requires: design.workspace = workspace
+
+    ensures: design.name = unique_design_name_except(workspace, name, design)
+}
+
+rule ParticipantDeletesDesign {
+    when: DeleteDesign(participant, workspace, design)
+
+    requires: workspace.participant = participant
+    requires: design.workspace = workspace
+    requires: workspace.designs.count > 1
+
+    ensures:
+        Design.deleted(design)
+        if workspace.active_design = design:
+            workspace.active_design = first(workspace.designs)
 }
 
 rule ParticipantCopiesBlockReference {
@@ -1225,7 +1293,7 @@ rule ParticipantEditsDesignToken {
     when: EditDesignToken(participant, workspace, token, light_value, dark_value)
 
     requires: workspace.participant = participant
-    requires: token.theme = workspace.theme
+    requires: token.design = workspace.active_design
 
     ensures:
         token.light_value = light_value
@@ -1241,7 +1309,8 @@ rule ParticipantExportsDesignTokens {
         format: "vera.design-tokens",
         version: 1,
         exported_at: now,
-        tokens: portable_tokens(workspace.theme.tokens)
+        name: workspace.active_design.name,
+        tokens: portable_tokens(workspace.active_design.tokens)
     )
 
     @invariant AppearanceOnly
@@ -1259,15 +1328,29 @@ rule ParticipantImportsDesignTokens {
     requires: mode in TokenImportMode
 
     ensures:
-        -- Merge changes only supported tokens present in the package. Replace
-        -- first restores the current canonical reserve and then overlays those
-        -- same supported tokens. Unknown token names never become live CSS.
-        workspace.theme.tokens = imported_tokens(
-            current: workspace.theme.tokens,
-            defaults: canonical_tokens(workspace.theme),
-            package: package,
-            mode: mode
-        )
+        if mode = new:
+            let imported = Design.created(
+                workspace: workspace,
+                stable_id: new_stable_id(),
+                name: unique_design_name(workspace, package.name),
+                tokens: imported_tokens(
+                    current: canonical_tokens(workspace),
+                    defaults: canonical_tokens(workspace),
+                    package: package,
+                    mode: replace
+                )
+            )
+            workspace.active_design = imported
+        else:
+            -- Merge changes only supported tokens present in the package.
+            -- Replace first restores the canonical reserve. Unknown token
+            -- names never become live CSS.
+            workspace.active_design.tokens = imported_tokens(
+                current: workspace.active_design.tokens,
+                defaults: canonical_tokens(workspace),
+                package: package,
+                mode: mode
+            )
 
     @invariant PreviewBeforeMutation
         -- Before applying anything, Vera names the package, reports unsupported
@@ -1380,9 +1463,17 @@ rule ParticipantQueriesGraph {
 -- Invariants
 ------------------------------------------------------------
 
-invariant WorkspaceUsesThemeFromItsGraph {
+invariant WorkspaceUsesOnlyItsOwnDesigns {
     for workspace in Workspaces:
-        workspace.theme.graph = workspace.graph
+        workspace.designs.all(design => design.workspace = workspace) and
+        workspace.designs.contains(workspace.active_design)
+}
+
+invariant DesignNamesAreUniqueWithinAWorkspace {
+    for workspace in Workspaces:
+        for a in workspace.designs:
+            for b in workspace.designs:
+                a.name = b.name implies a = b
 }
 
 invariant ActivePageBelongsToWorkspaceGraph {
@@ -1450,7 +1541,8 @@ surface VeraWorkspace {
         workspace.map_content_scope
         workspace.colour_scheme
         workspace.navigation_history
-        workspace.theme
+        workspace.designs
+        workspace.active_design
 
     provides:
         ChangeWorkspaceLayout(participant, workspace, layout)
@@ -1458,7 +1550,12 @@ surface VeraWorkspace {
         ChangeGraphView(participant, workspace, graph_view)
         ChangeMapContentScope(participant, workspace, scope)
         ChangeColourScheme(participant, workspace, colour_scheme)
-        ApplyTheme(participant, workspace)
+        ApplyDesign(participant, workspace)
+        SelectDesign(participant, workspace, design)
+        CreateDesign(participant, workspace, name)
+        DuplicateDesign(participant, workspace, design)
+        RenameDesign(participant, workspace, design, name)
+        DeleteDesign(participant, workspace, design)
         NavigateToPage(participant, workspace, page, gesture)
         DropTraceStep(participant, workspace, step)
         ReorderTraceStep(participant, workspace, step, position)
@@ -1574,6 +1671,12 @@ surface VeraWorkspace {
     @guarantee EditableDesignSystem
         -- General styles and design tokens are editable from within Vera and
         -- remain accessible as source rather than opaque application state.
+
+    @guarantee NamedDesignsAreOperable
+        -- Apariencia muestra la lista de diseños guardados y permite seleccionar,
+        -- crear desde la reserva, duplicar, renombrar y eliminar. Debe quedar al
+        -- menos uno. Cada diseño contiene el juego completo de tipografías,
+        -- medidas y valores claro/oscuro; cambiar el esquema no cambia de diseño.
 
     @guarantee CommonAppearancePrecedesTheDesignSystem
         -- Appearance first offers the few choices a reader routinely changes:

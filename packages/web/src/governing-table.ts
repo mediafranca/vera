@@ -61,6 +61,7 @@ export const GOVERNING_KINDS: {
   { key: 'connections', label: 'Conexiones', mode: 'rectora', what: 'quién entra, por qué canal, con qué identidad y alcance' },
   { key: 'publication', label: 'Publicación', mode: 'superficie', what: 'administra el sitio guardado en el registro' },
   { key: 'activity', label: 'Actividad', mode: 'derivada', what: 'proyecta operaciones y eliminaciones registradas' },
+  { key: 'governance', label: 'Gobierno', mode: 'derivada', what: 'reúne todas las páginas especiales declaradas en el corpus' },
   { key: 'presentation', label: 'Presentación', mode: 'documentación', what: 'describe el diseño; los ajustes efectivos viven por participante' },
   { key: 'instructions', label: 'Instrucciones', mode: 'documentación', what: 'referencia histórica; todavía no alimenta a los agentes' },
 ];

@@ -1688,6 +1688,8 @@ open question "Una relación llega a una página y no a un bloque suyo, porque l
 -- espacio amplio. Ambos editan el mismo árbol, que se presenta dentro de un
 -- recinto propio para que su jerarquía se lea como una sola relación.
 
-open question "El vocabulario de relaciones —contradice, respalda, profundiza, ejemplifica, con sus recíprocos— tiene que nacer en alguna parte. controlled-ontology.allium gobierna hoy tipos, conceptos y propiedades, y esta es una cuarta capa que habla de una página respecto de otra. ¿Crece esa spec para acogerla, o un vocabulario de aristas es cosa distinta de un vocabulario de nodos y merece su propio sitio?"
+-- Resuelta: el vocabulario de aristas vive en `VERA: Relaciones`, una página
+-- rectora separada de Propiedades y Objetos. El selector lee esa página; el
+-- mínimo del código sólo sostiene el sistema cuando falta o no se entiende.
 
 open question "No hay superficie que conteste «enséñame todos mis recorridos». Un recorrido es una página y se encuentra como cualquier página —buscándola, o tropezando con ella desde una de sus paradas—, lo que basta para volver a uno que se recuerda y no para descubrir el que se olvidó. ¿Es eso una carencia o es la consecuencia correcta de que un recorrido no sea una entidad aparte?"

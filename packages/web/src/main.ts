@@ -74,9 +74,16 @@ import { journalsInMap } from './graph/journals.ts';
 import { mapEmbeddingSource } from './map-embedding.ts';
 import {
   applyTokens,
+  createDesign,
+  importDesign,
+  loadDesignLibrary,
   loadTokens,
   reachForGraphViewChange,
+  removeActiveDesign,
+  renameActiveDesign,
+  resetActiveDesign,
   saveTokens,
+  selectDesign,
   session,
   syncPresentation,
   type ColourScheme,
@@ -3682,10 +3689,42 @@ function wireTheme(): void {
         void refreshGraph();
         openSettings();
       },
+      designs: () => loadDesignLibrary(),
+      onDesignSelected: (id) => {
+        tokens = selectDesign(id);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
+      onDesignCreated: (copyCurrent) => {
+        tokens = createDesign(copyCurrent);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
+      onDesignImported: (name, imported) => {
+        tokens = importDesign(name, imported);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
+      onDesignRenamed: (name) => {
+        renameActiveDesign(name);
+        openSettings();
+      },
+      onDesignRemoved: () => {
+        const next = removeActiveDesign();
+        if (next === null) {
+          notice('Debe quedar al menos un diseño.');
+          return;
+        }
+        tokens = next;
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
       onReset: () => {
-        localStorage.removeItem('vera.tokens');
-        tokens = loadTokens();
-        saveTokens(tokens);
+        tokens = resetActiveDesign();
         applyTokens(tokens, workspace.scheme);
         openSettings();
       },

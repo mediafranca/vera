@@ -27,6 +27,7 @@ import {
   type ColourScheme,
   type DesignToken,
   type DesignTokenImportPlan,
+  type DesignLibrary,
   type ParsedDesignTokenPackage,
   type TokenImportMode,
 } from './tokens.ts';
@@ -39,6 +40,12 @@ export interface SettingsHandlers {
   onScheme(next: ColourScheme): void;
   onTokenChange(token: DesignToken, value: string): void;
   onTokensImported(tokens: DesignToken[]): void;
+  designs(): DesignLibrary;
+  onDesignSelected(id: string): void;
+  onDesignCreated(copyCurrent: boolean): void;
+  onDesignImported(name: string, tokens: DesignToken[]): void;
+  onDesignRenamed(name: string): void;
+  onDesignRemoved(): void;
   onReset(): void;
   onClose(): void;
   onOpenFiles(): void;
@@ -1379,13 +1386,15 @@ function drawKeyboard(host: HTMLElement): void {
   table(host, TRIGGERS);
 }
 
-function downloadDesignTokenPackage(tokens: DesignToken[]): void {
-  const contents = serialiseDesignTokenPackage(tokens);
+function downloadDesignTokenPackage(tokens: DesignToken[], name: string): void {
+  const contents = serialiseDesignTokenPackage(tokens, new Date(), name);
   const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
   const link = document.createElement('a');
   const day = new Date().toISOString().slice(0, 10);
   link.href = url;
-  link.download = `vera-tokens-${day}.json`;
+  const slug = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  link.download = `vera-diseno-${slug || day}.json`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -1423,6 +1432,7 @@ function drawTokenImportPreview(
   modeText.textContent = 'Cómo aplicarlo';
   const mode = document.createElement('select');
   const choices: { value: TokenImportMode; label: string }[] = [
+    { value: 'new', label: 'Añadir como un diseño nuevo' },
     { value: 'merge', label: 'Fusionar con la apariencia actual' },
     { value: 'replace', label: 'Reemplazar la apariencia actual' },
   ];
@@ -1457,9 +1467,11 @@ function drawTokenImportPreview(
   let plan: DesignTokenImportPlan;
   const paint = (): void => {
     plan = planDesignTokenImport(current, imported, mode.value as TokenImportMode);
-    consequence.textContent = plan.mode === 'merge'
-      ? 'Sólo cambiarán los tokens presentes en el respaldo; los demás conservarán su valor actual.'
-      : 'Los tokens ausentes volverán a la reserva canónica de Vera antes de aplicar el respaldo.';
+    consequence.textContent = plan.mode === 'new'
+      ? 'Se añadirá un diseño nuevo y el actual permanecerá intacto.'
+      : plan.mode === 'merge'
+        ? 'Sólo cambiarán los tokens presentes en el respaldo; los demás conservarán su valor actual.'
+        : 'Los tokens ausentes volverán a la reserva canónica de Vera antes de aplicar el respaldo.';
     differences.replaceChildren();
     const summary = document.createElement('p');
     summary.className = 'token-import-summary';
@@ -1488,11 +1500,15 @@ function drawTokenImportPreview(
       details.append(heading, list);
       differences.append(details);
     }
-    apply.disabled = plan.changes.length === 0;
+    apply.disabled = plan.mode !== 'new' && plan.changes.length === 0;
   };
 
   mode.addEventListener('change', paint);
   apply.addEventListener('click', () => {
+    if (plan.mode === 'new') {
+      handlers.onDesignImported(imported.package.name, plan.tokens);
+      return;
+    }
     saveTokenImportBackup(current);
     handlers.onTokensImported(plan.tokens);
   });
@@ -1518,12 +1534,16 @@ function drawTokenPortability(
   const exportButton = document.createElement('button');
   exportButton.type = 'button';
   exportButton.className = 'settings-action';
-  exportButton.textContent = 'Exportar tokens…';
-  exportButton.addEventListener('click', () => downloadDesignTokenPackage(tokens));
+  exportButton.textContent = 'Exportar diseño…';
+  exportButton.addEventListener('click', () => {
+    const library = handlers.designs();
+    const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+    downloadDesignTokenPackage(tokens, active.name);
+  });
   const importButton = document.createElement('button');
   importButton.type = 'button';
   importButton.className = 'settings-action';
-  importButton.textContent = 'Importar respaldo…';
+  importButton.textContent = 'Importar diseño…';
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'application/json,.json';
@@ -1574,6 +1594,66 @@ function drawAppearance(
   handlers: SettingsHandlers,
 ): void {
   const scheme = handlers.scheme();
+
+  const library = handlers.designs();
+  // @guarantee NamedDesignsAreOperable: todas las operaciones tienen una
+  // perilla visible aquí; ninguna exige editar JSON ni metadatos del corpus.
+  const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  const designs = document.createElement('section');
+  designs.className = 'appearance-designs';
+  const designsHeading = document.createElement('h3');
+  designsHeading.textContent = 'Diseños';
+  const designsNote = document.createElement('p');
+  designsNote.className = 'settings-note';
+  designsNote.textContent =
+    'Cada diseño reúne tipografías, medidas y los colores claro y oscuro. El esquema que estás viendo se elige aparte.';
+  const chooserRow = document.createElement('label');
+  chooserRow.className = 'settings-field';
+  const chooserLabel = document.createElement('span');
+  chooserLabel.textContent = 'Diseño actual';
+  const designChoice = document.createElement('select');
+  designChoice.setAttribute('aria-label', 'Diseño actual');
+  for (const design of library.designs) {
+    const option = document.createElement('option');
+    option.value = design.id;
+    option.textContent = design.name;
+    option.selected = design.id === library.active;
+    designChoice.append(option);
+  }
+  designChoice.addEventListener('change', () => handlers.onDesignSelected(designChoice.value));
+  chooserRow.append(chooserLabel, designChoice);
+
+  const nameRow = document.createElement('label');
+  nameRow.className = 'settings-field';
+  const nameLabel = document.createElement('span');
+  nameLabel.textContent = 'Nombre';
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.value = active.name;
+  name.addEventListener('change', () => handlers.onDesignRenamed(name.value));
+  nameRow.append(nameLabel, name);
+
+  const actions = document.createElement('div');
+  actions.className = 'settings-actions appearance-design-actions';
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.textContent = 'Nuevo';
+  add.title = 'Crea un diseño con los valores de origen';
+  add.addEventListener('click', () => handlers.onDesignCreated(false));
+  const duplicate = document.createElement('button');
+  duplicate.type = 'button';
+  duplicate.textContent = 'Duplicar';
+  duplicate.title = 'Copia el diseño actual con otro nombre';
+  duplicate.addEventListener('click', () => handlers.onDesignCreated(true));
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.textContent = 'Eliminar';
+  remove.disabled = library.designs.length < 2;
+  remove.title = remove.disabled ? 'Debe quedar al menos un diseño' : `Elimina ${active.name}`;
+  remove.addEventListener('click', () => handlers.onDesignRemoved());
+  actions.append(add, duplicate, remove);
+  designs.append(designsHeading, designsNote, chooserRow, nameRow, actions);
+  host.append(designs);
 
   /*
    * Claro u oscuro, aquí y no en la barra.
