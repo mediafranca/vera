@@ -463,6 +463,14 @@ surface PresentationViewer {
         -- its type smaller. It is not displaced by indentation inherited from
         -- the outline or by a presentation runtime's virtual canvas.
 
+    @guarantee LinksKeepTheScaleOfTheirSlide
+        -- A textual link keeps the scale and line height of the prose that owns
+        -- it, whether it names another page or an external destination. When an
+        -- isolated address is rendered as a resource card, its destination is
+        -- still primary slide content rather than a media caption. The card may
+        -- keep a smaller origin label, but never shrink the address itself to
+        -- metadata size.
+
     @guarantee ThePageOrderIsTheSlideOrder
         -- Previous and next follow the order of first-level blocks. The overview
         -- shows that same order, and progress reports the selected slide among the

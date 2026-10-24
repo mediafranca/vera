@@ -2132,6 +2132,26 @@ html.presenting body {
 }
 
 /*
+ * Una dirección no es el pie de un medio.
+ *
+ * Un URL aislado se presenta como `.linked-resource`: el rótulo de procedencia
+ * y el destino comparten un `figcaption`, porque en la página corriente forman
+ * una tarjeta compacta. La regla anterior encogía el `figcaption` completo en
+ * Presentación y convertía el destino —el contenido principal de la lámina— en
+ * una nota de 11 px. Aquí sólo la procedencia conserva jerarquía secundaria; el
+ * enlace vuelve a la escala y la interlínea de la prosa que lo contiene.
+ */
+.vera-presentation .body .linked-resource figcaption,
+.vera-presentation .body .linked-resource a {
+  font: inherit;
+}
+
+.vera-presentation .body .linked-resource figcaption > span {
+  font-size: 0.5em;
+  line-height: 1.3;
+}
+
+/*
  * Una lámina espacial no es una columna de lectura con un medio dentro: el
  * medio es la lámina. Su caja sale de `--content-width` y mide directamente
  * contra el viewport útil. `contain` decide cuál dimensión manda: un afiche
