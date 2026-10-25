@@ -9812,6 +9812,10 @@ html[data-working-slow='true']::after {
 }
 
 .task-box {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  font: inherit;
   flex: none;
   width: 0.82em;
   height: 0.82em;
@@ -9830,7 +9834,10 @@ html[data-working-slow='true']::after {
   padding: 0;
   cursor: pointer;
   position: relative;
+  overflow: hidden;
 }
+
+.task-box[aria-busy='true'] { cursor: progress; }
 
 /*
  * Centrada en la primera línea del texto, y no en el bloque.
@@ -9860,13 +9867,13 @@ html[data-working-slow='true']::after {
  * veinte pendientes se recorre para saber qué queda, y para eso hay que poder
  * contar sin leer.
  */
-.task-doing .task-box {
+.task-doing > .body > .task-box {
   border-color: var(--accent);
 }
 
 /* Media: la mitad de la casilla pintada. Ni un reloj ni tres puntos —lo que
    dice es «va por la mitad», y media casilla lo dice sin metáfora—. */
-.task-doing .task-box::after {
+.task-doing > .body > .task-box::after {
   content: '';
   position: absolute;
   inset: 1px;
@@ -9876,7 +9883,7 @@ html[data-working-slow='true']::after {
   -webkit-print-color-adjust: exact;
 }
 
-.task-done .task-box {
+.task-done > .body > .task-box {
   border-color: var(--accent);
   background: var(--accent);
   print-color-adjust: exact;
@@ -9885,7 +9892,7 @@ html[data-working-slow='true']::after {
 
 /* El visto, dibujado con dos trazos y no con un carácter: un ✓ de la fuente
    cambia de tamaño y de peso con cada tipografía. */
-.task-done .task-box::after {
+.task-done > .body > .task-box::after {
   content: '';
   position: absolute;
   left: 32%;

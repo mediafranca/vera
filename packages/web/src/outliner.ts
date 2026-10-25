@@ -72,11 +72,9 @@ import {
   LIST_KEY,
   NUMBERED,
   TRAIL_KIND,
-  nextState,
   readChildListStyle,
   readTask,
   withoutTypedOrdinal,
-  writeTask,
 } from '@vera/core';
 import { renderTrailBand, trailMarks, type TrailMark } from './trail-page.ts';
 import { pendingLine, saySeconds } from './waiting.ts';
@@ -85,6 +83,7 @@ import { createPage } from './pages.ts';
 import { presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
+import { clearTaskState, taskToggle } from './task-toggle.ts';
 import {
   actionOf,
   completionFor,
@@ -1860,13 +1859,6 @@ const DEFAULT_NAMES = { kind: 'tipo', topic: 'concepto' };
  * partir»— y no como órdenes —«partir los párrafos»—, que es la diferencia entre
  * describir una página y decidir por quien la escribió.
  */
-/** Cómo se llama cada estado en la hoja de estilo. Sin espacios ni tildes. */
-const TASK_CLASS: Record<string, string> = {
-  'por hacer': 'todo',
-  haciendo: 'doing',
-  hecho: 'done',
-};
-
 const DEFECTS: Record<string, string> = {
   empty_block: 'bloques vacíos',
   monolithic_paragraph: 'párrafos largos sin partir',
@@ -5870,50 +5862,16 @@ export function renderOutliner(
        */
       const task = readTask(node.block.content);
       if (task !== null) {
-        row.classList.add('task', `task-${TASK_CLASS[task.state]}`);
-        const box = document.createElement('button');
-        box.type = 'button';
-        box.className = 'task-box';
-        box.title = `${task.state} · pulsar para pasar a ${nextState(task.state)}`;
-        box.setAttribute('aria-label', box.title);
-        box.setAttribute('role', 'checkbox');
-        box.setAttribute('aria-checked', task.state === 'hecho' ? 'true' : task.state === 'por hacer' ? 'false' : 'mixed');
-        let state = task.state;
-        box.addEventListener('click', (event) => {
-          event.stopPropagation();
+        const box = taskToggle(row, task, (content) =>
           // Pulsar es editar el bloque: una sola clase de operación, con su
           // historia y su deshacer. @invariant PressingIsEditing.
-          const next = nextState(state);
-          box.disabled = true;
-          void submitQuietly({
+          submitQuietly({
             kind: 'edit_block',
             block: node.block.stableId,
-            content: writeTask(next, task.said),
-          }).then((applied) => {
-            box.disabled = false;
-            if (!applied) return;
-
-            /*
-             * Una casilla no cambia la estructura ni las palabras de la tarea.
-             * Redibujar toda la página por ella desmontaba el botón enfocado y,
-             * en páginas largas compuestas por tandas, restauraba el scroll
-             * antes de que este bloque volviera a existir. WebKit limitaba
-             * entonces la posición al breve contenido inicial y dejaba a la
-             * persona arriba de la página.
-             *
-             * El modelo ya fue editado por `api.submit`; aquí sólo se pone al
-             * día su representación presente. El mismo botón conserva así el
-             * foco y el lugar de lectura. @invariant PressingKeepsItsPlace.
-             */
-            state = next;
-            node.block.content = writeTask(state, task.said);
-            row.classList.remove('task-todo', 'task-doing', 'task-done');
-            row.classList.add(`task-${TASK_CLASS[state]}`);
-            box.title = `${state} · pulsar para pasar a ${nextState(state)}`;
-            box.setAttribute('aria-label', box.title);
-            box.setAttribute('aria-checked', state === 'hecho' ? 'true' : state === 'por hacer' ? 'false' : 'mixed');
-          });
-        });
+            content,
+          }),
+          (_state, content) => { node.block.content = content; },
+        );
         body.append(box);
       }
 
@@ -8451,13 +8409,35 @@ function startEditing(
     body.innerHTML = '';
     if (heldAudio !== null) body.append(heldAudio);
 
+    /*
+     * Volver de la fuente reconstruye la misma tarea que dibuja la primera
+     * lectura. Antes este camino renderizaba `[ ]` como texto y dejaba una lista
+     * mezclada hasta recargar. @guarantee ReadingHasOneTaskLanguage.
+     */
+    const task = readTask(content);
+    if (row !== null) {
+      clearTaskState(row);
+      if (task !== null) {
+        body.append(taskToggle(
+          row,
+          task,
+          (nextContent) => submitQuietly({
+            kind: 'edit_block',
+            block: block.stableId,
+            content: nextContent,
+          }),
+          (_state, nextContent) => { block.content = nextContent; },
+        ));
+      }
+    }
+
     // El mismo envoltorio que usa el dibujo inicial. Antes esto escribía el
     // markdown directamente en `body`, así que un bloque recién editado tenía
     // una estructura distinta de la de su vecino y el audio no habría tenido
     // dónde volver.
     const text = document.createElement('div');
     text.className = 'body-text';
-    text.innerHTML = renderMarkdown(content, options);
+    text.innerHTML = renderMarkdown(task === null ? content : task.said, options);
     decorateCodeBlocks(text);
     removeInlineDerivedSources(text);
     text.addEventListener('click', (event) => {

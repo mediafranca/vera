@@ -262,7 +262,16 @@ surface WritingATask {
     @guarantee TheStateIsSeenBeforeItIsRead
         -- Los tres estados se distinguen sin leer la línea: por la casilla. Una
         -- lista de veinte pendientes se recorre para saber qué queda, y para eso
-        -- hay que poder contar sin leer.
+        -- hay que poder contar sin leer. Cada casilla muestra únicamente el
+        -- estado de su propio bloque: anidar una tarea bajo otra no hereda el
+        -- estado visual de la madre.
+
+    @guarantee ReadingHasOneTaskLanguage
+        -- En lectura, una tarea siempre se ve como casilla y texto: nunca como
+        -- la marca fuente `[ ]`, `[/]` o `[x]`. La marca reaparece únicamente
+        -- mientras se edita el bloque y, al terminar, vuelve a convertirse en
+        -- la misma casilla que usan sus vecinas. Editar una línea no puede dejar
+        -- una lista hablando dos lenguajes visuales hasta la próxima recarga.
 
     @guarantee DoneIsQuietAndNotGone
         -- Lo hecho se queda donde estaba, atenuado. No se va a otra parte, no se
@@ -273,6 +282,12 @@ surface WritingATask {
         -- Marcar una tarea actualiza esa casilla sin rehacer la página, conserva
         -- el foco en ella y no mueve el lugar de lectura. Dar algo por hecho en
         -- una lista larga no manda a buscar de nuevo el renglón siguiente.
+
+    @guarantee PressingAnswersNowOrReturns
+        -- El pulso enseña de inmediato el estado siguiente mientras Vera lo
+        -- guarda. Si el cambio es rechazado o no llega al corpus, la casilla
+        -- vuelve al estado anterior y lo hace visible; una red lenta no deja un
+        -- control inmóvil ni un fallo convierte la anticipación en mentira.
 
     @guarantee TheCalendarWritesTheDay
         -- El plazo se pone eligiendo un día en el calendario que Vera ya tiene, y
