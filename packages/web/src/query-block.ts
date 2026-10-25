@@ -10,8 +10,9 @@
 // cree.
 
 import { api, type QueryAnswer, type QueryBlockHit, type QueryHit, type QuerySort } from './api.ts';
-import { nextState, readTask, renderMarkdown, writeTask } from '@vera/core';
+import { readTask, renderMarkdown } from '@vera/core';
 import { countInto } from './waiting.ts';
+import { taskToggle } from './task-toggle.ts';
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -199,22 +200,12 @@ function drawBlocks(blocks: QueryBlockHit[], handlers: QueryBlockHandlers): HTML
     body.className = 'body';
     const task = readTask(hit.content);
     if (task !== null) {
-      row.classList.add('task', `task-${task.state === 'por hacer' ? 'todo' : task.state === 'haciendo' ? 'doing' : 'done'}`);
-      const box = document.createElement('button');
-      box.type = 'button';
-      box.className = 'task-box';
-      box.title = `${task.state} · pulsar para pasar a ${nextState(task.state)}`;
-      box.setAttribute('aria-label', box.title);
-      box.setAttribute('role', 'checkbox');
-      box.setAttribute('aria-checked', task.state === 'hecho' ? 'true' : task.state === 'por hacer' ? 'false' : 'mixed');
-      box.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const next = nextState(task.state);
-        box.disabled = true;
-        void handlers.onEditBlock(hit.id, writeTask(next, task.said)).then((applied) => {
-          if (!applied) box.disabled = false;
-        });
-      });
+      const box = taskToggle(
+        row,
+        task,
+        (content) => handlers.onEditBlock(hit.id, content),
+        (_state, content) => { hit.content = content; },
+      );
       body.append(box);
     }
 
