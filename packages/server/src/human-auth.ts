@@ -17,6 +17,14 @@ const identifier = (prefix: string): string => `${prefix}:${randomBytes(8).toStr
 
 interface Ceremony { rpID: string; origin: string }
 
+function humanParticipant(store: Store, claimed: string): string {
+  const rows = store.db.prepare(`SELECT id FROM participants
+    WHERE kind='human' AND status='active' AND (id=? OR lower(name)=lower(?))
+    ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END`).all(claimed, claimed, claimed) as Array<{ id: string }>;
+  if (rows.length !== 1) throw new Error('la identidad no existe o no es inequívoca');
+  return rows[0]!.id;
+}
+
 export function ceremonyFor(host: string, forwardedProto?: string): Ceremony {
   const hostname = host.replace(/:\d+$/, '');
   const local = hostname === 'localhost' || hostname === '127.0.0.1';
@@ -90,6 +98,7 @@ export async function finishRegistration(store: Store, enrollmentId: string, pro
 
 export async function authenticationOptions(store: Store, participant: string,
   ceremony: Ceremony): Promise<unknown> {
+  participant = humanParticipant(store, participant);
   const credentials = store.db.prepare(`SELECT credential_id,transports FROM human_authenticators
     WHERE participant_id=? AND status='active'`).all(participant) as any[];
   if (credentials.length === 0) throw new Error('no hay passkeys activas para esta identidad');
@@ -107,6 +116,7 @@ export async function authenticationOptions(store: Store, participant: string,
 
 export async function finishAuthentication(store: Store, participant: string,
   response: AuthenticationResponseJSON): Promise<{ secret: string; expiresAt: number }> {
+  participant = humanParticipant(store, participant);
   const challenge = store.db.prepare(`SELECT * FROM webauthn_challenges
     WHERE participant_id=? AND purpose='authentication' AND expires_at>?`).get(participant, Date.now()) as any;
   const row = store.db.prepare(`SELECT * FROM human_authenticators
@@ -128,8 +138,11 @@ export async function finishAuthentication(store: Store, participant: string,
 
 export function participantForSession(store: Store, secret: string): string | null {
   if (!secret.startsWith('vera_session_')) return null;
-  const row = store.db.prepare(`SELECT id,participant_id FROM human_sessions
-    WHERE proof_digest=? AND status='active' AND expires_at>?`).get(digestOf(secret), Date.now()) as any;
+  const row = store.db.prepare(`SELECT s.id,s.participant_id FROM human_sessions s
+    JOIN participants p ON p.id=s.participant_id AND p.status='active'
+    JOIN memberships m ON m.participant_id=s.participant_id AND m.graph_id=? AND m.status='active'
+    WHERE s.proof_digest=? AND s.status='active' AND s.expires_at>?`)
+    .get(store.graphId, digestOf(secret), Date.now()) as any;
   if (row === undefined) return null;
   store.db.prepare(`UPDATE human_sessions SET last_seen_at=? WHERE id=?`).run(Date.now(), row.id);
   return row.participant_id;

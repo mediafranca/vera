@@ -62,7 +62,40 @@ CREATE TABLE IF NOT EXISTS graphs (
 CREATE TABLE IF NOT EXISTS instances (
     id        TEXT PRIMARY KEY,
     graph_id  TEXT NOT NULL UNIQUE REFERENCES graphs (id),
-    owner_id  TEXT NOT NULL REFERENCES participants (id)
+    owner_id  TEXT NOT NULL REFERENCES participants (id),
+    profile   TEXT NOT NULL DEFAULT 'personal' CHECK (profile IN ('personal', 'collective'))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS instance_governance_grants (
+    id              TEXT PRIMARY KEY,
+    instance_id     TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    participant_id  TEXT NOT NULL REFERENCES participants (id),
+    role            TEXT NOT NULL CHECK (role IN (
+                        'root_custodian', 'administrator', 'editor',
+                        'contributor', 'reader', 'publisher')),
+    status          TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+    granted_by      TEXT NOT NULL REFERENCES participants (id),
+    granted_at      INTEGER NOT NULL,
+    revoked_at      INTEGER
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_instance_role
+    ON instance_governance_grants(instance_id, participant_id, role)
+    WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS collective_invitations (
+    id                TEXT PRIMARY KEY,
+    instance_id       TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    issued_by         TEXT NOT NULL REFERENCES participants (id),
+    role              TEXT NOT NULL CHECK (role IN (
+                          'administrator', 'editor', 'contributor', 'reader', 'publisher')),
+    proof_digest      TEXT NOT NULL UNIQUE,
+    intended_contact  TEXT,
+    status            TEXT NOT NULL CHECK (status IN ('pending', 'redeemed', 'revoked', 'expired')),
+    issued_at         INTEGER NOT NULL,
+    expires_at        INTEGER NOT NULL,
+    redeemed_by       TEXT REFERENCES participants (id),
+    redeemed_at       INTEGER
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS memberships (

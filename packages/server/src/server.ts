@@ -119,6 +119,23 @@ import {
   operationReviewProposals,
 } from './operation-proposals.ts';
 import {
+  canReadCollective,
+  canWriteCollective,
+  collectiveGovernanceView,
+  collectiveRoles,
+  ensureInstanceProfile,
+  inspectCollectiveInvitation,
+  inviteToCollective,
+  isCollectiveAdministrator,
+  redeemCollectiveInvitation,
+  revokeCollectiveInvitation,
+  revokeCollectiveRole,
+  revokeCollectiveSessions,
+  type CollectiveRole,
+  type InstanceProfile,
+  type InvitableCollectiveRole,
+} from './instance-governance.ts';
+import {
   ask,
   readPage,
   mergeReadings,
@@ -283,6 +300,8 @@ export interface ServerOptions {
   /** Voz local derivada: no escribe en el grafo ni abandona la máquina. */
   speech?: SpeechSynthesizer;
   owner?: { id: ParticipantId; name: string };
+  /** Perfil de una instancia nueva. Un corpus existente nunca cambia por configuración. */
+  instanceProfile?: InstanceProfile;
   /**
    * En qué puerto quedó escuchando, para poder decirlo.
    *
@@ -368,33 +387,39 @@ interface Submitter {
  * sale de ella; lo que el cuerpo diga sólo puede coincidir o ser rechazado.
  * Nunca se honra una identidad distinta de la que la credencial nombra.
  *
- * Sin credencial se sigue asumiendo el dueño, que es lo que v0 hace desde el
- * principio y lo que docs/architecture.md declara: la aplicación corre en
- * localhost con un único participante propietario y su identidad todavía no se
- * demuestra. Lo que cambia hoy es que esa vía ya no puede escribir como otro:
- * para firmar como el bibliotecario hace falta su credencial.
+ * En una instancia personal se conserva la compatibilidad local: sin sesión ni
+ * credencial se asume al dueño. En una colectiva esa ausencia no identifica a
+ * nadie y se rechaza. En ambos perfiles una credencial de agente sólo firma como
+ * el participante que nombra.
  */
 function authorise(
   store: Store,
   graph: VeraGraph,
   header: string | undefined,
+  humanSession: string | null,
+  profile: InstanceProfile,
   claimed: unknown,
   changeKind: string,
 ): { error: string; status: number } | Submitter {
   const secret = bearerOf(header);
 
   if (secret === null) {
-    const owner = graph.owner;
-    if (owner === null) return { error: 'this graph has no owner', status: 500 };
-    if (typeof claimed === 'string' && claimed !== '' && claimed !== owner) {
+    const participant = humanSession ?? (profile === 'personal' ? graph.owner : null);
+    if (participant === null) {
+      return { error: 'hace falta una sesión humana activa', status: 401 };
+    }
+    if (profile === 'collective' && !canWriteCollective(store, participant)) {
+      return { error: 'esta identidad no tiene autoridad editorial en la instancia', status: 403 };
+    }
+    if (typeof claimed === 'string' && claimed !== '' && claimed !== participant) {
       return {
         status: 403,
         error:
-          `sin credencial sólo se escribe como ${owner}. ` +
+          `esta sesión sólo escribe como ${participant}. ` +
           `Para escribir como ${claimed} hace falta su credencial.`,
       };
     }
-    return { participant: owner, channel: null, credential: null };
+    return { participant, channel: null, credential: null };
   }
 
   const resolved = resolveSecret(store, secret);
@@ -753,6 +778,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
    * escribir durante días como otra persona es un error que no avisa.
    */
   const established = graph.owner;
+  const newGraph = established === null;
   let owner: { id: ParticipantId; name: string };
   if (established !== null) {
     owner = { id: established, name: graph.participant(established)?.name ?? established };
@@ -767,6 +793,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         'declara VERA_OWNER y VERA_OWNER_NAME en .env, o corre `npm run setup`',
     );
   }
+  const profile = ensureInstanceProfile(store, owner.id, options.instanceProfile, newGraph);
 
   const webRoot = options.webRoot === undefined ? null : resolve(options.webRoot);
   const objectsRoot = options.objectsRoot === undefined ? null : resolve(options.objectsRoot);
@@ -1464,18 +1491,25 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /**
    * Quién está leyendo.
    *
-   * Igual que al escribir: sale de la credencial y no de lo que diga quien
-   * pide. Sin credencial es el dueño, que es lo que hoy es cierto —la
-   * aplicación corre en localhost— y se anota como lo que es, sin credencial,
-   * en vez de disimular la ausencia.
+   * Igual que al escribir: sale de la credencial o de la sesión humana. La
+   * compatibilidad que asume al dueño sin prueba existe sólo en el perfil
+   * personal; una colectiva exige sesión y concesión activa.
    */
   const reader = (
     header: string | undefined,
+    humanSession: string | null,
   ):
     | { ok: true; participant: ParticipantId; credential: string | null }
     | { ok: false; detail: string } => {
     const secret = bearerOf(header);
-    if (secret === null) return { ok: true, participant: owner.id, credential: null };
+    if (secret === null) {
+      const participant = humanSession ?? (profile === 'personal' ? owner.id : null);
+      if (participant === null) return { ok: false, detail: 'hace falta una sesión humana activa' };
+      if (profile === 'collective' && !canReadCollective(store, participant)) {
+        return { ok: false, detail: 'esta identidad no tiene acceso activo a la instancia' };
+      }
+      return { ok: true, participant, credential: null };
+    }
     const resolved = resolveSecret(store, secret);
     /*
      * Una credencial que no resuelve se rechaza. No asciende.
@@ -1540,6 +1574,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
     const publicOrigin = forcedPublic || (canonicalHost !== '' && host === canonicalHost);
     const publicAccess = publicOrigin;
+    const humanSession = participantForSession(store, cookie('vera_session'));
 
     /*
      * Vera Desktop recibe sobres MCP por su WebSocket saliente y los deposita
@@ -1613,9 +1648,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const scopedSegment = pathSpace?.[1] ?? referringSpace?.[1] ?? null;
     const scopedSlug = scopedSegment === null ? null : decodeURIComponent(scopedSegment);
     const scopedSpace = scopedSlug === null ? null : sharedSpaceBySlug(store, scopedSlug);
-    const scopedParticipant = publicAccess
-      ? participantForSession(store, cookie('vera_session'))
-      : null;
+    const scopedParticipant = publicAccess ? humanSession : null;
     const scopedGrant = scopedSpace === null || scopedParticipant === null
       ? undefined
       : store.db.prepare(`SELECT permissions FROM access_grants
@@ -1653,11 +1686,20 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // Vera. Su canje y la ceremonia WebAuthn deben, por tanto, poder ocurrir en
     // el origen público sin convertir ese origen en una superficie de escritura
     // general.
-    const publicAdmission = request.method === 'POST' && (
+    const humanAdmission = (
+      request.method === 'GET' && (
+        /^\/invitations\/[^/]+$/.test(path) ||
+        /^\/collective-invitations\/[^/]+$/.test(path)
+      )
+    ) || (request.method === 'POST' && (
       /^\/invitations\/[^/]+\/redeem$/.test(path) ||
+      /^\/collective-invitations\/[^/]+\/redeem$/.test(path) ||
       path === '/human-auth/registration/options' ||
-      path === '/human-auth/registration/verify'
-    );
+      path === '/human-auth/registration/verify' ||
+      path === '/human-auth/authentication/options' ||
+      path === '/human-auth/authentication/verify'
+    ));
+    const publicAdmission = humanAdmission;
     const publicSharedEdit = request.method === 'POST' && path === '/operations' &&
       publicScopedSpace !== null && canEditScopedSpace;
     const publicSharedContribution = request.method === 'POST' && path === '/shared-proposals' &&
@@ -1701,6 +1743,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path.startsWith('/media/') ||
         path.startsWith('/invite/') ||
         /^\/invitations\/[^/]+$/.test(path) ||
+        path.startsWith('/collective-invite/') ||
+        /^\/collective-invitations\/[^/]+$/.test(path) ||
         publicAdmission ||
         publicSharedEdit ||
         publicSharedContribution ||
@@ -1718,6 +1762,29 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     /*
+     * La cáscara de ingreso no es el corpus. Una Vera colectiva sin sesión
+     * puede cargar únicamente el HTML y los recursos compilados que permiten
+     * autenticarse; toda API privada sigue cerrada más abajo. La raíz conduce
+     * a una dirección inequívoca para que el cliente no tenga que deducir por
+     * un fallo de red que debe mostrar el ingreso.
+     */
+    const noPresentedIdentity = bearerOf(request.headers.authorization) === null && humanSession === null;
+    if (!publicAccess && profile === 'collective' && noPresentedIdentity &&
+      (request.method === 'GET' || request.method === 'HEAD')) {
+      if (path === '/') {
+        response.writeHead(302, { location: '/login', 'cache-control': 'no-store' });
+        response.end();
+        return;
+      }
+      const shellPath = path === '/login' || path.startsWith('/invite/') ||
+        path.startsWith('/collective-invite/') || path.startsWith('/enroll-owner/');
+      const staticPath = path.startsWith('/build/') || path.startsWith('/assets/') ||
+        /^\/(?:manifest\.webmanifest|sw\.js|favicon\.ico|apple-touch-icon\.png|icon-[^/]+|fonts\/)/.test(path);
+      if (staticPath && serveStatic(response, path, false)) return;
+      if (shellPath && serveStatic(response, '/index.html', false)) return;
+    }
+
+    /*
      * Quién lee, resuelto una vez y antes de nada.
      *
      * Antes que el enrutado, para que valga en todas las superficies y no en las
@@ -1727,9 +1794,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * Y una sola vez por petición, porque `resolveSecret` marca la credencial
      * como usada: resolverla dos veces contaría dos usos donde hubo uno.
      */
-    const who = publicAccess
+    const who = publicAccess || humanAdmission
       ? { ok: true as const, participant: ANYBODY, credential: null }
-      : reader(request.headers.authorization);
+      : reader(request.headers.authorization, humanSession);
     if (!who.ok) {
       /*
        * No se anota en el registro de exposición, y no por descuido.
@@ -2333,7 +2400,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const applied: Operation[] = [];
         let submitter: Submitter | null = null;
         for (const input of submissions) {
-          const who = authorise(store, trial, request.headers.authorization, body.participant, input.change.kind);
+          const who = authorise(store, trial, request.headers.authorization, humanSession, profile,
+            body.participant, input.change.kind);
           if ('error' in who) {
             send(response, who.status, { status: 'rejected', reason: who.error });
             return;
@@ -2438,6 +2506,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               store,
               graph,
               request.headers.authorization,
+              humanSession,
+              profile,
               body.participant,
               input.change.kind,
             );
@@ -2653,16 +2723,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // Agentes y credenciales (agent-participation.allium)
     // -----------------------------------------------------------------------
     //
-    // Administrar credenciales es cosa del dueño: surface CredentialAdministration.
-    // Mientras la identidad humana no se demuestre, «el dueño» es quien llega sin
-    // credencial, que es la misma asunción con la que v0 lleva funcionando. Lo
-    // que no puede pasar —y ya no pasa— es que un portador de credencial se
-    // emita otra: @invariant SovereignOwnerCredentials.
+    // En una instancia personal administra el dueño; en una colectiva, una
+    // sesión humana con rol administrador. Una credencial de agente nunca puede
+    // emitir autoridad humana: @invariant SovereignOwnerCredentials.
 
-    const ownerOnly = (): { error: string } | null =>
-      bearerOf(request.headers.authorization) === null
+    const ownerOnly = (): { error: string } | null => {
+      if (who.credential !== null) {
+        return { error: 'la administración humana no se delega a una credencial de agente' };
+      }
+      if (profile === 'collective') {
+        return isCollectiveAdministrator(store, who.participant)
+          ? null
+          : { error: 'sólo un administrador activo gobierna esta instancia colectiva' };
+      }
+      return who.participant === owner.id
         ? null
-        : { error: 'sólo el dueño administra credenciales, y no lo hace con una credencial' };
+        : { error: 'sólo el dueño administra esta instancia personal' };
+    };
 
     /*
      * Resolver juntas las decisiones sobre las páginas marcadas.
@@ -3215,7 +3292,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             send(response, 400, { error: 'la propuesta necesita originId, block, revision, purpose y content' }); return;
           }
           const change: Change = { kind: 'edit_block', block: blockId, content };
-          const who = authorise(store, graph, request.headers.authorization, undefined, 'edit_block');
+          const who = authorise(store, graph, request.headers.authorization, humanSession, profile,
+            undefined, 'edit_block');
           if ('error' in who) { send(response, who.status, { error: who.error }); return; }
           if (who.credential === null || graph.participant(who.participant)?.kind !== 'agent') {
             send(response, 403, { error: 'sólo una identidad agente autenticada puede dejar esta propuesta' }); return;
@@ -3407,6 +3485,114 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const secure = ceremony().origin.startsWith('https:') ? '; Secure' : '';
       response.setHeader('set-cookie', `vera_session=${encodeURIComponent(secret)}; Path=/; HttpOnly; SameSite=Strict${secure}; Expires=${new Date(expiresAt).toUTCString()}`);
     };
+
+    if (request.method === 'GET' && path === '/instance-profile') {
+      send(response, 200, {
+        profile,
+        participant: who.participant,
+        roles: profile === 'collective' ? collectiveRoles(store, who.participant) : ['owner'],
+      });
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/collective-governance') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      send(response, 200, collectiveGovernanceView(store, who.participant));
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/collective-invitations') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const chunks: Buffer[] = []; request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+          const role = String(body['role'] ?? '') as InvitableCollectiveRole;
+          if (!['administrator', 'editor', 'reader'].includes(role)) {
+            send(response, 400, { error: 'el rol de la invitación no es válido' }); return;
+          }
+          const invitation = inviteToCollective(store, who.participant, role,
+            typeof body['intendedContact'] === 'string' ? body['intendedContact'] : undefined);
+          const invitationPath = `/collective-invite/${encodeURIComponent(invitation.id)}?secret=${encodeURIComponent(invitation.secret)}`;
+          const canonicalDomain = publicSite()?.canonicalDomain ?? options.publicSite?.canonicalDomain;
+          const url = canonicalDomain === undefined ? invitationPath
+            : new URL(invitationPath, `${canonicalDomain.replace(/\/$/, '')}/`).toString();
+          send(response, 201, { ...invitation, role, url });
+        } catch (error) {
+          send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+        }
+      });
+      return;
+    }
+
+    if (request.method === 'DELETE' && /^\/collective-invitations\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const invitation = decodeURIComponent(path.split('/')[2] ?? '');
+      if (!revokeCollectiveInvitation(store, invitation)) {
+        send(response, 409, { error: 'la invitación no está pendiente o no existe' }); return;
+      }
+      send(response, 200, { status: 'revoked' });
+      return;
+    }
+
+    if (request.method === 'DELETE' && /^\/collective-participants\/[^/]+\/sessions$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const participant = decodeURIComponent(path.split('/')[2] ?? '');
+      send(response, 200, { revoked: revokeCollectiveSessions(store, participant) });
+      return;
+    }
+
+    if (request.method === 'DELETE' && /^\/collective-participants\/[^/]+\/roles\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const participant = decodeURIComponent(path.split('/')[2] ?? '');
+      const role = decodeURIComponent(path.split('/')[4] ?? '') as CollectiveRole;
+      if (!['administrator', 'editor', 'contributor', 'reader', 'publisher'].includes(role)) {
+        send(response, 400, { error: 'el rol no es revocable desde esta puerta' }); return;
+      }
+      try {
+        revokeCollectiveRole(store, participant, role);
+        send(response, 200, { status: 'revoked' });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && /^\/collective-invitations\/[^/]+$/.test(path)) {
+      const invitation = decodeURIComponent(path.split('/')[2] ?? '');
+      const proof = url.searchParams.get('secret') ?? '';
+      const view = inspectCollectiveInvitation(store, invitation, proof);
+      if (view === null) { send(response, 404, { error: 'la invitación no existe o el secreto no coincide' }); return; }
+      send(response, 200, view);
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/collective-invitations\/[^/]+\/redeem$/.test(path)) {
+      const invitation = decodeURIComponent(path.split('/')[2] ?? '');
+      const chunks: Buffer[] = []; request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+          const proof = typeof body['secret'] === 'string' ? body['secret'] : '';
+          const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
+          if (proof === '' || name === '') { send(response, 400, { error: 'el canje necesita secret y name' }); return; }
+          const redeemed = redeemCollectiveInvitation(store, invitation, proof, name);
+          graph.addParticipant({ id: redeemed.participant, name, kind: 'human' });
+          graph.admit(redeemed.participant);
+          const session = issueSession(store, redeemed.participant);
+          setHumanSession(session.secret, session.expiresAt);
+          send(response, 201, { ...redeemed, sessionExpiresAt: session.expiresAt });
+        } catch (error) {
+          send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+        }
+      });
+      return;
+    }
 
     if (request.method === 'GET' && /^\/invitations\/[^/]+$/.test(path)) {
       const invitation = decodeURIComponent(path.split('/')[2] ?? '');

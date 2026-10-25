@@ -1,4 +1,4 @@
-import { startRegistration } from '@simplewebauthn/browser';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { DEFAULT_TOKENS, session } from './tokens.ts';
 
 /**
@@ -123,6 +123,64 @@ async function invitation(id: string, secret: string): Promise<void> {
   } catch (error) { notice(main, error instanceof Error ? error.message : 'La invitación no está disponible.', true); }
 }
 
+async function collectiveInvitation(id: string, secret: string): Promise<void> {
+  const main = shell('Invitación a Vera');
+  try {
+    const preview = await json(`/collective-invitations/${encodeURIComponent(id)}?secret=${encodeURIComponent(secret)}`);
+    const detail = document.createElement('p'); detail.className = 'invitation-detail';
+    detail.textContent = `Rol: ${preview.role}. Esta invitación vence ${new Date(preview.expiresAt).toLocaleString()}.`;
+    const field = document.createElement('label'); field.className = 'invitation-field'; field.textContent = 'Tu nombre';
+    const name = document.createElement('input'); name.placeholder = 'Nombre y apellido'; name.autocomplete = 'name'; name.required = true;
+    field.append(name);
+    const accept = document.createElement('button'); accept.textContent = 'Entrar a Vera';
+    accept.onclick = () => void (async () => {
+      if (name.value.trim() === '') { name.focus(); notice(main, 'Escribe tu nombre para continuar.', true); return; }
+      accept.disabled = true; notice(main, 'Creando tu identidad y autoridad…');
+      try {
+        const redeemed = await json(`/collective-invitations/${encodeURIComponent(id)}/redeem`, 'POST',
+          { secret, name: name.value.trim() });
+        sessionStorage.setItem('vera-passkey-enrollment', JSON.stringify({
+          enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret,
+        }));
+        localStorage.setItem('vera-human:instance', redeemed.participant);
+        location.assign('/');
+      } catch (error) {
+        notice(main, error instanceof Error ? error.message : 'No se pudo aceptar la invitación.', true);
+        accept.disabled = false;
+      }
+    })();
+    main.append(detail, field, accept);
+  } catch (error) { notice(main, error instanceof Error ? error.message : 'La invitación no está disponible.', true); }
+}
+
+async function login(): Promise<void> {
+  const main = shell('Entrar a Vera');
+  const detail = document.createElement('p'); detail.className = 'invitation-detail';
+  detail.textContent = 'Usa tu passkey. Vera comprueba tu identidad y luego aplica el rol que esté vigente para ti.';
+  const field = document.createElement('label'); field.className = 'invitation-field'; field.textContent = 'Tu identidad';
+  const identity = document.createElement('input');
+  identity.placeholder = 'Nombre o identificador'; identity.autocomplete = 'username webauthn';
+  identity.value = localStorage.getItem('vera-human:instance') ?? '';
+  field.append(identity);
+  const enter = document.createElement('button'); enter.textContent = 'Entrar con passkey';
+  enter.onclick = () => void (async () => {
+    const participant = identity.value.trim();
+    if (participant === '') { identity.focus(); notice(main, 'Escribe tu nombre o identificador.', true); return; }
+    enter.disabled = true; notice(main, 'Esperando la passkey…');
+    try {
+      const options = await json('/human-auth/authentication/options', 'POST', { participant });
+      const response = await startAuthentication({ optionsJSON: options });
+      await json('/human-auth/authentication/verify', 'POST', { participant, response });
+      localStorage.setItem('vera-human:instance', participant);
+      location.assign('/');
+    } catch (error) {
+      notice(main, error instanceof Error ? error.message : 'No se pudo iniciar la sesión.', true);
+      enter.disabled = false;
+    }
+  })();
+  main.append(detail, field, enter);
+}
+
 interface PendingPasskeyEnrollment { enrollment: string; secret: string }
 
 function pendingPasskeyEnrollment(): PendingPasskeyEnrollment | null {
@@ -204,7 +262,8 @@ async function ownerEnrollment(enrollment: string, secret: string): Promise<void
     try {
       const options = await json('/human-auth/registration/options', 'POST', { enrollment, secret });
       const response = await startRegistration({ optionsJSON: options });
-      await json('/human-auth/registration/verify', 'POST', { enrollment, secret, response });
+      const registered = await json('/human-auth/registration/verify', 'POST', { enrollment, secret, response });
+      localStorage.setItem('vera-human:instance', registered.participant);
       location.assign('/');
     } catch (error) {
       notice(main, error instanceof Error ? error.message : 'No se pudo registrar la passkey.', true);
@@ -216,9 +275,19 @@ async function ownerEnrollment(enrollment: string, secret: string): Promise<void
 }
 
 export function handlesSharedAccess(): boolean {
+  if (location.pathname === '/login') {
+    void login();
+    return true;
+  }
   const invite = /^\/invite\/([^/]+)$/.exec(location.pathname);
   if (invite !== null) {
     void invitation(decodeURIComponent(invite[1] ?? ''), new URL(location.href).searchParams.get('secret') ?? '');
+    return true;
+  }
+  const collective = /^\/collective-invite\/([^/]+)$/.exec(location.pathname);
+  if (collective !== null) {
+    void collectiveInvitation(decodeURIComponent(collective[1] ?? ''),
+      new URL(location.href).searchParams.get('secret') ?? '');
     return true;
   }
   const enroll = /^\/enroll-owner\/([^/]+)$/.exec(location.pathname);

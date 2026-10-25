@@ -5,7 +5,7 @@
 -- Includes: First-run profile choice, explicit authority in collective instances,
 --   root custody, and governed migration between separately held corpora
 -- Excludes:
---   - Human authentication ceremonies and sessions
+--   - WebAuthn ceremony and cryptographic storage implementation
 --     (see shared-space-access.allium)
 --   - Page-level sharing and proposal review inside one space
 --     (see shared-space-access.allium)
@@ -61,6 +61,30 @@ contract CollectiveAuthority {
     @invariant RevocationPreservesHistory
         -- Revocation prevents future effects and leaves prior authorship,
         -- decisions and audit evidence attributed to their participants.
+}
+
+contract ProfileAuthenticationBoundary {
+    enter: (participant: core/Participant, governance: InstanceGovernance, session: sharing/HumanSession) -> InstanceGovernance
+
+    @invariant OneHumanIdentityMechanism
+        -- Personal and collective instances use the same passkeys, bounded
+        -- sessions and machine-rooted recovery. The profile changes what an
+        -- authenticated participant may do, never how a person proves identity.
+
+    @invariant CollectiveRequestsNeverAssumeTheCustodian
+        -- In a collective instance an absent, expired or revoked human session
+        -- grants no private read or mutation. Reaching localhost, the private
+        -- network or the machine's origin never becomes the root custodian.
+
+    @invariant AuthenticationDoesNotGrantAuthority
+        -- A valid session proves one participant. Entering the private corpus
+        -- additionally requires an active governance grant, and every effect is
+        -- checked against that grant's role and territory.
+
+    @invariant AuthenticationDoorsRemainReachable
+        -- The application shell, invitation redemption, passkey registration
+        -- and passkey authentication remain reachable without a prior session.
+        -- None of those doors delivers private corpus content.
 }
 
 contract ProfileMigration {
@@ -296,6 +320,24 @@ rule CollectiveAdministratorRevokesAuthority {
         grant.revoked_at = now
 }
 
+rule AuthenticatedParticipantEntersCollectiveInstance {
+    when: EnterGovernedInstance(participant, governance, session)
+
+    requires: governance.profile = collective
+    requires: session.instance = governance.instance
+    requires: session.participant = participant
+    requires: session.status = active
+    requires: session.expires_at > now
+    requires: exists GovernanceGrant{
+        governance: governance,
+        participant: participant,
+        role: role where role != root_custodian,
+        status: active
+    }
+
+    ensures: CollectiveWorkshopEntered(participant, governance)
+}
+
 rule AdministratorPlansProfileMigration {
     when: PlanProfileMigration(proposer, source, destination, kind, pages)
 
@@ -456,6 +498,21 @@ invariant ActiveAuthorityIsUniquePerParticipantRoleAndTerritory {
                 a.site != b.site
 }
 
+invariant EveryCollectiveHumanEntryHasSessionAndAuthority {
+    for entry in CollectiveWorkshopEntries:
+        exists sharing/HumanSession{
+            instance: entry.governance.instance,
+            participant: entry.participant,
+            status: active
+        } and
+        exists GovernanceGrant{
+            governance: entry.governance,
+            participant: entry.participant,
+            role: role where role != root_custodian,
+            status: active
+        }
+}
+
 invariant MigrationUsesSeparateCorpora {
     for migration in GovernanceMigrations:
         migration.source.instance.graph != migration.destination.instance.graph
@@ -535,6 +592,21 @@ surface FirstRunProfileSelection {
         -- credential as proof of its custodian or initial administrator.
 }
 
+surface CollectiveHumanEntry {
+    facing participant: core/Participant
+    context governance: InstanceGovernance where profile = collective
+
+    provides:
+        EnterGovernedInstance(participant, governance, session)
+
+    contracts:
+        fulfils ProfileAuthenticationBoundary
+
+    @guarantee FailureRevealsNoPrivateCorpus
+        -- Missing, expired or revoked proof receives an authentication refusal,
+        -- not a partial page, title list, search result or graph fragment.
+}
+
 surface CollectiveGovernanceAdministration {
     facing administrator: GovernanceAdministrator
     context governance: InstanceGovernance where profile = collective
@@ -555,6 +627,11 @@ surface CollectiveGovernanceAdministration {
     @guarantee EveryEffectiveRoleIsVisible
         -- People can inspect who currently holds each role and territory. A
         -- hidden configuration value never grants collective authority.
+
+    @guarantee AdmissionCapabilitiesAreVisibleAndRevocable
+        -- Pending invitations appear separately from people, name their future
+        -- role and expiry, and can be revoked before redemption. The bearer
+        -- secret itself is shown only when the invitation is issued.
 }
 
 surface ProfileMigrationPlanning {

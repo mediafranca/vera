@@ -13,6 +13,7 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /label: 'Teclado'/);
     assert.match(settings, /label: 'Apariencia'/);
     assert.doesNotMatch(settings, /id: 'archivos', label: 'Archivos'/);
+    assert.match(settings, /'Personas e identidad',[\s\S]*handlers\.onOpenPeople/);
     assert.match(settings, /'Espacios compartidos',[\s\S]*handlers\.onOpenSharing/);
     assert.match(settings, /'Archivos',[\s\S]*handlers\.onOpenFiles/);
     assert.match(settings, /'Registro de actividad',[\s\S]*handlers\.onOpenActivity/);

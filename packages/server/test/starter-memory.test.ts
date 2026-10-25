@@ -78,4 +78,19 @@ describe('memoria inicial distribuida', () => {
       /ya pertenece a participant:primera/,
     );
   });
+
+  it('una memoria colectiva se presenta como colectiva desde el primer bloque', () => {
+    const databasePath = join(mkdtempSync(join(tmpdir(), 'vera-starter-collective-')), 'vera.sqlite');
+    initializeStarterMemory({ databasePath, owner: { id: 'participant:custodia', name: 'Custodia' },
+      profile: 'collective' });
+    const store = openStore({ path: databasePath, graphName: 'mind' });
+    const graph = loadGraph(store, 'mind');
+    const firstSteps = graph.pages().find((page) => page.title === 'VERA — Primeros pasos');
+    const principles = graph.pages().find((page) => page.title === 'VERA — Principios');
+    assert.ok(firstSteps && principles);
+    assert.ok(graph.blocksOf(firstSteps.id).some((block) => /cada persona entra con su propia passkey/.test(block.content)));
+    assert.ok(graph.blocksOf(principles.id).some((block) => /pertenece a su comunidad gobernada/.test(block.content)));
+    assert.ok(!graph.blocksOf(firstSteps.id).some((block) => /única persona propietaria/.test(block.content)));
+    store.close();
+  });
 });
