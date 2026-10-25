@@ -44,7 +44,8 @@ import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
 import { isDay, today } from './autocomplete.ts';
 import { GOVERNING_KINDS } from './governing-table.ts';
-import { renderFilesAdministration, renderSettings, renderSharingAdministration, type Section } from './settings.ts';
+import { renderCollectiveAdministration, renderFilesAdministration, renderSettings,
+  renderSharingAdministration, type Section } from './settings.ts';
 import { parseRoute, routeTo, searchRoute } from './router.ts';
 import { voice } from './voice.ts';
 import { brandMark, icon, type IconName } from './icons.ts';
@@ -1732,6 +1733,10 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
  * así que el historial del navegador y el de Vera cuentan lo mismo.
  */
 async function applyRoute(): Promise<void> {
+  if (window.location.pathname === '/personas') {
+    await openCollectiveAdministration();
+    return;
+  }
   if (window.location.pathname === '/compartir') {
     await openSharingAdministration();
     return;
@@ -1790,6 +1795,16 @@ async function applyRoute(): Promise<void> {
   if (presentationBlock !== null) {
     if (openView !== null) void presentOutlinerPage(openView, callbacksFor(openView), presentationBlock);
   }
+}
+
+async function openCollectiveAdministration(push = false): Promise<void> {
+  workspace.activePage = null;
+  workspace.focusRoot = null;
+  nameWindow('Personas e identidad');
+  if (push && window.location.pathname !== '/personas') window.history.pushState({}, '', '/personas');
+  $('#vera-root').classList.add('special-surface');
+  closeSettings();
+  await renderCollectiveAdministration($('#text'));
 }
 
 async function openSharingAdministration(push = false): Promise<void> {
@@ -3584,6 +3599,7 @@ function wireTheme(): void {
       },
       onClose: closeSettings,
       onOpenFiles: () => void openFilesAdministration(true),
+      onOpenPeople: () => void openCollectiveAdministration(true),
       onOpenSharing: () => void openSharingAdministration(true),
       onOpenActivity: () => void openActivityAdministration(),
     });

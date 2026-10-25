@@ -324,4 +324,31 @@ describe('migraciones', () => {
     assert.equal(version(db), SCHEMA_VERSION);
     db.close();
   });
+
+  it('declara como personal una instancia anterior y añade el gobierno colectivo', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE graphs (id TEXT PRIMARY KEY, name TEXT NOT NULL) STRICT;
+      CREATE TABLE participants (id TEXT PRIMARY KEY, name TEXT NOT NULL) STRICT;
+      CREATE TABLE instances (
+        id TEXT PRIMARY KEY,
+        graph_id TEXT NOT NULL UNIQUE REFERENCES graphs(id),
+        owner_id TEXT NOT NULL REFERENCES participants(id)
+      ) STRICT;
+      INSERT INTO graphs VALUES ('graph:1', 'mind');
+      INSERT INTO participants VALUES ('participant:herbert', 'Herbert');
+      INSERT INTO instances VALUES ('instance:1', 'graph:1', 'participant:herbert');
+      PRAGMA user_version = 22;
+    `);
+
+    migrate(db, false);
+
+    const instance = db.prepare('SELECT owner_id,profile FROM instances').get() as any;
+    assert.equal(instance.owner_id, 'participant:herbert');
+    assert.equal(instance.profile, 'personal');
+    assert.equal(count(db, 'instance_governance_grants'), 0);
+    assert.equal(count(db, 'collective_invitations'), 0);
+    assert.equal(version(db), SCHEMA_VERSION);
+    db.close();
+  });
 });

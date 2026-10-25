@@ -72,6 +72,10 @@ const ownerId = setting('VERA_OWNER');
 const ownerName = setting('VERA_OWNER_NAME');
 const declaredOwner =
   ownerId === undefined ? undefined : { id: ownerId, name: ownerName ?? ownerId };
+const declaredProfile = setting('VERA_PROFILE');
+if (declaredProfile !== undefined && declaredProfile !== 'personal' && declaredProfile !== 'collective') {
+  throw new Error('VERA_PROFILE debe ser personal o collective');
+}
 
 /*
  * Por dónde se alcanza esta Vera desde otro equipo.
@@ -144,6 +148,7 @@ const { vera } = listen({
   ...(librarianHook === undefined ? {} : { librarianHook }),
   ...(processConnections === undefined ? {} : { processConnections }),
   ...(declaredOwner === undefined ? {} : { owner: declaredOwner }),
+  ...(declaredProfile === undefined ? {} : { instanceProfile: declaredProfile }),
 });
 
 console.log(`Vera escucha en http://localhost:${port}`);
@@ -152,6 +157,9 @@ console.log(`  base:     ${databasePath}`);
 // evita es silencioso: escribir durante días como otra persona.
 const dueño = vera.graph.owner;
 console.log(`  dueño:    ${vera.graph.participant(dueño ?? '')?.name ?? '—'} (${dueño ?? 'sin dueño'})`);
+const profile = vera.store.db.prepare('SELECT profile FROM instances WHERE graph_id=?')
+  .get(vera.store.graphId) as { profile: string } | undefined;
+console.log(`  perfil:   ${profile?.profile ?? 'personal'}`);
 console.log(`  páginas:  ${vera.graph.pages().length}`);
 console.log(`  bloques:  ${vera.graph.allBlocks().length}`);
 console.log(`  secuencia:${vera.graph.log().lastSequence}`);
@@ -205,7 +213,8 @@ if (built === 0) {
 
 // Escuchar fuera de loopback sin que las personas se autentiquen entrega el
 // grafo a cualquiera que alcance el puerto. Se dice al arrancar, cada vez.
-if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+if ((profile?.profile ?? 'personal') === 'personal' &&
+  host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
   console.log(`  aviso:    escuchando en ${host}, y las personas todavía no se autentican:`);
   console.log('            cualquiera que alcance este puerto escribe como el dueño');
 }

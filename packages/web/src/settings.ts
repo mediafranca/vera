@@ -42,6 +42,7 @@ export interface SettingsHandlers {
   onReset(): void;
   onClose(): void;
   onOpenFiles(): void;
+  onOpenPeople(): void;
   onOpenSharing(): void;
   onOpenActivity(): void;
   /**
@@ -167,6 +168,16 @@ interface SharedAdministration {
     proposedAt: number; reviewedBy: string | null; reviewedAt: number | null }[];
 }
 
+type CollectiveRole = 'root_custodian' | 'administrator' | 'editor' | 'contributor' | 'reader' | 'publisher';
+interface CollectiveGovernance {
+  profile: 'personal' | 'collective'; participant: string; roles: CollectiveRole[];
+  people: { participant: string; name: string; roles: CollectiveRole[];
+    authenticators: number; activeSessions: number }[];
+  invitations: { id: string; role: 'administrator' | 'editor' | 'reader'; intendedContact: string | null;
+    status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number;
+    redeemedBy: string | null }[];
+}
+
 async function sharingRequest(path: string, method = 'GET', body?: unknown): Promise<any> {
   const response = await fetch(path, { method, headers: { 'content-type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -247,6 +258,135 @@ export async function renderSharingAdministration(host: HTMLElement): Promise<vo
   // En la página completa las acciones no deben quedar escondidas detrás del
   // resumen del espacio: la invitación y su botón se ven al llegar.
   body.querySelectorAll<HTMLDetailsElement>('.sharing-space').forEach((space) => { space.open = true; });
+}
+
+/** Gobierno humano de la instancia: identidad primero; subgrafos después. */
+export async function renderCollectiveAdministration(host: HTMLElement): Promise<void> {
+  host.innerHTML = '';
+  const page = document.createElement('article'); page.className = 'sharing-administration';
+  const head = document.createElement('header'); head.className = 'special-page-header';
+  const title = document.createElement('h1'); title.textContent = 'Personas e identidad';
+  const back = document.createElement('button'); back.type = 'button'; back.textContent = '← Volver';
+  back.onclick = () => window.history.back(); head.append(title, back);
+  const body = document.createElement('div'); body.className = 'sharing-administration-body';
+  page.append(head, body); host.append(page);
+  await drawCollectiveAdministration(body);
+}
+
+async function drawCollectiveAdministration(host: HTMLElement): Promise<void> {
+  host.innerHTML = '';
+  const status = document.createElement('p'); status.className = 'settings-note';
+  status.textContent = 'Leyendo el gobierno de la instancia…'; host.append(status);
+  let view: CollectiveGovernance;
+  try { view = await sharingRequest('/collective-governance') as CollectiveGovernance; }
+  catch (error) { status.textContent = error instanceof Error ? error.message : 'No se pudo leer el gobierno.'; return; }
+  status.textContent = view.profile === 'collective'
+    ? `Instancia colectiva · tus roles: ${view.roles.join(', ') || 'ninguno'}.`
+    : 'Instancia personal · una sola persona gobierna el corpus y el acceso local sigue funcionando sin iniciar sesión.';
+  if (view.profile !== 'collective') {
+    const boundary = document.createElement('section'); boundary.className = 'sharing-group';
+    const title = document.createElement('h4'); title.textContent = 'Pasar a una Vera colectiva';
+    const explanation = document.createElement('p'); explanation.className = 'settings-note';
+    explanation.textContent = 'No es un interruptor sobre este corpus. La conversión crea otra instancia y conserva su linaje; antes de migrar se registra y comprueba una passkey administrativa. Este acceso personal no cambia hasta completar esa prueba.';
+    const sharing = document.createElement('p'); sharing.className = 'settings-note';
+    sharing.textContent = 'Para colaborar sin cambiar el gobierno de esta Vera, usa Espacios compartidos.';
+    boundary.append(title, explanation, sharing); host.append(boundary);
+    return;
+  }
+
+  const people = document.createElement('section'); people.className = 'sharing-group';
+  const peopleTitle = document.createElement('h4'); peopleTitle.textContent = 'Personas'; people.append(peopleTitle);
+  const list = document.createElement('ul'); list.className = 'sharing-list';
+  for (const person of view.people) {
+    const row = document.createElement('li');
+    const identity = document.createElement('span'); identity.textContent = person.name;
+    const facts = document.createElement('small');
+    facts.textContent = `${person.roles.join(', ') || 'sin acceso'} · ${person.authenticators} passkey · ${person.activeSessions} sesiones`;
+    identity.append(facts); row.append(identity);
+    const actions = document.createElement('span'); actions.className = 'sharing-permissions';
+    if (person.activeSessions > 0) {
+      const close = document.createElement('button'); close.type = 'button'; close.textContent = 'Cerrar sesiones';
+      close.onclick = () => void sharingRequest(`/collective-participants/${encodeURIComponent(person.participant)}/sessions`, 'DELETE')
+        .then(() => drawCollectiveAdministration(host)).catch((error: unknown) => alert(error instanceof Error ? error.message : 'No se pudo revocar.'));
+      actions.append(close);
+    }
+    for (const role of person.roles.filter((one) => one !== 'root_custodian')) {
+      const revoke = document.createElement('button'); revoke.type = 'button'; revoke.textContent = `Revocar ${role}`;
+      revoke.onclick = () => void sharingRequest(`/collective-participants/${encodeURIComponent(person.participant)}/roles/${encodeURIComponent(role)}`, 'DELETE')
+        .then(() => drawCollectiveAdministration(host)).catch((error: unknown) => alert(error instanceof Error ? error.message : 'No se pudo revocar.'));
+      actions.append(revoke);
+    }
+    row.append(actions); list.append(row);
+  }
+  people.append(list); host.append(people);
+
+  const invite = document.createElement('section'); invite.className = 'sharing-group';
+  const inviteTitle = document.createElement('h4'); inviteTitle.textContent = 'Nueva invitación';
+  const explanation = document.createElement('p'); explanation.className = 'settings-note';
+  explanation.textContent = 'El enlace es secreto, vence y se usa una sola vez. Al aceptarlo, la persona entra y puede registrar su propia passkey.';
+  const form = document.createElement('form'); form.className = 'sharing-publish';
+  const contact = document.createElement('input'); contact.placeholder = 'nombre o contacto (opcional)';
+  const role = document.createElement('select');
+  for (const [value, label] of [['reader', 'Lectura'], ['editor', 'Edición'],
+    ['administrator', 'Administración']] as const) {
+    const option = document.createElement('option'); option.value = value; option.textContent = label; role.append(option);
+  }
+  const create = document.createElement('button'); create.type = 'submit'; create.textContent = 'Crear invitación';
+  const result = document.createElement('div'); result.className = 'sharing-invitation-result';
+  form.append(contact, role, create); invite.append(inviteTitle, explanation, form, result); host.append(invite);
+  form.onsubmit = (event) => void (async () => {
+    event.preventDefault(); create.disabled = true;
+    try {
+      const made = await sharingRequest('/collective-invitations', 'POST', {
+        role: role.value, intendedContact: contact.value.trim() || undefined,
+      });
+      const url = new URL(String(made.url), location.origin).href;
+      rememberInvitationUrl(String(made.id), url);
+      const output = document.createElement('input'); output.readOnly = true; output.value = url;
+      const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copiar enlace';
+      copy.onclick = () => void navigator.clipboard.writeText(url).then(() => { copy.textContent = 'Copiado'; })
+        .catch(() => { output.focus(); output.select(); copy.textContent = 'Enlace seleccionado'; });
+      const warning = document.createElement('p'); warning.className = 'settings-note';
+      warning.textContent = `Sólo se muestra ahora. Vence ${new Date(made.expiresAt).toLocaleString()}.`;
+      result.replaceChildren(output, copy, warning); contact.value = '';
+      await drawCollectiveInvitationList(host);
+    } catch (error) { alert(error instanceof Error ? error.message : 'No se pudo crear.'); }
+    finally { create.disabled = false; }
+  })();
+  await drawCollectiveInvitationList(host, view);
+}
+
+async function drawCollectiveInvitationList(host: HTMLElement, initial?: CollectiveGovernance): Promise<void> {
+  host.querySelector('#collective-invitations')?.remove();
+  const view = initial ?? await sharingRequest('/collective-governance') as CollectiveGovernance;
+  const box = document.createElement('section'); box.id = 'collective-invitations'; box.className = 'sharing-group';
+  const title = document.createElement('h4'); title.textContent = 'Invitaciones'; box.append(title);
+  const list = document.createElement('ul'); list.className = 'sharing-list';
+  for (const invitation of view.invitations) {
+    const row = document.createElement('li');
+    const text = document.createElement('span');
+    text.textContent = `${invitation.intendedContact ?? 'Sin destinatario'} · ${invitation.role} · ${invitation.status}`;
+    if (invitation.status === 'pending') {
+      const expiry = document.createElement('small'); expiry.textContent = `vence ${new Date(invitation.expiresAt).toLocaleString()}`;
+      text.append(expiry);
+    }
+    row.append(text);
+    if (invitation.status === 'pending') {
+      const held = rememberedInvitationUrl(invitation.id);
+      if (held !== null) {
+        const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copiar';
+        copy.onclick = () => void navigator.clipboard.writeText(held); row.append(copy);
+      }
+      const revoke = document.createElement('button'); revoke.type = 'button'; revoke.textContent = 'Revocar';
+      revoke.onclick = () => void sharingRequest(`/collective-invitations/${encodeURIComponent(invitation.id)}`, 'DELETE')
+        .then(() => { forgetInvitationUrl(invitation.id); void drawCollectiveAdministration(host); })
+        .catch((error: unknown) => alert(error instanceof Error ? error.message : 'No se pudo revocar.'));
+      row.append(revoke);
+    }
+    list.append(row);
+  }
+  if (view.invitations.length === 0) { const empty = document.createElement('li'); empty.textContent = 'Ninguna todavía.'; list.append(empty); }
+  box.append(list); host.append(box);
 }
 
 /** Control contextual: pertenencia de una página sin obligar a reconstruirla
@@ -959,6 +1099,11 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
   const administration = document.createElement('div');
   administration.className = 'settings-destinations';
   administration.append(
+    destination(
+      'Personas e identidad',
+      'Perfil de instancia, roles, passkeys, sesiones e invitaciones',
+      handlers.onOpenPeople,
+    ),
     destination(
       'Espacios compartidos',
       'Publicación, páginas, participantes e invitaciones',

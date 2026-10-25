@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 
 import { type Change, VeraGraph } from '@vera/core';
 import { loadGraph, openStore, recordOperation, saveParticipant } from '@vera/store';
+import { ensureInstanceProfile, type InstanceProfile } from './instance-governance.ts';
 
 export const STARTER_MEMORY_VERSION = 1;
 export const DISTRIBUTION_PARTICIPANT = 'participant:vera-distribution';
@@ -172,6 +173,7 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
 export interface InitializeStarterMemoryOptions {
   readonly databasePath: string;
   readonly owner: { readonly id: string; readonly name: string };
+  readonly profile?: InstanceProfile;
 }
 
 export interface StarterMemoryReport {
@@ -180,6 +182,19 @@ export interface StarterMemoryReport {
   readonly duplicates: number;
   readonly pages: number;
   readonly blocks: number;
+}
+
+function forProfile(entry: StarterChange, profile: InstanceProfile): StarterChange {
+  if (profile !== 'collective' || entry.change.kind !== 'create_block') return entry;
+  const collective: Record<string, string> = {
+    'block:starter-home-welcome': 'Esta es una memoria colectiva: un corpus compartido, editable y auditable donde cada persona y cada inteligencia autorizada conserva su identidad y su autoridad explícita.',
+    'block:starter-first-owner': '1. Confirma quién custodia esta instalación, quiénes la administran y que cada persona entra con su propia passkey.',
+    'block:starter-remote-security': 'Cada persona entra con su propia sesión y sólo ve o modifica aquello que sus roles activos permiten. Alcanzar el equipo o pertenecer a su tailnet no concede acceso.',
+    'block:starter-agents-principle': 'Cada agente es un participante distinto. Nunca reutilices una identidad entre agentes ni confundas sus credenciales revocables con una sesión humana.',
+    'block:starter-principles-sovereign': '**Soberanía.** La memoria colectiva pertenece a su comunidad gobernada; las personas, herramientas y agentes participan con autoridad explícita y revocable.',
+  };
+  const content = collective[entry.change.stableId ?? ''];
+  return content === undefined ? entry : { ...entry, change: { ...entry.change, content } };
 }
 
 export function initializeStarterMemory(options: InitializeStarterMemoryOptions): StarterMemoryReport {
@@ -196,6 +211,7 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
       graph.addParticipant({ ...options.owner, kind: 'human' });
       graph.admit(options.owner.id);
     }
+    const profile = ensureInstanceProfile(store, options.owner.id, options.profile, established === null);
 
     if (graph.participant(DISTRIBUTION_PARTICIPANT) === undefined) {
       saveParticipant(store, {
@@ -213,7 +229,8 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
 
     let applied = 0;
     let duplicates = 0;
-    for (const entry of STARTER_CHANGES) {
+    for (const source of STARTER_CHANGES) {
+      const entry = forProfile(source, profile);
       const outcome = graph.submitOperation({
         originId: `starter-memory:v${STARTER_MEMORY_VERSION}:${entry.id}`,
         participant: DISTRIBUTION_PARTICIPANT,

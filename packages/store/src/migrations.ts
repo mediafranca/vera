@@ -824,6 +824,48 @@ const addOperationReviewProposals: Migration = {
   },
 };
 
+/** 23 — perfil de gobierno e identidades humanas de una instancia colectiva. */
+const addInstanceProfiles: Migration = {
+  version: 23,
+  name: 'perfiles personal y colectivo',
+  apply(db) {
+    const instances = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name='instances'",
+    ).get() as { present: number } | undefined;
+    if (instances !== undefined) {
+      const columns = db.prepare('PRAGMA table_info(instances)').all() as Array<{ name: string }>;
+      if (!columns.some((one) => one.name === 'profile')) {
+        db.exec("ALTER TABLE instances ADD COLUMN profile TEXT NOT NULL DEFAULT 'personal' CHECK (profile IN ('personal','collective'))");
+      }
+    }
+    db.exec(`CREATE TABLE IF NOT EXISTS instance_governance_grants (
+      id TEXT PRIMARY KEY,
+      instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+      participant_id TEXT NOT NULL REFERENCES participants (id),
+      role TEXT NOT NULL CHECK (role IN ('root_custodian','administrator','editor','contributor','reader','publisher')),
+      status TEXT NOT NULL CHECK (status IN ('active','revoked')),
+      granted_by TEXT NOT NULL REFERENCES participants (id),
+      granted_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS one_active_instance_role
+      ON instance_governance_grants(instance_id,participant_id,role) WHERE status='active';
+    CREATE TABLE IF NOT EXISTS collective_invitations (
+      id TEXT PRIMARY KEY,
+      instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+      issued_by TEXT NOT NULL REFERENCES participants (id),
+      role TEXT NOT NULL CHECK (role IN ('administrator','editor','contributor','reader','publisher')),
+      proof_digest TEXT NOT NULL UNIQUE,
+      intended_contact TEXT,
+      status TEXT NOT NULL CHECK (status IN ('pending','redeemed','revoked','expired')),
+      issued_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      redeemed_by TEXT REFERENCES participants (id),
+      redeemed_at INTEGER
+    ) STRICT`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -847,6 +889,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addInteractiveSearchIndexes,
   compactExposureLog,
   addOperationReviewProposals,
+  addInstanceProfiles,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */
