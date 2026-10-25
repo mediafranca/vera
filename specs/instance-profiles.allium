@@ -1,0 +1,616 @@
+-- allium: 3
+-- instance-profiles.allium
+
+-- Scope: The personal and collective governance profiles of one Vera instance
+-- Includes: First-run profile choice, explicit authority in collective instances,
+--   root custody, and governed migration between separately held corpora
+-- Excludes:
+--   - Human authentication ceremonies and sessions
+--     (see shared-space-access.allium)
+--   - Page-level sharing and proposal review inside one space
+--     (see shared-space-access.allium)
+--   - Transport or synchronisation between instances
+--     (see peer-networking.allium and federated-sharing.allium)
+--   - The quorum or constitutional procedure for consequential collective acts
+-- Dependencies: The graph and authorship model are governed by core.allium;
+--   the personal instance boundary by identity-access.allium; authenticated
+--   people and shared spaces by shared-space-access.allium
+
+use "./core.allium" as core
+use "./identity-access.allium" as identity
+use "./shared-space-access.allium" as sharing
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract InstanceProfileChoice {
+    initialize_personal: (instance: identity/VeraInstance, custodian: core/Participant) -> InstanceGovernance
+    initialize_collective: (instance: identity/VeraInstance, custodian: core/Participant, administrator: core/Participant) -> InstanceGovernance
+
+    @invariant OneSoftwareTwoGovernanceProfiles
+        -- Personal and collective Vera use the same application, graph model,
+        -- revision history and authorship rules. The profile changes who may
+        -- govern the instance; it does not create a second Vera product.
+
+    @invariant ProfileChoiceIsExplicit
+        -- A new instance records one profile during initialization. No network
+        -- location, number of participants or invitation silently changes it.
+
+    @invariant InvitingPeopleDoesNotChangeTheProfile
+        -- A personal instance may have several writers through shared spaces and
+        -- remains personal until an explicit governed migration is completed.
+}
+
+contract CollectiveAuthority {
+    grant: (administrator: core/Participant, governance: InstanceGovernance, participant: core/Participant, role: GovernanceRole, territory: AuthorityTerritory, space: sharing/SharedSpace?, site: core/PersonalSite?) -> GovernanceGrant
+    revoke: (administrator: core/Participant, grant: GovernanceGrant) -> GovernanceGrant
+
+    @invariant AuthorityIsGrantedNotInferred
+        -- Authentication proves a participant. It never infers a role from the
+        -- participant's name, network, seniority or prior contributions.
+
+    @invariant AuthorityHasATerritory
+        -- Every collective role applies to the whole instance, one shared space
+        -- or one publication surface. No role silently leaks beyond that scope.
+
+    @invariant RootCustodyIsNotEditorialOmnipotence
+        -- Holding the machine and recovery material keeps the corpus available.
+        -- It does not by itself grant administration, editing or publication.
+
+    @invariant RevocationPreservesHistory
+        -- Revocation prevents future effects and leaves prior authorship,
+        -- decisions and audit evidence attributed to their participants.
+}
+
+contract ProfileMigration {
+    plan: (proposer: core/Participant, source: InstanceGovernance, destination: InstanceGovernance, kind: MigrationKind, pages: Set<core/Page>) -> GovernanceMigration
+    consent: (administrator: core/Participant, migration: GovernanceMigration, governance: InstanceGovernance) -> MigrationConsent
+    apply: (administrator: core/Participant, migration: GovernanceMigration) -> GovernanceMigration
+    cancel: (administrator: core/Participant, migration: GovernanceMigration) -> GovernanceMigration
+
+    @invariant AProfileChangeCreatesAnotherCorpus
+        -- Personal-to-collective conversion and collective-to-personal exit use
+        -- distinct instances and graphs. Neither operation rewrites the profile
+        -- or authority of a corpus while people are working in it.
+
+    @invariant MigrationPreservesProvenance
+        -- Migrated pages keep their stable lineage, revision authors and source
+        -- instance. Copying them never attributes another person's writing to
+        -- the custodian, administrator or person who performed the migration.
+
+    @invariant ExitIsAForkNotACollectiveRevocation
+        -- Leaving a collective instance creates a personal fork of the selected
+        -- material. It does not turn the collective corpus into personal property
+        -- or revoke the authority of the people who remain.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum InstanceProfile { personal | collective }
+enum GovernanceRole { root_custodian | administrator | space_custodian | editor | contributor | reader | publisher }
+enum AuthorityTerritory { instance | shared_space | publication }
+enum GovernanceGrantStatus { active | revoked }
+enum MigrationKind { personal_to_collective | collective_to_personal_fork }
+enum GovernanceMigrationStatus { planned | applied | cancelled }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity InstanceGovernance {
+    instance: identity/VeraInstance
+    profile: InstanceProfile
+    custody_root: core/Participant
+    grants: GovernanceGrant with governance = this
+    active_administrators: grants where role = administrator and territory = instance and status = active
+    migrations_from: GovernanceMigration with source = this
+    migrations_to: GovernanceMigration with destination = this
+}
+
+entity GovernanceGrant {
+    governance: InstanceGovernance
+    participant: core/Participant
+    role: GovernanceRole
+    territory: AuthorityTerritory
+    space: sharing/SharedSpace?
+    site: core/PersonalSite?
+    status: GovernanceGrantStatus
+    granted_by: core/Participant
+    granted_at: Timestamp
+    revoked_at: Timestamp?
+
+    transitions status {
+        active -> revoked
+        terminal: revoked
+    }
+}
+
+entity GovernanceMigration {
+    source: InstanceGovernance
+    destination: InstanceGovernance
+    kind: MigrationKind
+    pages: Set<core/Page>
+    status: GovernanceMigrationStatus
+    proposed_by: core/Participant
+    proposed_at: Timestamp
+    applied_at: Timestamp?
+    cancelled_at: Timestamp?
+    consents: MigrationConsent with migration = this
+
+    transitions status {
+        planned -> applied
+        planned -> cancelled
+        terminal: applied, cancelled
+    }
+}
+
+entity MigrationConsent {
+    migration: GovernanceMigration
+    governance: InstanceGovernance
+    participant: core/Participant
+    recorded_at: Timestamp
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule InitializePersonalProfile {
+    when: InitializePersonalInstance(instance, custodian)
+
+    requires: instance.owner = custodian
+    requires: custodian.kind = human
+    requires: not exists InstanceGovernance{instance: instance}
+
+    ensures:
+        let governance = InstanceGovernance.created(
+            instance: instance,
+            profile: personal,
+            custody_root: custodian
+        )
+        GovernanceGrant.created(
+            governance: governance,
+            participant: custodian,
+            role: root_custodian,
+            territory: instance,
+            space: null,
+            site: null,
+            status: active,
+            granted_by: custodian,
+            granted_at: now,
+            revoked_at: null
+        )
+        GovernanceGrant.created(
+            governance: governance,
+            participant: custodian,
+            role: administrator,
+            territory: instance,
+            space: null,
+            site: null,
+            status: active,
+            granted_by: custodian,
+            granted_at: now,
+            revoked_at: null
+        )
+}
+
+rule InitializeCollectiveProfile {
+    when: InitializeCollectiveInstance(instance, custodian, administrator)
+
+    requires: instance.owner = custodian
+    requires: custodian.kind = human
+    requires: administrator.kind = human
+    requires: exists core/Membership{graph: instance.graph, participant: administrator, status: active}
+    requires: not exists InstanceGovernance{instance: instance}
+
+    ensures:
+        let governance = InstanceGovernance.created(
+            instance: instance,
+            profile: collective,
+            custody_root: custodian
+        )
+        GovernanceGrant.created(
+            governance: governance,
+            participant: custodian,
+            role: root_custodian,
+            territory: instance,
+            space: null,
+            site: null,
+            status: active,
+            granted_by: custodian,
+            granted_at: now,
+            revoked_at: null
+        )
+        GovernanceGrant.created(
+            governance: governance,
+            participant: administrator,
+            role: administrator,
+            territory: instance,
+            space: null,
+            site: null,
+            status: active,
+            granted_by: custodian,
+            granted_at: now,
+            revoked_at: null
+        )
+}
+
+rule CollectiveAdministratorGrantsAuthority {
+    when: GrantCollectiveAuthority(administrator, governance, participant, role, territory, space, site)
+
+    requires: governance.profile = collective
+    requires: exists GovernanceGrant{
+        governance: governance,
+        participant: administrator,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+    requires: participant.kind = human
+    requires: exists core/Membership{graph: governance.instance.graph, participant: participant, status: active}
+    requires: role != root_custodian
+    requires: not exists GovernanceGrant{
+        governance: governance,
+        participant: participant,
+        role: role,
+        territory: territory,
+        space: space,
+        site: site,
+        status: active
+    }
+
+    ensures: GovernanceGrant.created(
+        governance: governance,
+        participant: participant,
+        role: role,
+        territory: territory,
+        space: space,
+        site: site,
+        status: active,
+        granted_by: administrator,
+        granted_at: now,
+        revoked_at: null
+    )
+}
+
+rule CollectiveAdministratorRevokesAuthority {
+    when: RevokeCollectiveAuthority(administrator, grant)
+
+    requires: grant.governance.profile = collective
+    requires: exists GovernanceGrant{
+        governance: grant.governance,
+        participant: administrator,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+    requires: grant.status = active
+    requires: grant.role != root_custodian
+    requires: grant.role != administrator or grant.governance.active_administrators.count > 1
+
+    ensures:
+        grant.status = revoked
+        grant.revoked_at = now
+}
+
+rule AdministratorPlansProfileMigration {
+    when: PlanProfileMigration(proposer, source, destination, kind, pages)
+
+    requires: source != destination
+    requires: source.instance.graph != destination.instance.graph
+    requires: pages.count > 0
+    requires: pages.all(page => page.graph = source.instance.graph)
+    requires: exists GovernanceGrant{
+        governance: source,
+        participant: proposer,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+    requires:
+        (kind = personal_to_collective and source.profile = personal and destination.profile = collective) or
+        (kind = collective_to_personal_fork and source.profile = collective and destination.profile = personal)
+
+    ensures: GovernanceMigration.created(
+        source: source,
+        destination: destination,
+        kind: kind,
+        pages: pages,
+        status: planned,
+        proposed_by: proposer,
+        proposed_at: now,
+        applied_at: null,
+        cancelled_at: null
+    )
+}
+
+rule AdministratorConsentsToProfileMigration {
+    when: ConsentToProfileMigration(administrator, migration, governance)
+
+    requires: migration.status = planned
+    requires: governance = migration.source or governance = migration.destination
+    requires: exists GovernanceGrant{
+        governance: governance,
+        participant: administrator,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+    requires: not exists MigrationConsent{migration: migration, governance: governance}
+
+    ensures: MigrationConsent.created(
+        migration: migration,
+        governance: governance,
+        participant: administrator,
+        recorded_at: now
+    )
+}
+
+rule AdministratorAppliesConsentedMigration {
+    when: ApplyProfileMigration(administrator, migration)
+
+    requires: migration.status = planned
+    requires: exists GovernanceGrant{
+        governance: migration.destination,
+        participant: administrator,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+    requires: exists MigrationConsent{migration: migration, governance: migration.source}
+    requires: exists MigrationConsent{migration: migration, governance: migration.destination}
+
+    ensures:
+        migration.status = applied
+        migration.applied_at = now
+        ProfileCorpusTransferAuthorized(migration)
+}
+
+rule AdministratorCancelsPlannedMigration {
+    when: CancelProfileMigration(administrator, migration)
+
+    requires: migration.status = planned
+    requires: exists GovernanceGrant{
+        governance: migration.source,
+        participant: administrator,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+
+    ensures:
+        migration.status = cancelled
+        migration.cancelled_at = now
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OneGovernanceProfilePerInstance {
+    for a in InstanceGovernances:
+        for b in InstanceGovernances:
+            a != b implies a.instance != b.instance
+}
+
+invariant CustodyRootIsTheHumanHoldingTheInstance {
+    for governance in InstanceGovernances:
+        governance.custody_root = governance.instance.owner and
+        governance.custody_root.kind = human
+}
+
+invariant EveryGovernedInstanceHasAnActiveRootCustodian {
+    for governance in InstanceGovernances:
+        exists GovernanceGrant{
+            governance: governance,
+            participant: governance.custody_root,
+            role: root_custodian,
+            territory: instance,
+            status: active
+        }
+}
+
+invariant EveryGovernedInstanceHasAnActiveAdministrator {
+    for governance in InstanceGovernances:
+        exists GovernanceGrant{
+            governance: governance,
+            role: administrator,
+            territory: instance,
+            status: active
+        }
+}
+
+invariant EveryGrantNamesOneValidTerritory {
+    for grant in GovernanceGrants:
+        (grant.territory = instance and grant.space = null and grant.site = null) or
+        (grant.territory = shared_space and grant.space != null and grant.site = null) or
+        (grant.territory = publication and grant.space = null and grant.site != null)
+}
+
+invariant TerritorialObjectsBelongToTheGovernedGraph {
+    for grant in GovernanceGrants:
+        (grant.space != null implies grant.space.graph = grant.governance.instance.graph) and
+        (grant.site != null implies grant.site.graph = grant.governance.instance.graph)
+}
+
+invariant RootCustodyCannotBeDelegatedOrRevokedRemotely {
+    for grant in GovernanceGrants:
+        grant.role = root_custodian implies
+            grant.participant = grant.governance.custody_root and
+            grant.status = active and
+            grant.territory = instance
+}
+
+invariant ActiveAuthorityIsUniquePerParticipantRoleAndTerritory {
+    for a in GovernanceGrants:
+        for b in GovernanceGrants:
+            a != b and a.status = active and b.status = active implies
+                a.governance != b.governance or
+                a.participant != b.participant or
+                a.role != b.role or
+                a.territory != b.territory or
+                a.space != b.space or
+                a.site != b.site
+}
+
+invariant MigrationUsesSeparateCorpora {
+    for migration in GovernanceMigrations:
+        migration.source.instance.graph != migration.destination.instance.graph
+}
+
+invariant MigrationDirectionMatchesProfiles {
+    for migration in GovernanceMigrations:
+        (migration.kind = personal_to_collective and migration.source.profile = personal and migration.destination.profile = collective) or
+        (migration.kind = collective_to_personal_fork and migration.source.profile = collective and migration.destination.profile = personal)
+}
+
+invariant EveryMigratedPageComesFromTheSourceCorpus {
+    for migration in GovernanceMigrations:
+        migration.pages.all(page => page.graph = migration.source.instance.graph)
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor InstanceCustodian {
+    within: identity/VeraInstance
+    identified_by: core/Participant where this = within.owner and this.kind = human
+}
+
+actor GovernanceAdministrator {
+    within: InstanceGovernance
+    identified_by: core/Participant where exists GovernanceGrant{
+        governance: within,
+        participant: this,
+        role: administrator,
+        territory: instance,
+        status: active
+    }
+}
+
+actor MigrationAdministrator {
+    within: GovernanceMigration
+    identified_by: core/Participant where
+        exists GovernanceGrant{
+            governance: within.source,
+            participant: this,
+            role: administrator,
+            territory: instance,
+            status: active
+        } or
+        exists GovernanceGrant{
+            governance: within.destination,
+            participant: this,
+            role: administrator,
+            territory: instance,
+            status: active
+        }
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface FirstRunProfileSelection {
+    facing custodian: InstanceCustodian
+    context instance: identity/VeraInstance
+
+    provides:
+        InitializePersonalInstance(instance, custodian)
+        InitializeCollectiveInstance(instance, custodian, administrator)
+
+    contracts:
+        fulfils InstanceProfileChoice
+
+    @guarantee ChoicePrecedesOrdinaryUse
+        -- The profile is established before the instance accepts ordinary
+        -- writing, invitations, publication or agent credentials.
+
+    @guarantee CollectiveInitializationRequiresAuthentication
+        -- A collective instance never uses network location or an absent
+        -- credential as proof of its custodian or initial administrator.
+}
+
+surface CollectiveGovernanceAdministration {
+    facing administrator: GovernanceAdministrator
+    context governance: InstanceGovernance where profile = collective
+
+    exposes:
+        governance.profile
+        governance.custody_root
+        governance.grants
+
+    provides:
+        GrantCollectiveAuthority(administrator, governance, participant, role, territory, space, site)
+        RevokeCollectiveAuthority(administrator, grant)
+            when grant.governance = governance and grant.status = active and grant.role != root_custodian
+
+    contracts:
+        fulfils CollectiveAuthority
+
+    @guarantee EveryEffectiveRoleIsVisible
+        -- People can inspect who currently holds each role and territory. A
+        -- hidden configuration value never grants collective authority.
+}
+
+surface ProfileMigrationPlanning {
+    facing proposer: GovernanceAdministrator
+    context source: InstanceGovernance
+
+    exposes:
+        source.profile
+        source.instance.graph.pages
+
+    provides:
+        PlanProfileMigration(proposer, source, destination, kind, pages)
+            when source != destination and source.instance.graph != destination.instance.graph
+
+    @guarantee PlanningChangesNeitherCorpus
+        -- Planning records the intended direction, destination and selected
+        -- pages. It edits neither source nor destination before both sides have
+        -- consented through the migration boundary.
+}
+
+surface GovernedProfileMigration {
+    facing administrator: MigrationAdministrator
+    context migration: GovernanceMigration
+
+    exposes:
+        migration.kind
+        migration.source
+        migration.destination
+        migration.pages
+        migration.status
+        migration.consents
+
+    provides:
+        ConsentToProfileMigration(administrator, migration, governance)
+            when governance = migration.source or governance = migration.destination
+        ApplyProfileMigration(administrator, migration) when migration.status = planned
+        CancelProfileMigration(administrator, migration) when migration.status = planned
+
+    contracts:
+        fulfils ProfileMigration
+
+    @guarantee MigrationIsInspectableBeforeItRuns
+        -- The source, destination, selected pages, direction and required
+        -- consents are visible while the migration is still cancelable.
+}
+
+------------------------------------------------------------
+-- Deferred Specifications
+------------------------------------------------------------
+
+deferred ProfileCorpusTransfer.apply -- see: instance-profile-transfer.allium (future)
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "Which collective acts require more than one administrator's consent: changing governance, publication, destructive discard, or every one of them?"
+open question "How is root custody transferred when the current machine or custodian must be replaced without granting that custodian editorial authority?"
+open question "May one participant hold several roles over the same territory, and how should the interface explain their effective combined authority?"
