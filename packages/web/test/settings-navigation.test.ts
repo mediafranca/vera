@@ -19,6 +19,12 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /'Registro de actividad',[\s\S]*handlers\.onOpenActivity/);
   });
 
+  it('explica que una Vera personal no se convierte con un interruptor', () => {
+    assert.match(settings, /el acceso local sigue funcionando sin iniciar sesión/);
+    assert.match(settings, /No es un interruptor sobre este corpus/);
+    assert.match(settings, /antes de migrar se registra y comprueba una passkey administrativa/);
+  });
+
   it('presenta páginas del sistema sin exponer el espacio de nombres ni la taxonomía técnica', () => {
     assert.match(main, /replace\(\/\^VERA\\s\*:\\s\*\/i, ''\)/);
     assert.match(main, /known === undefined[\s\S]*known\.what/);
