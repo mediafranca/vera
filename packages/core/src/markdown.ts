@@ -48,6 +48,85 @@ const EMBED_HEIGHT = 460;
 
 type LinkedResourceKind = 'pdf' | 'image' | 'audio' | 'video' | 'tiktok' | 'instagram' | 'page';
 
+interface MarkdownLink {
+  label: string;
+  href: string;
+  end: number;
+}
+
+/**
+ * Lee un destino Markdown sin confundir un paréntesis de la dirección con el
+ * que cierra el enlace. Las expresiones regulares anteriores se detenían en el
+ * primero y dejaban fuera, por ejemplo, el último `)` de una página MediaWiki.
+ */
+function markdownLinkAt(source: string, start: number, image = false): MarkdownLink | null {
+  const opening = image ? '![' : '[';
+  if (!source.startsWith(opening, start)) return null;
+
+  const labelStart = start + opening.length;
+  const labelEnd = source.indexOf('](', labelStart);
+  if (labelEnd < 0 || source.slice(labelStart, labelEnd).includes('\n')) return null;
+
+  let depth = 1;
+  let quoted = false;
+  let escaped = false;
+  let cursor = labelEnd + 2;
+  for (; cursor < source.length; cursor += 1) {
+    const character = source[cursor] ?? '';
+    if (character === '\n') return null;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted) continue;
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (depth === 0) break;
+  }
+  if (depth !== 0) return null;
+
+  const inside = source.slice(labelEnd + 2, cursor);
+  const titled = /^(.*?)\s+"(?:[^"\\]|\\.)*"$/.exec(inside);
+  const href = titled?.[1] ?? inside;
+  if (href === '') return null;
+  return { label: source.slice(labelStart, labelEnd), href, end: cursor + 1 };
+}
+
+function replaceMarkdownLinks(
+  source: string,
+  image: boolean,
+  render: (whole: string, label: string, href: string) => string,
+): string {
+  const opening = image ? '![' : '[';
+  let result = '';
+  let copied = 0;
+  let cursor = 0;
+  while ((cursor = source.indexOf(opening, cursor)) >= 0) {
+    if (!image && cursor > 0 && source[cursor - 1] === '!') {
+      cursor += opening.length;
+      continue;
+    }
+    const found = markdownLinkAt(source, cursor, image);
+    if (found === null) {
+      cursor += opening.length;
+      continue;
+    }
+    result += source.slice(copied, cursor);
+    result += render(source.slice(cursor, found.end), found.label, found.href);
+    copied = found.end;
+    cursor = found.end;
+  }
+  return result + source.slice(copied);
+}
+
 /**
  * Una dirección de Google Maps pegada como bloque entero es un mapa, no sólo
  * una página enlazada.
@@ -103,9 +182,12 @@ export function googleMapIn(source: string, hosts: readonly string[] = []): stri
  */
 export function linkedResourceIn(source: string): string | null {
   const clean = source.trim();
-  const markdown = /^\[([^\]]+)\]\((https:\/\/[^\s)]+)\)$/.exec(clean);
+  const candidate = markdownLinkAt(clean, 0);
+  const markdown = candidate?.end === clean.length && /^https:\/\/[^\s]+$/.test(candidate.href)
+    ? candidate
+    : null;
   const raw = /^https:\/\/[^\s<>]+$/.test(clean) ? clean : null;
-  const href = markdown?.[2] ?? raw;
+  const href = markdown?.href ?? raw;
   if (href === null || href === undefined) return null;
 
   let url: URL;
@@ -124,7 +206,7 @@ export function linkedResourceIn(source: string): string | null {
           /\.(?:avif|gif|jpe?g|png|svg|webp)$/.test(path) ? 'image' :
             /\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav)$/.test(path) ? 'audio' :
               /\.(?:mp4|m4v|mov|ogv|webm)$/.test(path) ? 'video' : 'page';
-  const label = markdown?.[1]?.trim() || href;
+  const label = markdown?.label.trim() || href;
   const named = kind === 'page' ? 'enlace' : kind;
   const canShow = ['pdf', 'image', 'audio', 'video'].includes(kind);
   const escapedHref = quoteAttribute(escapeHtml(href));
@@ -504,8 +586,9 @@ export function inlineMarkdown(source: string, options: RenderOptions = {}): str
   // Imagen. Una ruta que no pasa el filtro de esquema se degrada a su texto
   // alternativo en vez de desaparecer sin dejar rastro. El `alt` es texto
   // plano por definición de HTML, así que no recibe marcas.
-  html = html.replace(
-    /!\[([^\]]*)\]\(([^)\n]+?)(?:\s+"[^"]*")?\)/g,
+  html = replaceMarkdownLinks(
+    html,
+    true,
     (whole, alt: string, src: string) => {
       // Si Vera tiene el objeto, la ruta del corpus se traduce a él. Si no, se
       // emite tal cual y la presentación degrada sola.
@@ -575,8 +658,9 @@ export function inlineMarkdown(source: string, options: RenderOptions = {}): str
     return reference === null ? whole : hold(wikiLink(reference.title, '', reference.label));
   });
 
-  html = html.replace(
-    /\[([^\]]*)\]\(([^)\n]+?)(?:\s+"[^"]*")?\)/g,
+  html = replaceMarkdownLinks(
+    html,
+    false,
     (whole, label: string, href: string) => {
       // El corpus también enlaza assets sin la marca de imagen —PDF, sobre
       // todo—, y esos apuntan al mismo objeto.
