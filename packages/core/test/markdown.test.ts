@@ -78,6 +78,13 @@ describe('inlineMarkdown', () => {
     assert.ok(rendered.includes('rel="noreferrer"'));
   });
 
+  it('conserva los paréntesis balanceados dentro de una URL externa', () => {
+    const href = 'https://wiki.ead.pucv.cl/Proyecto_de_Restauracion_(Ex-carcel)';
+    const rendered = inlineMarkdown(`[Casa de Pólvora](${href})`);
+    assert.ok(rendered.includes(`href="${href}"`), rendered);
+    assert.ok(!rendered.endsWith(')</a>)'), `paréntesis fuera del enlace: ${rendered}`);
+  });
+
   it('vuelve clicable una URL cruda sin exigir Markdown', () => {
     const html = inlineMarkdown('ver https://ejemplo.cl/uno ahora');
     assert.match(html, /<a href="https:\/\/ejemplo\.cl\/uno"/);
