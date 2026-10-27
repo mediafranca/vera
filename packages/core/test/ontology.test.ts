@@ -9,6 +9,7 @@ import {
   readRelationDeclarations,
 } from '../src/ontology.ts';
 import { namesFromRoles } from '../src/property-names.ts';
+import { namesFromRelationRoles } from '../src/relations.ts';
 
 let at = 0;
 const block = (content: string, properties: Record<string, string> = {}) => ({
@@ -27,6 +28,7 @@ describe('readRelationDeclarations', () => {
         simétrica: 'no',
         transitiva: 'no',
         estado: 'aprobada',
+        papel: 'opposition',
         definición: 'presenta razones incompatibles con el destino',
         'equivalente externo': 'http://example.org/contradicts',
       }),
@@ -38,6 +40,7 @@ describe('readRelationDeclarations', () => {
     assert.equal(said?.symmetric, false);
     assert.equal(said?.transitive, false);
     assert.equal(said?.status, 'aprobada');
+    assert.equal(said?.role, 'opposition');
     assert.deepEqual(said?.external, ['http://example.org/contradicts']);
   });
 
@@ -48,6 +51,15 @@ describe('readRelationDeclarations', () => {
     assert.deepEqual(said?.range, []);
     assert.equal(said?.symmetric, true);
     assert.equal(said?.transitive, null);
+  });
+});
+
+describe('namesFromRelationRoles', () => {
+  it('lets the corpus name the membership relation', () => {
+    assert.equal(
+      namesFromRelationRoles([{ name: 'pertenece a', role: 'membership' }]).membership,
+      'pertenece a',
+    );
   });
 });
 

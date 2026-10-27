@@ -25,7 +25,7 @@
 
 import type { QueryExpression } from './query.ts';
 
-export type QueryView = 'list' | 'table' | 'blocks';
+export type QueryView = 'list' | 'table' | 'blocks' | 'blocks-by-page';
 
 export interface QuerySource {
   expression: QueryExpression;
@@ -68,6 +68,9 @@ const VIEWS: Record<string, QueryView> = {
   table: 'table',
   bloques: 'blocks',
   blocks: 'blocks',
+  'bloques por página': 'blocks-by-page',
+  'bloques por pagina': 'blocks-by-page',
+  'blocks by page': 'blocks-by-page',
 };
 
 interface Cursor {
@@ -171,7 +174,7 @@ function readView(said: string, at: number): QueryView {
   const view = VIEWS[word];
   if (view === undefined) {
     throw new Unreadable(
-      `no sé leer una respuesta como «${word}»; hay lista, tabla y bloques`,
+      `no sé leer una respuesta como «${word}»; hay lista, tabla, bloques y bloques por página`,
       at,
       said.trim(),
     );
@@ -246,6 +249,16 @@ function readAtom(cursor: Cursor): QueryExpression {
     return { kind: 'LinksToTerm', targetTitle: readTitle(cursor) };
   }
 
+  if (cursor.text.startsWith('-[', cursor.at)) {
+    const relation = readRelation(cursor, 'out');
+    return { kind: 'RelatesToTerm', relation, targetTitle: readTitle(cursor) };
+  }
+
+  if (cursor.text.startsWith('<-[', cursor.at) && !cursor.text.startsWith('<-[[', cursor.at)) {
+    const relation = readRelation(cursor, 'in');
+    return { kind: 'RelatedFromTerm', relation, originTitle: readTitle(cursor) };
+  }
+
   if (cursor.text.startsWith('<-', cursor.at)) {
     cursor.at += 2;
     return { kind: 'LinkedFromTerm', originTitle: readTitle(cursor) };
@@ -277,6 +290,29 @@ function readAtom(cursor: Cursor): QueryExpression {
     key,
     value: value === '' ? null : value,
   };
+}
+
+/** Lee `-[relación]->` o `<-[relación]-` y deja el cursor ante `[[Página]]`. */
+function readRelation(cursor: Cursor, direction: 'out' | 'in'): string {
+  const at = cursor.at;
+  cursor.at += direction === 'out' ? 2 : 3;
+  const closes = cursor.text.indexOf(']', cursor.at);
+  if (closes === -1) {
+    throw new Unreadable('falta el corchete que cierra el tipo de relación', at, rest(cursor, at));
+  }
+  const relation = cursor.text.slice(cursor.at, closes).trim();
+  cursor.at = closes + 1;
+  const arrow = direction === 'out' ? '->' : '-';
+  if (!cursor.text.startsWith(arrow, cursor.at)) {
+    throw new Unreadable(
+      direction === 'out' ? 'a la relación le falta «->»' : 'a la relación entrante le falta «-»',
+      cursor.at,
+      rest(cursor),
+    );
+  }
+  cursor.at += arrow.length;
+  if (relation === '') throw new Unreadable('el tipo de relación está vacío', at, rest(cursor, at));
+  return relation;
 }
 
 /** El título entre dobles corchetes de un término de enlace. */
@@ -362,6 +398,7 @@ export function writeQuery(expression: QueryExpression, view: QueryView = 'list'
   const said = write(expression, null);
   if (view === 'table') return `? ${said} ; tabla`;
   if (view === 'blocks') return `? ${said} ; bloques`;
+  if (view === 'blocks-by-page') return `? ${said} ; bloques por página`;
   return `? ${said}`;
 }
 
@@ -375,6 +412,10 @@ function write(expression: QueryExpression, within: string | null): string {
       return `->[[${expression.targetTitle}]]`;
     case 'LinkedFromTerm':
       return `<-[[${expression.originTitle}]]`;
+    case 'RelatesToTerm':
+      return `-[${expression.relation}]->[[${expression.targetTitle}]]`;
+    case 'RelatedFromTerm':
+      return `<-[${expression.relation}]-[[${expression.originTitle}]]`;
     case 'NotTerm':
       return `${NOT}${write(expression.operand, NOT)}`;
     case 'AndTerm':

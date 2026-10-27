@@ -64,6 +64,19 @@ describe('readQuery · los términos', () => {
     });
   });
 
+  it('lee los dos sentidos de una relación explicada', () => {
+    assert.deepEqual(read('? -[forma parte de]->[[Vida personal y familiar]]').expression, {
+      kind: 'RelatesToTerm',
+      relation: 'forma parte de',
+      targetTitle: 'Vida personal y familiar',
+    });
+    assert.deepEqual(read('? <-[forma parte de]-[[PICTOS.net]]').expression, {
+      kind: 'RelatedFromTerm',
+      relation: 'forma parte de',
+      originTitle: 'PICTOS.net',
+    });
+  });
+
   it('lee una condición de contenido', () => {
     assert.deepEqual(read('? ~pictogramas').expression, {
       kind: 'ContentTerm',
@@ -125,6 +138,10 @@ describe('readQuery · la presentación', () => {
     assert.equal(read('? ~factura ; blocks').view, 'blocks');
   });
 
+  it('«; bloques por página» conserva los pasajes juntos por su origen', () => {
+    assert.equal(read('? ~"[ ]" ; bloques por página').view, 'blocks-by-page');
+  });
+
 
   it('la presentación no cambia la selección', () => {
     assert.deepEqual(read('? tipo=proyecto').expression, read('? tipo=proyecto ; tabla').expression);
@@ -139,7 +156,7 @@ describe('readQuery · la presentación', () => {
   });
 
   it('una forma que no existe se dice, no se ignora', () => {
-    assert.match(refuse('? tipo=proyecto ; mosaico').error, /lista, tabla y bloques/);
+    assert.match(refuse('? tipo=proyecto ; mosaico').error, /lista, tabla, bloques/);
   });
 });
 
@@ -251,6 +268,8 @@ const hoja: fc.Arbitrary<QueryExpression> = fc.oneof(
   fc.record({ kind: fc.constant('ContentTerm' as const), text: conSignos }),
   fc.record({ kind: fc.constant('LinksToTerm' as const), targetTitle: palabra }),
   fc.record({ kind: fc.constant('LinkedFromTerm' as const), originTitle: palabra }),
+  fc.record({ kind: fc.constant('RelatesToTerm' as const), relation: palabra, targetTitle: palabra }),
+  fc.record({ kind: fc.constant('RelatedFromTerm' as const), relation: palabra, originTitle: palabra }),
 );
 
 /*
@@ -281,13 +300,19 @@ const arbol: fc.Arbitrary<QueryExpression> = fc.letrec<{ node: QueryExpression }
 describe('la ida y la vuelta', () => {
   it('lo escrito se vuelve a leer igual', () => {
     fc.assert(
-      fc.property(arbol, fc.constantFrom<'list' | 'table'>('list', 'table'), (expression, view) => {
+      fc.property(
+        arbol,
+        fc.constantFrom<'list' | 'table' | 'blocks' | 'blocks-by-page'>(
+          'list', 'table', 'blocks', 'blocks-by-page',
+        ),
+        (expression, view) => {
         const written = writeQuery(expression, view);
         const back = readQuery(written);
         assert.ok(!('error' in back), `no se dejó leer «${written}»`);
         assert.deepEqual(plain(back.expression), plain(expression));
         assert.equal(back.view, view);
-      }),
+        },
+      ),
       { numRuns: 500 },
     );
   });

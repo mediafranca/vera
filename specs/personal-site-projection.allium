@@ -17,6 +17,32 @@ use "./identity-access.allium" as identity
 use "./page-on-paper.allium" as paper
 use "./special-pages.allium" as special
 use "./workspace-interface.allium" as workspace
+use "./trail.allium" as trail
+
+------------------------------------------------------------
+-- Política de privacidad por ámbito
+------------------------------------------------------------
+
+contract ScopedPublicationPolicy {
+    @invariant PublicationBarriersAreNeverCrossed
+        -- Una página que declara, mediante la propiedad cuyo papel es
+        -- `publication_barrier`, que su publicación está prohibida permanece
+        -- privada y sin publicación. La obligación alcanza transitivamente a
+        -- las páginas que llegan a ella por relaciones cuyo papel es
+        -- `membership`. Se comprueba al declarar la barrera, al crear o retipar
+        -- una pertenencia, al hacer pública una página, al publicar y al revisar
+        -- el grafo completo.
+
+    @invariant ContributionsDoNotInheritPrivacy
+        -- Una relación «contribuye a» no es pertenencia. Un texto público puede
+        -- contribuir a una obra privada sin que la relación lo vuelva secreto.
+
+    @invariant TheBarrierIsCorpusContent
+        -- La política se ve y se edita en la página que gobierna el ámbito. No
+        -- depende de un título de página ni de una lista escondida en el código;
+        -- la propiedad y la relación se reconocen por los papeles que el corpus
+        -- declara en sus páginas de gobierno.
+}
 
 ------------------------------------------------------------
 -- Value Types

@@ -10,6 +10,8 @@ export type QueryExpression =
   | { readonly kind: 'PropertyTerm'; readonly key: string; readonly value: string | null }
   | { readonly kind: 'LinksToTerm'; readonly targetTitle: string }
   | { readonly kind: 'LinkedFromTerm'; readonly originTitle: string }
+  | { readonly kind: 'RelatesToTerm'; readonly relation: string; readonly targetTitle: string }
+  | { readonly kind: 'RelatedFromTerm'; readonly relation: string; readonly originTitle: string }
   | { readonly kind: 'AndTerm'; readonly operands: readonly QueryExpression[] }
   | { readonly kind: 'OrTerm'; readonly operands: readonly QueryExpression[] }
   | { readonly kind: 'NotTerm'; readonly operand: QueryExpression };
@@ -46,6 +48,14 @@ export function linksTo(targetTitle: string): QueryExpression {
 
 export function linkedFrom(originTitle: string): QueryExpression {
   return { kind: 'LinkedFromTerm', originTitle };
+}
+
+export function relatesTo(relation: string, targetTitle: string): QueryExpression {
+  return { kind: 'RelatesToTerm', relation, targetTitle };
+}
+
+export function relatedFrom(relation: string, originTitle: string): QueryExpression {
+  return { kind: 'RelatedFromTerm', relation, originTitle };
 }
 
 // invariant CombiningTermsNeedTwoOperands

@@ -16,6 +16,8 @@ export {
   not,
   or,
   propertyTerm,
+  relatedFrom,
+  relatesTo,
   tagTerm,
   titleTerm,
 } from './query.ts';
@@ -111,11 +113,13 @@ export { answersIn } from './vocabulary.ts';
 
 export {
   STARTER_RELATIONS,
+  DEFAULT_RELATION_NAMES,
   inverseOf,
   isSymmetric,
   relationKeyOf,
   senseIn,
   titleIn,
+  namesFromRelationRoles,
 } from './relations.ts';
 export {
   DEFAULT_PROPERTY_NAMES,
@@ -126,7 +130,7 @@ export {
   readPropertyNames,
 } from './property-names.ts';
 export type { PropertyNames, PropertyRole } from './property-names.ts';
-export type { Crossing, CrossingSense, RelationTerm } from './relations.ts';
+export type { Crossing, CrossingSense, RelationNames, RelationRole, RelationTerm } from './relations.ts';
 export type { QuerySource, QueryUnreadable, QueryView } from './query-source.ts';
 
 export {

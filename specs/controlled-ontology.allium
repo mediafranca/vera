@@ -146,6 +146,11 @@ entity RelationDefinition {
     -- El nombre de la inversa, cuando tiene sentido preguntar al revés. No se
     -- almacena: se calcula.
     derived_inverse: String?
+    -- Un papel del dominio, cuando la relación hace algo además de nombrarse.
+    -- `membership` permite que Vera siga una pertenencia aunque el corpus cambie
+    -- «forma parte de» por otra expresión. La palabra es del corpus; el papel es
+    -- la obligación estable del programa.
+    role: String?
     status: VocabularyStatus
 }
 

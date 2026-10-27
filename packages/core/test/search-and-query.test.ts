@@ -4,7 +4,19 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fc from 'fast-check';
 
-import { and, contentTerm, linkedFrom, linksTo, not, or, propertyTerm, tagTerm, titleTerm } from '@vera/core';
+import {
+  and,
+  contentTerm,
+  linkedFrom,
+  linksTo,
+  not,
+  or,
+  propertyTerm,
+  relatedFrom,
+  relatesTo,
+  tagTerm,
+  titleTerm,
+} from '@vera/core';
 import {
   AGENT,
   OUTSIDER,
@@ -223,6 +235,36 @@ describe('query terms', () => {
     const result = graph.query({ expression: linksTo('Centro'), participant: OWNER });
 
     assert.deepEqual(result.matchingPages, [source]);
+  });
+
+  it('selects the pages joined by a named explained relation', () => {
+    const graph = inhabitedGraph();
+    const work = makePage(graph, 'Vida personal y familiar');
+    const house = makePage(graph, 'Casa de Reñaca');
+    const other = makePage(graph, 'Otra');
+    submit(graph, {
+      kind: 'create_crossing',
+      fromPage: house,
+      toPage: work,
+      content: 'La casa pertenece a la vida cotidiana.',
+      term: 'forma parte de',
+    });
+    submit(graph, {
+      kind: 'create_crossing',
+      fromPage: other,
+      toPage: work,
+      content: 'La otra página sólo dialoga.',
+      term: 'dialoga con',
+    });
+
+    assert.deepEqual(
+      graph.query({ expression: relatesTo('forma parte de', 'Vida personal y familiar'), participant: OWNER }).matchingPages,
+      [house],
+    );
+    assert.deepEqual(
+      graph.query({ expression: relatedFrom('forma parte de', 'Casa de Reñaca'), participant: OWNER }).matchingPages,
+      [work],
+    );
   });
 
   it('selects by the title that was written, even without distinguishing case', () => {

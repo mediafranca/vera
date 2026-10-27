@@ -142,6 +142,25 @@ const privatePagesAreNeverPublished: Check = (graph, report) => {
   }
 };
 
+const publicationBarriersAreNeverCrossed: Check = (graph, report) => {
+  for (const page of graph.pages()) {
+    if (page.visibility === 'public' && graph.isPublicationProhibited(page.id)) {
+      report(
+        'PublicationBarriersAreNeverCrossed',
+        `${page.id} is public inside an ambit whose publication is prohibited`,
+      );
+    }
+  }
+  for (const publication of graph.publications()) {
+    if (graph.isPublicationProhibited(publication.page)) {
+      report(
+        'PublicationBarriersAreNeverCrossed',
+        `${publication.page} is published inside an ambit whose publication is prohibited`,
+      );
+    }
+  }
+};
+
 const onlySiteOwnerPublishes: Check = (graph, report) => {
   for (const publication of graph.publications()) {
     const site = graph.site(publication.site);
@@ -398,6 +417,7 @@ const CHECKS: readonly Check[] = [
   revisionParticipantBelongsToGraph,
   voiceCanonicalityRequiresEvidence,
   privatePagesAreNeverPublished,
+  publicationBarriersAreNeverCrossed,
   onlySiteOwnerPublishes,
   publicationRecordsItsHumanPublisher,
   publicationBelongsToSiteGraph,

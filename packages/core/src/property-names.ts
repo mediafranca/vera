@@ -48,6 +48,14 @@ export type PropertyRole =
    * decida. El valor de la propiedad es ese motivo.
    */
   | 'discard_request'
+  /*
+   * Una barrera de publicación declarada por el corpus.
+   *
+   * No es la visibilidad de una página: es una política de un ámbito. Cuando
+   * vale sí, la página y lo que pertenezca a ella por la relación de membresía
+   * no pueden hacerse públicos. La palabra la gobierna VERA: Propiedades.
+   */
+  | 'publication_barrier'
   // Las tres derivadas: no se guardan en ninguna propiedad y aun así se leen y
   // se preguntan como si lo fueran. Ver DERIVED más abajo.
   | 'created'
@@ -72,6 +80,7 @@ export const DEFAULT_PROPERTY_NAMES: PropertyNames = {
   // Éste no es una clave sino un valor: la clase con que nace un día.
   day: 'bitácora',
   'discard_request': 'por borrar',
+  publication_barrier: 'publicación prohibida',
   created: 'creación',
   updated: 'actualización',
   visible: 'público',
@@ -110,6 +119,7 @@ const ROLES: PropertyRole[] = [
   'sense',
   'day',
   'discard_request',
+  'publication_barrier',
   'created',
   'updated',
   'visible',

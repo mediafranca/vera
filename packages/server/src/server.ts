@@ -39,6 +39,7 @@ import {
   calendarDay,
   writeQuery,
   STARTER_RELATIONS,
+  namesFromRelationRoles,
   CHANGE_KINDS as CORE_CHANGE_KINDS,
   CONTRIBUTION_CHANNELS,
 } from '@vera/core';
@@ -1422,6 +1423,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       .filter((host) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host));
   };
   graph.namesProperties(propertyNames());
+  graph.namesRelations(namesFromRelationRoles(declaredRelations()));
 
   const relationVocabulary = (): { name: string; inverse: string }[] => {
     const current = declaredRelations();
@@ -6532,10 +6534,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }];
         });
 
-        if (read.view === 'blocks') {
+        if (read.view === 'blocks' || read.view === 'blocks-by-page') {
           const blocks = matchingBlocks.slice(cursor, cursor + limit);
           send(response, 200, {
-            view: 'blocks',
+            view: read.view,
             asked: writeQuery(read.expression, read.view),
             count: matchingBlocks.length,
             cursor,

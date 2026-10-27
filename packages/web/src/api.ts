@@ -584,7 +584,7 @@ export type QueryAnswer =
       more: number;
     }
   | {
-      view: 'blocks';
+      view: 'blocks' | 'blocks-by-page';
       asked: string;
       count: number;
       blocks: QueryBlockHit[];

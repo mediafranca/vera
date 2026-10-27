@@ -267,6 +267,8 @@ export interface RelationDeclaration {
   symmetric: boolean | null;
   transitive: boolean | null;
   status: string | null;
+  /** Qué papel del dominio cumple, cuando no es sólo vocabulario editorial. */
+  role: string | null;
   says: string | null;
   external: string[];
 }
@@ -295,6 +297,7 @@ export function readRelationDeclarations(blocks: readonly DeclaredBlock[]): Rela
       symmetric,
       transitive: truth(valueOf(block, 'transitiva')),
       status: valueOf(block, 'estado'),
+      role: valueOf(block, 'papel'),
       says: valueOf(block, 'definición') ?? valueOf(block, 'definicion') ?? valueOf(block, 'qué') ?? valueOf(block, 'nota'),
       external: listOf(valueOf(block, 'equivalente externo')),
     });
