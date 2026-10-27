@@ -116,6 +116,14 @@ contract FluidBlockEditing {
         -- as Enter at the current caret. Virtual Return is accepted through the
         -- browser's editing-input event even when no keydown exists; a physical
         -- Shift-Enter remains a newline inside the same block.
+
+    @invariant TheSplitActionStaysWithTheCaret
+        -- While a touch editor is open, its structural split action remains in
+        -- the exterior rail beside the line that contains the active caret. A
+        -- long block and page scrolling never leave the action at the end of the
+        -- source; moving the caret moves it, and activating it splits at the
+        -- selection held when the gesture began. It neither covers the source
+        -- nor replaces the bullet, folding control or formatting tools.
 }
 
 contract OutlineManipulation {

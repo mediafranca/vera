@@ -8405,7 +8405,9 @@ function startEditing(
   const render = (content: string): void => {
     body.classList.remove('editing', 'derived-source-view');
     formatBarSize.disconnect();
+    splitControlSize.disconnect();
     formatTrigger.remove();
+    splitControl.remove();
     body.classList.toggle('code-source', isFencedCodeContent(content));
     const heldAudio = body.querySelector('.audio-block');
     body.innerHTML = '';
@@ -8614,7 +8616,70 @@ function startEditing(
   });
   splitControl.addEventListener('mousedown', (event) => event.preventDefault());
   splitControl.addEventListener('click', () => splitAt(splitSelection.start, splitSelection.end));
-  if (!sourceMode) body.append(splitControl);
+  if (!sourceMode && row !== null) row.append(splitControl);
+
+  /**
+   * La acción estructural pertenece a la línea activa, no al final del bloque.
+   *
+   * El campo crece con todo su contenido y no tiene scroll propio. Montar el
+   * botón después del `textarea` lo dejaba cientos de palabras más abajo en el
+   * caso donde más se necesita. Se mide la línea del cursor con el mismo espejo
+   * que mantiene la escritura a la vista y se expresa su centro dentro de la
+   * fila; al ser una posición absoluta, el botón se desplaza con esa línea y no
+   * añade alto ni tapa el texto. Horizontalmente conserva el carril exterior de
+   * la herramienta de formato: la viñeta sigue siendo la viñeta.
+   *
+   * @invariant TheSplitActionStaysWithTheCaret.
+   */
+  let splitFrame = 0;
+  const placeSplitControl = (): void => {
+    splitFrame = 0;
+    if (sourceMode || row === null || !splitControl.isConnected) return;
+    const rowBox = row.getBoundingClientRect();
+    const editorBox = editor.getBoundingClientRect();
+    const toolsBox = formatTrigger.getBoundingClientRect();
+    const endpoint = editor.selectionDirection === 'backward'
+      ? editor.selectionStart
+      : editor.selectionEnd;
+    const line = lineHeightOf(editor);
+    const touchRadius = 22;
+    const preferredScreenX = toolsBox.left + toolsBox.width / 2;
+    // El carril de formato cuelga fuera del esquema y, en el primer nivel de un
+    // teléfono estrecho, puede quedar parcialmente fuera del viewport. La
+    // acción estructural sí tiene que ser alcanzable: se conserva en ese mismo
+    // lado, pero se limita por el blanco táctil completo de 44 px.
+    const screenX = Math.max(touchRadius, preferredScreenX);
+    const x = screenX - rowBox.left;
+    let screenY = editorBox.top + caretTopIn(editor, endpoint) + line / 2;
+
+    /*
+     * En el primer renglón viven la viñeta, el plegado y las herramientas. El
+     * botón sigue perteneciendo al cursor, pero cae inmediatamente debajo si
+     * sus áreas táctiles se cruzarían: superponer dos áreas de 44 px hace que
+     * sólo la que está arriba en la pila sea realmente pulsable.
+     */
+    const obstacles = [formatTrigger, row.querySelector<HTMLElement>('.fold'),
+      row.querySelector<HTMLElement>('.bullet')];
+    for (const obstacle of obstacles) {
+      if (obstacle === null) continue;
+      const box = obstacle.getBoundingClientRect();
+      const crossesX = screenX + touchRadius > box.left && screenX - touchRadius < box.right;
+      const crossesY = screenY + touchRadius > box.top && screenY - touchRadius < box.bottom;
+      if (crossesX && crossesY) screenY = box.bottom + touchRadius + 2;
+    }
+    const y = screenY - rowBox.top;
+    splitControl.style.setProperty('--split-action-x', `${x}px`);
+    splitControl.style.setProperty('--split-action-y', `${y}px`);
+  };
+  const scheduleSplitControl = (): void => {
+    if (splitFrame !== 0) cancelAnimationFrame(splitFrame);
+    splitFrame = requestAnimationFrame(placeSplitControl);
+  };
+  const splitControlSize = new ResizeObserver(scheduleSplitControl);
+  if (!sourceMode) {
+    splitControlSize.observe(editor);
+    requestAnimationFrame(placeSplitControl);
+  }
 
   // --- Autocompletado -------------------------------------------------------
   //
@@ -9067,6 +9132,7 @@ function startEditing(
     syncCodeTypeface();
     autosize();
     keepCaretInSight(editor, editor.selectionStart);
+    scheduleSplitControl();
     scheduleSave();
     refreshList();
   });
@@ -9095,6 +9161,7 @@ function startEditing(
     // El campo acaba de crecer o menguar, así que la línea en la que se escribe
     // se movió con él. @invariant WhatIsBeingWrittenStaysInSight.
     keepCaretInSight(editor, editor.selectionStart);
+    scheduleSplitControl();
     if (composing || (event instanceof InputEvent && event.isComposing)) return;
     scheduleSave();
     refreshList();
@@ -9110,12 +9177,14 @@ function startEditing(
   editor.addEventListener('keyup', (event) => {
     if (!MOVES_CARET.has(event.key)) return;
     keepCaretInSight(editor, editor.selectionStart);
+    scheduleSplitControl();
   });
 
   editor.addEventListener('select', () => {
     keepCaretInSight(editor, editor.selectionDirection === 'backward'
       ? editor.selectionStart
       : editor.selectionEnd);
+    scheduleSplitControl();
   });
 
   editor.addEventListener('blur', () => {

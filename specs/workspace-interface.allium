@@ -682,6 +682,11 @@ contract ResponsiveWorkspace {
     @invariant GraphNodeOpensTextPage
         -- Selecting a graph node on a phone-sized viewport navigates to that
         -- node's page and changes the workspace to the text view.
+
+    @invariant NarrowOutlinesSpendTheirWidthOnText
+        -- A phone-sized outline reduces its outer inset and each indentation
+        -- step enough to preserve useful reading width, while keeping hierarchy
+        -- perceptible and leaving every touch target at its accessible size.
 }
 
 -- Abrir una página no hace esperar su lectura a todo lo que el grafo puede

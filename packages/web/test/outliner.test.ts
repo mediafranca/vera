@@ -284,7 +284,20 @@ describe('barra de formato', () => {
     assert.match(source, /splitControl\.className = 'split-block-action'/);
     assert.match(source, />Partir aquí<\/span>/);
     assert.match(source, /splitControl\.addEventListener\('click', \(\) => splitAt\(/);
-    assert.match(styles, /@media \(hover: none\), \(pointer: coarse\)[\s\S]*?\.split-block-action:not\(\[hidden\]\) \{\s*display: inline-flex;/);
+    assert.match(source, /row\.append\(splitControl\)/);
+    assert.doesNotMatch(source, /body\.append\(splitControl\)/);
+    assert.match(source, /caretTopIn\(editor, endpoint\)/);
+    assert.match(source, /const screenX = Math\.max\(touchRadius, preferredScreenX\)/);
+    assert.match(source, /screenY = box\.bottom \+ touchRadius \+ 2/);
+    assert.match(styles, /@media \(hover: none\), \(pointer: coarse\)[\s\S]*?\.block > \.split-block-action \{[\s\S]*?position: absolute;[\s\S]*?left: var\(--split-action-x[\s\S]*?top: var\(--split-action-y/);
+    assert.match(styles, /\.block > \.split-block-action::after \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
+  });
+
+  it('devuelve sutilmente ancho al texto móvil sin encoger los blancos táctiles', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(styles, /#text \{\s*padding: 1rem calc\(0\.85rem \+ env\(safe-area-inset-right\)\)[\s\S]*?calc\(1\.1rem \+ env\(safe-area-inset-left\)\);/);
+    assert.match(styles, /\.blocks \{\s*--indent-scale: 0\.55;/);
+    assert.match(styles, /\.split-block-action::after \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
   });
 
   it('cede dentro de la columna sin crear desplazamiento horizontal del documento', () => {
