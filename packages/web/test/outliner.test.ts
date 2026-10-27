@@ -276,6 +276,17 @@ describe('videos de YouTube', () => {
 });
 
 describe('barra de formato', () => {
+  it('ofrece una partición táctil visible y comparte la operación con Retorno móvil', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(source, /editor\.addEventListener\('beforeinput'/);
+    assert.match(source, /beforeInputSplitsBlock\(event\.inputType, physicalNewline\)/);
+    assert.match(source, /splitControl\.className = 'split-block-action'/);
+    assert.match(source, />Partir aquí<\/span>/);
+    assert.match(source, /splitControl\.addEventListener\('click', \(\) => splitAt\(/);
+    assert.match(styles, /@media \(hover: none\), \(pointer: coarse\)[\s\S]*?\.split-block-action:not\(\[hidden\]\) \{\s*display: inline-flex;/);
+  });
+
   it('cede dentro de la columna sin crear desplazamiento horizontal del documento', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     assert.match(styles, /\.format-bar \{[\s\S]*?flex-wrap: wrap;[\s\S]*?width: min\(calc\(100% - 1rem\), 27\.2rem\);/);

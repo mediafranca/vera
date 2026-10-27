@@ -157,6 +157,20 @@ export function resolveEnter(
 }
 
 /**
+ * Los teclados virtuales no siempre emiten `keydown` para Retorno.
+ *
+ * Safari/iOS y algunos IME expresan el gesto fiable en `beforeinput`, unas
+ * veces como `insertParagraph` y otras como `insertLineBreak`. En ambos casos
+ * es el Enter estructural de Vera, salvo cuando un teclado físico acaba de
+ * declarar explícitamente Shift-Enter para escribir un salto dentro del mismo
+ * bloque.
+ */
+export function beforeInputSplitsBlock(inputType: string, physicalNewline: boolean): boolean {
+  if (physicalNewline) return false;
+  return inputType === 'insertParagraph' || inputType === 'insertLineBreak';
+}
+
+/**
  * Lo que puede pasar sobre un dibujo enfocado, que es poco y a propósito.
  *
  * No comparte `KeyOutcome` porque no comparte ninguno de sus casos: un dibujo no

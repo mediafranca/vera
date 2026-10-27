@@ -6111,6 +6111,48 @@ body.settings-open #text {
     0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
 }
 
+/*
+ * El teclado virtual no ofrece Shift-Enter ni garantiza `keydown` para
+ * Retorno. Mientras se edita en una superficie táctil, la operación estructural
+ * queda por eso a la vista y no escondida en un atajo de teclado. Participa del
+ * alto del bloque: es preferible desplazar una línea durante la edición a
+ * superponer el control sobre las palabras o sobre la viñeta.
+ */
+.split-block-action {
+  display: none;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .split-block-action {
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
+    min-height: 2.75rem;
+    margin: 0.4rem 0 0 auto;
+    padding: 0.45rem 0.72rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 44%, var(--rule));
+    border-radius: 999px;
+    color: var(--accent);
+    background: var(--bg-raised);
+    font: 600 0.82rem/1 var(--font-ui);
+    touch-action: manipulation;
+  }
+
+  .split-block-action:not([hidden]) {
+    display: inline-flex;
+  }
+
+  .split-block-action .icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .split-block-action:is(:active, :focus-visible) {
+    outline: none;
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg-raised));
+  }
+}
+
 /* --- La bitácora, leída de corrido ---------------------------------------- */
 
 /*
