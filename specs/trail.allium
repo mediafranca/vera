@@ -1420,6 +1420,9 @@ entity CrossingRevision {
 value RelationTerm {
     name: String
     inverse: String
+    -- Sólo los papeles que una regla necesita conocer. `membership` transmite
+    -- pertenencia; no se infiere desde la palabra ni desde su parecido.
+    role: String?
     is_symmetric: inverse = name
 }
 

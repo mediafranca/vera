@@ -131,7 +131,7 @@ export function drawAnswer(
 ): HTMLElement[] {
   if ('error' in said) return [drawUnreadable(said)];
 
-  if (said.view === 'blocks') {
+  if ('blocks' in said) {
     const head = document.createElement('p');
     head.className = 'query-count';
     head.textContent = said.count === 0 ? 'ningún bloque' : said.count === 1 ? 'un bloque' : `${said.count} bloques`;
@@ -142,7 +142,12 @@ export function drawAnswer(
       why.textContent = `ningún bloque cumple «${said.asked}»`;
       return [why];
     }
-    return [head, drawBlocks(said.blocks, handlers)];
+    return [
+      head,
+      said.view === 'blocks-by-page'
+        ? drawBlocksByPage(said.blocks, handlers)
+        : drawBlocks(said.blocks, handlers),
+    ];
   }
 
   const head = document.createElement('p');
@@ -181,6 +186,34 @@ export function drawAnswer(
       ? drawTable(said.pages, handlers, said.names, said.sort, again)
       : drawList(said.pages, handlers),
   ];
+}
+
+function drawBlocksByPage(blocks: QueryBlockHit[], handlers: QueryBlockHandlers): HTMLElement {
+  const grouped = new Map<string, QueryBlockHit[]>();
+  for (const block of blocks) {
+    const held = grouped.get(block.page.id);
+    if (held === undefined) grouped.set(block.page.id, [block]);
+    else held.push(block);
+  }
+
+  const host = document.createElement('div');
+  host.className = 'query-block-groups';
+  for (const group of [...grouped.values()].sort((a, b) =>
+    (a[0]?.page.title ?? '').localeCompare(b[0]?.page.title ?? '', 'es')
+  )) {
+    const section = document.createElement('section');
+    section.className = 'query-block-group';
+    const heading = document.createElement('h3');
+    heading.className = 'query-block-group-title';
+    heading.append(titleButton(group[0]?.page ?? { title: '' }, handlers));
+    const count = document.createElement('span');
+    count.className = 'query-block-group-count';
+    count.textContent = group.length === 1 ? '1 tarea' : `${group.length} tareas`;
+    heading.append(count);
+    section.append(heading, drawBlocks(group, handlers));
+    host.append(section);
+  }
+  return host;
 }
 
 function drawBlocks(blocks: QueryBlockHit[], handlers: QueryBlockHandlers): HTMLElement {

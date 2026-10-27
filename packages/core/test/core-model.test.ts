@@ -203,6 +203,70 @@ describe('invariant PrivatePagesAreNeverPublished', () => {
   });
 });
 
+describe('invariant PublicationBarriersAreNeverCrossed', () => {
+  it('inherits an explicit prohibition through nested membership', () => {
+    const graph = inhabitedGraph();
+    const work = makePage(graph, 'Vida personal y familiar');
+    const project = makePage(graph, 'Casa de Reñaca');
+    const note = makePage(graph, 'Recolectadores');
+    submit(graph, {
+      kind: 'set_property', page: work,
+      propertyKey: 'publicación prohibida', propertyValue: 'sí',
+    });
+    submit(graph, {
+      kind: 'create_crossing', fromPage: project, toPage: work,
+      content: 'La casa pertenece a la vida personal.', term: 'forma parte de',
+    });
+    submit(graph, {
+      kind: 'create_crossing', fromPage: note, toPage: project,
+      content: 'Este dato pertenece a la casa.', term: 'forma parte de',
+    });
+
+    const outcome = submit(graph, { kind: 'set_page_visibility', page: note, visibility: 'public' });
+
+    assert.equal(outcome.status, 'rejected');
+    assert.match('reason' in outcome ? outcome.reason : '', /publicación.*prohibida/i);
+    assert.deepEqual(checkInvariants(graph), []);
+  });
+
+  it('does not turn a contribution into membership', () => {
+    const graph = inhabitedGraph();
+    const work = makePage(graph, 'Vida personal y familiar');
+    const essay = makePage(graph, 'Ensayo público');
+    submit(graph, {
+      kind: 'set_property', page: work,
+      propertyKey: 'publicación prohibida', propertyValue: 'sí',
+    });
+    submit(graph, {
+      kind: 'create_crossing', fromPage: essay, toPage: work,
+      content: 'El ensayo contribuye a pensar la vida cotidiana.', term: 'contribuye a',
+    });
+
+    const outcome = submit(graph, { kind: 'set_page_visibility', page: essay, visibility: 'public' });
+
+    assert.equal(outcome.status, 'applied');
+    assert.deepEqual(checkInvariants(graph), []);
+  });
+
+  it('refuses to activate a barrier over an already public member', () => {
+    const graph = inhabitedGraph();
+    const work = makePage(graph, 'Vida personal y familiar');
+    const member = makePage(graph, 'Dato expuesto', 'public');
+    submit(graph, {
+      kind: 'create_crossing', fromPage: member, toPage: work,
+      content: 'Pertenece al ámbito.', term: 'forma parte de',
+    });
+
+    const outcome = submit(graph, {
+      kind: 'set_property', page: work,
+      propertyKey: 'publicación prohibida', propertyValue: 'sí',
+    });
+
+    assert.equal(outcome.status, 'rejected');
+    assert.match('reason' in outcome ? outcome.reason : '', /páginas públicas/i);
+  });
+});
+
 // Publicar es una operación con sitio, frontera, dirección, fecha y mano. Una
 // página pública es *elegible*; lo que la pone en un sitio es que alguien la
 // publique ahí. @guarantee HumanPublicationAuthority, @invariant

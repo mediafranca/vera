@@ -53,6 +53,32 @@ export interface RelationTerm {
   inverse: string;
 }
 
+/** Los pocos papeles relacionales que el dominio necesita reconocer. */
+export type RelationRole = 'membership';
+export type RelationNames = Readonly<Record<RelationRole, string>>;
+
+export const DEFAULT_RELATION_NAMES: RelationNames = {
+  membership: 'forma parte de',
+};
+
+/**
+ * Cómo llama el corpus a una relación con función estructural.
+ *
+ * Los términos siguen siendo editables. El programa conoce el papel estable y
+ * VERA: Relaciones decide qué palabra lo cumple.
+ */
+export function namesFromRelationRoles(
+  declared: readonly { name: string; role: string | null }[],
+): RelationNames {
+  const names: Record<RelationRole, string> = { ...DEFAULT_RELATION_NAMES };
+  for (const one of declared) {
+    if (one.role?.trim().toLowerCase() === 'membership' && one.name.trim() !== '') {
+      names.membership = one.name.trim();
+    }
+  }
+  return names;
+}
+
 /*
  * El vocabulario que Vera trae, que es un mínimo y no una verdad.
  *

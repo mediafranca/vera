@@ -8,8 +8,13 @@
 import { answersIn } from './vocabulary.ts';
 import { normaliseCanonicalDomain, normalisePublicPath } from './site.ts';
 import { looksLikeQuery, readQuery } from './query-source.ts';
-import { relationKeyOf, senseIn, titleIn } from './relations.ts';
-import type { Crossing } from './relations.ts';
+import {
+  DEFAULT_RELATION_NAMES,
+  relationKeyOf,
+  senseIn,
+  titleIn,
+} from './relations.ts';
+import type { Crossing, RelationNames } from './relations.ts';
 import { DEFAULT_PROPERTY_NAMES, derivedRole } from './property-names.ts';
 import type { PropertyNames, PropertyRole } from './property-names.ts';
 import {
@@ -90,6 +95,7 @@ export class VeraGraph {
    * corpus y de la lengua de quien lo escribe.
    */
   #names: PropertyNames = DEFAULT_PROPERTY_NAMES;
+  #relationNames: RelationNames = DEFAULT_RELATION_NAMES;
 
   namesProperties(names: PropertyNames): void {
     this.#names = names;
@@ -98,6 +104,14 @@ export class VeraGraph {
 
   get propertyNames(): PropertyNames {
     return this.#names;
+  }
+
+  namesRelations(names: RelationNames): void {
+    this.#relationNames = names;
+  }
+
+  get relationNames(): RelationNames {
+    return this.#relationNames;
   }
 
   #pages = new Map<PageId, Page>();
@@ -719,6 +733,13 @@ export class VeraGraph {
       case 'set_page_visibility':
         if (!this.#pages.has(change.page)) return 'no such page';
         if (
+          !this.#replaying &&
+          change.visibility === 'public' &&
+          this.isPublicationProhibited(change.page)
+        ) {
+          return 'esta página pertenece a un ámbito cuya publicación está prohibida';
+        }
+        if (
           change.visibility === 'private' &&
           this.#publications.some((publication) => publication.page === change.page)
         ) {
@@ -802,17 +823,53 @@ export class VeraGraph {
           one.fromPage === change.fromPage && one.toPage === change.toPage)) {
           return 'there is already a crossing for this ordered pair';
         }
+        if (
+          !this.#replaying &&
+          change.term !== null &&
+          change.term !== undefined &&
+          titleKey(change.term) === titleKey(this.#relationNames.membership) &&
+          this.#pages.get(change.fromPage)?.visibility === 'public' &&
+          this.isPublicationProhibited(change.toPage)
+        ) {
+          return 'una página pública no puede pertenecer a un ámbito cuya publicación está prohibida';
+        }
         return null;
       }
       case 'edit_crossing': {
         if (!this.#crossings.has(change.crossing)) return 'no such crossing';
         if (change.content.trim() === '') return 'a crossing needs content';
+        const crossing = this.#crossings.get(change.crossing);
+        if (
+          !this.#replaying &&
+          crossing !== undefined &&
+          change.term !== null &&
+          change.term !== undefined &&
+          titleKey(change.term) === titleKey(this.#relationNames.membership) &&
+          this.#pages.get(crossing.fromPage)?.visibility === 'public' &&
+          crossing.toPage !== null &&
+          this.isPublicationProhibited(crossing.toPage)
+        ) {
+          return 'una página pública no puede pertenecer a un ámbito cuya publicación está prohibida';
+        }
         return null;
       }
       case 'set_property': {
         const refusal = this.#validateSubject(change.page, change.block);
         if (refusal !== null) return refusal;
         if (change.propertyKey.trim() === '') return 'a property needs a key';
+        if (
+          !this.#replaying &&
+          change.page !== undefined &&
+          titleKey(change.propertyKey) === titleKey(this.#names.publication_barrier) &&
+          /^(sí|si|yes|true)$/i.test(change.propertyValue.trim())
+        ) {
+          const publicMember = this.#membersOf(change.page).find(
+            (page) => this.#pages.get(page)?.visibility === 'public',
+          );
+          if (publicMember !== undefined) {
+            return 'el ámbito contiene páginas públicas; hazlas privadas antes de prohibir su publicación';
+          }
+        }
         return null;
       }
       case 'remove_property': {
@@ -1624,6 +1681,36 @@ export class VeraGraph {
             .map((l) => l.target as PageId),
         );
       }
+      case 'RelatesToTerm': {
+        const target = this.#pageTitled(expression.targetTitle);
+        if (target === undefined || (scope !== null && !scope.has(target.id))) return new Set<PageId>();
+        const relation = titleKey(expression.relation);
+        return new Set(
+          this.crossings()
+            .filter((crossing) =>
+              crossing.toPage === target.id &&
+              crossing.term !== null &&
+              titleKey(crossing.term) === relation &&
+              (scope === null || scope.has(crossing.fromPage)),
+            )
+            .map((crossing) => crossing.fromPage),
+        );
+      }
+      case 'RelatedFromTerm': {
+        const origin = this.#pageTitled(expression.originTitle);
+        if (origin === undefined || (scope !== null && !scope.has(origin.id))) return new Set<PageId>();
+        const relation = titleKey(expression.relation);
+        return new Set(
+          this.crossingsOut(origin.id)
+            .filter((crossing) =>
+              crossing.toPage !== null &&
+              crossing.term !== null &&
+              titleKey(crossing.term) === relation &&
+              (scope === null || scope.has(crossing.toPage)),
+            )
+            .map((crossing) => crossing.toPage as PageId),
+        );
+      }
       case 'AndTerm': {
         const sets = expression.operands.map((o) => this.#select(o, scope));
         const first = sets[0] ?? new Set<PageId>();
@@ -1664,6 +1751,53 @@ export class VeraGraph {
 
   #pagesWhere(predicate: (page: Page) => boolean, scope: ReadonlySet<PageId> | null = null): Set<PageId> {
     return new Set(this.pages().filter((page) => (scope === null || scope.has(page.id)) && predicate(page)).map((p) => p.id));
+  }
+
+  /**
+   * Si una página está dentro de un ámbito que declaró que nada suyo se publica.
+   *
+   * Se sigue sólo la relación de membresía. «Contribuye a» no basta: una obra
+   * pública puede contribuir a una experiencia personal sin volverse privada.
+   */
+  isPublicationProhibited(page: PageId): boolean {
+    const seen = new Set<PageId>();
+    const pending: PageId[] = [page];
+    while (pending.length > 0) {
+      const current = pending.shift() as PageId;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      if (this.propertiesOf(current).some(
+        (property) =>
+          titleKey(property.key) === titleKey(this.#names.publication_barrier) &&
+          /^(sí|si|yes|true)$/i.test(property.value.trim()),
+      )) return true;
+      for (const crossing of this.crossingsOut(current)) {
+        if (
+          crossing.toPage !== null &&
+          crossing.term !== null &&
+          titleKey(crossing.term) === titleKey(this.#relationNames.membership)
+        ) pending.push(crossing.toPage);
+      }
+    }
+    return false;
+  }
+
+  /** La página y todo lo que llega a ella por membresía, transitivamente. */
+  #membersOf(scope: PageId): PageId[] {
+    const seen = new Set<PageId>();
+    const pending: PageId[] = [scope];
+    while (pending.length > 0) {
+      const current = pending.shift() as PageId;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      for (const crossing of this.crossingsIn(current)) {
+        if (
+          crossing.term !== null &&
+          titleKey(crossing.term) === titleKey(this.#relationNames.membership)
+        ) pending.push(crossing.fromPage);
+      }
+    }
+    return [...seen];
   }
 
   // -------------------------------------------------------------------------
@@ -1884,6 +2018,9 @@ export class VeraGraph {
     // @invariant PrivatePagesAreNeverPublished
     if (page.visibility !== 'public') {
       throw new Error('a private page is never published; set its visibility first');
+    }
+    if (this.isPublicationProhibited(page.id)) {
+      throw new Error('esta página pertenece a un ámbito cuya publicación está prohibida');
     }
 
     const path = normalisePublicPath(input.path);

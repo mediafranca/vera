@@ -164,6 +164,7 @@ describe('ontología rectora de relaciones', () => {
       symmetric: null,
       transitive: null,
       status: 'aprobada',
+      role: null,
       says: null,
       external: [],
     });
@@ -1118,6 +1119,40 @@ describe('POST /query', () => {
     assert.equal(answer['count'], 2);
     assert.deepEqual(blocks.map((block) => block.id), [first, second]);
     assert.ok(blocks.every((block) => block.page.id === page));
+  });
+
+  it('atraviesa relaciones explicadas y puede reunir los bloques por su página', async () => {
+    const work = await write({ kind: 'create_page', title: 'Obra consultable', visibility: 'private' });
+    const firstPage = await write({ kind: 'create_page', title: 'Proyecto Alfa consultable', visibility: 'private' });
+    const secondPage = await write({ kind: 'create_page', title: 'Proyecto Beta consultable', visibility: 'private' });
+    await write({
+      kind: 'create_crossing', fromPage: firstPage, toPage: work,
+      content: 'Alfa forma parte de la obra.', term: 'forma parte de',
+    });
+    await write({
+      kind: 'create_crossing', fromPage: secondPage, toPage: work,
+      content: 'Beta sólo dialoga con la obra.', term: 'dialoga con',
+    });
+    const first = await write({
+      kind: 'create_block', page: firstPage, parent: null, position: 0,
+      content: '[ ] tarea relacional consultable uno',
+    });
+    const second = await write({
+      kind: 'create_block', page: firstPage, parent: null, position: 1,
+      content: '[ ] tarea relacional consultable dos',
+    });
+    await write({
+      kind: 'create_block', page: secondPage, parent: null, position: 0,
+      content: '[ ] tarea relacional consultable ajena',
+    });
+
+    const answer = await ask(
+      '? ~"tarea relacional consultable" + -[forma parte de]->[[Obra consultable]] ; bloques por página',
+    );
+    const blocks = answer['blocks'] as { id: string; page: { id: string } }[];
+    assert.equal(answer['view'], 'blocks-by-page');
+    assert.deepEqual(blocks.map((block) => block.id), [first, second]);
+    assert.ok(blocks.every((block) => block.page.id === firstPage));
   });
 
   it('cada página trae su tipo y cuándo se tocó por última vez', async () => {

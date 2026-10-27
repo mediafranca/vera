@@ -4,12 +4,13 @@
 -- Scope: What a Vera query can express and what it selects from the current graph
 -- Includes: The term vocabulary, composition and negation, evaluation scoped to one
 --   graph and one participant, the compact source a participant writes in a block,
---   whether its answer is read as pages or matching blocks, and the fate of the Logseq
+--   whether its answer is read as pages or matching blocks, grouping matching blocks
+--   by their page of origin, and the fate of the Logseq
 --   queries found in the corpus
 -- Excludes:
 --   - Index structures and evaluation strategy
 --   - Free text matching and result ranking (see search-index.allium)
---   - Sorting, grouping, cards and subgraph views of a result
+--   - Arbitrary grouping, cards and subgraph views of a result
 --   - Saving, naming and sharing queries
 -- Dependencies: Graph, Page, Block, Participant and PropertyAssignment are governed by
 --   core.allium. workspace-interface.allium projects an evaluation to its page subset.
@@ -66,11 +67,14 @@ contract NativeGraphQuery {
 --     clave=         lleva esa clave, con el valor que sea
 --     ->[[Página]]   enlaza a
 --     <-[[Página]]   enlazada desde
+--     -[término]->[[Página]]   lleva esa relación explicada hacia
+--     <-[término]-[[Página]]   recibe esa relación explicada desde
 --     ~texto         el contenido lo contiene
 --     !término       no
 --     +  y   ·   *  o   ·   ( ) grupo
 --     ; tabla        páginas en tabla; sin eso, páginas en lista
 --     ; bloques      cada bloque concreto que dice lo preguntado
+--     ; bloques por página  los mismos bloques, reunidos por la página donde viven
 contract CompactQuerySource {
     read: (source: String) -> QueryExpression
     write: (expression: QueryExpression) -> String
@@ -144,7 +148,7 @@ contract CompactQuerySource {
 -- término retirado; es uno que todavía no se puede pedir.
 entity QueryExpression {
     kind: TitleTerm | ContentTerm | TagTerm | PropertyTerm | SemanticTypeTerm
-        | LinksToTerm | LinkedFromTerm
+        | LinksToTerm | LinkedFromTerm | RelatesToTerm | RelatedFromTerm
         | AndTerm | OrTerm | NotTerm
 }
 
@@ -211,6 +215,20 @@ variant LinkedFromTerm : QueryExpression {
     origin_title: String
 }
 
+-- Una relación explicada es una arista con identidad y prosa, no un enlace en
+-- el texto. El término se escribe porque una página puede tener más de una clase
+-- de relación con el mismo ámbito a lo largo del tiempo, pero una sola arista
+-- vigente por par ordenado.
+variant RelatesToTerm : QueryExpression {
+    relation: String
+    target_title: String
+}
+
+variant RelatedFromTerm : QueryExpression {
+    relation: String
+    origin_title: String
+}
+
 variant AndTerm : QueryExpression {
     operands: List<QueryExpression>
 }
@@ -233,17 +251,24 @@ variant NotTerm : QueryExpression {
 -- siempre. Elegirlas es lo que convierte una tabla en un índice de trabajo y es
 -- también lo que trae columnas vacías, anchos en el teléfono y una preferencia
 -- que hay que guardar en alguna parte. Primero que la tabla exista.
-enum QueryView { list | table | blocks }
+enum QueryView { list | table | blocks | blocks_by_page }
 
 entity QueryPresentation {
     view: QueryView
 
     @guidance
-        -- Ordenar, agrupar, limitar y elegir columnas son de esta entidad y no
-        -- están en ella todavía. Cuando lleguen, llegan aquí: ninguna de esas
-        -- cuatro puede cambiar qué selecciona la expresión. `blocks` proyecta
+        -- Ordenar, limitar, elegir columnas y cualquier agrupación distinta de
+        -- la página de origen son de esta entidad y no están en ella todavía.
+        -- Cuando lleguen, llegan aquí: ninguna puede cambiar qué selecciona la
+        -- expresión. `blocks` proyecta
         -- sólo matching_blocks: no convierte las propiedades de una página en
         -- bloques ni devuelve todos los bloques de una página coincidente.
+        -- `blocks_by_page` devuelve exactamente esos mismos bloques y sólo cambia
+        -- su disposición: la página es un encabezado navegable, no una copia.
+
+    @invariant GroupingChangesNoAnswer
+        -- Una misma pregunta leída como `blocks` o `blocks_by_page` selecciona
+        -- las mismas páginas y los mismos bloques. Agrupar es mirar, no consultar.
 }
 
 -- Lo que sale de contestar una pregunta. No se guarda en ninguna parte: se
