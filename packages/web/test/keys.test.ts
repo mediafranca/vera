@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  beforeInputSplitsBlock,
   onFirstLine,
   onLastLine,
   resolveArrow,
@@ -36,6 +37,16 @@ function near(overrides: Partial<Neighbourhood> = {}): Neighbourhood {
 }
 
 describe('Enter', () => {
+  it('reconoce las dos formas de Retorno que entregan los teclados virtuales', () => {
+    assert.equal(beforeInputSplitsBlock('insertParagraph', false), true);
+    assert.equal(beforeInputSplitsBlock('insertLineBreak', false), true);
+    assert.equal(beforeInputSplitsBlock('insertText', false), false);
+  });
+
+  it('deja pasar Shift-Enter de un teclado físico como salto interno', () => {
+    assert.equal(beforeInputSplitsBlock('insertLineBreak', true), false);
+  });
+
   it('parte por el cursor y el bloque conserva la cabeza', () => {
     const outcome = resolveEnter('unodos', 4, 4, near({ index: 2 }));
     assert.deepEqual(outcome, {

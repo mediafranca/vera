@@ -110,6 +110,12 @@ contract FluidBlockEditing {
         -- Ctrl/Cmd-B toggles Markdown bold and Ctrl/Cmd-I toggles Markdown
         -- italics around the current selection. With no selection each gesture
         -- writes an empty pair and leaves the caret between its marks.
+
+    @invariant SplittingIsReachableWithoutAKeyboard
+        -- A touch editor exposes a visible control that performs the same split
+        -- as Enter at the current caret. Virtual Return is accepted through the
+        -- browser's editing-input event even when no keydown exists; a physical
+        -- Shift-Enter remains a newline inside the same block.
 }
 
 contract OutlineManipulation {
@@ -503,6 +509,17 @@ rule EnterAtStartInsertsAbove {
             parent: session.block.parent,
             content: ""
         )
+}
+
+-- The visible touch control is not a second kind of structure. It delegates to
+-- exactly the same split, including the special case at the beginning.
+rule TouchControlSplitsTheBlock {
+    when: ActivateSplitControl()
+
+    requires: session.mode = editing
+    requires: session.action = none
+
+    ensures: PressEnter()
 }
 
 ------------------------------------------------------------
@@ -912,6 +929,7 @@ surface BlockEditor {
         MoveBlock(block, up)
         DragBlock(block, parent, position)
         PressEnter()
+        ActivateSplitControl()
         PressTab(forward)
         BackspaceAtStart()
         PressEscape()

@@ -114,6 +114,7 @@ import { session } from './tokens.ts';
 import {
   resolveArrow,
   resolveBackspaceAtStart,
+  beforeInputSplitsBlock,
   resolveDelimiter,
   resolveDrawingKey,
   resolveEnter,
@@ -8221,6 +8222,7 @@ function startEditing(
 
   const editor = document.createElement('textarea');
   editor.className = 'editor';
+  editor.enterKeyHint = 'enter';
   /*
    * El fuente, sin el blanco del final.
    *
@@ -8585,6 +8587,34 @@ function startEditing(
       });
     });
   };
+
+  /**
+   * La misma partición para teclado, Retorno virtual y control táctil.
+   *
+   * Leer la selección en el instante del gesto es importante: el botón puede
+   * recibir foco después, y entonces algunos navegadores móviles dejan de
+   * informar correctamente dónde estaba el cursor del textarea.
+   */
+  const splitAt = (start: number, end: number): void => {
+    if (leaving) return;
+    closeList();
+    session.type(editor.value);
+    structural(resolveEnter(editor.value, start, end, context.near));
+  };
+
+  const splitControl = document.createElement('button');
+  splitControl.type = 'button';
+  splitControl.className = 'split-block-action';
+  splitControl.innerHTML = `${icon('circle-plus')}<span>Partir aquí</span>`;
+  splitControl.title = 'partir el bloque por el cursor y crear el siguiente';
+  splitControl.setAttribute('aria-label', splitControl.title);
+  let splitSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+  splitControl.addEventListener('pointerdown', () => {
+    splitSelection = { start: editor.selectionStart, end: editor.selectionEnd };
+  });
+  splitControl.addEventListener('mousedown', (event) => event.preventDefault());
+  splitControl.addEventListener('click', () => splitAt(splitSelection.start, splitSelection.end));
+  if (!sourceMode) body.append(splitControl);
 
   // --- Autocompletado -------------------------------------------------------
   //
@@ -9041,7 +9071,24 @@ function startEditing(
     refreshList();
   });
 
+  let physicalNewline = false;
+
+  editor.addEventListener('beforeinput', (event) => {
+    if (composing || event.isComposing) return;
+    if (list !== null && candidates.length > 0 && beforeInputSplitsBlock(event.inputType, physicalNewline)) {
+      event.preventDefault();
+      physicalNewline = false;
+      accept(highlighted);
+      return;
+    }
+    if (!beforeInputSplitsBlock(event.inputType, physicalNewline)) return;
+    event.preventDefault();
+    physicalNewline = false;
+    splitAt(editor.selectionStart, editor.selectionEnd);
+  });
+
   editor.addEventListener('input', (event) => {
+    physicalNewline = false;
     session.type(editor.value);
     syncCodeTypeface();
     autosize();
@@ -9126,8 +9173,14 @@ function startEditing(
 
     if (is('split', event)) {
       event.preventDefault();
-      session.type(editor.value);
-      structural(resolveEnter(editor.value, start, end, context.near));
+      splitAt(start, end);
+      return;
+    }
+
+    // El `beforeinput` siguiente sabrá que éste sí es un salto dentro del
+    // bloque. En móvil no existe esa tecla y el Retorno virtual se parte.
+    if (is('newline', event)) {
+      physicalNewline = true;
       return;
     }
 
