@@ -287,9 +287,12 @@ describe('barra de formato', () => {
     assert.match(source, /row\.append\(splitControl\)/);
     assert.doesNotMatch(source, /body\.append\(splitControl\)/);
     assert.match(source, /caretTopIn\(editor, endpoint\)/);
+    assert.match(source, /const viewportLeft = window\.visualViewport\?\.offsetLeft \?\? 0/);
+    assert.match(source, /formatTrigger\.style\.setProperty\(\s*'--format-tools-shift'/);
     assert.match(source, /const screenX = Math\.max\(touchRadius, preferredScreenX\)/);
     assert.match(source, /screenY = box\.bottom \+ touchRadius \+ 2/);
     assert.match(styles, /@media \(hover: none\), \(pointer: coarse\)[\s\S]*?\.block > \.split-block-action \{[\s\S]*?position: absolute;[\s\S]*?left: var\(--split-action-x[\s\S]*?top: var\(--split-action-y/);
+    assert.match(styles, /\.format-tools-trigger::after \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
     assert.match(styles, /\.block > \.split-block-action::after \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
   });
 

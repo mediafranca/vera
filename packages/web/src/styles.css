@@ -6094,6 +6094,7 @@ body.settings-open #text {
   color: var(--bg);
   background: var(--accent);
   box-shadow: 0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
+  transform: translateX(var(--format-tools-shift, 0px));
   cursor: pointer;
   font-size: 1rem;
 }
@@ -6123,6 +6124,21 @@ body.settings-open #text {
 }
 
 @media (hover: none), (pointer: coarse) {
+  /*
+   * El círculo visible es compacto, pero su gesto pertenece a un blanco de
+   * 44 px. La posición se limita desde el editor para que ese blanco completo
+   * —no sólo el dibujo— permanezca dentro del viewport móvil.
+   */
+  .format-tools-trigger::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+  }
+
   .block > .split-block-action {
     position: absolute;
     left: var(--split-action-x, -1.675rem);
