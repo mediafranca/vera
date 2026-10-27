@@ -1493,6 +1493,14 @@ surface VeraWorkspace {
         -- corpus, local index, retained pages, navigation trace and current URL.
         -- The reader returns to the preceding living page; today's journal is
         -- the fallback when no preceding page remains.
+        --
+        -- The same recovery applies when a stale browser-history entry, saved
+        -- address or retained index reaches a page whose canonical deletion
+        -- happened elsewhere. The dead route is replaced rather than left as a
+        -- trap: the preceding living page becomes active, its text and map are
+        -- redrawn, and a short notice explains why the requested place vanished.
+        -- A transport failure is not evidence of deletion and must preserve the
+        -- ordinary offline recovery path instead of pruning the page.
 
     @guarantee TheCanonicalLogIsTheActivityRegister
         -- VERA: Registro de Actividad makes every canonical creation, edition,

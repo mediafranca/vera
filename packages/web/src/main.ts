@@ -52,6 +52,7 @@ import { brandMark, icon, type IconName } from './icons.ts';
 import { is } from './bindings.ts';
 import { pageSearchResults } from './search-results.ts';
 import { createPage } from './pages.ts';
+import { isMissingPageError, recoveryAfterPageDeletion } from './deleted-page-recovery.ts';
 import { changesGraphMeaning } from './invalidation.ts';
 import { sameReadablePage } from './page-validation.ts';
 import { firstReadable } from './page-delivery.ts';
@@ -865,9 +866,76 @@ async function canonicalPage(
   try {
     return await api.readablePage(kept.id, signal);
   } catch (error) {
-    if (!(error instanceof Error) || !/no such page/i.test(error.message) || kept.title === kept.id) throw error;
+    if (!isMissingPageError(error) || kept.title === kept.id) throw error;
     return api.readablePage(kept.title, signal);
   }
+}
+
+/**
+ * Saca una dirección muerta del camino y devuelve la lectura a un lugar vivo.
+ *
+ * Este caso no es el borrado hecho en la pestaña —`onDeleted` ya conoce ese
+ * gesto— sino enterarse después: volver mediante el historial, abrir un
+ * marcador o validar una copia retenida cuya página fue borrada en otro aparato.
+ */
+async function recoverDeletedRoute(requested: string, error: unknown): Promise<boolean> {
+  if (!isMissingPageError(error)) return false;
+
+  const key = requested.toLowerCase();
+  const known = pages.find((page) => page.id === requested || page.title.toLowerCase() === key);
+  const deleted = known?.id ?? requested;
+  const deletedTitle = known?.title ?? requested;
+  const active = workspace.activePage;
+
+  // Un 404 demuestra que el servidor vive. Se aprovecha para no escoger como
+  // refugio otra página que el índice retenido todavía crea existente.
+  let living = pages.filter((page) => page.id !== deleted);
+  try {
+    living = byWeight(await api.pages());
+  } catch {
+    // Si la lista completa falla, el 404 sigue siendo evidencia suficiente para
+    // retirar únicamente la página pedida. El resto de la lectura local queda.
+  }
+
+  const recovered = recoveryAfterPageDeletion(
+    living,
+    workspace.trace,
+    deleted,
+    active,
+    [today(), 'VERA: Registro de Actividad'],
+  );
+  pages = recovered.pages;
+  workspace.trace = recovered.trace;
+  saveTrace(workspace.trace);
+  await held.forgetPage(deleted);
+  if (requested !== deleted) await held.forgetPage(requested);
+  await held.keepIndex(pages);
+
+  workspace.activePage = null;
+  workspace.focusRoot = null;
+  openView = null;
+  replica = null;
+
+  if (recovered.target !== null) {
+    const destination = pages.find((page) => page.id === recovered.target);
+    await openPage(recovered.target, null, {
+      gesture: recovered.returned ? 'returned' : 'opened_directly',
+      replaceRoute: true,
+    });
+    if (workspace.activePage === recovered.target) {
+      notice(destination === undefined
+        ? `La página «${deletedTitle}» fue borrada.`
+        : `La página «${deletedTitle}» fue borrada; volviste a «${destination.title}».`);
+    }
+    return true;
+  }
+
+  // Sin ninguna página viva conocida, la raíz conserva una salida navegable y
+  // deja a `openHome` decidir entre hoy y su representación aún no comenzada.
+  window.history.replaceState({}, '', '/');
+  await openHome();
+  notice(`La página «${deletedTitle}» fue borrada.`);
+  return true;
 }
 
 /**
@@ -994,7 +1062,7 @@ async function openPage(
     } else if (!here && !isAnybody()) {
       const retainedLookup = held.page(id);
       const canonicalLookup = api.readablePage(id, delivery.signal).catch(async (error) => {
-        if (!(error instanceof Error) || !/no such page/i.test(error.message)) throw error;
+        if (!isMissingPageError(error)) throw error;
         const remembered = await retainedLookup;
         if (remembered === null || remembered.title === id) throw error;
         return api.readablePage(remembered.title, delivery.signal);
@@ -1030,6 +1098,7 @@ async function openPage(
      */
     const remembered = isAnybody() ? null : await held.page(id);
     if (remembered === null) {
+      if (await recoverDeletedRoute(id, error)) return;
       // Una página que no se pudo traer ni se tenía se dice; no se deja la vista
       // anterior fingiendo que la navegación ocurrió.
       notice(`No se pudo abrir la página: ${error instanceof Error ? error.message : 'error'}.`);
@@ -1245,9 +1314,12 @@ async function openPage(
         notice(`No se pudo recuperar desde el corpus: ${error instanceof Error ? error.message : 'error'}.`);
       });
     };
-    void validation.then(acceptCanonical).catch(() => {
+    void validation.then(acceptCanonical).catch((error) => {
       if (opening !== thisOpening || workspace.activePage !== page.id) return;
-      markShowing(text, true, 'unreachable', retryValidation);
+      void recoverDeletedRoute(page.id, error).then((recovered) => {
+        if (recovered || opening !== thisOpening || workspace.activePage !== page.id) return;
+        markShowing(text, true, 'unreachable', retryValidation);
+      });
     });
   }
   if (needsEnrichment) {

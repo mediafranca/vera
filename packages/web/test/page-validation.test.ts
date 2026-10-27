@@ -55,6 +55,17 @@ describe('retained page validation', () => {
     assert.match(main, /forgetPage\(page\.id\)/);
   });
 
+  it('sale de una ruta borrada sin dejar atrapados el texto, el mapa ni el historial', () => {
+    assert.match(main, /async function recoverDeletedRoute\(requested: string, error: unknown\)/);
+    assert.match(main, /living = byWeight\(await api\.pages\(\)\)/);
+    assert.match(main, /recoveryAfterPageDeletion\(/);
+    assert.match(main, /await held\.forgetPage\(deleted\)/);
+    assert.match(main, /if \(await recoverDeletedRoute\(id, error\)\) return/);
+    assert.match(main, /validation\.then\(acceptCanonical\)\.catch\(\(error\)/);
+    assert.match(main, /recoverDeletedRoute\(page\.id, error\)/);
+    assert.match(main, /La página «\$\{deletedTitle\}» fue borrada/);
+  });
+
   it('vuelve a comprobar la página visible al reanudar una PWA móvil', () => {
     assert.match(main, /async function resumeVisiblePage\(\)/);
     assert.match(main, /await catchUpWithCorpus\(\);[\s\S]*await api\.drain\(\)/);
