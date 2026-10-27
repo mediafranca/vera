@@ -124,6 +124,13 @@ contract FluidBlockEditing {
         -- source; moving the caret moves it, and activating it splits at the
         -- selection held when the gesture began. It neither covers the source
         -- nor replaces the bullet, folding control or formatting tools.
+
+    @invariant MobileEditorActionsStayInsideTheViewport
+        -- On a touch editor, the formatting tool and the structural split
+        -- action share an exterior rail whose complete 44-pixel touch targets
+        -- remain inside the visible viewport, including while the virtual
+        -- keyboard changes it. They may separate vertically to preserve both
+        -- gestures, but neither is expelled beyond the screen edge.
 }
 
 contract OutlineManipulation {

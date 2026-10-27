@@ -8637,12 +8637,40 @@ function startEditing(
     if (sourceMode || row === null || !splitControl.isConnected) return;
     const rowBox = row.getBoundingClientRect();
     const editorBox = editor.getBoundingClientRect();
-    const toolsBox = formatTrigger.getBoundingClientRect();
     const endpoint = editor.selectionDirection === 'backward'
       ? editor.selectionStart
       : editor.selectionEnd;
     const line = lineHeightOf(editor);
     const touchRadius = 22;
+
+    /*
+     * La herramienta de formato nació antes que el carril móvil y todavía
+     * colgaba con un margen negativo fijo. En el primer nivel de un teléfono
+     * estrecho eso deja media circunferencia fuera de la pantalla: el control
+     * se ve, pero el gesto deja de pertenecer enteramente a la superficie.
+     *
+     * El desplazamiento es sólo visual —no cambia el ancho del bloque— y se
+     * calcula contra el viewport realmente visible, incluido el desplazamiento
+     * de VisualViewport cuando el teclado virtual está abierto. El botón de
+     * partir toma después este centro ya corregido, de modo que ambos controles
+     * comparten un único carril alcanzable.
+     *
+     * @invariant MobileEditorActionsStayInsideTheViewport.
+     */
+    formatTrigger.style.removeProperty('--format-tools-shift');
+    const naturalToolsBox = formatTrigger.getBoundingClientRect();
+    const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const naturalToolsCenter = naturalToolsBox.left + naturalToolsBox.width / 2;
+    const toolsCenter = Math.min(
+      viewportLeft + viewportWidth - touchRadius,
+      Math.max(viewportLeft + touchRadius, naturalToolsCenter),
+    );
+    formatTrigger.style.setProperty(
+      '--format-tools-shift',
+      `${toolsCenter - naturalToolsCenter}px`,
+    );
+    const toolsBox = formatTrigger.getBoundingClientRect();
     const preferredScreenX = toolsBox.left + toolsBox.width / 2;
     // El carril de formato cuelga fuera del esquema y, en el primer nivel de un
     // teléfono estrecho, puede quedar parcialmente fuera del viewport. La
