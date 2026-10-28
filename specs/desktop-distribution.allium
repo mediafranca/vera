@@ -28,6 +28,7 @@ contract DesktopUpdateSafety {
 enum DesktopPlatform { windows | macos | linux }
 enum InstallationKind { installed | portable }
 enum UpdateState { current | offered | downloading | ready | failed }
+enum ReleaseChannel { stable | legacy }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -41,6 +42,7 @@ entity DesktopInstallation {
     available_version: String?
     update_state: UpdateState
     memory_path: String
+    release_channel: ReleaseChannel
 }
 
 entity StableRelease {
@@ -69,6 +71,21 @@ entity AlphaRelease {
     unsigned_warning_disclosed: Boolean
 }
 
+-- Edición deliberadamente fijada a un runtime antiguo para mantener habitable
+-- un sistema operativo que la distribución contemporánea ya no admite. No
+-- participa del canal de actualización estable: actualizar el programa sin
+-- comprobar el sistema operativo puede convertir una instalación viva en una
+-- aplicación que ya no abre.
+entity LegacyRelease {
+    version: String
+    published: Boolean
+    mac_catalina_intel_available: Boolean
+    checksum_available: Boolean
+    unsigned_warning_disclosed: Boolean
+    unsupported_runtime_disclosed: Boolean
+    automatic_updates_available: Boolean
+}
+
 ------------------------------------------------------------
 -- Config
 ------------------------------------------------------------
@@ -84,6 +101,7 @@ config {
 rule OfferStableUpdate {
     when: StableUpdateFound(installation, release)
     requires: installation.kind = installed
+    requires: installation.release_channel = stable
     requires: release.published
     requires: release.update_metadata_available
     requires: release.version != installation.installed_version
@@ -152,6 +170,16 @@ invariant AlphaReleasesDiscloseUnsignedRisk {
             release.checksum_available and
             release.unsigned_warning_disclosed and
             (release.windows_installer_available or release.mac_installer_available)
+}
+
+invariant LegacyReleasesRemainManualAndExplicit {
+    for release in LegacyReleases:
+        release.published implies
+            release.mac_catalina_intel_available and
+            release.checksum_available and
+            release.unsigned_warning_disclosed and
+            release.unsupported_runtime_disclosed and
+            not release.automatic_updates_available
 }
 
 ------------------------------------------------------------

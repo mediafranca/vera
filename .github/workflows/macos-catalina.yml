@@ -1,0 +1,105 @@
+name: macOS Catalina legacy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag especial que recibirá el DMG legacy
+        required: true
+        default: v0.6.16-catalina.1
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Comprobar que el tag especial corresponde al código
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v$version-catalina.1" = "$RELEASE_TAG"
+
+      - name: Verificar el corte
+        run: |
+          npm run typecheck
+          npm test -- --test-concurrency=1
+
+      - name: Construir DMG Intel para macOS 10.15+
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run pack:mac:legacy -- --publish never
+
+      - name: Comprobar arquitectura, mínimo y arranque real
+        run: |
+          app="$(find release-legacy -type d -name Vera.app -print -quit)"
+          test -n "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")" = "10.15"
+          lipo -archs "$app/Contents/MacOS/Vera" | grep -Eq '(^| )x86_64($| )'
+          if lipo -archs "$app/Contents/MacOS/Vera" | grep -Eq '(^| )arm64($| )'; then
+            echo 'El artefacto legacy debe ser exclusivamente Intel' >&2
+            exit 1
+          fi
+          "$app/Contents/MacOS/Vera" >"$RUNNER_TEMP/vera-legacy.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          sleep 8
+          if ! kill -0 "$pid" 2>/dev/null; then
+            cat "$RUNNER_TEMP/vera-legacy.log"
+            exit 1
+          fi
+
+      - name: Crear la release especial
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## Vera para macOS Catalina en Mac Intel
+
+          Esta es una edición especial de Vera 0.6.16 para equipos Intel con
+          macOS 10.15 Catalina o posterior. No reemplaza la release estable.
+
+          Usa Electron 32, un runtime fuera de soporte, está sin firma ni
+          notarización y no recibe actualizaciones automáticas. Su checksum
+          SHA-256 se publica como un asset separado. Siempre que el equipo lo
+          permita, es preferible actualizar macOS y usar el DMG universal
+          contemporáneo.
+          EOF
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title 'Vera 0.6.16 · macOS Catalina Intel (legacy)' \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --prerelease
+          fi
+
+      - name: Crear checksum y publicar en la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          cd release-legacy
+          dmg="$(find . -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          shasum -a 256 "${dmg#./}" > SHA256SUMS-macOS-Catalina-Intel-legacy.txt
+          gh release upload "$RELEASE_TAG" \
+            "${dmg#./}" SHA256SUMS-macOS-Catalina-Intel-legacy.txt --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vera-macOS-Catalina-Intel-legacy
+          path: |
+            release-legacy/*.dmg
+            release-legacy/SHA256SUMS-macOS-Catalina-Intel-legacy.txt

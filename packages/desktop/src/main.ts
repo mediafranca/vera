@@ -166,6 +166,9 @@ async function enableAutomaticUpdates(): Promise<void> {
     isPackaged: app.isPackaged,
     platform: process.platform,
     portableRoot,
+    // La edición Catalina queda fijada a un runtime fuera de soporte. Nunca
+    // debe reemplazarse sola por una release que ese sistema no abre.
+    releaseChannel: process.env['VERA_LEGACY_DESKTOP'] === '1' ? 'legacy' : 'stable',
   })) return;
 
   const { autoUpdater } = await import('electron-updater');

@@ -34,6 +34,7 @@ ni dejan de existir instaladores por eso.
 | Windows portable | `Vera <versión>.exe` | sustitución manual | x64 |
 | macOS (firmado) | `Vera-<versión>-universal.dmg` | ZIP + `latest-mac.yml` | Intel + Apple Silicon |
 | macOS (sin firmar) | `Vera-<versión>-universal (sin firmar).dmg` | descarga manual, sin ZIP ni `latest-mac.yml` | Intel + Apple Silicon |
+| macOS Catalina legacy | `Vera-<versión>-macOS-10.15-Intel-legacy.dmg` | descarga manual y checksum separado; nunca autoactualiza | Intel, macOS 10.15+ |
 | Linux | `Vera-<versión>.AppImage`, `.deb` | descarga manual | x64 |
 
 El ZIP de macOS no es otro instalador para la persona: solo existe para que el
