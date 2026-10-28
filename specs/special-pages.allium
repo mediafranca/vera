@@ -107,16 +107,16 @@ contract SelfDescription {
 -- What a special page governs. Open on purpose: the list grows, and each new
 -- kind is a decision to be argued rather than a value to be added quietly.
 --
--- `service` and `mcp` look alike and are opposites, and the difference decides
+-- `service` and `connections` look alike and are opposites, and the difference decides
 -- how many pages each gets. A service is an outgoing connection — Vera goes out,
 -- with a key, a library, a set of collections — and no two outgoing services
--- share anything but the word: one page each. MCP is the other direction, one
+-- share anything but the word: one page each. Connections are the other direction, one
 -- door and many who come through it, distinguished only by who they are, what
 -- they may do and what they took: one page, one row per connection. Four pages
 -- would be four copies of the same three fields.
 enum SpecialKind {
-    ontology | properties | objects | presentation | instructions | publication |
-    service | mcp | activity
+    ontology | properties | objects | relations | embeddings | presentation |
+    instructions | publication | service | connections | activity | governance
 }
 
 enum SpecialMode { rector | surface | derived | documentation }
@@ -236,15 +236,27 @@ invariant OneKindPerSpecialPage {
 
 invariant EachSpecialKindHasAnHonestMode {
     for special in SpecialPages:
-        (special.kind = ontology implies special.mode = rector) and
         (special.kind = properties implies special.mode = rector) and
         (special.kind = objects implies special.mode = rector) and
+        (special.kind = relations implies special.mode = rector) and
+        (special.kind = embeddings implies special.mode = rector) and
         (special.kind = service implies special.mode = rector) and
-        (special.kind = mcp implies special.mode = rector) and
+        (special.kind = connections implies special.mode = rector) and
         (special.kind = publication implies special.mode = surface) and
         (special.kind = activity implies special.mode = derived) and
+        (special.kind = governance implies special.mode = derived) and
+        (special.kind = ontology implies special.mode = documentation) and
         (special.kind = presentation implies special.mode = documentation) and
         (special.kind = instructions implies special.mode = documentation)
+}
+
+-- El índice no se mantiene dos veces. La página es una dirección estable dentro
+-- del grafo; sus renglones se derivan de todas las declaraciones `special-kind`
+-- vigentes, incluida cualquier clase que este cliente todavía no conozca.
+invariant GovernanceIndexesEverySpecialPage {
+    for governance_page in SpecialPages where governance_page.kind = governance:
+        governance_page.page.title = "VERA: Gobierno" and
+        SpecialPages.all(special => governance_index(governance_page).contains(special))
 }
 
 -- La publicación tiene una sola puerta de gobierno por grafo. Su título no es
@@ -326,6 +338,25 @@ surface SpecialPageAdministration {
         -- its blocks changes running behaviour. A surface or derived page says
         -- where its effective state comes from instead of presenting its prose
         -- as a second source of truth.
+}
+
+surface GovernanceIndex {
+    facing participant: core/Participant
+    context governance_page: SpecialPage where governance_page.kind = governance
+
+    exposes:
+        governance_page.page
+        governance_index(governance_page)
+
+    @guarantee TheIndexIsDerivedAndFollowable
+        -- Cada renglón enlaza a la página especial real y dice su clase, modo y
+        -- efecto. No copia sus bloques ni guarda una segunda lista que pueda
+        -- quedarse atrás. Una declaración desconocida se muestra como tal en vez
+        -- de desaparecer.
+
+    @guarantee ConfigurationAndThePageReadTheSameDeclarations
+        -- Configuración y `VERA: Gobierno` son dos superficies de los mismos
+        -- `special-kind`; ninguna mantiene un inventario privado distinto.
 }
 
 ------------------------------------------------------------

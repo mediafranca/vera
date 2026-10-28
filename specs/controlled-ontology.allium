@@ -137,15 +137,13 @@ entity RelationDefinition {
     name: String
     description: String
     -- Desde qué tipo sale y hacia cuáles puede apuntar.
-    domain: SemanticType
+    domain: SemanticType?
     range: Set<SemanticType>
-    -- Cuántas admite. Una relación multivaluada necesita cardinalidad de verdad
-    -- en el modelo: comprimir varias en una cadena separada por comas convierte
-    -- una consulta en una búsqueda de texto.
-    multiple: Boolean
     -- El nombre de la inversa, cuando tiene sentido preguntar al revés. No se
     -- almacena: se calcula.
     derived_inverse: String?
+    symmetric: Boolean
+    transitive: Boolean
     -- Un papel del dominio, cuando la relación hace algo además de nombrarse.
     -- `membership` permite que Vera siga una pertenencia aunque el corpus cambie
     -- «forma parte de» por otra expresión. La palabra es del corpus; el papel es
@@ -154,16 +152,10 @@ entity RelationDefinition {
     status: VocabularyStatus
 }
 
--- Una relación afirmada entre dos cosas concretas.
-entity RelationAssertion {
-    definition: RelationDefinition
-    -- Una relación a nivel de bloque no se guarda aparte. La glosa es la
-    -- relación: sale de la página del bloque y llega a cada página enlazada en
-    -- su contenido. Editar la glosa edita la relación; borrarla la retira.
-    gloss_block: core/Block
-    from: gloss_block.page
-    to: core/Page
-}
+-- La definición tipifica una arista, no un bloque. La relación concreta vive
+-- como `Crossing` en trail.allium: une dos páginas, tiene identidad y conserva
+-- un outline propio para explicarse. Puede existir sin tipo; tipificarla después
+-- no crea otra relación ni clasifica sus bloques.
 
 -- Una reescritura de citas, mirada antes de correr.
 --
@@ -1072,5 +1064,7 @@ open question "Cuando una propiedad ya escrita no admite el dominio que después
 open question "¿Quién decide que una propiedad rige en todo el grafo y no en un tipo: se declara así, o se infiere de que la usan páginas de tipos distintos?"
 open question "Una propiedad definida como requerida por un tipo, ¿qué hace en las páginas de ese tipo que no la tienen — se enseña vacía y exigible, se propone un valor, o requerida sólo significa que no se puede borrar una vez puesta?"
 open question "El valor de una propiedad que nombra vocabulario, ¿tiene que ser el título de una página existente, o puede nombrar una que todavía no se ha escrito, como hace una cita?"
-open question "Can a relation be asserted between two entities whose types the relation's domain and range do not admit — refused, allowed with a warning, or allowed because the ontology is likely to be the thing that is wrong?"
-open question "Which relations are editable and which are necessarily derived from links, authorship, operations or external imports, given that a derived relation edited by hand would contradict the very thing it derives from?"
+-- Resuelta: dominio y rango aconsejan y hacen visible la discrepancia, pero no
+-- impiden escribir una arista. Ver @invariant DomainAndRangeAdviseAndNeverRefuse.
+-- Las aristas explicadas son editables; backlinks, autoría y operaciones son
+-- proyecciones derivadas y no se presentan como relaciones editables.

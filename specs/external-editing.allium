@@ -1,0 +1,411 @@
+-- allium: 3
+-- external-editing.allium
+
+-- Scope: editar fuera de Vera una página o una fuente textual vinculada sin
+--   convertir el archivo de trabajo ni el editor externo en autoridad del grafo
+-- Includes: asociaciones locales por tipo, sesiones temporal-durables, manifiesto
+--   lateral, observación del borrador, aceptación explícita y atómica, descarte,
+--   recuperación tras reinicio y divergencias llevadas al Registro de actividad
+-- Excludes:
+--   - Edición externa de binarios como raster, audio o PDF
+--   - Sincronización permanente entre un archivo elegido por el usuario y el grafo
+--   - Escritura directa del editor externo en el registro canónico
+--   - Coedición carácter por carácter mediante CRDT
+--   - Un protocolo o deep-link particular de Luca
+-- Dependencies: Page, Block, Participant and Change are governed by core.allium;
+--   atomic batches by change-application.allium; general reconciliation by
+--   offline-reconciliation.allium; textual media sources by content-media.allium;
+--   scoped agent delegation by agent-participation.allium
+
+use "./core.allium" as core
+use "./change-application.allium" as application
+use "./offline-reconciliation.allium" as reconciliation
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract LinkedExternalEditing {
+    open: (device: EditingDevice, target: EditableTarget) -> ExternalEditSession
+    inspect: (session: ExternalEditSession) -> ExternalDraft
+    accept: (session: ExternalEditSession) -> List<application/Operation>
+    discard: (session: ExternalEditSession) -> Boolean
+
+    @invariant VeraRemainsTheAuthority
+        -- El editor externo escribe un borrador, no el grafo. Guardar en Luca,
+        -- Illustrator o un editor de código nunca crea por sí solo una operación.
+        -- Sólo «Aceptar cambios» dentro de Vera puede reabsorber el trabajo.
+
+    @invariant TheSessionIsTemporaryAndDurable
+        -- La sesión tiene un cierre explícito —aceptar o descartar—, pero sobrevive
+        -- al cierre de Vera, del editor y del computador. Cerrar una ventana no
+        -- significa perder un borrador ni aceptarlo por accidente.
+
+    @invariant IdentityTravelsBesideTheFile
+        -- El archivo visible contiene fuente portable y limpia. Un manifiesto
+        -- lateral privado conserva objetivo, identidades estables y revisión base.
+        -- Ni la ruta ni un hash de contenido se hacen pasar por identidad del grafo.
+
+    @invariant SaveAsDoesNotRetargetTheSession
+        -- «Guardar como» produce una copia libre. No cambia el objetivo vinculado:
+        -- retargetear silenciosamente por nombre o ruta haría que un gesto del editor
+        -- decidiera qué página o bloque muta en Vera.
+
+    @invariant AcceptanceIsOneAtomicDecision
+        -- Una página completa se reabsorbe como un único lote. Todas sus decisiones
+        -- de divergencia se validan contra la misma revisión y se aplican juntas, o
+        -- ninguna modifica el grafo.
+
+    @invariant UnknownSourceSurvivesRoundTrip
+        -- El editor puede previsualizar lo que entiende, pero conserva sintaxis,
+        -- front matter y referencias que no entiende. No inventa metadatos de Vera
+        -- dentro de Markdown ni sustituye Mermaid por el SVG de su vista previa.
+
+    @invariant ABlockTravelsAsItsAuthoredSource
+        -- Un bloque ordinario viaja como Markdown. Un cercado Mermaid, SVG, HTML,
+        -- p5.js, proceso, MediaWiki o código viaja como la fuente interior con una
+        -- extensión congruente; al aceptar, Vera restituye el cercado original.
+        -- La vista renderizada nunca se ofrece al editor como si fuese la fuente.
+
+    @invariant ManagedFilesAreEditedFromTheirRecord
+        -- Una imagen raster, un PDF, audio u otro archivo administrado no abre una
+        -- sesión binaria desde el menú del bloque que lo incrusta. Pulsar el objeto
+        -- lleva a su ficha en Archivos, donde vive la acción de edición externa.
+        -- Aceptar reemplaza el recurso administrado conservando su identidad y, por
+        -- ello, actualiza de manera explícita todos sus usos catalogados.
+}
+
+------------------------------------------------------------
+-- Enumerations and values
+------------------------------------------------------------
+
+enum EditableKind { page_markdown | block_markdown | svg | mermaid | html | javascript | code | process | mediawiki }
+enum ExternalSessionStatus { active | attention_required | ready | accepted | discarded | failed }
+enum DraftFreshness { current | vera_advanced | rebased | divergent }
+
+external entity EditingDevice {
+    name: String
+}
+
+external entity ExternalEditor {
+    name: String
+}
+
+value EditableTarget {
+    graph: core/Graph
+    page: core/Page?
+    block: core/Block?
+    kind: EditableKind
+}
+
+entity EditorAssociation {
+    device: EditingDevice
+    kind: EditableKind
+    editor: ExternalEditor
+}
+
+entity ExternalEditSession {
+    device: EditingDevice
+    target: EditableTarget
+    status: ExternalSessionStatus
+    freshness: DraftFreshness
+    base_sequence: Integer
+    working_path: String
+    manifest: ExternalEditManifest with session = this
+    opened_at: Timestamp
+    updated_at: Timestamp
+    divergences: ExternalDivergence with session = this
+
+    transitions status {
+        active -> attention_required
+        active -> ready
+        active -> discarded
+        active -> failed
+        attention_required -> active
+        attention_required -> ready
+        attention_required -> discarded
+        attention_required -> failed
+        ready -> attention_required
+        ready -> accepted
+        ready -> discarded
+        ready -> failed
+        failed -> active
+        failed -> discarded
+        terminal: accepted, discarded
+    }
+}
+
+entity ExternalDraft {
+    session: ExternalEditSession
+    content: String
+    dirty: Boolean
+    observed_at: Timestamp
+}
+
+entity ExternalDivergence {
+    session: ExternalEditSession
+    stable_subject: String
+    base_content: String
+    canonical_content: String
+    external_content: String
+    resolved: Boolean
+}
+
+entity ExternalEditManifest {
+    session: ExternalEditSession
+    target: EditableTarget
+    base_sequence: Integer
+    block_identities: List<String>
+    private_path: String
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule OpenOrResumeLinkedEdit {
+    when: ParticipantOpensExternally(participant, device, target)
+
+    let existing = active_session(device, target)
+
+    requires: target.page != null or target.block != null
+    requires: not binary(target.kind)
+
+    ensures:
+        if exists existing:
+            ExternalSessionPresented(session: existing)
+        else:
+            let session = ExternalEditSession.created(
+                device: device,
+                target: target,
+                status: active,
+                freshness: current,
+                base_sequence: canonical_sequence(target.graph),
+                working_path: allocate_working_path(device, target),
+                opened_at: now,
+                updated_at: now
+            )
+            ExternalEditManifest.created(
+                session: session,
+                target: target,
+                base_sequence: canonical_sequence(target.graph),
+                block_identities: stable_block_identities(target),
+                private_path: allocate_private_manifest_path(device, target)
+            )
+            ExternalDraft.created(
+                session: session,
+                content: portable_source(target),
+                dirty: false,
+                observed_at: now
+            )
+            ExternalEditorLaunched(device: device, target: target, path: session.working_path)
+
+    @guidance
+        -- La primera versión Desktop abre una ruta local con la asociación del
+        -- dispositivo. La PWA ofrece Descargar borrador / Importar resultado. Un
+        -- esquema vera:// puede añadirse después sin cambiar este contrato.
+}
+
+rule ObserveExternalSave {
+    when: WorkingFileChanged(session, content)
+
+    let draft = ExternalDraft{session: session}
+
+    requires: session.status = active or session.status = attention_required or session.status = ready
+
+    ensures:
+        draft.content = content
+        draft.dirty = content != portable_source_at(session.target, session.base_sequence)
+        draft.observed_at = now
+        session.updated_at = now
+        session.status = if draft.dirty: ready else: active
+        DraftPreviewUpdated(session: session)
+
+    @guidance
+        -- Observar permite vista previa y estado oportunos. No reabsorbe nada y no
+        -- obliga al editor a hablar un protocolo: guardado atómico de archivo basta.
+}
+
+rule RefreshCleanDraftWhenVeraAdvances {
+    when: CanonicalTargetAdvanced(session, sequence)
+
+    let draft = ExternalDraft{session: session}
+
+    requires: not draft.dirty
+    requires: sequence > session.base_sequence
+
+    ensures:
+        draft.content = portable_source(session.target)
+        session.base_sequence = sequence
+        session.freshness = current
+        ExternalEditorNotifiedOfRefresh(session: session)
+}
+
+rule ReconcileDirtyDraftWhenVeraAdvances {
+    when: CanonicalTargetAdvanced(session, sequence)
+
+    let draft = ExternalDraft{session: session}
+    let proposal = three_way_reconciliation(
+        base: portable_source_at(session.target, session.base_sequence),
+        canonical: portable_source(session.target),
+        external: draft.content
+    )
+
+    requires: draft.dirty
+    requires: sequence > session.base_sequence
+
+    ensures:
+        if proposal.is_provably_non_destructive:
+            draft.content = proposal.combined_content
+            session.base_sequence = sequence
+            session.freshness = rebased
+            session.status = ready
+            AutomaticReconciliationRecorded(session: session, proposal: proposal)
+        else:
+            session.freshness = divergent
+            session.status = attention_required
+            DivergenceRequiresAttention(session: session, proposal: proposal)
+
+    @guidance
+        -- La unidad primaria es el bloque estable y su transformación estructural.
+        -- Cambios independientes pueden combinarse; dos intenciones sobre el mismo
+        -- pasaje o estructura nunca se ordenan por reloj ni por «último escritor».
+}
+
+rule AcceptExternalChangesAtomically {
+    when: ParticipantAcceptsExternalChanges(participant, session)
+
+    let draft = ExternalDraft{session: session}
+    let submissions = changes_from_manifest(session, draft)
+
+    requires: session.status = ready
+    requires: session.freshness != divergent
+    requires: current_sequence(session.target.graph) = session.base_sequence
+
+    ensures:
+        AtomicBatchRequested(
+            graph: session.target.graph,
+            participant: participant,
+            submissions: submissions,
+            origin: session
+        )
+        session.status = accepted
+
+    @guidance
+        -- Si el grafo avanzó desde la última revisión, Vera recalcula antes de
+        -- aplicar. No acepta un prefijo ni deja media página actualizada.
+}
+
+rule RejectStaleAcceptance {
+    when: ParticipantAcceptsExternalChanges(participant, session)
+
+    requires: current_sequence(session.target.graph) != session.base_sequence
+
+    ensures:
+        session.status = attention_required
+        session.freshness = vera_advanced
+        CanonicalTargetAdvanced(session: session, sequence: current_sequence(session.target.graph))
+}
+
+rule DiscardExternalSessionExplicitly {
+    when: ParticipantDiscardsExternalChanges(participant, session)
+
+    requires: session.status != accepted
+    requires: session.status != discarded
+
+    ensures:
+        session.status = discarded
+        WorkingMaterialScheduledForRemoval(session: session)
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OneActiveSessionPerTargetAndDevice {
+    for a in ExternalEditSessions:
+        for b in ExternalEditSessions:
+            a != b and not terminal(a.status) and not terminal(b.status) implies
+                a.device != b.device or a.target != b.target
+}
+
+invariant ATargetNamesExactlyOneGraphObject {
+    for target in EditableTargets:
+        (target.page != null and target.block = null) or
+        (target.page = null and target.block != null)
+}
+
+invariant AWorkingSaveNeverWritesTheGraph {
+    for draft in ExternalDrafts:
+        draft.dirty implies draft.session.status != accepted
+}
+
+------------------------------------------------------------
+-- Actors and surfaces
+------------------------------------------------------------
+
+actor ExternalEditingParticipant {
+    within: core/Graph
+    identified_by: core/Participant
+}
+
+surface ExternalEditingSettings {
+    facing participant: ExternalEditingParticipant
+    context device: EditingDevice
+
+    exposes:
+        EditorAssociation with device = device
+
+    provides:
+        AssociateEditor(participant, device, kind, editor)
+        ForgetEditorAssociation(participant, device, kind)
+
+    @guarantee AssociationsBelongToTheDevice
+        -- Aplicaciones y rutas no se escriben en una página, no se sincronizan con
+        -- el grafo y no se particularizan por bloque. Cada tipo tiene como máximo
+        -- una asociación por dispositivo.
+}
+
+surface LinkedEditReview {
+    facing participant: ExternalEditingParticipant
+    context session: ExternalEditSession
+
+    exposes:
+        session.target
+        session.status
+        session.freshness
+        ExternalDraft with session = session
+        session.divergences
+
+    provides:
+        ParticipantOpensExternally(participant, session.device, session.target)
+        ParticipantAcceptsExternalChanges(participant, session)
+        ParticipantDiscardsExternalChanges(participant, session)
+
+    contracts:
+        fulfils LinkedExternalEditing
+
+    @guarantee VeraOwnsTheAcceptButton
+        -- El editor externo sólo guarda. Aceptar y descartar viven en Vera, donde
+        -- pueden enseñar la propuesta, comprobar revisión, atribuir y registrar.
+    @guarantee DivergenceLivesInActivityNotInAContentPage
+        -- Una divergencia aparece en Registro de actividad como «requiere atención».
+        -- La barra superior cuenta pendientes y abre esa cola; resolver retira la
+        -- atención pero conserva la evidencia histórica. No nace una página especial.
+    @guarantee ReviewTheDifferenceNotTwoWholePages
+        -- Cada tarjeta enseña la divergencia en contexto y una propuesta calculada:
+        -- conservar Vera, tomar externo o combinar. La base queda disponible bajo
+        -- demanda; las divergencias estructurales se enseñan como árbol.
+    @guarantee TheLibrarianMayReceiveOneScopedResolution
+        -- «Dejar al bibliotecario» delega sólo el lote concreto. Puede aplicar las
+        -- conciliaciones que justifique y devuelve las ambiguas todavía pendientes.
+        -- La conciliación se atribuye al bibliotecario; las manos originales no se
+        -- reescriben. Qué conservó, combinó o descartó y por qué queda registrado.
+}
+
+------------------------------------------------------------
+-- Open questions
+------------------------------------------------------------
+
+open question "¿Cuándo puede retirarse automáticamente el material de una sesión aceptada o descartada sin impedir recuperación forense ni llenar el disco?"
+open question "¿Qué protocolo opcional permitiría a Luca recibir avisos de refresco y estado sin convertirlo en autoridad ni requisito para otros editores?"

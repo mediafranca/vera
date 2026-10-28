@@ -159,6 +159,13 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
   block('connections', 'connections-conecta', 3,
     'Vera Conecta permanece desactivada hasta que la persona propietaria la activa aquí. La dirección pública identifica una instalación, pero nunca autoriza por sí sola.'),
 
+  page('governance', 'VERA: Gobierno'),
+  property('governance', 'tipo', 'página especial'),
+  property('governance', 'special-kind', 'governance'),
+  block('governance', 'governance-title', 0, '# Gobierno de Vera'),
+  block('governance', 'governance-intro', 1,
+    'Índice vivo de las páginas que gobiernan esta Vera. La lista se deriva de `special-kind`: no se mantiene a mano ni reemplaza las decisiones escritas en cada página.'),
+
   page('principles', 'VERA — Principios'),
   property('principles', 'tipo', 'documentación'),
   block('principles', 'principles-title', 0, '# Principios'),

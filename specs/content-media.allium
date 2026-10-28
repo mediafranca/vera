@@ -9,6 +9,7 @@
 --   - Codec and compression implementation
 --   - Canvas library selection
 --   - Sandbox implementation
+--   - External editing of textual sources (see external-editing.allium)
 --   - The deliberate act that makes authored HTML or p5.js executable
 --     (see executable-content-sandbox.allium)
 -- Dependencies: Page and Participant are governed by core.allium
@@ -450,5 +451,7 @@ deferred ExecutableContentSandbox.present -- see: executable-content-sandbox.all
 -- Open Questions
 ------------------------------------------------------------
 
-open question "Which media types must Vera edit directly, rather than only store and present?"
+-- Decided 2026-10-20 for the first external-editing cut: Markdown, SVG, Mermaid,
+-- HTML and JavaScript sources may leave Vera through a governed linked session;
+-- raster, audio and PDF remain stored/presented media rather than text round-trips.
 open question "May a canvas sketch receive an explicit read-only projection of graph data as input?"

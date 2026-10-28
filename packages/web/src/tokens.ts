@@ -15,6 +15,27 @@ export interface DesignToken {
   dark: string;
 }
 
+export const DESIGN_LIBRARY_FORMAT = 'vera.designs';
+export const DESIGN_LIBRARY_VERSION = 1;
+export const DEFAULT_DESIGN_NAME = 'Vera';
+
+export interface SavedDesign {
+  id: string;
+  name: string;
+  tokens: DesignToken[];
+}
+
+export interface DesignLibrary {
+  format: typeof DESIGN_LIBRARY_FORMAT;
+  version: typeof DESIGN_LIBRARY_VERSION;
+  active: string;
+  designs: SavedDesign[];
+}
+
+// @guarantee NamedDesignsAreOperable: la biblioteca es de la persona, un
+// diseño reúne los dos esquemas y la selección nunca se confunde con el esquema
+// que el dispositivo muestra ahora.
+
 export const DESIGN_TOKEN_PACKAGE_FORMAT = 'vera.design-tokens';
 export const DESIGN_TOKEN_PACKAGE_VERSION = 1;
 
@@ -22,10 +43,11 @@ export interface DesignTokenPackage {
   format: typeof DESIGN_TOKEN_PACKAGE_FORMAT;
   version: typeof DESIGN_TOKEN_PACKAGE_VERSION;
   exportedAt: string;
+  name: string;
   tokens: DesignToken[];
 }
 
-export type TokenImportMode = 'merge' | 'replace';
+export type TokenImportMode = 'new' | 'merge' | 'replace';
 
 export interface ParsedDesignTokenPackage {
   package: DesignTokenPackage;
@@ -185,17 +207,23 @@ function safeTokenValue(value: unknown, token: DesignToken): value is string {
 export function designTokenPackage(
   tokens: DesignToken[],
   exportedAt = new Date(),
+  name = DEFAULT_DESIGN_NAME,
 ): DesignTokenPackage {
   return {
     format: DESIGN_TOKEN_PACKAGE_FORMAT,
     version: DESIGN_TOKEN_PACKAGE_VERSION,
     exportedAt: exportedAt.toISOString(),
+    name,
     tokens: tokens.map((token) => ({ ...token })),
   };
 }
 
-export function serialiseDesignTokenPackage(tokens: DesignToken[], exportedAt = new Date()): string {
-  return `${JSON.stringify(designTokenPackage(tokens, exportedAt), null, 2)}\n`;
+export function serialiseDesignTokenPackage(
+  tokens: DesignToken[],
+  exportedAt = new Date(),
+  name = DEFAULT_DESIGN_NAME,
+): string {
+  return `${JSON.stringify(designTokenPackage(tokens, exportedAt, name), null, 2)}\n`;
 }
 
 /**
@@ -254,6 +282,9 @@ export function parseDesignTokenPackage(source: string): ParsedDesignTokenPackag
       format: DESIGN_TOKEN_PACKAGE_FORMAT,
       version: DESIGN_TOKEN_PACKAGE_VERSION,
       exportedAt: value['exportedAt'],
+      name: typeof value['name'] === 'string' && value['name'].trim() !== ''
+        ? value['name'].trim()
+        : DEFAULT_DESIGN_NAME,
       tokens: supported.map((token) => ({ ...token })),
     },
     supported,
@@ -266,7 +297,7 @@ export function planDesignTokenImport(
   imported: ParsedDesignTokenPackage,
   mode: TokenImportMode,
 ): DesignTokenImportPlan {
-  const base = mode === 'replace' ? DEFAULT_TOKENS : current;
+  const base = mode === 'merge' ? current : DEFAULT_TOKENS;
   const incoming = new Map(imported.supported.map((token) => [token.name, token]));
   const tokens = base.map((token) => ({ ...(incoming.get(token.name) ?? token) }));
   const before = new Map(current.map((token) => [token.name, token]));
@@ -301,6 +332,7 @@ export function clearTokenImportBackup(): void {
 }
 
 const TOKENS_KEY = 'vera.tokens';
+const DESIGNS_KEY = 'vera.designs';
 const SCHEME_KEY = 'vera.scheme';
 const PUBLIC_SCHEME_KEY = 'vera.publicScheme';
 const PUBLIC_VIEW_KEY = 'vera.publicGraphView';
@@ -344,11 +376,9 @@ export function reachForGraphViewChange(
  * También descarta los que ya no existen: un token retirado del código deja de
  * arrastrarse en el navegador de quien lo tuviera guardado.
  */
-export function loadTokens(): DesignToken[] {
-  const held = localStorage.getItem(TOKENS_KEY);
-  if (held === null) return structuredClone(DEFAULT_TOKENS);
+function normaliseTokens(value: unknown): DesignToken[] {
   try {
-    const saved = JSON.parse(held) as DesignToken[];
+    const saved = typeof value === 'string' ? JSON.parse(value) as unknown : value;
     if (!Array.isArray(saved)) return structuredClone(DEFAULT_TOKENS);
     const byName = new Map(saved.filter((t) => typeof t?.name === 'string').map((t) => [t.name, t]));
     return DEFAULT_TOKENS.map((token) => {
@@ -366,12 +396,139 @@ export function loadTokens(): DesignToken[] {
   }
 }
 
+function safeDesignName(wanted: string, held: readonly SavedDesign[], except?: string): string {
+  const base = wanted.trim() || DEFAULT_DESIGN_NAME;
+  const taken = new Set(held.filter((one) => one.id !== except).map((one) => one.name));
+  if (!taken.has(base)) return base;
+  let suffix = 2;
+  while (taken.has(`${base} ${suffix}`)) suffix += 1;
+  return `${base} ${suffix}`;
+}
+
+function newDesignId(): string {
+  return `design:${crypto.randomUUID()}`;
+}
+
+function parsedLibrary(source: string | null): DesignLibrary | null {
+  if (source === null) return null;
+  try {
+    const value = JSON.parse(source) as Partial<DesignLibrary>;
+    if (value.format !== DESIGN_LIBRARY_FORMAT || value.version !== DESIGN_LIBRARY_VERSION) return null;
+    if (!Array.isArray(value.designs) || value.designs.length === 0) return null;
+    const designs = value.designs.flatMap((candidate): SavedDesign[] => {
+      if (candidate === null || typeof candidate !== 'object') return [];
+      if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') return [];
+      return [{
+        id: candidate.id,
+        name: candidate.name.trim() || DEFAULT_DESIGN_NAME,
+        tokens: normaliseTokens(candidate.tokens),
+      }];
+    });
+    if (designs.length === 0) return null;
+    const active = designs.some((one) => one.id === value.active) ? value.active! : designs[0]!.id;
+    return { format: DESIGN_LIBRARY_FORMAT, version: DESIGN_LIBRARY_VERSION, active, designs };
+  } catch {
+    return null;
+  }
+}
+
+/** Lo antiguo se vuelve el primer diseño sin borrar su respaldo legible. */
+export function loadDesignLibrary(): DesignLibrary {
+  const held = parsedLibrary(localStorage.getItem(DESIGNS_KEY));
+  if (held !== null) return held;
+  return {
+    format: DESIGN_LIBRARY_FORMAT,
+    version: DESIGN_LIBRARY_VERSION,
+    active: 'design:vera',
+    designs: [{
+      id: 'design:vera',
+      name: DEFAULT_DESIGN_NAME,
+      tokens: normaliseTokens(localStorage.getItem(TOKENS_KEY)),
+    }],
+  };
+}
+
+function storeDesignLibrary(library: DesignLibrary): void {
+  const serialised = JSON.stringify(library);
+  localStorage.setItem(DESIGNS_KEY, serialised);
+  const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  localStorage.setItem(TOKENS_KEY, JSON.stringify(active.tokens));
+  void push({ designTokens: serialised });
+}
+
+export function loadTokens(): DesignToken[] {
+  const library = loadDesignLibrary();
+  const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  return structuredClone(active.tokens);
+}
+
 export function saveTokens(tokens: DesignToken[]): void {
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+  const library = loadDesignLibrary();
+  const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  active.tokens = normaliseTokens(tokens);
+  storeDesignLibrary(library);
   // Y viajan. El sistema de diseño es de quien lo ajustó, no del aparato desde
   // el que lo ajustó. Si el servidor no responde no pasa nada: lo local ya está
   // escrito y se reintentará al próximo cambio.
-  void push({ designTokens: JSON.stringify(tokens) });
+}
+
+export function selectDesign(id: string): DesignToken[] {
+  const library = loadDesignLibrary();
+  if (library.designs.some((one) => one.id === id)) library.active = id;
+  storeDesignLibrary(library);
+  return loadTokens();
+}
+
+export function createDesign(copyCurrent: boolean): DesignToken[] {
+  const library = loadDesignLibrary();
+  const current = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  const design: SavedDesign = {
+    id: newDesignId(),
+    name: safeDesignName(copyCurrent ? `Copia de ${current.name}` : 'Diseño', library.designs),
+    tokens: copyCurrent ? structuredClone(current.tokens) : structuredClone(DEFAULT_TOKENS),
+  };
+  library.designs.push(design);
+  library.active = design.id;
+  storeDesignLibrary(library);
+  return structuredClone(design.tokens);
+}
+
+export function importDesign(name: string, tokens: DesignToken[]): DesignToken[] {
+  const library = loadDesignLibrary();
+  const design: SavedDesign = {
+    id: newDesignId(),
+    name: safeDesignName(name, library.designs),
+    tokens: normaliseTokens(tokens),
+  };
+  library.designs.push(design);
+  library.active = design.id;
+  storeDesignLibrary(library);
+  return structuredClone(design.tokens);
+}
+
+export function renameActiveDesign(name: string): string {
+  const library = loadDesignLibrary();
+  const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  active.name = safeDesignName(name, library.designs, active.id);
+  storeDesignLibrary(library);
+  return active.name;
+}
+
+export function removeActiveDesign(): DesignToken[] | null {
+  const library = loadDesignLibrary();
+  if (library.designs.length < 2) return null;
+  library.designs = library.designs.filter((one) => one.id !== library.active);
+  library.active = library.designs[0]!.id;
+  storeDesignLibrary(library);
+  return structuredClone(library.designs[0]!.tokens);
+}
+
+export function resetActiveDesign(): DesignToken[] {
+  const library = loadDesignLibrary();
+  const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  active.tokens = structuredClone(DEFAULT_TOKENS);
+  storeDesignLibrary(library);
+  return structuredClone(active.tokens);
 }
 
 /**
@@ -429,7 +586,16 @@ export async function syncPresentation(): Promise<boolean> {
     changed = true;
   };
 
-  if (remote.designTokens !== null) adopt(TOKENS_KEY, remote.designTokens);
+  if (remote.designTokens !== null) {
+    if (parsedLibrary(remote.designTokens) !== null) adopt(DESIGNS_KEY, remote.designTokens);
+    else {
+      adopt(TOKENS_KEY, remote.designTokens);
+      if (localStorage.getItem(DESIGNS_KEY) !== null) {
+        localStorage.removeItem(DESIGNS_KEY);
+        changed = true;
+      }
+    }
+  }
   adopt(SCHEME_KEY, remote.colourScheme);
   adopt(LAYOUT_KEY, remote.layout);
   adopt(VIEW_KEY, remote.graphView);

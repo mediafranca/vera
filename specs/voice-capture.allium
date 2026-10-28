@@ -17,6 +17,7 @@
 --   authorship that marks machine-written text by agent-participation.allium
 
 use "./core.allium" as core
+use "./block-editing.allium" as block
 
 ------------------------------------------------------------
 -- Contracts

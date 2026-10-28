@@ -48,6 +48,15 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(outliner, /acciones del bloque: \$\{blockSummary\}/);
   });
 
+  it('hace operables los diseños completos desde Apariencia', () => {
+    assert.match(settings, /textContent = 'Diseños'/);
+    assert.match(settings, /onDesignSelected/);
+    assert.match(settings, /onDesignCreated\(false\)/);
+    assert.match(settings, /onDesignCreated\(true\)/);
+    assert.match(settings, /onDesignRenamed/);
+    assert.match(settings, /onDesignRemoved/);
+  });
+
   it('devuelve un bloque de proceso a la fuente común dentro del mismo bloque', () => {
     assert.match(outliner, /function openDerivedSourceEditor\(node: Node, body: HTMLElement\)/);
     assert.doesNotMatch(outliner, /process-source-dialog/);

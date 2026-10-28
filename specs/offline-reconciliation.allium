@@ -8,7 +8,7 @@
 --   - The browser database, worker, transport and rendering libraries
 --   - The meaning and canonical application of changes (see change-application.allium)
 --   - Authentication and authorization policy (see identity-access.allium)
---   - Automatic semantic merging of divergent prose
+--   - Coedición carácter por carácter mediante CRDT
 --
 -- North star: the hand never waits for the network. Reading, writing, splitting,
 -- moving and navigating are local acts. Connectivity changes how soon other devices
@@ -569,8 +569,11 @@ rule ExposeConcurrentConflict {
         ConflictRequiresParticipantAttention(replica: replica, pending: pending)
 
     @guidance
-        -- Vera may automatically reconcile independent subjects and idempotent repeats.
-        -- It never silently chooses between two incompatible versions of the same prose.
+        -- Vera automatically reconciles idempotent repeats, independent subjects and
+        -- transformations whose effects provably do not cross. Stable block identity,
+        -- the common base and structural preconditions are the proof boundary.
+        -- It never silently chooses between two incompatible intentions on the same
+        -- passage or structure, and wall-clock recency is never evidence of intent.
         --
         -- This is reached only through taking, so a conflict is never news that arrives
         -- on its own: it is what the participant found when they went to look.
@@ -774,4 +777,3 @@ open question "What sets the retention bound on a device whose storage Vera cann
 open question "What happens to pending work when authentication expires while a device is offline?"
 open question "Which local data is retained or erased on sign-out, device transfer and participant removal?"
 open question "What recovery path preserves pending work when durable local storage is full, unavailable or corrupted?"
-open question "Which same-subject changes are provably safe to merge automatically beyond idempotent repeats and changes to independent subjects?"

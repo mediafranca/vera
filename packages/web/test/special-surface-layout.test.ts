@@ -7,6 +7,7 @@ const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 const mcp = readFileSync(new URL('../src/mcp-page.ts', import.meta.url), 'utf8');
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
+const governance = readFileSync(new URL('../src/governance-page.ts', import.meta.url), 'utf8');
 const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
 const embeddedMap = readFileSync(new URL('../src/map-frame.ts', import.meta.url), 'utf8');
 const executableFrames = readFileSync(new URL('../src/executable-frames.ts', import.meta.url), 'utf8');
@@ -40,8 +41,16 @@ describe('superficies especiales', () => {
     assert.doesNotMatch(main, /known\.mode/);
     assert.match(governing, /'rectora' \| 'superficie' \| 'derivada' \| 'documentación'/);
     assert.match(governing, /key: 'activity'.*mode: 'derivada'/);
+    assert.match(governing, /key: 'governance'.*mode: 'derivada'/);
     assert.match(governing, /key: 'presentation'.*mode: 'documentación'/);
     assert.match(governing, /key: 'instructions'.*mode: 'documentación'/);
+  });
+
+  it('deriva el índice de gobierno desde todas las páginas especiales', () => {
+    assert.match(governance, /api\.specialPages\(\)/);
+    assert.match(governance, /kindSays\(page\.kind\)/);
+    assert.match(governance, /open\(page\.title\)/);
+    assert.match(governance, /special\.length/);
   });
 
   it('cuenta la espera de una búsqueda comprometida y la cierra en éxito o fallo', () => {

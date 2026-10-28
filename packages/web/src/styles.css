@@ -2132,6 +2132,26 @@ html.presenting body {
 }
 
 /*
+ * Una dirección no es el pie de un medio.
+ *
+ * Un URL aislado se presenta como `.linked-resource`: el rótulo de procedencia
+ * y el destino comparten un `figcaption`, porque en la página corriente forman
+ * una tarjeta compacta. La regla anterior encogía el `figcaption` completo en
+ * Presentación y convertía el destino —el contenido principal de la lámina— en
+ * una nota de 11 px. Aquí sólo la procedencia conserva jerarquía secundaria; el
+ * enlace vuelve a la escala y la interlínea de la prosa que lo contiene.
+ */
+.vera-presentation .body .linked-resource figcaption,
+.vera-presentation .body .linked-resource a {
+  font: inherit;
+}
+
+.vera-presentation .body .linked-resource figcaption > span {
+  font-size: 0.5em;
+  line-height: 1.3;
+}
+
+/*
  * Una lámina espacial no es una columna de lectura con un medio dentro: el
  * medio es la lámina. Su caja sale de `--content-width` y mide directamente
  * contra el viewport útil. `contain` decide cuál dimensión manda: un afiche
@@ -5139,6 +5159,24 @@ body.settings-open #text {
   padding: 1rem 1.1rem 1.2rem;
 }
 
+.appearance-designs {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.appearance-designs h3 { margin: 0 0 .35rem; font-size: .9rem; }
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(7rem, .55fr) minmax(0, 1fr);
+  align-items: center;
+  gap: .65rem;
+  margin: .55rem 0;
+}
+.settings-field > span { color: var(--text-dim); font-size: .78rem; }
+.settings-field select,
+.settings-field input { min-width: 0; width: 100%; box-sizing: border-box; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .7rem; }
+
 .settings-destinations {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5182,6 +5220,20 @@ body.settings-open #text {
 
 .settings-government-list { margin-bottom: 0; }
 
+.governance-index {
+  margin: 1rem 0 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.governance-index h2 { margin: 0 0 .35rem; font-size: 1rem; }
+.governance-index-list { margin-top: .8rem; }
+.governance-index-item small {
+  color: var(--accent);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
 .settings-backup {
   margin-top: 1.35rem;
   padding-top: 1rem;
@@ -5205,6 +5257,39 @@ body.settings-open #text {
   margin: 0 0 0.9rem;
   color: var(--text-dim);
   line-height: 1.5;
+}
+
+.external-editor-settings {
+  display: grid;
+  gap: .55rem;
+}
+
+.external-editor-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .8rem;
+  align-items: center;
+  padding: .7rem .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+.external-editor-setting > div:first-child { display: grid; gap: .18rem; min-width: 0; }
+.external-editor-setting span { color: var(--text-dim); font-size: .74rem; }
+.external-editor-setting code { overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; }
+.external-editor-setting > div:last-child { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: end; }
+.external-editor-setting button {
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: .35rem .55rem;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .external-editor-setting { grid-template-columns: 1fr; }
+  .external-editor-setting > div:last-child { justify-content: start; }
 }
 
 .media-search {
@@ -10382,6 +10467,38 @@ html[data-working-slow='true']::after {
 }
 
 .activity-list a { color: var(--accent); }
+
+.external-editing-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  border: 1px solid var(--rule);
+  border-radius: .6rem;
+  padding: 1.25rem;
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 1rem 4rem color-mix(in srgb, black 28%, transparent);
+}
+
+.external-editing-dialog::backdrop {
+  background: color-mix(in srgb, black 26%, transparent);
+}
+
+.external-editing-dialog h2 { margin: 0 0 .7rem; font-size: 1.05rem; }
+.external-editing-status { margin: 0; color: var(--text-dim); line-height: 1.45; }
+.external-editing-actions { display: flex; justify-content: flex-end; gap: .55rem; margin-top: 1.2rem; }
+.external-editing-actions button {
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  padding: .45rem .7rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.external-editing-actions button:disabled { opacity: .45; cursor: default; }
+.external-editing-actions .external-editing-accept:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .activity-days {
   display: grid;

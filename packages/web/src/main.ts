@@ -26,6 +26,7 @@ import {
   type Replica,
 } from './replica.ts';
 import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
+import { editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
   focusAfterChange,
@@ -73,9 +74,16 @@ import { journalsInMap } from './graph/journals.ts';
 import { mapEmbeddingSource } from './map-embedding.ts';
 import {
   applyTokens,
+  createDesign,
+  importDesign,
+  loadDesignLibrary,
   loadTokens,
   reachForGraphViewChange,
+  removeActiveDesign,
+  renameActiveDesign,
+  resetActiveDesign,
   saveTokens,
+  selectDesign,
   session,
   syncPresentation,
   type ColourScheme,
@@ -288,6 +296,7 @@ function wireSubmissionState(): void {
       clearTimer = window.setTimeout(() => { indicator.hidden = true; }, 5000);
       return;
     }
+    if (corpus !== null) corpus.lastSequence = Math.max(corpus.lastSequence, activity.sequence);
     if (pending.size > 0) {
       say('synchronising', `guardando ${pending.size}…`);
       return;
@@ -1641,6 +1650,17 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
   return {
     // Pulsar el nombre de otra página dentro del texto que se lee.
     onNavigate: (title) => void openTitle(title, 'followed_reference'),
+    onExternalEditPage: () => editPageExternally(
+      page,
+      corpus?.graph ?? 'Vera',
+      corpus?.lastSequence ?? 0,
+    ),
+    onExternalEditBlock: (_current, block) => editBlockExternally(
+      page,
+      block,
+      corpus?.graph ?? 'Vera',
+      corpus?.lastSequence ?? 0,
+    ),
     canAskLibrarian: corpus?.canAskLibrarian === true,
     scheme: () => workspace.scheme,
     onScheme: (next) => {
@@ -2230,6 +2250,13 @@ function blankPage(id: string, title: string): PageView {
  */
 let replica: Replica | null = null;
 let openView: PageView | null = null;
+
+window.addEventListener('vera:external-editing-accepted', (event) => {
+  const page = (event as CustomEvent<{ page?: string }>).detail?.page;
+  if (page !== undefined && workspace.activePage === page) {
+    void openPage(page, null, { replaceRoute: true });
+  }
+});
 /**
  * Lo derivado que dejó de ser cierto: retroenlaces, referencias, cruces.
  *
@@ -3662,10 +3689,42 @@ function wireTheme(): void {
         void refreshGraph();
         openSettings();
       },
+      designs: () => loadDesignLibrary(),
+      onDesignSelected: (id) => {
+        tokens = selectDesign(id);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
+      onDesignCreated: (copyCurrent) => {
+        tokens = createDesign(copyCurrent);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
+      onDesignImported: (name, imported) => {
+        tokens = importDesign(name, imported);
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
+      onDesignRenamed: (name) => {
+        renameActiveDesign(name);
+        openSettings();
+      },
+      onDesignRemoved: () => {
+        const next = removeActiveDesign();
+        if (next === null) {
+          notice('Debe quedar al menos un diseño.');
+          return;
+        }
+        tokens = next;
+        applyTokens(tokens, workspace.scheme);
+        void refreshGraph();
+        openSettings();
+      },
       onReset: () => {
-        localStorage.removeItem('vera.tokens');
-        tokens = loadTokens();
-        saveTokens(tokens);
+        tokens = resetActiveDesign();
         applyTokens(tokens, workspace.scheme);
         openSettings();
       },

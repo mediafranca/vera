@@ -150,6 +150,26 @@ describe('páginas que se pueden presentar', () => {
     assert.match(styles, /\.vera-presentation \.body figcaption \{[^}]*font: 0\.72rem\/1\.35 var\(--font-ui\);/);
   });
 
+  it('mantiene el destino de una tarjeta de enlace a la escala de la lámina', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(
+      styles,
+      /\.vera-presentation \.body \.linked-resource figcaption,[\s\S]*?\.linked-resource a \{\s*font: inherit;/,
+    );
+    assert.match(
+      styles,
+      /\.vera-presentation \.body \.linked-resource figcaption > span \{[^}]*font-size: 0\.5em;/,
+    );
+  });
+
+  it('permite presentar una publicación anónima desde el menú o su dirección profunda', () => {
+    const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+    assert.match(outliner, /if \(readOnly\) \{[\s\S]*?\.\.\.presentationActions,/);
+    assert.match(main, /const presentationBlock = here\.searchParams\.get\('present'\)/);
+    assert.match(main, /if \(presentationBlock !== null\) \{[\s\S]*?presentOutlinerPage\(openView/);
+  });
+
   it('lleva el cambio claro y oscuro a la barra superior', () => {
     const source = readFileSync(new URL('../src/presentation.ts', import.meta.url), 'utf8');
     assert.match(source, /toolbar\.append\([^\n]*scheme/);

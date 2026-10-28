@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -6,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
 import { DesktopConecta, type ConectaState, type SecureConectaStore } from './conecta.ts';
+import {
+  DesktopExternalEditing,
+  type DesktopExternalEditInput,
+} from './external-editing.ts';
 import { createMCPHandler } from '../../mcp/src/http.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +35,55 @@ const webRoot = app.isPackaged ? join(process.resourcesPath, 'web') : join(ROOT,
 const setupPage = join(HERE, 'setup.html');
 const preload = join(HERE, 'preload.cjs');
 const conectaSecretPath = join(dataRoot, 'secrets', 'vera-conecta.bin');
+const externalEditsRoot = join(dataRoot, 'external-edits');
+const externalEditorsPath = join(dataRoot, 'external-editors.json');
+
+const EXTERNAL_EDITOR_KEYS = new Set([
+  'markdown', 'mermaid', 'svg', 'html', 'javascript', 'process', 'mediawiki', 'code',
+]);
+
+const externalEditorKey = (kind: string): string => {
+  if (kind === 'page_markdown' || kind === 'block_markdown') return 'markdown';
+  return kind;
+};
+
+const readExternalEditors = (): Record<string, string> => {
+  if (!existsSync(externalEditorsPath)) return {};
+  try {
+    const value = JSON.parse(readFileSync(externalEditorsPath, 'utf8')) as unknown;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter(([key, path]) =>
+      EXTERNAL_EDITOR_KEYS.has(key) && typeof path === 'string' && path !== ''
+    ));
+  } catch {
+    return {};
+  }
+};
+
+const writeExternalEditors = (editors: Record<string, string>): void => {
+  mkdirSync(dirname(externalEditorsPath), { recursive: true });
+  writeFileSync(externalEditorsPath, `${JSON.stringify(editors, null, 2)}\n`, { mode: 0o600 });
+};
+
+const launchConfiguredEditor = async (path: string, kind: string): Promise<void> => {
+  const editor = readExternalEditors()[externalEditorKey(kind)];
+  if (editor === undefined) {
+    const failure = await shell.openPath(path);
+    if (failure !== '') throw new Error(failure);
+    return;
+  }
+  if (!existsSync(editor)) throw new Error(`el editor configurado ya no existe: ${editor}`);
+  await new Promise<void>((resolve, reject) => {
+    const command = process.platform === 'darwin' && editor.endsWith('.app') ? '/usr/bin/open' : editor;
+    const args = command === '/usr/bin/open' ? ['-a', editor, '--args', path] : [path];
+    const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+};
 
 if (app.isPackaged) {
   process.env['VERA_SCHEMA'] = join(process.resourcesPath, 'schema.sql');
@@ -44,6 +98,13 @@ let installOnQuit = false;
 let preparingQuit = false;
 let downloadingUpdate = false;
 let conecta: DesktopConecta | null = null;
+const externalEditing = new DesktopExternalEditing(
+  externalEditsRoot,
+  launchConfiguredEditor,
+  (sessionId, content) => {
+    window?.webContents.send('vera-external-editing:changed', { sessionId, content });
+  },
+);
 
 const secureConectaStore = (): SecureConectaStore => ({
   available: () =>
@@ -245,6 +306,53 @@ ipcMain.handle('vera-conecta:revoke-client', async (_event, principalId: unknown
   return { ok: true };
 });
 
+ipcMain.handle('vera-external-editing:open', async (_event, raw: unknown) => {
+  if (raw === null || typeof raw !== 'object') throw new Error('la sesión externa no es válida');
+  const input = raw as Partial<DesktopExternalEditInput>;
+  if (
+    typeof input.sessionId !== 'string'
+    || typeof input.fileName !== 'string'
+    || typeof input.content !== 'string'
+    || input.manifest === null
+    || typeof input.manifest !== 'object'
+  ) throw new Error('la sesión externa está incompleta');
+  return externalEditing.open(input as DesktopExternalEditInput);
+});
+ipcMain.handle('vera-external-editing:read', (_event, sessionId: unknown) => {
+  if (typeof sessionId !== 'string') throw new Error('la sesión externa no es válida');
+  return externalEditing.read(sessionId);
+});
+ipcMain.handle('vera-external-editing:close', (_event, sessionId: unknown, status: unknown) => {
+  if (typeof sessionId !== 'string' || (status !== 'accepted' && status !== 'discarded')) {
+    throw new Error('el cierre de la sesión externa no es válido');
+  }
+  return externalEditing.close(sessionId, status);
+});
+ipcMain.handle('vera-external-editing:editors', () => readExternalEditors());
+ipcMain.handle('vera-external-editing:choose-editor', async (_event, key: unknown) => {
+  if (typeof key !== 'string' || !EXTERNAL_EDITOR_KEYS.has(key)) {
+    throw new Error('el tipo de editor externo no es válido');
+  }
+  const chosen = await dialog.showOpenDialog({
+    title: 'Elegir aplicación externa',
+    properties: ['openFile'],
+  });
+  if (chosen.canceled || chosen.filePaths[0] === undefined) return readExternalEditors();
+  const editors = readExternalEditors();
+  editors[key] = chosen.filePaths[0];
+  writeExternalEditors(editors);
+  return editors;
+});
+ipcMain.handle('vera-external-editing:clear-editor', (_event, key: unknown) => {
+  if (typeof key !== 'string' || !EXTERNAL_EDITOR_KEYS.has(key)) {
+    throw new Error('el tipo de editor externo no es válido');
+  }
+  const editors = readExternalEditors();
+  delete editors[key];
+  writeExternalEditors(editors);
+  return editors;
+});
+
 app.whenReady().then(() => {
   createWindow();
   void enableAutomaticUpdates();
@@ -263,6 +371,7 @@ app.on('before-quit', (event) => {
 
   event.preventDefault();
   preparingQuit = true;
+  externalEditing.stopAll();
   if (updateTimer !== null) clearInterval(updateTimer);
   void closeVera().finally(() => {
     if (installOnQuit && installDownloadedUpdate !== null) installDownloadedUpdate();

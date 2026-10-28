@@ -10,7 +10,7 @@
 --   - Database engine, schema and UUID generation algorithm
 --   - Remote sync, conflict resolution and transaction transport
 --   - General editor UI, plugins, queries and graph visualisation
---   - Importing edits from Markdown Mirror (the mirror is derived output)
+--   - The governed linked-edit lifecycle (see external-editing.allium)
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -149,4 +149,6 @@ surface KnowledgeGraphEditing {
 ------------------------------------------------------------
 
 open question "Which parts of Logseq's implementation can Vera reuse directly without inheriting unrelated application coupling?"
-open question "Must Vera's Markdown projection remain one-way, or will Vera later support importing external Markdown edits?"
+-- Decided 2026-10-20: the ordinary Markdown mirror remains one-way. A separate
+-- temporal-durable linked-edit session may reabsorb an external edit through a
+-- private identity manifest and explicit atomic acceptance in Vera.

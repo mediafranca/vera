@@ -365,6 +365,14 @@ interface SubmitBatchBody {
   originId?: unknown;
   participant?: unknown;
   changes?: unknown;
+  /**
+   * Secuencia global sobre la que se preparó el lote.
+   *
+   * Opcional para conservar los lotes existentes. Una aceptación externa la
+   * envía siempre: si Vera avanzó entretanto, el servidor rechaza el lote
+   * completo y obliga a conciliar sobre estado fresco.
+   */
+  expectedSequence?: unknown;
   /** Canal paralelo a cada cambio. Ausente conserva el lote antiguo: todo tecleado. */
   channels?: unknown;
   /** Precondiciones por bloque para las ediciones incluidas en el lote. */
@@ -2353,13 +2361,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
         if (
-          body.ifRevisions !== undefined &&
-          (typeof body.ifRevisions !== 'object' || body.ifRevisions === null || Array.isArray(body.ifRevisions))
+          body.ifRevisions !== undefined
+          && (typeof body.ifRevisions !== 'object'
+            || body.ifRevisions === null
+            || Array.isArray(body.ifRevisions))
         ) {
           send(response, 400, { error: 'ifRevisions, if given, must map block ids to revision ids' });
           return;
         }
         const ifRevisions = (body.ifRevisions ?? {}) as Record<string, unknown>;
+        if (
+          body.expectedSequence !== undefined
+          && (!Number.isSafeInteger(body.expectedSequence) || Number(body.expectedSequence) < 0)
+        ) {
+          send(response, 400, { error: 'expectedSequence must be a non-negative safe integer' });
+          return;
+        }
 
         const inputs = body.changes.map((change, at) =>
           readOperation({
@@ -2395,6 +2412,19 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         if (existing.some((operation) => operation !== undefined)) {
           send(response, 409, { status: 'rejected', reason: 'el origen del lote coincide con un prefijo incompleto' });
+          return;
+        }
+
+        const currentSequence = graph.operations().at(-1)?.sequence ?? 0;
+        if (
+          body.expectedSequence !== undefined
+          && Number(body.expectedSequence) !== currentSequence
+        ) {
+          send(response, 409, {
+            status: 'rejected',
+            reason: `el corpus avanzó desde la secuencia ${String(body.expectedSequence)} hasta ${currentSequence}; hay que conciliar antes de aceptar`,
+            currentSequence,
+          });
           return;
         }
 

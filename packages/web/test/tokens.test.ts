@@ -4,12 +4,19 @@ import { readFileSync } from 'node:fs';
 
 import {
   DEFAULT_TOKENS,
+  createDesign,
+  importDesign,
   clearTokenImportBackup,
+  loadDesignLibrary,
+  loadTokens,
   loadTokenImportBackup,
   parseDesignTokenPackage,
   planDesignTokenImport,
   reachForGraphViewChange,
+  removeActiveDesign,
+  renameActiveDesign,
   saveTokenImportBackup,
+  selectDesign,
   serialiseDesignTokenPackage,
   session,
 } from '../src/tokens.ts';
@@ -141,6 +148,7 @@ describe('superficies del sistema de diseño', () => {
     assert.equal(parsed['format'], 'vera.design-tokens');
     assert.equal(parsed['version'], 1);
     assert.equal(parsed['exportedAt'], '2026-10-21T20:00:00.000Z');
+    assert.equal(parsed['name'], 'Vera');
     assert.deepEqual(parsed['tokens'], DEFAULT_TOKENS);
     assert.equal('scheme' in parsed, false);
     assert.equal('layout' in parsed, false);
@@ -208,11 +216,43 @@ describe('superficies del sistema de diseño', () => {
   });
 
   it('hace encontrables exportación, vista previa, modos y deshacer', () => {
-    assert.match(settings, /Exportar tokens…/);
-    assert.match(settings, /Importar respaldo…/);
+    assert.match(settings, /Exportar diseño…/);
+    assert.match(settings, /Importar diseño…/);
+    assert.match(settings, /Añadir como un diseño nuevo/);
     assert.match(settings, /Vista previa de la importación/);
     assert.match(settings, /Fusionar con la apariencia actual/);
     assert.match(settings, /Reemplazar la apariencia actual/);
     assert.match(settings, /Deshacer la última importación/);
+  });
+
+  it('migra el juego único a una biblioteca y permite operar diseños con nombre', () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+    const legacy = DEFAULT_TOKENS.map((token) => ({ ...token }));
+    legacy[0]!.light = '#010203';
+    storage.setItem('vera.tokens', JSON.stringify(legacy));
+
+    assert.equal(loadDesignLibrary().designs.length, 1);
+    assert.equal(loadTokens()[0]!.light, '#010203');
+
+    createDesign(true);
+    let library = loadDesignLibrary();
+    assert.equal(library.designs.length, 2);
+    assert.match(library.designs.find((one) => one.id === library.active)!.name, /^Copia de Vera/);
+
+    const copied = library.active;
+    assert.equal(renameActiveDesign('Lectura'), 'Lectura');
+    importDesign('Portátil', DEFAULT_TOKENS);
+    assert.equal(loadDesignLibrary().designs.length, 3);
+    const imported = loadDesignLibrary().active;
+    selectDesign('design:vera');
+    assert.equal(loadDesignLibrary().active, 'design:vera');
+    selectDesign(copied);
+    assert.ok(removeActiveDesign());
+    selectDesign(imported);
+    assert.ok(removeActiveDesign());
+    library = loadDesignLibrary();
+    assert.equal(library.designs.length, 1);
+    assert.equal(removeActiveDesign(), null);
   });
 });
