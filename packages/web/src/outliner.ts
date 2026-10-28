@@ -5276,7 +5276,11 @@ export function renderOutliner(
       const rows = [...list.querySelectorAll<HTMLElement>('.block')].filter((row) =>
         made.declaring.has(row.dataset['id'] ?? ''),
       );
-      rows[0]?.before(made.element);
+      const anchor = rows[0]
+        ?? list.querySelector<HTMLElement>('[data-id="block:starter-connections-list"]')
+        ?? list.firstElementChild;
+      if (anchor === null) list.append(made.element);
+      else anchor.before(made.element);
       for (const row of rows) row.remove();
     });
   }

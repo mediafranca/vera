@@ -84,6 +84,12 @@ contract MCPIsADoorAndNotASecondMemory {
         -- criterio propio sobre la memoria de alguien, y ése es exactamente el
         -- poder que esta frontera existe para no ceder.
 
+    @invariant AnEmptyDoorStillOffersAuthorization
+        -- La superficie humana para crear una credencial y obtener una receta
+        -- MCP permanece visible aunque todavía no exista ninguna conexión ni
+        -- ningún cliente observado. La primera conexión no puede depender de
+        -- que una conexión anterior ya haya abierto la puerta.
+
     @invariant DiscoveringANameIsNotPermissionToUseIt
         -- Que un catálogo nombre una herramienta o un recurso no concede nada.
         -- El permiso se comprueba al usarlo, contra la concesión de esa conexión,

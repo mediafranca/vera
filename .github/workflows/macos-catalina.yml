@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Tag especial que recibirá el DMG legacy
         required: true
-        default: v0.6.16-catalina.1
+        default: v0.6.17-catalina.1
 
 permissions:
   contents: write
@@ -90,7 +90,7 @@ jobs:
           cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
           ## Vera para macOS Catalina en Mac Intel
 
-          Esta es una edición especial de Vera 0.6.16 para equipos Intel con
+          Esta es una edición especial de Vera 0.6.17 para equipos Intel con
           macOS 10.15 Catalina o posterior. No reemplaza la release estable.
 
           Usa Electron 32, un runtime fuera de soporte, está sin firma ni
@@ -102,7 +102,7 @@ jobs:
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title 'Vera 0.6.16 · macOS Catalina Intel (legacy)' \
+              --title 'Vera 0.6.17 · macOS Catalina Intel (legacy)' \
               --notes-file "$RUNNER_TEMP/release-notes.md" \
               --prerelease
           fi
