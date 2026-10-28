@@ -97,6 +97,16 @@ describe('memoria inicial distribuida', () => {
     assert.equal(second.duplicates, STARTER_CHANGES.length);
     assert.equal(second.pages, first.pages);
     assert.equal(second.blocks, first.blocks);
+
+    const reopenedByDesktop = initializeStarterMemory({ databasePath });
+    assert.equal(reopenedByDesktop.applied, 0);
+    assert.equal(reopenedByDesktop.duplicates, STARTER_CHANGES.length);
+    assert.equal(reopenedByDesktop.pages, first.pages);
+  });
+
+  it('no inventa una persona propietaria al abrir una base nueva', () => {
+    const databasePath = join(mkdtempSync(join(tmpdir(), 'vera-starter-ownerless-')), 'vera.sqlite');
+    assert.throws(() => initializeStarterMemory({ databasePath }), /necesita una persona propietaria/);
   });
 
   it('no cambia la persona propietaria de una memoria existente', () => {

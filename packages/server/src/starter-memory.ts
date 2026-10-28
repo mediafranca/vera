@@ -265,7 +265,8 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
 
 export interface InitializeStarterMemoryOptions {
   readonly databasePath: string;
-  readonly owner: { readonly id: string; readonly name: string };
+  /** Obligatoria sólo cuando la memoria todavía no tiene persona propietaria. */
+  readonly owner?: { readonly id: string; readonly name: string };
   readonly profile?: InstanceProfile;
 }
 
@@ -296,15 +297,20 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
   try {
     const graph = loadGraph(store, 'mind');
     const established = graph.owner;
-    if (established !== null && established !== options.owner.id) {
+    if (established !== null && options.owner !== undefined && established !== options.owner.id) {
       throw new Error(`la memoria ya pertenece a ${established}; no se puede reinicializar como ${options.owner.id}`);
     }
     if (established === null) {
+      if (options.owner === undefined) {
+        throw new Error('una memoria nueva necesita una persona propietaria');
+      }
       saveParticipant(store, { ...options.owner, kind: 'human' });
       graph.addParticipant({ ...options.owner, kind: 'human' });
       graph.admit(options.owner.id);
     }
-    const profile = ensureInstanceProfile(store, options.owner.id, options.profile, established === null);
+    const owner = established ?? options.owner?.id;
+    if (owner === undefined) throw new Error('la memoria no declara persona propietaria');
+    const profile = ensureInstanceProfile(store, owner, options.profile, established === null);
 
     if (graph.participant(DISTRIBUTION_PARTICIPANT) === undefined) {
       saveParticipant(store, {
