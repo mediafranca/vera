@@ -4,12 +4,19 @@ import { dirname } from 'node:path';
 import { type Change, VeraGraph } from '@vera/core';
 import { loadGraph, openStore, recordOperation, saveParticipant } from '@vera/store';
 import { ensureInstanceProfile, type InstanceProfile } from './instance-governance.ts';
+import {
+  STARTER_OBJECT_DEFINITIONS,
+  STARTER_PROPERTY_DEFINITIONS,
+  STARTER_RELATION_DEFINITIONS,
+} from './starter-governance.ts';
 
-export const STARTER_MEMORY_VERSION = 1;
+export const STARTER_MEMORY_VERSION = 2;
 export const DISTRIBUTION_PARTICIPANT = 'participant:vera-distribution';
 
 interface StarterChange {
   readonly id: string;
+  /** La versión en que nació esta operación; no cambia al crecer el starter. */
+  readonly version?: number;
   readonly change: Change;
 }
 
@@ -40,6 +47,83 @@ const property = (pageId: string, key: string, value: string): StarterChange => 
   id: `property:${pageId}:${key}`,
   change: { kind: 'set_property', page: `page:starter-${pageId}`, propertyKey: key, propertyValue: value },
 });
+
+const blockProperty = (blockId: string, key: string, value: string): StarterChange => ({
+  id: `block-property:${blockId}:${key}`,
+  version: 2,
+  change: { kind: 'set_property', block: `block:starter-${blockId}`, propertyKey: key, propertyValue: value },
+});
+
+const governedPage = (
+  id: string,
+  title: string,
+  kind: 'properties' | 'objects' | 'relations',
+  intro: string,
+): StarterChange[] => [
+  { ...page(id, title), version: 2 },
+  { ...property(id, 'tipo', 'página especial'), version: 2 },
+  { ...property(id, 'special-kind', kind), version: 2 },
+  { ...block(id, `${id}-title`, 0, `# ${title.replace(/^VERA:\s*/, '')}`), version: 2 },
+  { ...block(id, `${id}-intro`, 1, intro), version: 2 },
+];
+
+const GOVERNANCE_STARTER_CHANGES: readonly StarterChange[] = [
+  ...governedPage(
+    'properties',
+    'VERA: Propiedades',
+    'properties',
+    'Vocabulario editable de propiedades. Cada fila dice de qué cuelga una propiedad, cómo se responde y, cuando corresponde, qué papel cumple para Vera.',
+  ),
+  ...STARTER_PROPERTY_DEFINITIONS.flatMap((definition, index): StarterChange[] => {
+    const id = `property-${definition.id}`;
+    return [
+      { ...block('properties', id, index + 2, definition.name), version: 2 },
+      ...(definition.subject === undefined ? [] : [blockProperty(id, 'sujeto', definition.subject)]),
+      ...(definition.field === undefined ? [] : [blockProperty(id, 'campo', definition.field)]),
+      ...(definition.many === true ? [blockProperty(id, 'varios', 'sí')] : []),
+      ...(definition.role === undefined ? [] : [blockProperty(id, 'papel', definition.role)]),
+      ...(definition.values === undefined ? [] : [blockProperty(id, 'valores', definition.values.join(', '))]),
+      blockProperty(id, 'qué', definition.says),
+    ];
+  }),
+
+  ...governedPage(
+    'objects',
+    'VERA: Objetos',
+    'objects',
+    'Clases iniciales de página y las propiedades que suelen constituirlas. Son formas sugeridas: una página incompleta sigue siendo válida y una instalación puede cambiar este vocabulario.',
+  ),
+  ...STARTER_OBJECT_DEFINITIONS.flatMap((definition, index): StarterChange[] => {
+    const id = `object-${definition.id}`;
+    return [
+      { ...block('objects', id, index + 2, definition.name), version: 2 },
+      ...(definition.properties === undefined ? [] : [blockProperty(id, 'propiedades', definition.properties.join(', '))]),
+      ...(definition.role === undefined ? [] : [blockProperty(id, 'papel', definition.role)]),
+      blockProperty(id, 'qué', definition.says),
+    ];
+  }),
+
+  ...governedPage(
+    'relations',
+    'VERA: Relaciones',
+    'relations',
+    'Tipos iniciales de relación y su lectura inversa. El vocabulario puede ampliarse sin convertir toda coincidencia textual en una relación estructural.',
+  ),
+  ...STARTER_RELATION_DEFINITIONS.flatMap((definition, index): StarterChange[] => {
+    const id = `relation-${definition.id}`;
+    return [
+      { ...block('relations', id, index + 2, definition.name), version: 2 },
+      blockProperty(id, 'inversa', definition.inverse),
+      ...(definition.domain === undefined ? [] : [blockProperty(id, 'dominio', definition.domain.join(', '))]),
+      ...(definition.range === undefined ? [] : [blockProperty(id, 'rango', definition.range.join(', '))]),
+      ...(definition.symmetric === undefined ? [] : [blockProperty(id, 'simétrica', definition.symmetric ? 'sí' : 'no')]),
+      ...(definition.transitive === undefined ? [] : [blockProperty(id, 'transitiva', definition.transitive ? 'sí' : 'no')]),
+      blockProperty(id, 'estado', 'aprobada'),
+      ...(definition.role === undefined ? [] : [blockProperty(id, 'papel', definition.role)]),
+      ...(definition.says === undefined ? [] : [blockProperty(id, 'definición', definition.says)]),
+    ];
+  }),
+];
 
 /**
  * La memoria que recibe una instalación nueva.
@@ -150,7 +234,7 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
     'Las instrucciones exactas cambian entre clientes. Vera debe mostrar recetas verificadas para cada integración compatible, sin guardar secretos dentro del corpus.'),
 
   page('connections', 'VERA: Conexiones'),
-  property('connections', 'tipo', 'configuración'),
+  property('connections', 'tipo', 'página especial'),
   property('connections', 'special-kind', 'connections'),
   block('connections', 'connections-title', 0, '# Conexiones'),
   block('connections', 'connections-intro', 1,
@@ -175,6 +259,8 @@ export const STARTER_CHANGES: readonly StarterChange[] = [
   block('principles', 'principles-publication', 4, '**Publicación deliberada.** Lo privado no se vuelve público por accidente ni por comodidad técnica.'),
   block('principles', 'principles-portable', 5, '**Portabilidad.** Programa y memoria son cosas distintas: actualizar Vera no reemplaza ni secuestra el corpus.'),
   block('principles', 'principles-accountable', 6, '**Auditabilidad.** Las transformaciones importantes son visibles, atribuibles y recuperables.'),
+
+  ...GOVERNANCE_STARTER_CHANGES,
 ];
 
 export interface InitializeStarterMemoryOptions {
@@ -239,7 +325,7 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
     for (const source of STARTER_CHANGES) {
       const entry = forProfile(source, profile);
       const outcome = graph.submitOperation({
-        originId: `starter-memory:v${STARTER_MEMORY_VERSION}:${entry.id}`,
+        originId: `starter-memory:v${entry.version ?? 1}:${entry.id}`,
         participant: DISTRIBUTION_PARTICIPANT,
         channel: 'agent_generation',
         change: entry.change,

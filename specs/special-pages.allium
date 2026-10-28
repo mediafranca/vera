@@ -51,6 +51,16 @@ contract SelfDescription {
         -- and a corpus whose ontology page was deleted would have no ontology
         -- rather than the starting one.
 
+    @invariant ANewMemoryStartsWithVisibleGovernance
+        -- Una instalación nueva no nace como un corpus desnudo que primero
+        -- exige reconstruir las palabras con que se gobierna. Trae páginas
+        -- rectoras legibles para propiedades, objetos y relaciones, además de
+        -- la puerta de conexiones y el índice que las reúne.
+        --
+        -- Es un piso universal y editable, no una copia del corpus de quien
+        -- distribuye Vera: las decisiones situadas se añaden después y cada
+        -- declaración inicial conserva la procedencia de la distribución.
+
     @invariant ASpecialPageCannotBreakVera
         -- What a special page says is validated when read, never when written.
         -- A value that cannot be understood is ignored and reported, and the
@@ -357,6 +367,12 @@ surface GovernanceIndex {
     @guarantee ConfigurationAndThePageReadTheSameDeclarations
         -- Configuración y `VERA: Gobierno` son dos superficies de los mismos
         -- `special-kind`; ninguna mantiene un inventario privado distinto.
+
+    @guarantee AFirstVisitHasSomethingToGovern
+        -- Antes de que exista contenido propio, el índice ya permite alcanzar
+        -- las páginas rectoras del vocabulario y la puerta de conexiones. Una
+        -- lista vacía en una instalación nueva es un defecto de arranque, no
+        -- una invitación a conocer de antemano la ontología interna de Vera.
 }
 
 ------------------------------------------------------------

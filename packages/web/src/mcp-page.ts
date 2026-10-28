@@ -972,7 +972,6 @@ export async function renderConnections(
 
   element.append(relay, relayNote, remoteClients);
 
-  if (declaring.size === 0 && door.undeclared.length === 0) return null;
   return { element, declaring };
 }
 

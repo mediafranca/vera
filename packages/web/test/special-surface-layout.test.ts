@@ -8,6 +8,7 @@ const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'u
 const mcp = readFileSync(new URL('../src/mcp-page.ts', import.meta.url), 'utf8');
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
 const governance = readFileSync(new URL('../src/governance-page.ts', import.meta.url), 'utf8');
+const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
 const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
 const embeddedMap = readFileSync(new URL('../src/map-frame.ts', import.meta.url), 'utf8');
 const executableFrames = readFileSync(new URL('../src/executable-frames.ts', import.meta.url), 'utf8');
@@ -33,6 +34,13 @@ describe('superficies especiales', () => {
     assert.match(mcp, /VERA — conectar LM Studio por MCP/);
     assert.match(mcp, /VERA — conectar Gemini por MCP/);
     assert.match(mcp, /aria-label', 'guías para conectar inteligencias artificiales'/);
+  });
+
+  it('mantiene visible la primera autorización aunque la puerta todavía esté vacía', () => {
+    assert.doesNotMatch(mcp, /declaring\.size === 0[^\n]+return null/);
+    assert.match(mcp, /Conectar una IA o cliente MCP/);
+    assert.match(outliner, /block:starter-connections-list/);
+    assert.match(outliner, /anchor === null[\s\S]*list\.append\(made\.element\)/);
   });
 
   it('distingue gobierno efectivo, superficies, proyecciones y documentación', () => {
