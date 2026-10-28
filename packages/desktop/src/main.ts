@@ -132,6 +132,11 @@ const databaseExists = (): boolean => existsSync(databasePath) && statSync(datab
 
 async function startVera(): Promise<void> {
   if (running === null) {
+    // El starter es un registro versionado e idempotente. Al abrir una memoria
+    // existente aplica únicamente las adiciones de la distribución nueva; no
+    // vuelve a crear ni pisa operaciones que esa memoria ya recibió.
+    const { initializeStarterMemory } = await import('../../server/src/starter-memory.ts');
+    initializeStarterMemory({ databasePath });
     const { listen } = await import('../../server/src/server.ts');
     mkdirSync(dirname(databasePath), { recursive: true });
     mkdirSync(objectsRoot, { recursive: true });
