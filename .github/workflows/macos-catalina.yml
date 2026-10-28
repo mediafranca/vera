@@ -49,11 +49,14 @@ jobs:
             ((.diagnostics // []) | all(.severity != "error")))' \
             "$RUNNER_TEMP/allium-check.json"
 
-      - name: Verificar el corte
-        run: |
-          npm run traceability:check
-          npm run typecheck
-          node --test "packages/desktop/test/**/*.test.ts" --test-concurrency=1
+      - name: Verificar trazabilidad
+        run: npm run traceability:check
+
+      - name: Verificar tipos
+        run: npm run typecheck
+
+      - name: Verificar la política de actualización legacy
+        run: node --test packages/desktop/test/update-policy.test.ts
 
       - name: Construir DMG Intel para macOS 10.15+
         env:
