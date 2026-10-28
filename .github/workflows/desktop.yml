@@ -97,11 +97,18 @@ jobs:
           # specs/desktop-distribution.allium, que nunca ofrece auto-update).
           Remove-Item release/latest.yml -ErrorAction SilentlyContinue
           Remove-Item release/*.blockmap -ErrorAction SilentlyContinue
-          Get-ChildItem release -Filter *.exe | Rename-Item -NewName { $_.Name -replace '\.exe$', ' (sin firmar).exe' }
+          Get-ChildItem release -Filter *.exe | ForEach-Object {
+            $safeBase = $_.BaseName -replace ' ', '-'
+            Rename-Item $_.FullName -NewName "$safeBase-sin-firmar.exe"
+          }
 
       - name: Checksums
         shell: pwsh
         run: |
+          # electron-builder deja diagnósticos con el mismo nombre en todas las
+          # plataformas. No son artefactos de distribución y al fusionarlos en
+          # la release uno sobrescribiría a los demás.
+          Remove-Item release/builder-debug.yml,release/builder-effective-config.yaml -ErrorAction SilentlyContinue
           Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe', '.yml', '.blockmap' } |
             ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
             Set-Content release/SHA256SUMS-windows.txt
@@ -171,13 +178,14 @@ jobs:
           rm -f latest-mac.yml *.zip *.blockmap
           for f in *.dmg; do
             [ -e "$f" ] || continue
-            mv "$f" "${f%.dmg} (sin firmar).dmg"
+            mv "$f" "${f%.dmg}-sin-firmar.dmg"
           done
 
       - name: Checksums
         run: |
           cd release
           shopt -s nullglob
+          rm -f builder-debug.yml builder-effective-config.yaml
           shasum -a 256 *.dmg *.zip *.yml *.blockmap > SHA256SUMS-macos.txt
 
       - uses: actions/upload-artifact@v4
@@ -208,6 +216,7 @@ jobs:
       - name: Checksums
         run: |
           cd release
+          rm -f builder-debug.yml builder-effective-config.yaml
           shasum -a 256 *.AppImage *.deb *.yml > SHA256SUMS-linux.txt
 
       - uses: actions/upload-artifact@v4
