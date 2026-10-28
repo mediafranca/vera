@@ -34,9 +34,23 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           test "v$version-catalina.1" = "$RELEASE_TAG"
 
+      - name: Verificar especificaciones Allium
+        shell: bash
+        run: |
+          set +e
+          allium check specs/ | tee "$RUNNER_TEMP/allium-check.json"
+          allium_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$allium_status" -eq 2 ]; then
+            exit 2
+          fi
+          jq -s -e 'all(.[];
+            ((.findings // []) | length == 0) and
+            ((.diagnostics // []) | all(.severity != "error")))' \
+            "$RUNNER_TEMP/allium-check.json"
+
       - name: Verificar el corte
         run: |
-          npm run spec
           npm run traceability:check
           npm run typecheck
           node --test "packages/desktop/test/**/*.test.ts" --test-concurrency=1
