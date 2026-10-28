@@ -33,8 +33,10 @@ jobs:
 
       - name: Verificar el corte
         run: |
+          npm run spec
+          npm run traceability:check
           npm run typecheck
-          npm test -- --test-concurrency=1
+          node --test "packages/desktop/test/**/*.test.ts" --test-concurrency=1
 
       - name: Construir DMG Intel para macOS 10.15+
         env:
