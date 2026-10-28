@@ -24,6 +24,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Instalar el verificador Allium fijado por la distribución
+        run: cargo install allium-cli --version 3.5.0 --locked
+
       - name: Comprobar que el tag especial corresponde al código
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
