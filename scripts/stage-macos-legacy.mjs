@@ -35,7 +35,6 @@ const manifest = {
       target: ['dmg'],
       category: 'public.app-category.productivity',
       minimumSystemVersion: '10.15',
-      identity: null,
       notarize: false,
     },
   },
