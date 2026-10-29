@@ -3184,11 +3184,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const slug = String(body['slug'] ?? '').trim();
           const criterionCombination = body['criterionCombination'] === 'all' ? 'all' : 'any';
           const audience = body['audience'] === 'anybody' ? 'anybody' : 'restricted';
+          const entryPoint = body['entryPoint'] === null || body['entryPoint'] === undefined
+            ? null : String(body['entryPoint']);
           if (name === '' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
             send(response, 400, { error: 'nombre y slug canónico son obligatorios' }); return;
           }
+          if (entryPoint !== null && !pageBelongsToSharedSpace(graph, space, entryPoint)) {
+            send(response, 400, { error: 'la portada debe pertenecer a la superficie compartida' }); return;
+          }
           send(response, 200, updateSharedSpace(store, space, {
-            name, slug, criterionCombination, audience,
+            name, slug, criterionCombination, audience, entryPoint,
           }));
         } catch (error) { send(response, 409, { error: error instanceof Error ? error.message : String(error) }); }
       });
@@ -6775,8 +6780,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           : graph.pages();
           const siteEntry = publicScopedSpace === null
             ? (publicSite()?.entryPoint ?? null)
-            : graph.pages().filter((page) => isPublicPage(page.id))
-                .sort((a, b) => a.title.localeCompare(b.title, 'es'))[0]?.id ?? null;
+            : (publicScopedSpace.entryPoint !== null && isPublicPage(publicScopedSpace.entryPoint)
+              ? publicScopedSpace.entryPoint
+              : graph.pages().filter((page) => isPublicPage(page.id))
+                .sort((a, b) => a.title.localeCompare(b.title, 'es'))[0]?.id ?? null);
         send(response, 200, {
           graph: graph.name,
           access: publicAccess ? 'anybody' : 'owner',
