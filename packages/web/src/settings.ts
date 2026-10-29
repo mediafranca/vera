@@ -250,7 +250,7 @@ interface SharedAdministration {
   criteria: { id: string; key: string; value: string; status: 'active' | 'removed' }[];
   manualPages: string[];
   audience: 'restricted' | 'anybody';
-  status: 'active' | 'withdrawn'; pageCount: number;
+  status: 'active' | 'withdrawn'; entryPoint: string | null; pageCount: number;
   effectivePages: { page: string; reasons: string[] }[];
   invitations: { id: string; permissions: SharedPermission[]; intendedContact: string | null;
     status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number }[];
@@ -663,15 +663,26 @@ function spaceAdministration(host: HTMLElement, space: SharedAdministration, pag
   const publicAccess = document.createElement('label'); publicAccess.className = 'sharing-public-choice';
   const publicInput = document.createElement('input'); publicInput.type = 'checkbox'; publicInput.checked = isPublic;
   publicAccess.append(publicInput, document.createTextNode(' Acceso público, sin invitación'));
+  const entryLabel = document.createElement('label'); entryLabel.className = 'sharing-field';
+  const entryName = document.createElement('span'); entryName.textContent = 'Portada';
+  const entry = document.createElement('select');
+  const noEntry = document.createElement('option'); noEntry.value = ''; noEntry.textContent = 'Sin portada explícita'; entry.append(noEntry);
+  for (const admitted of space.effectivePages) {
+    const page = pages.find((one) => one.id === admitted.page);
+    if (page === undefined) continue;
+    const option = document.createElement('option'); option.value = page.id; option.textContent = page.title;
+    option.selected = page.id === space.entryPoint; entry.append(option);
+  }
+  entryLabel.append(entryName, entry);
   const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Guardar acceso y nombre';
   const saved = document.createElement('span'); saved.className = 'settings-note';
-  form.append(name.label, slug.label, publicAccess, combinationLabel, save, saved);
+  form.append(name.label, slug.label, publicAccess, combinationLabel, entryLabel, save, saved);
   form.addEventListener('submit', (event) => void (async () => {
     event.preventDefault(); save.disabled = true;
     try {
       await sharingRequest(`/shared-spaces/${encodeURIComponent(space.slug)}`, 'PATCH', {
         name: name.input.value, slug: slug.input.value, criterionCombination: combination.value,
-        audience: publicInput.checked ? 'anybody' : 'restricted',
+        audience: publicInput.checked ? 'anybody' : 'restricted', entryPoint: entry.value || null,
       });
       await drawSharing(host);
     } catch (error) { saved.textContent = error instanceof Error ? error.message : 'No se pudo guardar.'; save.disabled = false; }
