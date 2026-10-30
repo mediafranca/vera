@@ -29,11 +29,15 @@ export function renderParticipantProfile(view: ParticipantProfileView): HTMLElem
 
   const header = document.createElement('header');
   header.className = 'participant-profile-header';
+  const eyebrow = document.createElement('p');
+  eyebrow.className = 'participant-profile-eyebrow';
+  eyebrow.textContent = 'Identidad de sistema';
   const title = document.createElement('h1');
   title.textContent = participantProfileTitle(view.participant.name);
   const explanation = document.createElement('p');
+  explanation.className = 'participant-profile-explanation';
   explanation.textContent = 'Identidad operativa de Vera. Esta ficha se deriva del sistema y no se edita como contenido.';
-  header.append(title, explanation);
+  header.append(eyebrow, title, explanation);
 
   const facts = document.createElement('dl');
   facts.className = 'participant-profile-facts';
@@ -54,6 +58,7 @@ export function renderParticipantProfile(view: ParticipantProfileView): HTMLElem
     semantic.append(absent);
   } else {
     const list = document.createElement('ul');
+    list.className = 'participant-profile-links';
     for (const page of view.semanticPages) {
       const item = document.createElement('li');
       const link = document.createElement('a');
