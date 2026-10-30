@@ -866,9 +866,25 @@ const addInstanceProfiles: Migration = {
   },
 };
 
-/** 24 — una identidad estable puede tener muchas credenciales y accesos. */
-const stabiliseParticipantIdentity: Migration = {
+/** 24 — una portada explícita y estable para cada superficie compartida. */
+const addSharedSpaceEntryPoint: Migration = {
   version: 24,
+  name: 'portada persistida de espacios compartidos',
+  apply(db) {
+    const spaces = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name='shared_spaces'",
+    ).get() as { present: number } | undefined;
+    if (spaces === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(shared_spaces)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'entry_point')) {
+      db.exec('ALTER TABLE shared_spaces ADD COLUMN entry_point TEXT REFERENCES pages (id) ON DELETE SET NULL');
+    }
+  },
+};
+
+/** 25 — una identidad estable puede tener muchas credenciales y accesos. */
+const stabiliseParticipantIdentity: Migration = {
+  version: 25,
   name: 'identidad estable de participantes',
   apply(db) {
     db.exec(`
@@ -994,6 +1010,7 @@ export const MIGRATIONS: readonly Migration[] = [
   compactExposureLog,
   addOperationReviewProposals,
   addInstanceProfiles,
+  addSharedSpaceEntryPoint,
   stabiliseParticipantIdentity,
 ];
 

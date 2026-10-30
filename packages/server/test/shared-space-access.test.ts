@@ -211,6 +211,23 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.equal(closed.json['audience'], 'restricted');
   });
 
+  it('mantiene una portada explícita dentro de la superficie compartida', async () => {
+    const inside = running.vera.graph.pageTitled('Dentro')!;
+    const outside = await write({ kind: 'create_page', title: 'Portada exterior', visibility: 'private' });
+    const selected = await call('/shared-spaces/doctorado', 'PATCH', {
+      name: 'Doctorado', slug: 'doctorado', criterionCombination: 'any', audience: 'restricted',
+      entryPoint: inside.id,
+    });
+    assert.equal(selected.status, 200, JSON.stringify(selected.json));
+    assert.equal(selected.json['entryPoint'], inside.id);
+    const rejected = await call('/shared-spaces/doctorado', 'PATCH', {
+      name: 'Doctorado', slug: 'doctorado', criterionCombination: 'any', audience: 'restricted',
+      entryPoint: outside,
+    });
+    assert.equal(rejected.status, 400);
+    assert.equal((await call('/shared-spaces')).json['spaces'][0]['entryPoint'], inside.id);
+  });
+
   it('entrega anónimamente sólo las páginas del selector cuando la audiencia es pública', async () => {
     const poem = await write({ kind: 'create_page', title: 'Poema', visibility: 'private' });
     await write({ kind: 'set_property', page: poem, propertyKey: 'concepto', propertyValue: 'Axis Mundae' });
@@ -225,6 +242,15 @@ describe('primer corte vertical de espacios compartidos', () => {
     const pages = await call('/s/axis-mundae/api/pages');
     assert.equal(pages.status, 200);
     assert.deepEqual((pages.json['pages'] as any[]).map((page) => page.title), ['Poema']);
+    const entry = await call('/shared-spaces/axis-mundae', 'PATCH', {
+      name: 'Axis Mundae', slug: 'axis-mundae', criterionCombination: 'any',
+      audience: 'anybody', entryPoint: poem,
+    });
+    assert.equal(entry.status, 200, JSON.stringify(entry.json));
+    const health = await fetch(`${publicBase}/health`, {
+      headers: { referer: `${publicBase}/s/axis-mundae` },
+    });
+    assert.equal((await health.json() as any).entryPoint, poem);
     assert.equal((await call(`/s/axis-mundae/api/pages/${encodeURIComponent(near)}`)).status, 404);
     const publicPages = await fetch(`${publicBase}/s/axis-mundae/api/pages`);
     assert.equal(publicPages.status, 200);

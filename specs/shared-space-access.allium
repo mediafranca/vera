@@ -96,6 +96,7 @@ contract OwnerAdministration {
 contract SharedSpaceAccess {
     create_space: (owner: core/Participant, name: String, slug: String, criterion_combination: CriterionCombination, audience: Audience) -> SharedSpace
     change_audience: (owner: core/Participant, space: SharedSpace, audience: Audience) -> SharedSpace
+    choose_entry_page: (owner: core/Participant, space: SharedSpace, page: core/Page?) -> SharedSpace
     change_criterion_combination: (owner: core/Participant, space: SharedSpace, criterion_combination: CriterionCombination) -> SharedSpace
     add_criterion: (owner: core/Participant, space: SharedSpace, selector: PageSelector) -> SharedSpaceCriterion
     remove_criterion: (owner: core/Participant, criterion: SharedSpaceCriterion) -> SharedSpaceCriterion
@@ -350,6 +351,7 @@ entity SharedSpace {
     criterion_combination: CriterionCombination
     audience: Audience
     status: SpaceStatus
+    entry_page: core/Page?
     created_at: Timestamp
     grants: AccessGrant with space = this
     invitations: AccessInvitation with space = this
@@ -629,8 +631,19 @@ rule OwnerCreatesSharedSpace {
         criterion_combination: criterion_combination,
         audience: audience,
         status: active,
+        entry_page: null,
         created_at: now
     )
+}
+
+rule OwnerChoosesSharedSpaceEntryPage {
+    when: ChooseSharedSpaceEntryPage(owner, space, page?)
+
+    requires: space.owner = owner
+    requires: space.status = active
+    requires: page = null or space.pages.any(one => one = page)
+
+    ensures: space.entry_page = page
 }
 
 rule OwnerChangesSharedSpaceAudience {
@@ -1230,6 +1243,7 @@ surface InvitationRedemption {
 
     exposes:
         space.name
+        space.entry_page
         invitation.permissions
         invitation.expires_at
 
@@ -1424,6 +1438,8 @@ surface SharedSpaceAdministration {
 
     provides:
         ChangeSharedSpaceAudience(owner, space, audience)
+        ChooseSharedSpaceEntryPage(owner, space, page?)
+            when page = null or space.pages.any(one => one = page)
         ChangeCriterionCombination(owner, space, criterion_combination)
         AddSharedSpaceCriterion(owner, space, selector)
         RemoveSharedSpaceCriterion(owner, criterion) when criterion.space = space
@@ -1462,6 +1478,12 @@ surface SharedSpaceAdministration {
         -- can predict the effect of changing membership without confusing that
         -- operation with access control.
 
+    @guarantee TheSpaceHasAnExplicitEntryWhenTheOwnerChoosesOne
+        -- The owner may designate one effective page as the shared space home.
+        -- Its identity is persisted; alphabetical order never silently chooses
+        -- or changes the entry page. If that page later leaves the space, the
+        -- designation is ignored and never points beyond the boundary.
+
     @guarantee PendingInvitationsRemainRevocable
         -- The owner chooses a bounded lifetime when issuing the invitation and
         -- may revoke it immediately from this administration until redemption
@@ -1486,6 +1508,7 @@ surface SharedSpaceParticipation {
 
     exposes:
         space.name
+        space.entry_page
         space.pages
 
     provides:
@@ -1505,6 +1528,10 @@ surface SharedSpaceParticipation {
         -- Search, links, backlinks and navigation reached through this surface
         -- are bounded to the shared pages and reveal no title, count or absence
         -- from the rest of the graph.
+
+    @guarantee TheSharedSpaceOpensAtItsEntryPage
+        -- Entering the space without a page address opens its designated entry
+        -- page when one exists, independent of title order.
 }
 
 surface PageSharedSpaceConfiguration {
@@ -1544,6 +1571,7 @@ surface PublicSharedSpaceReading {
 
     exposes:
         space.name
+        space.entry_page
         space.pages
 
     contracts:

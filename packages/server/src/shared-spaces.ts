@@ -10,7 +10,7 @@ export interface SharedSpaceCriterion {
 export interface SharedSpace {
   id: string; name: string; slug: string; selectorKey: string; selectorValue: string;
   criterionCombination: 'any' | 'all'; criteria: SharedSpaceCriterion[]; manualPages: string[];
-  audience: 'anybody' | 'restricted'; status: 'active' | 'withdrawn'; createdAt: number;
+  audience: 'anybody' | 'restricted'; status: 'active' | 'withdrawn'; entryPoint: string | null; createdAt: number;
 }
 
 export interface SharedSpaceAdministration extends SharedSpace {
@@ -50,7 +50,7 @@ export function createSharedSpace(store: Store, owner: string, input: {
   const held: SharedSpace = { id: id('space'), name: input.name, slug: input.slug,
     selectorKey: input.selectorKey ?? '', selectorValue: input.selectorValue ?? '',
     criterionCombination: 'any', criteria: [], manualPages: [],
-    audience: input.audience ?? 'restricted', status: 'active', createdAt: Date.now() };
+    audience: input.audience ?? 'restricted', status: 'active', entryPoint: null, createdAt: Date.now() };
   const criterion = id('criterion');
   store.db.exec('BEGIN');
   try {
@@ -81,27 +81,27 @@ function hydrateSpace(store: Store, row: any): SharedSpace {
   return { id: row.id, name: row.name, slug: row.slug,
     selectorKey: criteria[0]?.key ?? row.selector_key, selectorValue: criteria[0]?.value ?? row.selector_value,
     criterionCombination: row.criterion_combination ?? 'any', criteria, manualPages,
-    audience: row.audience, status: row.status, createdAt: row.created_at };
+    audience: row.audience, status: row.status, entryPoint: row.entry_point ?? null, createdAt: row.created_at };
 }
 
 export function sharedSpaceBySlug(store: Store, slug: string): SharedSpace | null {
   const row = store.db.prepare(`SELECT id, name, slug, selector_key, selector_value,
-    audience, status, created_at FROM shared_spaces WHERE graph_id = ? AND slug = ?`)
+    audience, status, entry_point, created_at FROM shared_spaces WHERE graph_id = ? AND slug = ?`)
     .get(store.graphId, slug) as any;
   return row === undefined ? null : hydrateSpace(store, row);
 }
 
 export function sharedSpaces(store: Store): SharedSpace[] {
-  return (store.db.prepare(`SELECT id,name,slug,selector_key,selector_value,criterion_combination,audience,status,created_at
+  return (store.db.prepare(`SELECT id,name,slug,selector_key,selector_value,criterion_combination,audience,status,entry_point,created_at
     FROM shared_spaces WHERE graph_id=? ORDER BY created_at,id`).all(store.graphId) as any[])
     .map((row) => hydrateSpace(store, row));
 }
 
 export function updateSharedSpace(store: Store, held: SharedSpace, input: {
-  name: string; slug: string; criterionCombination: 'any' | 'all'; audience: 'restricted' | 'anybody';
+  name: string; slug: string; criterionCombination: 'any' | 'all'; audience: 'restricted' | 'anybody'; entryPoint: string | null;
 }): SharedSpace {
-  store.db.prepare(`UPDATE shared_spaces SET name=?,slug=?,criterion_combination=?,audience=? WHERE id=?`)
-    .run(input.name, input.slug, input.criterionCombination, input.audience, held.id);
+  store.db.prepare(`UPDATE shared_spaces SET name=?,slug=?,criterion_combination=?,audience=?,entry_point=? WHERE id=?`)
+    .run(input.name, input.slug, input.criterionCombination, input.audience, input.entryPoint, held.id);
   return { ...held, ...input };
 }
 

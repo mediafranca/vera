@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS shared_spaces (
     criterion_combination TEXT NOT NULL DEFAULT 'any' CHECK (criterion_combination IN ('any', 'all')),
     audience        TEXT NOT NULL CHECK (audience IN ('anybody', 'restricted')),
     status          TEXT NOT NULL CHECK (status IN ('active', 'withdrawn')),
+    entry_point     TEXT REFERENCES pages (id) ON DELETE SET NULL,
     created_at      INTEGER NOT NULL,
     UNIQUE (graph_id, slug)
 ) STRICT;
