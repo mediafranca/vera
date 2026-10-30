@@ -49,7 +49,7 @@ const json = async (path: string, method = 'GET', body?: unknown): Promise<any> 
   return value;
 };
 
-const shell = (title: string): HTMLElement => {
+const shell = (title: string, markText = 'Vera · invitación'): HTMLElement => {
   // La invitación es la puerta de entrada y tiene que seguir siendo legible aun
   // si el armazón quedó en la caché con una hoja compilada que el servidor ya no
   // conserva. El estilo crítico viaja con el mismo módulo que dibuja la página;
@@ -80,7 +80,7 @@ const shell = (title: string): HTMLElement => {
   root.innerHTML = '';
   const main = document.createElement('main');
   main.className = 'invitation-access';
-  const mark = document.createElement('p'); mark.className = 'invitation-mark'; mark.textContent = 'Vera · invitación';
+  const mark = document.createElement('p'); mark.className = 'invitation-mark'; mark.textContent = markText;
   const heading = document.createElement('h1'); heading.textContent = title;
   main.append(mark, heading); root.append(main);
   return main;
@@ -200,13 +200,13 @@ export function offerPasskeyEnrollment(): void {
 
   const dialog = document.createElement('dialog');
   dialog.className = 'passkey-enrollment-dialog';
-  const title = document.createElement('h2'); title.textContent = 'Guarda tu acceso sin contraseña';
+  const title = document.createElement('h2'); title.textContent = 'Guarda tu acceso en este dispositivo';
   const explanation = document.createElement('p');
-  explanation.textContent = 'Tu acceso ya está activo. No tienes que crear nada antes ni buscar una opción en Chrome: pulsa el botón de abajo y Vera le pedirá a tu navegador crear una llave de acceso (passkey) para este sitio.';
+  explanation.textContent = 'Tu acceso ya está activo. Pulsa el botón y confirma como te lo pida este dispositivo; no tienes que guardar ni recordar nada.';
   const steps = document.createElement('ol'); steps.className = 'passkey-steps';
   for (const said of [
-    'Pulsa “Crear y guardar mi acceso”.',
-    'Chrome abrirá su propia ventana. Elige dónde guardar la llave si te ofrece más de una opción.',
+    'Pulsa “Guardar mi acceso aquí”.',
+    'Tu dispositivo abrirá su propia ventana de confirmación.',
     'Confirma como te lo pida el dispositivo: con PIN, huella o rostro. Vera no recibe ese dato.',
   ]) {
     const step = document.createElement('li'); step.textContent = said; steps.append(step);
@@ -215,7 +215,7 @@ export function offerPasskeyEnrollment(): void {
   consequence.textContent = 'Si eliges “Ahora no”, seguirás dentro con esta sesión. Si la pierdes, necesitarás otra invitación.';
   const actions = document.createElement('div'); actions.className = 'dialog-actions';
   const later = document.createElement('button'); later.textContent = 'Ahora no';
-  const create = document.createElement('button'); create.className = 'dialog-primary-action'; create.textContent = 'Crear y guardar mi acceso';
+  const create = document.createElement('button'); create.className = 'dialog-primary-action'; create.textContent = 'Guardar mi acceso aquí';
   actions.append(later, create);
   later.onclick = () => {
     sessionStorage.removeItem('vera-passkey-enrollment');
@@ -229,7 +229,7 @@ export function offerPasskeyEnrollment(): void {
       await json('/human-auth/registration/verify', 'POST', { ...pending, response });
       sessionStorage.removeItem('vera-passkey-enrollment');
       title.textContent = 'Acceso guardado';
-      explanation.textContent = 'Podrás volver a entrar usando la passkey de este dispositivo.';
+      explanation.textContent = 'Podrás volver a entrar confirmando con este dispositivo.';
       steps.remove(); consequence.remove(); actions.replaceChildren();
       const done = document.createElement('button'); done.className = 'dialog-primary-action'; done.textContent = 'Continuar';
       done.onclick = () => dialog.close(); actions.append(done);
@@ -242,6 +242,34 @@ export function offerPasskeyEnrollment(): void {
   dialog.addEventListener('close', () => dialog.remove());
   dialog.append(title, explanation, steps, consequence, actions);
   document.body.append(dialog); dialog.showModal();
+}
+
+/** Registra otro autenticador sin crear otra persona ni repetir la invitación. */
+async function deviceEnrollment(enrollment: string, secret: string, returnTo: string): Promise<void> {
+  const main = shell('Añadir este dispositivo', 'Vera · acceso');
+  const detail = document.createElement('p'); detail.className = 'invitation-detail';
+  detail.textContent = 'Comprobando para quién es este acceso…';
+  const add = document.createElement('button'); add.textContent = 'Añadir este dispositivo'; add.hidden = true;
+  main.append(detail, add);
+  try {
+    const options = await json('/human-auth/registration/options', 'POST', { enrollment, secret });
+    const name = String(options?.user?.displayName ?? options?.user?.name ?? 'esta identidad');
+    detail.textContent = `Estás añadiendo este dispositivo a la identidad de ${name}. Confirma con su PIN, huella o rostro.`;
+    add.hidden = false;
+    add.onclick = () => void (async () => {
+      add.disabled = true; add.textContent = 'Esperando confirmación…';
+      try {
+        const response = await startRegistration({ optionsJSON: options });
+        await json('/human-auth/registration/verify', 'POST', { enrollment, secret, response });
+        location.assign(returnTo);
+      } catch (error) {
+        notice(main, error instanceof Error ? error.message : 'No se pudo añadir este dispositivo.', true);
+        add.disabled = false; add.textContent = 'Volver a intentar';
+      }
+    })();
+  } catch (error) {
+    detail.textContent = error instanceof Error ? error.message : 'Este código venció o ya fue utilizado.';
+  }
 }
 
 /**
@@ -293,6 +321,16 @@ export function handlesSharedAccess(): boolean {
   const enroll = /^\/enroll-owner\/([^/]+)$/.exec(location.pathname);
   if (enroll !== null) {
     void ownerEnrollment(decodeURIComponent(enroll[1] ?? ''), new URL(location.href).searchParams.get('secret') ?? '');
+    return true;
+  }
+  const device = /^\/enroll-device\/([^/]+)$/.exec(location.pathname);
+  if (device !== null) {
+    const fragment = new URLSearchParams(location.hash.replace(/^#/, ''));
+    const secret = fragment.get('secret') ?? '';
+    const requestedReturn = new URL(location.href).searchParams.get('returnTo') ?? '/';
+    const returnTo = /^\/s\/[^/]+(?:\/.*)?$/.test(requestedReturn) ? requestedReturn : '/';
+    history.replaceState(null, '', `${location.pathname}${location.search}`);
+    void deviceEnrollment(decodeURIComponent(device[1] ?? ''), secret, returnTo);
     return true;
   }
   // Un espacio no es una aplicación aparte. No existe un lector alternativo:
