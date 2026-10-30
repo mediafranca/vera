@@ -17,6 +17,8 @@ const identifier = (prefix: string): string => `${prefix}:${randomBytes(8).toStr
 
 interface Ceremony { rpID: string; origin: string }
 
+const ENROLLMENT_LIFETIME_MS = 15 * 60 * 1000;
+
 export function ceremonyFor(host: string, forwardedProto?: string): Ceremony {
   const hostname = host.replace(/:\d+$/, '');
   const local = hostname === 'localhost' || hostname === '127.0.0.1';
@@ -34,14 +36,39 @@ function enrollment(store: Store, id: string, proof: string): any {
   return row;
 }
 
+/**
+ * Autoriza otra forma de entrada para una persona que ya demostró quién es.
+ *
+ * La sesión y la matrícula son objetos distintos: la primera prueba la
+ * identidad en el dispositivo presente; la segunda sólo permite que otro
+ * autenticador se vincule a esa misma identidad. No crea participante,
+ * membresía ni permiso.
+ */
+export function beginDeviceEnrollment(store: Store, participant: string): {
+  enrollment: string; secret: string; expiresAt: number;
+} {
+  const enrollment = identifier('enrollment');
+  const secret = opaque('vera_enroll_');
+  const expiresAt = Date.now() + ENROLLMENT_LIFETIME_MS;
+  store.db.prepare(`INSERT INTO authenticator_enrollments
+    (id,graph_id,participant_id,authorized_by,proof_digest,status,expires_at)
+    VALUES (?,?,?,?,?,'pending',?)`).run(enrollment, store.graphId, participant,
+      participant, digestOf(secret), expiresAt);
+  return { enrollment, secret, expiresAt };
+}
+
 export async function registrationOptions(store: Store, enrollmentId: string, proof: string,
   ceremony: Ceremony): Promise<unknown> {
   const held = enrollment(store, enrollmentId, proof);
+  const existing = store.db.prepare(`SELECT credential_id,transports FROM human_authenticators
+    WHERE participant_id=? AND status='active'`).all(held.participant_id) as any[];
   const options = await generateRegistrationOptions({
     rpName: 'Vera', rpID: ceremony.rpID, userName: held.name,
     userID: isoUint8Array.fromUTF8String(held.participant_id),
     attestationType: 'none',
     authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+    excludeCredentials: existing.map((one) => ({ id: one.credential_id,
+      transports: String(one.transports).split(',').filter(Boolean) })) as any,
   });
   store.db.prepare(`DELETE FROM webauthn_challenges WHERE participant_id=? AND purpose='registration'`)
     .run(held.participant_id);
