@@ -616,7 +616,7 @@ async function openToday(): Promise<void> {
  * nada antes de ponerse a escribir.
  */
 function drawUnstartedDay(date: string): void {
-  $('#vera-root').classList.remove('special-surface');
+  $('#vera-root').classList.remove('special-surface', 'ontology-government-open');
   workspace.activePage = null;
   // Todavía no hay página, pero sí hay sitio: el día que se está mirando. Dejar
   // sólo «Vera» aquí haría que la ventana perdiera el nombre justo al abrirla,
@@ -990,7 +990,7 @@ async function openPage(
   pageDelivery?.abort();
   const delivery = new AbortController();
   pageDelivery = delivery;
-  $('#vera-root').classList.remove('special-surface');
+  $('#vera-root').classList.remove('special-surface', 'ontology-government-open');
   let page: PageView | undefined;
   /*
    * Si el corpus tarda, se dice qué se está abriendo.
@@ -2663,6 +2663,7 @@ async function drawGraph(reach = 1): Promise<void> {
    */
   const governing = governingKind(openView?.properties ?? []);
   if (governing !== null) {
+    $('#vera-root').classList.add('ontology-government-open');
     try {
       const [ontology, diagram] = await Promise.all([
         api.ontology(),
@@ -2690,6 +2691,7 @@ async function drawGraph(reach = 1): Promise<void> {
     }
     return;
   }
+  $('#vera-root').classList.remove('ontology-government-open');
   container.classList.remove('ontology-government-map');
   container.querySelector<HTMLElement>('#map-controls')?.removeAttribute('hidden');
   container.querySelector<HTMLElement>('#map-trail')?.removeAttribute('hidden');

@@ -28,6 +28,8 @@ const ontology: OntologyView = {
 
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const map = readFileSync(new URL('../src/ontology-governance-map.ts', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 describe('gobierno ontológico facetado', () => {
   it('conserva las tres páginas rectoras como facetas operativas', () => {
@@ -70,8 +72,17 @@ describe('gobierno ontológico facetado', () => {
     assert.match(main, /governingKind\(openView\?\.properties/);
     assert.match(main, /diagram\.renderOntologyGovernanceMap\([\s\S]*?container,[\s\S]*?ontology,[\s\S]*?governing/);
     assert.match(main, /api\.submitCanonical\(change, 'drawn'\)/);
+    assert.match(governing, /vera:ontology-focus/);
     for (const change of ['edit_block', 'set_property', 'remove_property']) {
       assert.match(governing, new RegExp(change));
     }
+  });
+
+  it('pone la declaración a la izquierda y mantiene completa la ruta no visual', () => {
+    assert.match(styles, /ontology-government-open\[data-layout='split'\][\s\S]*?'text divider graph'/);
+    assert.match(map, /card\.tabIndex = 0/);
+    assert.match(map, /event\.key !== 'Enter' && event\.key !== ' '/);
+    assert.match(map, /setAttribute\('aria-label'/);
+    assert.match(styles, /prefers-reduced-motion: reduce/);
   });
 });

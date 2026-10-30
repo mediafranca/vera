@@ -5157,6 +5157,28 @@ body.settings-open #text {
   cursor: not-allowed;
 }
 
+/*
+ * En el gobierno round-trip se lee primero la declaración y después su figura.
+ * Es una excepción deliberada al mapa «ante» de una página ordinaria: aquí no
+ * se navega del corpus al documento, sino entre dos notaciones del mismo acto.
+ * El divisor sigue midiendo la columna izquierda y conserva su gesto habitual.
+ */
+@media (min-width: 641px) {
+  #vera-root.ontology-government-open[data-layout='split'] {
+    grid-template-areas:
+      'bar bar bar'
+      'text divider graph';
+  }
+}
+
+.governing-tables {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.governing-cols-8 { min-width: 68rem; }
+
 #graph.ontology-government-map {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
