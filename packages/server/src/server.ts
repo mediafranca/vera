@@ -139,8 +139,12 @@ import {
 import {
   canonicalParticipant,
   declareParticipant,
-  listParticipants,
+  eraseEmptyParticipant,
   participantAliases,
+  participantSummaries,
+  reconcileParticipants,
+  renameParticipant,
+  suspendParticipant,
 } from './participant-identities.ts';
 import {
   ask,
@@ -3553,7 +3557,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (request.method === 'GET' && path === '/participants') {
       const blocked = ownerOnly();
       if (blocked !== null) { send(response, 403, blocked); return; }
-      send(response, 200, { participants: listParticipants(store) });
+      send(response, 200, { participants: participantSummaries(store) });
       return;
     }
 
@@ -3570,6 +3574,69 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 201, { participant });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'PATCH' && /^\/participants\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const body = await readSmallJson();
+        if (typeof body['name'] !== 'string') throw new Error('el nuevo nombre es obligatorio');
+        const participant = renameParticipant(store, who.participant, participantId, body['name']);
+        graph.renameParticipant(participant.id, participant.name);
+        send(response, 200, { participant });
+      } catch (error) {
+        send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/participants\/[^/]+\/suspend$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const participant = suspendParticipant(store, who.participant, participantId);
+        graph.suspend(participant.id);
+        send(response, 200, { participant });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/participants\/[^/]+\/reconcile$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const duplicate = decodeURIComponent(path.split('/')[2] ?? '');
+        const body = await readSmallJson();
+        const canonical = typeof body['canonical'] === 'string' ? body['canonical'] : '';
+        const reason = typeof body['reason'] === 'string' ? body['reason'] : '';
+        const source = canonicalParticipant(store, duplicate);
+        reconcileParticipants(store, who.participant, source, canonical, reason);
+        graph.suspend(source);
+        send(response, 200, { canonical: canonicalParticipant(store, canonical), duplicate: source });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'DELETE' && /^\/participants\/[^/]+$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const canonical = canonicalParticipant(store, participantId);
+        eraseEmptyParticipant(store, who.participant, canonical);
+        graph.forgetParticipant(canonical);
+        send(response, 200, { erased: canonical });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }

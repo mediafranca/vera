@@ -81,6 +81,7 @@ contract ParticipantAdministration {
     rename: (owner: core/Participant, participant: core/Participant, name: String) -> core/Participant
     invite: (participant: core/Participant) -> core/Membership
     remove: (participant: core/Participant) -> core/Membership
+    erase_empty: (owner: core/Participant, participant: core/Participant) -> core/Participant
     reconcile: (owner: core/Participant, duplicate: core/Participant, canonical: core/Participant, reason: String) -> ParticipantReconciliation
 
     @invariant SovereignOwnerOnly
@@ -90,6 +91,14 @@ contract ParticipantAdministration {
     @invariant HistoricalIdentitySurvivesRemoval
         -- Removing access preserves the participant's identity on historical
         -- revisions and audit records while preventing further graph access.
+
+    @invariant ErasureRequiresProvenEmptiness
+        -- Definitive erasure is available only when Vera can prove that the
+        -- participant has no authorship, exposure, decision, semantic relation
+        -- or reconciliation history. Access attempts that never produced such
+        -- history —a directed invitation, enrollment, session or credential—
+        -- are named and removed with the empty identity. An identity with
+        -- participation to remember is suspended or reconciled, never erased.
 
     @invariant APersonPrecedesTheirCredentials
         -- A human or agent Participant is declared as an identity before Vera
@@ -330,6 +339,23 @@ rule OwnerRemovesParticipant {
     ensures: membership.status = suspended
 }
 
+rule OwnerErasesEmptyParticipant {
+    when: EraseEmptyParticipant(owner, participant)
+
+    requires: instance.owner = owner
+    requires: participant != owner
+    requires: not has_retained_participant_history(participant)
+    requires: not exists ParticipantReconciliation{instance: instance, duplicate: participant}
+    requires: not exists ParticipantReconciliation{instance: instance, canonical: participant}
+
+    ensures: not exists participant
+
+    @guidance
+        -- The proof of emptiness distinguishes access residue from participation.
+        -- Subordinate access rows are erased atomically with the identity; any
+        -- attributed operation, exposure, decision or relation refuses the act.
+}
+
 -- Nobody by default. A submission that arrives without a credential is refused,
 -- whatever it claims and wherever it came from.
 rule UnauthenticatedSubmissionIsRefused {
@@ -482,6 +508,7 @@ surface InstanceParticipantAdministration {
         RenameParticipant(owner, participant, name)
         InviteParticipant(owner, participant)
         RemoveParticipant(owner, participant)
+        EraseEmptyParticipant(owner, participant)
         ReconcileParticipant(owner, duplicate, canonical, reason)
 
     contracts:
