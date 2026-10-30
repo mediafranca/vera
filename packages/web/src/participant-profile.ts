@@ -48,6 +48,26 @@ export function renderParticipantProfile(view: ParticipantProfileView): HTMLElem
   );
   root.append(header, facts);
 
+  if (view.aliases.length > 0 || view.nameHistory.length > 0) {
+    const history = document.createElement('section');
+    const historyTitle = document.createElement('h2'); historyTitle.textContent = 'Historia de identidad';
+    const list = document.createElement('ul'); list.className = 'participant-profile-links';
+    for (const alias of view.aliases) {
+      const item = document.createElement('li');
+      const when = alias.reconciliation === null ? ''
+        : ` · reconciliada ${new Date(alias.reconciliation.reconciled_at).toLocaleString()}`;
+      item.textContent = `${alias.historical?.name ?? 'Identidad histórica'} · ${alias.historical?.id ?? 'sin identificador'}${when}`;
+      if (alias.reconciliation?.reason) item.title = alias.reconciliation.reason;
+      list.append(item);
+    }
+    for (const change of view.nameHistory) {
+      const item = document.createElement('li');
+      item.textContent = `${change.formerName} → ${change.newName} · ${new Date(change.changedAt).toLocaleString()}`;
+      list.append(item);
+    }
+    history.append(historyTitle, list); root.append(history);
+  }
+
   const semantic = document.createElement('section');
   const semanticTitle = document.createElement('h2');
   semanticTitle.textContent = 'Identidad semántica';

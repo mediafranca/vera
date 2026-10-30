@@ -102,8 +102,8 @@ contract SharedSpaceAccess {
     remove_criterion: (owner: core/Participant, criterion: SharedSpaceCriterion) -> SharedSpaceCriterion
     include_page: (owner: core/Participant, space: SharedSpace, page: core/Page) -> ManualPageInclusion
     remove_included_page: (owner: core/Participant, inclusion: ManualPageInclusion) -> ManualPageInclusion
-    invite: (owner: core/Participant, space: SharedSpace, permissions: Set<Permission>, lifetime: Duration) -> AccessInvitation
-    redeem: (invitation: AccessInvitation, person_name: String) -> AccessGrant
+    invite: (owner: core/Participant, space: SharedSpace, participant: core/Participant, permissions: Set<Permission>, lifetime: Duration) -> AccessInvitation
+    redeem: (invitation: AccessInvitation) -> AccessGrant
     grant: (owner: core/Participant, space: SharedSpace, participant: core/Participant, permissions: Set<Permission>) -> AccessGrant
     change_permissions: (owner: core/Participant, grant: AccessGrant, permissions: Set<Permission>) -> AccessGrant
     revoke: (owner: core/Participant, grant: AccessGrant) -> AccessGrant
@@ -133,6 +133,11 @@ contract SharedSpaceAccess {
         -- shared space immediately. Registering a passkey afterwards preserves
         -- access beyond that browser session but is never a condition for the
         -- first entry or for receiving the invitation's permissions.
+
+    @invariant AccessNeverCreatesIdentity
+        -- The owner declares the person first. Issuing or redeeming an
+        -- invitation, replacing a passkey, renewing a grant or opening another
+        -- shared space only adds records subordinate to that same Participant.
 
     @invariant ContributionAndEditingAreDifferentPromises
         -- `contribute` submits an attributed proposal for the owner's review.
@@ -392,6 +397,7 @@ entity ManualPageInclusion {
 entity AccessInvitation {
     space: SharedSpace
     issued_by: core/Participant
+    participant: core/Participant
     permissions: Set<Permission>
     proof_digest: String
     intended_contact: String?
@@ -716,7 +722,7 @@ rule OwnerRemovesExplicitPageInclusion {
 }
 
 rule OwnerCreatesInvitationCapability {
-    when: InviteToSharedSpace(owner, space, permissions, lifetime, proof_digest, intended_contact?)
+    when: InviteToSharedSpace(owner, space, participant, permissions, lifetime, proof_digest, intended_contact?)
 
     requires: space.owner = owner
     requires: space.status = active
@@ -724,10 +730,14 @@ rule OwnerCreatesInvitationCapability {
     requires: read in permissions
     requires: lifetime > 0.seconds
     requires: lifetime <= config.maximum_invitation_lifetime
+    requires: participant.kind = human
+    requires: participant.status = active
+    requires: exists core/Membership{graph: space.graph, participant: participant, status: active}
 
     ensures: AccessInvitation.created(
         space: space,
         issued_by: owner,
+        participant: participant,
         permissions: permissions,
         proof_digest: proof_digest,
         intended_contact: intended_contact,
@@ -771,27 +781,24 @@ rule OwnerDeletesInvitation {
         -- The participant and access to any other shared spaces remain.
 }
 
-rule PersonWithoutVeraRedeemsInvitation {
-    when: RedeemInvitation(invitation, proof, person_name)
+rule DeclaredPersonRedeemsInvitation {
+    when: RedeemInvitation(invitation, proof)
 
     requires: invitation.status = pending
     requires: invitation.expires_at > now
     requires: verifies(proof, invitation.proof_digest)
+    requires: invitation.participant.kind = human
+    requires: invitation.participant.status = active
+    requires: exists core/Membership{
+        graph: invitation.space.graph,
+        participant: invitation.participant,
+        status: active
+    }
 
     ensures:
-        let participant = core/Participant.created(
-            name: person_name,
-            kind: human,
-            status: active
-        )
-        core/Membership.created(
-            graph: invitation.space.graph,
-            participant: participant,
-            status: active
-        )
         AccessGrant.created(
             space: invitation.space,
-            participant: participant,
+            participant: invitation.participant,
             permissions: invitation.permissions,
             status: active,
             granted_by: invitation.space.owner,
@@ -800,14 +807,14 @@ rule PersonWithoutVeraRedeemsInvitation {
         )
         AuthenticatorEnrollment.created(
             instance: instance,
-            participant: participant,
+            participant: invitation.participant,
             authorized_by: invitation.space.owner,
             status: pending,
             expires_at: now + config.enrollment_lifetime
         )
         HumanSession.created(
             instance: instance,
-            participant: participant,
+            participant: invitation.participant,
             authenticator: null,
             federated_binding: null,
             invitation: invitation,
@@ -818,7 +825,7 @@ rule PersonWithoutVeraRedeemsInvitation {
             ended_at: null
         )
         invitation.status = redeemed
-        invitation.redeemed_by = participant
+        invitation.redeemed_by = invitation.participant
         invitation.redeemed_at = now
 }
 

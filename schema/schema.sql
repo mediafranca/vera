@@ -53,6 +53,26 @@ CREATE TABLE IF NOT EXISTS participants (
     status  TEXT NOT NULL CHECK (status IN ('active', 'suspended'))
 ) STRICT;
 
+-- Una reconciliación no reescribe el pasado: conserva el identificador que
+-- apareció históricamente y declara a qué identidad canónica resuelve ahora.
+CREATE TABLE IF NOT EXISTS participant_reconciliations (
+    duplicate_id    TEXT PRIMARY KEY REFERENCES participants (id),
+    canonical_id    TEXT NOT NULL REFERENCES participants (id),
+    reconciled_by   TEXT NOT NULL REFERENCES participants (id),
+    reason          TEXT NOT NULL,
+    reconciled_at   INTEGER NOT NULL,
+    CHECK (duplicate_id <> canonical_id)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS participant_name_history (
+    id              TEXT PRIMARY KEY,
+    participant_id  TEXT NOT NULL REFERENCES participants (id),
+    former_name     TEXT NOT NULL,
+    new_name        TEXT NOT NULL,
+    changed_by      TEXT NOT NULL REFERENCES participants (id),
+    changed_at      INTEGER NOT NULL
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS graphs (
     id    TEXT PRIMARY KEY,
     name  TEXT NOT NULL
@@ -87,6 +107,7 @@ CREATE TABLE IF NOT EXISTS collective_invitations (
     id                TEXT PRIMARY KEY,
     instance_id       TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
     issued_by         TEXT NOT NULL REFERENCES participants (id),
+    participant_id    TEXT REFERENCES participants (id),
     role              TEXT NOT NULL CHECK (role IN (
                           'administrator', 'editor', 'contributor', 'reader', 'publisher')),
     proof_digest      TEXT NOT NULL UNIQUE,
@@ -95,7 +116,8 @@ CREATE TABLE IF NOT EXISTS collective_invitations (
     issued_at         INTEGER NOT NULL,
     expires_at        INTEGER NOT NULL,
     redeemed_by       TEXT REFERENCES participants (id),
-    redeemed_at       INTEGER
+    redeemed_at       INTEGER,
+    CHECK (participant_id IS NOT NULL OR status IN ('revoked', 'expired'))
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS memberships (
@@ -153,6 +175,7 @@ CREATE TABLE IF NOT EXISTS access_invitations (
     id                TEXT PRIMARY KEY,
     space_id          TEXT NOT NULL REFERENCES shared_spaces (id) ON DELETE CASCADE,
     issued_by         TEXT NOT NULL REFERENCES participants (id),
+    participant_id    TEXT REFERENCES participants (id),
     permissions       TEXT NOT NULL,
     proof_digest      TEXT NOT NULL UNIQUE,
     intended_contact  TEXT,
@@ -160,7 +183,8 @@ CREATE TABLE IF NOT EXISTS access_invitations (
     issued_at         INTEGER NOT NULL,
     expires_at        INTEGER NOT NULL,
     redeemed_by       TEXT REFERENCES participants (id),
-    redeemed_at       INTEGER
+    redeemed_at       INTEGER,
+    CHECK (participant_id IS NOT NULL OR status IN ('revoked', 'expired'))
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS access_grants (
@@ -171,9 +195,11 @@ CREATE TABLE IF NOT EXISTS access_grants (
     status          TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
     granted_by      TEXT NOT NULL REFERENCES participants (id),
     granted_at      INTEGER NOT NULL,
-    revoked_at      INTEGER,
-    UNIQUE (space_id, participant_id)
+    revoked_at      INTEGER
 ) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_space_grant
+    ON access_grants(space_id, participant_id) WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS authenticator_enrollments (
     id              TEXT PRIMARY KEY,

@@ -36,7 +36,8 @@ describe('prioridades de interfaz posteriores al móvil', () => {
 
   it('expone pertenencia efectiva, personas y espacios inicialmente vacíos', () => {
     assert.match(settings, /Pertenencia efectiva/);
-    assert.match(settings, /peopleDirectory\(spaces\)/);
+    assert.match(settings, /participantDirectory\(host, participants\)/);
+    assert.match(settings, /Declarar persona/);
     assert.match(settings, /Propiedad inicial \(opcional\)/);
     assert.match(settings, /drawPageSharing/);
   });

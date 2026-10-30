@@ -37,6 +37,17 @@ async function callPublic(path: string, method = 'GET', body?: unknown) {
   return { status: response.status, json: await response.json() as Record<string, any> };
 }
 
+let declaredPeople = 0;
+async function issueInvitation(path: string, body: Record<string, unknown>, name?: string) {
+  declaredPeople += 1;
+  const declared = await call('/participants', 'POST', {
+    name: name ?? `Persona declarada ${declaredPeople}`,
+    kind: 'human',
+  });
+  assert.equal(declared.status, 201, JSON.stringify(declared.json));
+  return call(path, 'POST', { ...body, participant: declared.json['participant'].id });
+}
+
 async function write(change: unknown): Promise<string> {
   sequence += 1;
   const reply = await call('/operations', 'POST', { originId: `shared:${sequence}`, change });
@@ -63,7 +74,7 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('muestra el secreto de invitación una vez, lo canjea y no permite repetirlo', async () => {
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'] }, 'Invitada');
     assert.equal(issued.status, 201, JSON.stringify(issued.json));
     assert.match(issued.json['secret'], /^vera_inv_/);
     assert.equal(new URL(issued.json['url']).origin, 'https://vera.mediafranca.net');
@@ -95,7 +106,7 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('permite abrir y canjear la invitación desde el origen público', async () => {
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'] });
     const invitation = issued.json['id'] as string;
     const proof = issued.json['secret'] as string;
     const preview = await callPublic(`/invitations/${encodeURIComponent(invitation)}?secret=${encodeURIComponent(proof)}`);
@@ -112,7 +123,7 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('una sesión añade otro dispositivo a la misma persona sin repetir la invitación', async () => {
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'] }, 'Arturo');
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
       secret: issued.json['secret'], name: 'Arturo',
     });
@@ -158,23 +169,23 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('un secreto incorrecto no revela siquiera el nombre del espacio', async () => {
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'] });
     const invitation = issued.json['id'] as string;
     assert.equal((await call(`/invitations/${encodeURIComponent(invitation)}?secret=falso`)).status, 404);
   });
 
   it('permite elegir la vigencia y usa siete días por omisión', async () => {
     const before = Date.now();
-    const standard = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const standard = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'] });
     assert.ok(standard.json['expiresAt'] >= before + 7 * 24 * 60 * 60 * 1000);
 
-    const short = await call('/shared-spaces/doctorado/invitations', 'POST', {
+    const short = await issueInvitation('/shared-spaces/doctorado/invitations', {
       permissions: ['read'], lifetimeMs: 60 * 60 * 1000,
     });
     assert.ok(short.json['expiresAt'] >= before + 60 * 60 * 1000);
     assert.ok(short.json['expiresAt'] < before + 2 * 60 * 60 * 1000);
 
-    const arbitrary = await call('/shared-spaces/doctorado/invitations', 'POST', {
+    const arbitrary = await issueInvitation('/shared-spaces/doctorado/invitations', {
       permissions: ['read'], lifetimeMs: 365 * 24 * 60 * 60 * 1000,
     });
     assert.equal(arbitrary.status, 400);
@@ -287,7 +298,7 @@ describe('primer corte vertical de espacios compartidos', () => {
 
   it('con sesión entrega lo interior y trata lo exterior como inexistente', async () => {
     const outside = await write({ kind: 'create_page', title: 'Secreto exterior', visibility: 'private' });
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'] }, 'Lectora');
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
       secret: issued.json['secret'], name: 'Lectora',
     });
@@ -322,7 +333,7 @@ describe('primer corte vertical de espacios compartidos', () => {
     const outsideBlock = await write({
       kind: 'create_block', page: outside, parent: null, position: 0, content: 'Privado',
     });
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', {
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', {
       permissions: ['read', 'edit'],
     });
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
@@ -368,9 +379,9 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.equal((await call('/shared-spaces', 'POST', {
       name: 'Creación', slug: 'creacion', selectorKey: 'espacio', selectorValue: 'creacion',
     })).status, 201);
-    const issued = await call('/shared-spaces/creacion/invitations', 'POST', {
+    const issued = await issueInvitation('/shared-spaces/creacion/invitations', {
       permissions: ['read', 'edit'],
-    });
+    }, 'Creadora invitada');
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
       secret: issued.json['secret'], name: 'Creadora invitada',
     });
@@ -427,7 +438,7 @@ describe('primer corte vertical de espacios compartidos', () => {
     })).status, 201);
     const inside = running.vera.graph.pageTitled('Dentro')!;
     const outside = running.vera.graph.pageTitled('Fuera del permiso')!;
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', {
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', {
       permissions: ['read'],
     });
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
@@ -488,9 +499,9 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('contribute no equivale a edición directa', async () => {
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', {
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', {
       permissions: ['read', 'contribute'],
-    });
+    }, 'Colaboradora editorial');
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
       secret: issued.json['secret'], name: 'Proponente',
     });
@@ -517,9 +528,9 @@ describe('primer corte vertical de espacios compartidos', () => {
   it('guarda una contribución para revisión y sólo la aceptación cambia el corpus', async () => {
     const inside = running.vera.graph.pageTitled('Dentro')!;
     const block = await write({ kind: 'create_block', page: inside.id, parent: null, position: 0, content: 'Original' });
-    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', {
+    const issued = await issueInvitation('/shared-spaces/doctorado/invitations', {
       permissions: ['read', 'contribute'],
-    });
+    }, 'Colaboradora editorial');
     const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
       secret: issued.json['secret'], name: 'Colaboradora editorial',
     });
@@ -552,7 +563,7 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('administra criterio, invitaciones, participantes y revocaciones', async () => {
-    const pending = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'], intendedContact: 'Ada' });
+    const pending = await issueInvitation('/shared-spaces/doctorado/invitations', { permissions: ['read'], intendedContact: 'Ada' }, 'Lectora');
     let admin = await call('/shared-spaces');
     assert.equal(admin.status, 200);
     const space = (admin.json['spaces'] as any[]).find((one) => one.slug === 'doctorado');
@@ -575,19 +586,19 @@ describe('primer corte vertical de espacios compartidos', () => {
   });
 
   it('elimina definitivamente invitaciones en cualquier estado y revoca el acceso canjeado', async () => {
-    const pending = await call('/shared-spaces/vera/invitations', 'POST', { permissions: ['read'], intendedContact: 'Pendiente' });
+    const pending = await issueInvitation('/shared-spaces/vera/invitations', { permissions: ['read'], intendedContact: 'Pendiente' });
     assert.equal((await call(`/shared-spaces/vera/invitations/${encodeURIComponent(pending.json['id'])}/permanent`, 'DELETE')).status, 200);
 
-    const revoked = await call('/shared-spaces/vera/invitations', 'POST', { permissions: ['read'], intendedContact: 'Revocada' });
+    const revoked = await issueInvitation('/shared-spaces/vera/invitations', { permissions: ['read'], intendedContact: 'Revocada' });
     assert.equal((await call(`/shared-spaces/vera/invitations/${encodeURIComponent(revoked.json['id'])}`, 'DELETE')).status, 200);
     assert.equal((await call(`/shared-spaces/vera/invitations/${encodeURIComponent(revoked.json['id'])}/permanent`, 'DELETE')).status, 200);
 
-    const expired = await call('/shared-spaces/vera/invitations', 'POST', { permissions: ['read'], intendedContact: 'Caducada' });
+    const expired = await issueInvitation('/shared-spaces/vera/invitations', { permissions: ['read'], intendedContact: 'Caducada' });
     running.vera.store.db.prepare(`UPDATE access_invitations SET expires_at=0 WHERE id=?`).run(expired.json['id']);
     await call('/shared-spaces');
     assert.equal((await call(`/shared-spaces/vera/invitations/${encodeURIComponent(expired.json['id'])}/permanent`, 'DELETE')).status, 200);
 
-    const redeemed = await call('/shared-spaces/vera/invitations', 'POST', { permissions: ['read'], intendedContact: 'Canjeada' });
+    const redeemed = await issueInvitation('/shared-spaces/vera/invitations', { permissions: ['read'], intendedContact: 'Canjeada' }, 'Persistente');
     const accepted = await call(`/invitations/${encodeURIComponent(redeemed.json['id'])}/redeem`, 'POST', {
       secret: redeemed.json['secret'], name: 'Persistente',
     });
@@ -608,7 +619,7 @@ describe('primer corte vertical de espacios compartidos', () => {
       name: 'Temporal', slug: 'temporal', selectorKey: 'concepto', selectorValue: 'temporal',
     });
     assert.equal(made.status, 201, JSON.stringify(made.json));
-    const invitation = await call('/shared-spaces/temporal/invitations', 'POST', { permissions: ['read'] });
+    const invitation = await issueInvitation('/shared-spaces/temporal/invitations', { permissions: ['read'] });
     assert.equal(invitation.status, 201, JSON.stringify(invitation.json));
 
     const removed = await call('/shared-spaces/temporal', 'DELETE');
@@ -631,7 +642,7 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.deepEqual(new Set((pages.json['pages'] as any[]).map((page) => page.title)),
       new Set(['Dentro', 'Por tema', 'Incluida a mano']));
 
-    const issued = await call('/shared-spaces/vera/invitations', 'POST', { permissions: ['read'] });
+    const issued = await issueInvitation('/shared-spaces/vera/invitations', { permissions: ['read'] }, 'Colaboradora');
     await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
       secret: issued.json['secret'], name: 'Colaboradora',
     });

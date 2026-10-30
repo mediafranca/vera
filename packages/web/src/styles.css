@@ -10582,11 +10582,35 @@ html[data-working-slow='true']::after {
   font-size: 1rem;
 }
 
+.activity-participant-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 20rem);
+  gap: .75rem;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: .75rem 0;
+  border-block: 1px solid var(--rule);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: .82rem;
+}
+
+.activity-participant-filter select {
+  width: 100%;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+}
+
+@media (max-width: 640px) {
+  .activity-participant-filter { grid-template-columns: 1fr; }
+}
+
 .activity-tabs {
   display: flex;
   gap: .25rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid var(--line, #d8d8d8);
+  border-bottom: 1px solid var(--rule);
 }
 
 .activity-tabs button {
@@ -10594,7 +10618,7 @@ html[data-working-slow='true']::after {
   padding: .65rem .8rem;
   border: 0;
   border-bottom: 2px solid transparent;
-  color: var(--muted, #6f6f6f);
+  color: var(--text-dim);
   background: transparent;
   font: inherit;
   cursor: pointer;

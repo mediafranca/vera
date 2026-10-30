@@ -4,8 +4,9 @@
 -- Scope: Identity and access boundaries for one personal Vera library and the
 --   instance that currently serves it
 -- Includes: One sovereign human owner, single-graph instance ownership, the
---   boundary for human and agent participation, and the anonymous read-only
---   identity used at a site's public origin
+--   boundary for human and agent participation, stable participant identity,
+--   audited reconciliation of accidental duplicates, and the anonymous
+--   read-only identity used at a site's public origin
 -- Excludes:
 --   - Hosting several private graphs inside one Vera instance
 --   - Closing the current graph and opening or switching to another graph
@@ -76,8 +77,11 @@ contract HumanAuthentication {
 }
 
 contract ParticipantAdministration {
+    declare: (owner: core/Participant, name: String, kind: core/ParticipantKind) -> core/Participant
+    rename: (owner: core/Participant, participant: core/Participant, name: String) -> core/Participant
     invite: (participant: core/Participant) -> core/Membership
     remove: (participant: core/Participant) -> core/Membership
+    reconcile: (owner: core/Participant, duplicate: core/Participant, canonical: core/Participant, reason: String) -> ParticipantReconciliation
 
     @invariant SovereignOwnerOnly
         -- Only the instance's founding human owner may create access for,
@@ -87,11 +91,117 @@ contract ParticipantAdministration {
         -- Removing access preserves the participant's identity on historical
         -- revisions and audit records while preventing further graph access.
 
+    @invariant APersonPrecedesTheirCredentials
+        -- A human or agent Participant is declared as an identity before Vera
+        -- issues an invitation, passkey enrollment, session or agent token for
+        -- it. Those records are many-to-one means of access and authority; none
+        -- of them creates another person merely by being issued or renewed.
+
+    @invariant OnePersonHasOneParticipantIdentity
+        -- Credential rotation, another device, another shared space and a
+        -- revoked then renewed grant all keep the same Participant. A display
+        -- name is mutable history and is never the identity key.
+
+    @invariant SimilarNamesNeverMergePeople
+        -- Vera may suggest that two declarations deserve review, but only an
+        -- explicit act by an authorized human reconciles them. Equality or
+        -- similarity of names, contacts or credentials never performs a merge.
+
+    @invariant ReconciliationPreservesBothHistories
+        -- Reconciliation appoints one canonical Participant and retains the
+        -- accidental identifier as a historical alias. Authorship, grants,
+        -- sessions and credential events are not rewritten or deleted; profile
+        -- and activity projections resolve and aggregate the alias explicitly.
+
     @invariant ThePersonalLibraryRemainsPersonal
         -- Inviting collaborators or agents gives them real participation and
         -- never turns the library into a jointly owned account. Collective work
         -- is composed between sovereign individuals; it does not dissolve the
         -- human owner of either person's context.
+}
+
+------------------------------------------------------------
+-- Stable participant identity
+------------------------------------------------------------
+
+-- This is not a second person record. It is the auditable assertion that an
+-- accidentally declared Participant names the same person as the canonical
+-- Participant. Historical rows keep their original foreign key so the record
+-- of what Vera believed at the time remains inspectable.
+entity ParticipantReconciliation {
+    instance: VeraInstance
+    duplicate: core/Participant
+    canonical: core/Participant
+    reconciled_by: core/Participant
+    reason: String
+    reconciled_at: Timestamp
+}
+
+rule OwnerDeclaresParticipantIdentity {
+    when: DeclareParticipant(owner, name, kind)
+
+    requires: owner = instance.owner
+    requires: name.trim.length > 0
+
+    ensures: core/Participant.created(
+        name: name.trim,
+        kind: kind,
+        status: active
+    )
+}
+
+rule OwnerRenamesParticipantIdentity {
+    when: RenameParticipant(owner, participant, name)
+
+    requires: owner = instance.owner
+    requires: name.trim.length > 0
+    requires: not exists ParticipantReconciliation{instance: instance, duplicate: participant}
+
+    ensures: participant.name = name.trim
+
+    @guidance
+        -- The participant identifier and every contribution remain unchanged;
+        -- the profile history records the former and new display names.
+}
+
+rule OwnerReconcilesAccidentalDuplicate {
+    when: ReconcileParticipant(owner, duplicate, canonical, reason)
+
+    requires: owner = instance.owner
+    requires: duplicate != canonical
+    requires: duplicate.kind = canonical.kind
+    requires: reason.trim.length > 0
+    requires: not exists ParticipantReconciliation{instance: instance, duplicate: duplicate}
+    requires: not exists ParticipantReconciliation{instance: instance, duplicate: canonical}
+
+    ensures:
+        ParticipantReconciliation.created(
+            instance: instance,
+            duplicate: duplicate,
+            canonical: canonical,
+            reconciled_by: owner,
+            reason: reason.trim,
+            reconciled_at: now
+        )
+        duplicate.status = suspended
+
+    @guidance
+        -- Credentials that historically named the duplicate resolve to the
+        -- canonical participant after reconciliation. Their own issuance,
+        -- revocation and use records remain attached to the duplicate identity
+        -- and are shown in the canonical profile as aliased history.
+}
+
+invariant AParticipantHasAtMostOneCanonicalIdentity {
+    for a in ParticipantReconciliations:
+        for b in ParticipantReconciliations:
+            a != b and a.instance = b.instance and a.duplicate = b.duplicate implies
+                a.canonical = b.canonical
+}
+
+invariant ReconciliationNeverCrossesParticipantKinds {
+    for reconciliation in ParticipantReconciliations:
+        reconciliation.duplicate.kind = reconciliation.canonical.kind
 }
 
 -- The public door has an identity, but not a participant.
@@ -365,10 +475,14 @@ surface InstanceParticipantAdministration {
 
     exposes:
         instance.graph.memberships
+        ParticipantReconciliation with instance = instance
 
     provides:
+        DeclareParticipant(owner, name, kind)
+        RenameParticipant(owner, participant, name)
         InviteParticipant(owner, participant)
         RemoveParticipant(owner, participant)
+        ReconcileParticipant(owner, duplicate, canonical, reason)
 
     contracts:
         fulfils ParticipantAdministration

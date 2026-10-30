@@ -38,6 +38,10 @@ describe('VERA: Registro de Actividad', () => {
     assert.match(activity, /participantProfilePath\(participant: string\)/);
     assert.match(activity, /searchParams\.get\('participant'\)/);
     assert.match(activity, /api\.activity\(undefined, participant\)/);
+    assert.match(activity, /api\.participants\(\)/);
+    assert.match(activity, /Mostrar actividad de/);
+    assert.match(activity, /Todos los participantes/);
+    assert.match(activity, /searchParams\.delete\('participant'\)/);
     assert.match(activity, /api\.activity\(cursor, participant\)/);
     assert.match(activity, /Contribuciones de \$\{view\.participant\.name\}/);
     assert.match(activity, /participantProfilePath\(one\.participant\)/);

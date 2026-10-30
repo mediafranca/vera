@@ -882,6 +882,110 @@ const addSharedSpaceEntryPoint: Migration = {
   },
 };
 
+/** 25 — una identidad estable puede tener muchas credenciales y accesos. */
+const stabiliseParticipantIdentity: Migration = {
+  version: 25,
+  name: 'identidad estable de participantes',
+  apply(db) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS participant_reconciliations (
+        duplicate_id TEXT PRIMARY KEY REFERENCES participants (id),
+        canonical_id TEXT NOT NULL REFERENCES participants (id),
+        reconciled_by TEXT NOT NULL REFERENCES participants (id),
+        reason TEXT NOT NULL,
+        reconciled_at INTEGER NOT NULL,
+        CHECK (duplicate_id <> canonical_id)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS participant_name_history (
+        id TEXT PRIMARY KEY,
+        participant_id TEXT NOT NULL REFERENCES participants (id),
+        former_name TEXT NOT NULL,
+        new_name TEXT NOT NULL,
+        changed_by TEXT NOT NULL REFERENCES participants (id),
+        changed_at INTEGER NOT NULL
+      ) STRICT;
+    `);
+
+    const exists = (table: string): boolean => db.prepare(
+      `SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name=?`,
+    ).get(table) !== undefined;
+
+    if (exists('access_invitations')) {
+      db.exec('ALTER TABLE access_invitations ADD COLUMN participant_id TEXT REFERENCES participants (id)');
+      db.exec(`UPDATE access_invitations SET participant_id=redeemed_by WHERE redeemed_by IS NOT NULL`);
+      db.exec(`UPDATE access_invitations SET status='revoked' WHERE participant_id IS NULL AND status='pending'`);
+      rebuildTable(
+        db,
+        'access_invitations',
+        `CREATE TABLE access_invitations_new (
+          id TEXT PRIMARY KEY,
+          space_id TEXT NOT NULL REFERENCES shared_spaces (id) ON DELETE CASCADE,
+          issued_by TEXT NOT NULL REFERENCES participants (id),
+          participant_id TEXT REFERENCES participants (id),
+          permissions TEXT NOT NULL,
+          proof_digest TEXT NOT NULL UNIQUE,
+          intended_contact TEXT,
+          status TEXT NOT NULL CHECK (status IN ('pending','redeemed','revoked','expired')),
+          issued_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          redeemed_by TEXT REFERENCES participants (id),
+          redeemed_at INTEGER,
+          CHECK (participant_id IS NOT NULL OR status IN ('revoked','expired'))
+        ) STRICT`,
+        ['id', 'space_id', 'issued_by', 'participant_id', 'permissions', 'proof_digest', 'intended_contact',
+          'status', 'issued_at', 'expires_at', 'redeemed_by', 'redeemed_at'],
+        [],
+      );
+    }
+
+    if (exists('collective_invitations')) {
+      db.exec('ALTER TABLE collective_invitations ADD COLUMN participant_id TEXT REFERENCES participants (id)');
+      db.exec(`UPDATE collective_invitations SET participant_id=redeemed_by WHERE redeemed_by IS NOT NULL`);
+      db.exec(`UPDATE collective_invitations SET status='revoked' WHERE participant_id IS NULL AND status='pending'`);
+      rebuildTable(
+        db,
+        'collective_invitations',
+        `CREATE TABLE collective_invitations_new (
+          id TEXT PRIMARY KEY,
+          instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+          issued_by TEXT NOT NULL REFERENCES participants (id),
+          participant_id TEXT REFERENCES participants (id),
+          role TEXT NOT NULL CHECK (role IN ('administrator','editor','contributor','reader','publisher')),
+          proof_digest TEXT NOT NULL UNIQUE,
+          intended_contact TEXT,
+          status TEXT NOT NULL CHECK (status IN ('pending','redeemed','revoked','expired')),
+          issued_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          redeemed_by TEXT REFERENCES participants (id),
+          redeemed_at INTEGER,
+          CHECK (participant_id IS NOT NULL OR status IN ('revoked','expired'))
+        ) STRICT`,
+        ['id', 'instance_id', 'issued_by', 'participant_id', 'role', 'proof_digest', 'intended_contact',
+          'status', 'issued_at', 'expires_at', 'redeemed_by', 'redeemed_at'],
+        [],
+      );
+    }
+
+    if (exists('access_grants')) rebuildTable(
+      db,
+      'access_grants',
+      `CREATE TABLE access_grants_new (
+        id TEXT PRIMARY KEY,
+        space_id TEXT NOT NULL REFERENCES shared_spaces (id) ON DELETE CASCADE,
+        participant_id TEXT NOT NULL REFERENCES participants (id),
+        permissions TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','revoked')),
+        granted_by TEXT NOT NULL REFERENCES participants (id),
+        granted_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      ) STRICT`,
+      ['id', 'space_id', 'participant_id', 'permissions', 'status', 'granted_by',
+        'granted_at', 'revoked_at'],
+      ['CREATE UNIQUE INDEX one_active_space_grant ON access_grants(space_id,participant_id) WHERE status=\'active\''],
+    );
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -907,6 +1011,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addOperationReviewProposals,
   addInstanceProfiles,
   addSharedSpaceEntryPoint,
+  stabiliseParticipantIdentity,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

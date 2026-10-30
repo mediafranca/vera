@@ -3,8 +3,9 @@
 
 -- Scope: The navigable system profile of a human or agent participant
 -- Includes: One stable profile address, the participant's ontological kind and
---   status, explicit links to semantic pages, canonical activity and the human
---   authority under which an agent received credentials
+--   status, reconciled historical aliases, explicit links to semantic pages,
+--   canonical activity and the human authority under which an agent received
+--   credentials
 -- Excludes:
 --   - Editing a person's biography or an agent's semantic description
 --   - Authentication secrets, credential digests and session material
@@ -56,6 +57,11 @@ contract ParticipantProfileReading {
     @invariant HistoricalProfilesSurviveRemoval
         -- Suspending a participant preserves the address and profile required to
         -- understand older revisions while making the inactive state explicit.
+
+    @invariant ReconciledAliasesConvergeOnOneProfile
+        -- An address that historically named an accidental duplicate resolves
+        -- to the canonical participant profile. The profile shows the alias,
+        -- reason and date rather than hiding that Vera once held two identities.
 }
 
 ------------------------------------------------------------
@@ -69,6 +75,7 @@ entity ParticipantProfile {
     authorized_by: Set<core/Participant>
     active_credentials: Integer
     revoked_credentials: Integer
+    historical_aliases: List<core/Participant>
 }
 
 ------------------------------------------------------------
@@ -97,6 +104,7 @@ surface ParticipantIdentityProfile {
         profile.authorized_by
         profile.active_credentials
         profile.revoked_credentials
+        profile.historical_aliases
 
     contracts:
         fulfils ParticipantProfileReading
@@ -109,6 +117,11 @@ surface ParticipantIdentityProfile {
     @guarantee ActivityRemainsCanonical
         -- The profile links to the participant's filtered reading of `VERA:
         -- Registro de Actividad`; it does not copy operations into a second log.
+
+    @guarantee ActivityFilterIsVisibleAndControllable
+        -- The canonical register always exposes the current participant filter,
+        -- offers every canonical person and agent plus “Todos”, and lets the
+        -- reader change or remove it without editing an URL by hand.
 
     @guarantee SystemSurfaceRemainsLegible
         -- A profile is presented as a system surface rather than a corpus page:
