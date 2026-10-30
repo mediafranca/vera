@@ -584,6 +584,16 @@ contract PageFrontMatter {
         -- conserva la respuesta. Sólo el gesto explícito sobre el interruptor
         -- la cambia; no hay restablecimiento silencioso.
 
+    @invariant EditingAndRemovingHaveSeparateTargets
+        -- Editar y quitar una propiedad son decisiones distintas y conservan
+        -- blancos táctiles propios, con separación visible entre ambos. El
+        -- icono destructivo nunca comparte ni roza el blanco de edición.
+
+    @invariant RemovingAPropertyRequiresHumanConfirmation
+        -- Pulsar quitar todavía no emite remove_property. La interfaz nombra la
+        -- propiedad y la página, explica que el registro conserva la operación
+        -- para restaurarla y espera una confirmación humana explícita.
+
     @invariant AControlledAnswerIsChosenNotTyped
         -- A property whose domain the ontology governs is answered by choosing:
         -- a switch where the answer is yes or no, a list where it is one of a
