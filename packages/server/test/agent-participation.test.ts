@@ -355,6 +355,47 @@ describe('retirar una credencial', () => {
   });
 });
 
+describe('perfil navegable del participante', () => {
+  it('separa la identidad operativa, la página semántica y la autoridad humana', async () => {
+    const semantic = await makePage('Cotito');
+    const linked = await submit({
+      kind: 'set_property',
+      page: semantic,
+      propertyKey: 'identidad participante',
+      propertyValue: COTITO,
+    });
+    assert.equal(linked.status, 201, JSON.stringify(linked.json));
+
+    const reply = await call(`/participants/${encodeURIComponent(COTITO)}`);
+    assert.equal(reply.status, 200, JSON.stringify(reply.json));
+    assert.deepEqual(reply.json['participant'], {
+      id: COTITO,
+      name: 'Cotito',
+      kind: 'agent',
+      status: 'active',
+    });
+    assert.deepEqual(reply.json['semanticPages'], [{ id: semantic, title: 'Cotito' }]);
+    const authorization = reply.json['authorization'] as {
+      authorizedBy: { id: string; name: string; kind: string; status: string }[];
+      credentials: { active: number; revoked: number };
+    };
+    assert.deepEqual(authorization.authorizedBy, [{
+      id: OWNER, name: 'Dueña', kind: 'human', status: 'active',
+    }]);
+    assert.ok(authorization.credentials.active > 0);
+    assert.ok(authorization.credentials.revoked > 0);
+
+    const human = await call(`/participants/${encodeURIComponent(OWNER)}`);
+    assert.equal(human.status, 200);
+    assert.equal(human.json['authorization'], null);
+  });
+
+  it('no inventa perfiles para identidades desconocidas', async () => {
+    const reply = await call(`/participants/${encodeURIComponent('participant:nadie')}`);
+    assert.equal(reply.status, 404);
+  });
+});
+
 describe('una credencial que no vale se rechaza, no asciende', () => {
   // El agujero era éste: presentar una llave que no abre daba lo mismo que no
   // presentar ninguna, y no presentar ninguna es el dueño. Leer se pone al día
