@@ -57,6 +57,7 @@ congela en este documento: `npm run spec`, `npm test`, `npm run typecheck` y
 | `page-processing` | limpio | `server/src/structure.ts:2` (cita explícita), `tabularity.ts` | `server/test/structure.test.ts`, `tabularity.test.ts` | VERIFICADO — no confundir con `processing-forms` (huérfana) |
 | `peer-networking` | warning (4: `PeerInvitation`, `Reachability`, `PeerExchange`, `RelayedPassage` sin usar) | ninguna | ninguno | HUÉRFANA — coincide con el roadmap: "prototipo de red horizontal" pendiente |
 | `personal-site-projection` | warning (3) | `core/src/types.ts`, `store/src/public-projection.ts`, `publication-page.ts` | `server/test/publication.test.ts`, `store/test/public-projection.test.ts` | VERIFICADO |
+| `participant-profiles` | limpio | `server/src/server.ts`, `web/src/participant-profile.ts`, `web/src/activity-page.ts` | `server/test/server.test.ts`, `web/test/participant-profile.test.ts` | VERIFICADO — perfil derivado y durable, separación entre identidad operativa y página semántica, autorización humana de agentes y enlace al registro canónico |
 | `processing-forms` | limpio | ninguna — ni `ProcessingFormDefinition` ni `AFormIsMoreThanItsPrompt` existen en el repo | ninguno | HUÉRFANA — distinta de `page-processing` |
 | `query-language` | limpio | `core/src/query.ts`, `query-source.ts` | `core/test/search-and-query.test.ts`, `query-source.test.ts` | VERIFICADO |
 | `search-index` | limpio | `core/src/graph.ts`, `index.ts` | `core/test/search-and-query.test.ts` | VERIFICADO |

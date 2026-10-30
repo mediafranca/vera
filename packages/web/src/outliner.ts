@@ -64,7 +64,7 @@ import { is, isTextComposing } from './bindings.ts';
 import { icon, type IconName } from './icons.ts';
 import { when } from './dates.ts';
 import { isConnectionsPage, renderConnections } from './mcp-page.ts';
-import { isActivityPage, participantActivityPath, renderActivityPage } from './activity-page.ts';
+import { isActivityPage, participantProfilePath, renderActivityPage } from './activity-page.ts';
 import { isServicePage, pickBibliography, renderService } from './service-page.ts';
 import { isPublicationPage, renderPageSharing, renderPublicationPage } from './publication-page.ts';
 import {
@@ -2856,7 +2856,7 @@ async function showHistory(
     when.className = 'history-when';
     when.append(`${new Date(state.at).toISOString().slice(0, 16).replace('T', ' ')} · ${state.what} · `);
     const author = document.createElement('a');
-    author.href = participantActivityPath(state.participant);
+    author.href = participantProfilePath(state.participant);
     author.textContent = state.by;
     author.title = `Ver las contribuciones de ${state.by}`;
     when.append(author);

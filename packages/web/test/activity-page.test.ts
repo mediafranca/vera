@@ -33,13 +33,14 @@ describe('VERA: Registro de Actividad', () => {
     assert.match(activity, /excerpt\.textContent = one\.excerpt/);
   });
 
-  it('da a cada participante una dirección durable y filtra toda la paginación', () => {
+  it('enlaza cada autor a su perfil y conserva el filtro canónico de actividad', () => {
     assert.match(activity, /participantActivityPath\(participant: string\)/);
+    assert.match(activity, /participantProfilePath\(participant: string\)/);
     assert.match(activity, /searchParams\.get\('participant'\)/);
     assert.match(activity, /api\.activity\(undefined, participant\)/);
     assert.match(activity, /api\.activity\(cursor, participant\)/);
     assert.match(activity, /Contribuciones de \$\{view\.participant\.name\}/);
-    assert.match(activity, /participantActivityPath\(one\.participant\)/);
+    assert.match(activity, /participantProfilePath\(one\.participant\)/);
     assert.match(activity, /one\.participantKind === 'agent' \? 'agente '/);
     assert.match(activity, /action\.append\(author, ' '\)/);
     assert.doesNotMatch(activity, /detail\.append\(`\$\{moment\(one\.at\)\}/);
