@@ -4623,6 +4623,8 @@ export function renderOutliner(
 
     const value = document.createElement('dd');
     value.className = 'property-value';
+    const actions = document.createElement('span');
+    actions.className = 'property-actions';
 
     const answer = async (next: string): Promise<boolean> => {
       if (next === property.value) return true;
@@ -4768,7 +4770,7 @@ export function renderOutliner(
             ],
           ]);
         });
-        value.append(choose);
+        actions.append(choose);
       } else {
         /*
          * Sin de dónde elegir, no hay chevrón.
@@ -4797,7 +4799,7 @@ export function renderOutliner(
           };
           completeInPlace(value, `valor de ${property.key}`, answer, completion);
         });
-        value.append(edit);
+        actions.append(edit);
       }
     } else {
       /*
@@ -4840,13 +4842,20 @@ export function renderOutliner(
       drop.title = `quitar ${property.key}`;
       drop.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (!window.confirm(
+          `Se va a quitar la propiedad «${property.key}» de «${page.title}».\n\n` +
+          'Su valor y la operación quedarán en el Registro de Actividad, desde donde puede restaurarse.\n\n' +
+          '¿Quitarla?',
+        )) return;
         void submitAndReload(
           { kind: 'remove_property', page: page.id, propertyKey: property.key },
           callbacks,
         );
       });
-      value.append(drop);
+      actions.append(drop);
     }
+
+    if (actions.children.length > 0) value.append(actions);
 
     properties.append(key, value);
   }
