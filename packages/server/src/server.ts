@@ -7823,6 +7823,65 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
 
+      if (request.method === 'GET' && /^\/participants\/[^/]+$/.test(path)) {
+        // participant-profiles.allium — una proyección de sistema, no una página
+        // editable capaz de conceder permisos o reescribir la historia.
+        // El origen público responde como ante cualquier dato privado: ausencia.
+        if (publicAccess) {
+          send(response, 404, { error: 'no existe el participante' });
+          return;
+        }
+        let participantId: string;
+        try {
+          participantId = decodeURIComponent(path.slice('/participants/'.length));
+        } catch {
+          send(response, 400, { error: 'la identidad de participante no es una dirección válida' });
+          return;
+        }
+        const participant = graph.participant(participantId);
+        if (participant === undefined) {
+          send(response, 404, { error: `no existe el participante ${participantId}` });
+          return;
+        }
+
+        // La relación semántica es declarada y estable: compartir nombre no
+        // basta para afirmar que una página habla de esta identidad operativa.
+        const semanticPages = graph.pages()
+          .filter((page) => graph.propertiesOf(page.id).some(
+            (property) => property.key.trim().toLowerCase() === 'identidad participante' &&
+              property.value.trim() === participantId,
+          ))
+          .map((page) => ({ id: page.id, title: page.title }));
+
+        const credentials = participant.kind === 'agent'
+          ? listCredentials(store).filter((credential) => credential.participant === participantId)
+          : [];
+        const authorizedBy = [...new Set(credentials.map((credential) => credential.issuedBy))]
+          .map((id) => graph.participant(id))
+          .filter((one): one is NonNullable<typeof one> => one !== undefined && one.kind === 'human')
+          .map((one) => ({ id: one.id, name: one.name, kind: one.kind, status: one.status }));
+
+        send(response, 200, {
+          participant: {
+            id: participant.id,
+            name: participant.name,
+            kind: participant.kind,
+            status: participant.status,
+          },
+          semanticPages,
+          authorization: participant.kind === 'agent'
+            ? {
+                authorizedBy,
+                credentials: {
+                  active: credentials.filter((credential) => credential.status === 'active').length,
+                  revoked: credentials.filter((credential) => credential.status === 'revoked').length,
+                },
+              }
+            : null,
+        });
+        return;
+      }
+
       if (path === '/activity') {
         const folded = activityOf(graph);
         const participant = url.searchParams.get('participant');
@@ -7842,7 +7901,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           deletedPages: folded.deletedPages.filter(
             (one) => participant === null || one.participant === participant,
           ),
-          participant: person == null ? null : { id: participant!, name: person.name, kind: person.kind },
+          participant: person == null ? null : {
+            id: participant!, name: person.name, kind: person.kind, status: person.status,
+          },
           nextBefore: more ? activity[activity.length - 1]?.sequence ?? null : null,
         });
         return;

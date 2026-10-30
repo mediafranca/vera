@@ -560,8 +560,28 @@ export interface DeletedPageActivity {
 export interface ActivityView {
   activity: ActivityItem[];
   deletedPages: DeletedPageActivity[];
-  participant: { id: string; name: string; kind: 'human' | 'agent' } | null;
+  participant: { id: string; name: string; kind: 'human' | 'agent'; status: 'active' | 'suspended' } | null;
   nextBefore: number | null;
+}
+
+/** Proyección de sistema de una identidad; nunca es una página editable. */
+export interface ParticipantProfileView {
+  participant: {
+    id: string;
+    name: string;
+    kind: 'human' | 'agent';
+    status: 'active' | 'suspended';
+  };
+  semanticPages: { id: string; title: string }[];
+  authorization: {
+    authorizedBy: {
+      id: string;
+      name: string;
+      kind: 'human';
+      status: 'active' | 'suspended';
+    }[];
+    credentials: { active: number; revoked: number };
+  } | null;
 }
 
 /** Por qué columna se está mirando una tabla, y en qué sentido. */
@@ -1361,6 +1381,9 @@ export const api = {
     const suffix = query.size === 0 ? '' : `?${query.toString()}`;
     return json<ActivityView>(`/activity${suffix}`);
   },
+
+  participantProfile: (participant: string) =>
+    json<ParticipantProfileView>(`/participants/${encodeURIComponent(participant)}`),
 
   /**
    * Escritura destructiva o restauradora confirmada por el corpus.

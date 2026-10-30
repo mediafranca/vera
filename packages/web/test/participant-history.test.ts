@@ -7,7 +7,7 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 
 describe('autoría navegable en el historial de un bloque', () => {
   it('enlaza el nombre con el registro del participante estable', () => {
-    assert.match(outliner, /author\.href = participantActivityPath\(state\.participant\)/);
+    assert.match(outliner, /author\.href = participantProfilePath\(state\.participant\)/);
     assert.match(outliner, /author\.textContent = state\.by/);
   });
 

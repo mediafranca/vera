@@ -18,6 +18,10 @@ export function participantActivityPath(participant: string): string {
   return `/p/${encodeURIComponent(ACTIVITY_PAGE)}?participant=${encodeURIComponent(participant)}`;
 }
 
+export function participantProfilePath(participant: string): string {
+  return `/participantes/${encodeURIComponent(participant)}`;
+}
+
 function moment(at: number): string {
   return new Intl.DateTimeFormat('es-CL', {
     dateStyle: 'medium',
@@ -88,7 +92,7 @@ function activityRow(one: Awaited<ReturnType<typeof api.activity>>['activity'][n
   if (one.kind === 'create_page') item.classList.add('activity-page-created');
   const author = document.createElement('a');
   author.className = 'activity-by';
-  author.href = participantActivityPath(one.participant);
+  author.href = participantProfilePath(one.participant);
   author.textContent = `${one.participantKind === 'agent' ? 'agente ' : ''}${one.by}`;
   const action = document.createElement('span');
   action.className = 'activity-action';
