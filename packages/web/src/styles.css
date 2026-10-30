@@ -5224,6 +5224,88 @@ body.settings-open #text {
   .participant-profile-facts > div:last-child { border-bottom: 0; }
 }
 
+.participant-administration {
+  box-sizing: border-box;
+  width: min(72rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1rem 0 4rem;
+}
+
+.participant-administration-intro {
+  max-width: 48rem;
+  color: var(--text-dim);
+}
+
+.participant-administration-tools {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto auto;
+  gap: .65rem;
+  margin: 1.5rem 0;
+  padding-block: 1rem;
+  border-block: 1px solid var(--rule);
+}
+
+.participant-administration :is(input, select, textarea, button),
+.participant-dialog :is(input, select, textarea, button) {
+  box-sizing: border-box;
+  min-height: 2.25rem;
+  padding: .45rem .65rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.participant-administration button,
+.participant-dialog button { cursor: pointer; }
+.participant-administration button.primary,
+.participant-dialog button.primary { border-color: var(--accent); color: var(--accent); }
+.participant-administration button.danger { border-color: var(--warm); color: var(--warm); }
+
+.participant-directory-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, auto);
+  gap: 1.25rem;
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.participant-directory-card h2 { margin: 0; font: 500 1.15rem/1.2 var(--font-body); }
+.participant-directory-card h2 a { color: var(--accent); text-decoration: none; }
+.participant-directory-badges { display: flex; flex-wrap: wrap; gap: .35rem; margin: .45rem 0; }
+.participant-directory-badges span {
+  padding: .12rem .4rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font: .68rem var(--font-ui);
+}
+.participant-directory-summary { margin: .35rem 0; color: var(--text-dim); font-size: .85rem; }
+.participant-directory-actions { display: flex; align-content: flex-start; justify-content: flex-end; flex-wrap: wrap; gap: .4rem; }
+.participant-directory-retained { flex-basis: 100%; margin: .2rem 0 0; color: var(--text-dim); font-size: .72rem; text-align: right; }
+
+.participant-dialog {
+  width: min(31rem, calc(100% - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: .5rem;
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.participant-dialog::backdrop { background: rgb(0 0 0 / .42); }
+.participant-dialog form { display: grid; gap: .8rem; }
+.participant-dialog h2 { margin: 0; font: 500 1.25rem var(--font-body); }
+.participant-dialog textarea { min-height: 6rem; resize: vertical; }
+.participant-dialog-actions { display: flex; justify-content: flex-end; gap: .55rem; margin-top: .4rem; }
+
+@media (max-width: 700px) {
+  .participant-administration-tools,
+  .participant-directory-card { grid-template-columns: 1fr; }
+  .participant-directory-actions { justify-content: flex-start; }
+  .participant-directory-retained { text-align: left; }
+}
+
 .settings-head {
   display: flex;
   align-items: baseline;
