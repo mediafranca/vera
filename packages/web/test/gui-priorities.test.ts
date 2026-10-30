@@ -6,6 +6,7 @@ import { compactDisconnectedComponents } from '../src/graph/render.ts';
 const graph = readFileSync(new URL('../src/graph/render.ts', import.meta.url), 'utf8');
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 describe('prioridades de interfaz posteriores al móvil', () => {
   it('encuadra las cajas completas de los nombres del mapa', () => {
@@ -76,5 +77,13 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(outliner, /Procesamiento terminado · «\$\{page\.title\}»/);
     assert.match(outliner, /Procesamiento finalizado con pendientes · «\$\{page\.title\}»/);
     assert.match(outliner, /Procesamiento interrumpido · «\$\{page\.title\}»/);
+  });
+
+  it('separa editar de quitar una propiedad y confirma antes de eliminarla', () => {
+    assert.match(outliner, /actions\.append\(edit\)/);
+    assert.match(outliner, /actions\.append\(drop\)/);
+    assert.match(outliner, /if \(!window\.confirm\([\s\S]+¿Quitarla\?/);
+    assert.match(styles, /\.property-actions\s*\{[^}]*display:\s*inline-flex[^}]*gap:\s*0\.3rem/s);
+    assert.match(styles, /\.property-drop\s*\{[^}]*min-width:\s*1\.5rem[^}]*height:\s*1\.5rem/s);
   });
 });

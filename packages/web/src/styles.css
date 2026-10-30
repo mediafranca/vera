@@ -2559,9 +2559,13 @@ html.presenting body {
 .property-choose {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   background: none;
   border: 0;
-  padding: 0;
+  border-radius: 3px;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0.3rem;
   font-size: 0.7rem;
   color: var(--text-dim);
   cursor: pointer;
@@ -2570,9 +2574,13 @@ html.presenting body {
 .property-edit {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   background: none;
   border: 0;
-  padding: 0.05rem;
+  border-radius: 3px;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0.3rem;
   color: var(--text-dim);
   cursor: pointer;
 }
@@ -3160,20 +3168,32 @@ html.presenting body {
    lo que dice y no lo que le cabe. */
 .property-value {
   position: relative;
-  padding-right: 1.2rem;
+  padding-right: 3.7rem;
 }
 
-.property-drop {
+.property-actions {
   position: absolute;
   right: 0.1rem;
   top: 50%;
   transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.property-drop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
+  border-radius: 3px;
   color: var(--text-dim);
   font-size: 0.9rem;
   line-height: 1;
-  padding: 0 0.2rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0.3rem;
   cursor: pointer;
   opacity: 0.5;
 }
