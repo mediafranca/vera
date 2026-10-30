@@ -1334,7 +1334,7 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
   administration.className = 'settings-destinations';
   administration.append(
     destination(
-      'Personas e identidad',
+      'Participantes',
       'Perfil de instancia, roles, passkeys, sesiones e invitaciones',
       handlers.onOpenPeople,
     ),

@@ -89,4 +89,63 @@ describe('identidad estable de participantes', () => {
       WHERE duplicate_id=?`).get(duplicateId) as { reason: string }).reason,
     'Dos accesos creados para la misma persona');
   });
+
+  it('resume el padrón canónico y permite renombrar con historia', async () => {
+    const declared = await call('/participants', 'POST', { name: 'Nombre provisional', kind: 'human' });
+    const participant = declared.json['participant'].id as string;
+    const renamed = await call(`/participants/${encodeURIComponent(participant)}`, 'PATCH', { name: 'Nombre definitivo' });
+    assert.equal(renamed.status, 200, JSON.stringify(renamed.json));
+    const directory = await call('/participants');
+    const row = (directory.json['participants'] as any[]).find((one) => one.id === participant);
+    assert.equal(row.name, 'Nombre definitivo');
+    assert.deepEqual(row.roles, []);
+    assert.equal(row.canErase, false, 'la historia del nombre impide borrar la identidad');
+    assert.ok(row.retainedBy.includes('historia de nombres'));
+  });
+
+  it('borra sólo identidades realmente vacías', async () => {
+    const empty = await call('/participants', 'POST', { name: 'Prueba fallida', kind: 'agent' });
+    const emptyId = empty.json['participant'].id as string;
+    const erased = await call(`/participants/${encodeURIComponent(emptyId)}`, 'DELETE');
+    assert.equal(erased.status, 200, JSON.stringify(erased.json));
+    assert.equal(running.vera.graph.participant(emptyId), undefined);
+
+    const residue = await call('/participants', 'POST', { name: 'Agente con credencial fallida', kind: 'agent' });
+    const residueId = residue.json['participant'].id as string;
+    running.vera.store.db.prepare(`INSERT INTO access_tokens
+      (id,graph_id,participant_id,secret_digest,scopes,status,label,issued_by,issued_at)
+      VALUES (?,?,?,?,?,'active',?,?,?)`)
+      .run('token:empty-participant', running.vera.store.graphId, residueId, 'digest-empty', '["read"]',
+        'prueba', OWNER, Date.now());
+    const erasedResidue = await call(`/participants/${encodeURIComponent(residueId)}`, 'DELETE');
+    assert.equal(erasedResidue.status, 200, JSON.stringify(erasedResidue.json));
+    assert.equal(running.vera.store.db.prepare(`SELECT 1 FROM access_tokens WHERE id='token:empty-participant'`).get(), undefined);
+
+    const held = await call('/participants', 'POST', { name: 'Agente con exposición', kind: 'agent' });
+    const heldId = held.json['participant'].id as string;
+    running.vera.store.db.prepare(`INSERT INTO exposures
+      (id,graph_id,participant_id,credential_id,client,surface,subject,outcome,volume,delivered_count,at)
+      VALUES (?,?,?,NULL,NULL,'prueba','directorio','served',1,1,?)`)
+      .run('exposure:held-participant', running.vera.store.graphId, heldId, Date.now());
+    const refused = await call(`/participants/${encodeURIComponent(heldId)}`, 'DELETE');
+    assert.equal(refused.status, 409);
+    assert.match(String(refused.json['error']), /exposiciones/);
+  });
+
+  it('fusiona desde la superficie y conserva un solo renglón canónico', async () => {
+    const canonical = await call('/participants', 'POST', { name: 'Cristián Mella', kind: 'human' });
+    const duplicate = await call('/participants', 'POST', { name: 'Cristian Mella', kind: 'human' });
+    const canonicalId = canonical.json['participant'].id as string;
+    const duplicateId = duplicate.json['participant'].id as string;
+    const merged = await call(`/participants/${encodeURIComponent(duplicateId)}/reconcile`, 'POST', {
+      canonical: canonicalId, reason: 'La misma persona fue declarada dos veces',
+    });
+    assert.equal(merged.status, 200, JSON.stringify(merged.json));
+    const directory = await call('/participants');
+    const rows = (directory.json['participants'] as any[]).filter((one) =>
+      one.id === canonicalId || one.id === duplicateId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].id, canonicalId);
+    assert.equal(rows[0].aliases[0].id, duplicateId);
+  });
 });

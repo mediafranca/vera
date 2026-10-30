@@ -64,6 +64,26 @@ contract ParticipantProfileReading {
         -- reason and date rather than hiding that Vera once held two identities.
 }
 
+contract ParticipantDirectoryGovernance {
+    list: (reader: core/Participant, graph: core/Graph) -> Set<ParticipantSummary>
+
+    @invariant DirectoryContainsCanonicalIdentities
+        -- The directory lists one row per canonical identity. Historical aliases
+        -- appear inside that row and resolve to its profile; they are not counted
+        -- as additional people or agents.
+
+    @invariant SummaryCountsHistoryWithoutExposingSecrets
+        -- Each row summarizes authorship, credentials, sessions, permissions,
+        -- roles and aliases across the canonical identity and its historical
+        -- aliases. It reveals counts and states, never credential material.
+
+    @invariant DestructiveChoicesSayWhatTheyMean
+        -- Reconcile preserves two historical identifiers under one canonical
+        -- identity; suspend stops future participation; erase exists only for a
+        -- demonstrably empty identity. The interface never labels one act as
+        -- another.
+}
+
 ------------------------------------------------------------
 -- Entities
 ------------------------------------------------------------
@@ -78,6 +98,17 @@ entity ParticipantProfile {
     historical_aliases: List<core/Participant>
 }
 
+entity ParticipantSummary {
+    participant: core/Participant
+    aliases: Set<core/Participant>
+    roles: List<String>
+    operations: Integer
+    credentials: Integer
+    active_sessions: Integer
+    permissions: Integer
+    can_erase: Boolean
+}
+
 ------------------------------------------------------------
 -- Actor Declarations
 ------------------------------------------------------------
@@ -85,6 +116,11 @@ entity ParticipantProfile {
 actor ProfileReader {
     within: core/Graph
     identified_by: core/Participant where core/Membership{graph: within, participant: this}.status = active
+}
+
+actor ParticipantGovernor {
+    within: core/Graph
+    identified_by: core/Participant where this = within.owner and this.kind = human
 }
 
 ------------------------------------------------------------
@@ -128,4 +164,34 @@ surface ParticipantIdentityProfile {
         -- it offers no map or document-view controls that cannot affect it, and
         -- its identity, states and links remain legible under the active Vera
         -- appearance and through keyboard navigation.
+}
+
+surface ParticipantDirectory {
+    facing owner: ParticipantGovernor
+    context graph: core/Graph
+
+    let summaries = ParticipantSummaries where participant in graph.memberships.participant
+
+    exposes:
+        for summary in summaries:
+            summary.participant.id
+            summary.participant.name
+            summary.participant.kind
+            summary.participant.status
+            summary.aliases
+            summary.roles
+            summary.operations
+            summary.credentials
+            summary.active_sessions
+            summary.permissions
+            summary.can_erase
+
+    contracts:
+        fulfils ParticipantDirectoryGovernance
+
+    @guarantee EveryActionHasAVisibleConsequence
+        -- Rename records name history, reconciliation shows source and target,
+        -- suspension shows the inactive state and erasure removes only an empty
+        -- row. The directory refreshes from the canonical system sources after
+        -- each accepted act.
 }

@@ -210,6 +210,27 @@ export class VeraGraph {
     if (held) held.status = 'suspended';
   }
 
+  /** Retira sólo una identidad sin historia; la capa durable prueba el vacío. */
+  forgetParticipant(participant: ParticipantId): void {
+    if (participant === this.#owner) {
+      throw new Error('the sovereign owner cannot be erased');
+    }
+    if (this.#operations.some((operation) => operation.submission.submittedBy === participant)) {
+      throw new Error(`participant ${participant} has canonical activity`);
+    }
+    if (this.#revisions.some((revision) => revision.authoredBy === participant)) {
+      throw new Error(`participant ${participant} has attributed revisions`);
+    }
+    this.#memberships.delete(participant);
+    this.#participants.delete(participant);
+  }
+
+  renameParticipant(participant: ParticipantId, name: string): void {
+    const held = this.#participants.get(participant);
+    if (held === undefined) throw new Error(`unknown participant ${participant}`);
+    this.#participants.set(participant, { ...held, name });
+  }
+
   get owner(): ParticipantId | null {
     return this.#owner;
   }

@@ -113,6 +113,7 @@ import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
 import { wirePullToRefresh } from './pull-to-refresh.ts';
 import { participantProfileTitle, renderParticipantProfile } from './participant-profile.ts';
+import { renderParticipantAdministration } from './participant-administration.ts';
 
 const PHONE = 640;
 
@@ -1826,6 +1827,10 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
  * así que el historial del navegador y el de Vera cuentan lo mismo.
  */
 async function applyRoute(): Promise<void> {
+  if (window.location.pathname === '/participantes') {
+    await openParticipantsAdministration();
+    return;
+  }
   if (window.location.pathname === '/personas') {
     await openCollectiveAdministration();
     return;
@@ -1905,6 +1910,16 @@ async function openCollectiveAdministration(push = false): Promise<void> {
   $('#vera-root').classList.add('special-surface');
   closeSettings();
   await renderCollectiveAdministration($('#text'));
+}
+
+async function openParticipantsAdministration(push = false): Promise<void> {
+  workspace.activePage = null;
+  workspace.focusRoot = null;
+  nameWindow('Participantes');
+  if (push && window.location.pathname !== '/participantes') window.history.pushState({}, '', '/participantes');
+  $('#vera-root').classList.add('special-surface');
+  closeSettings();
+  await renderParticipantAdministration($('#text'));
 }
 
 async function openSharingAdministration(push = false): Promise<void> {
@@ -3768,7 +3783,7 @@ function wireTheme(): void {
       },
       onClose: closeSettings,
       onOpenFiles: () => void openFilesAdministration(true),
-      onOpenPeople: () => void openCollectiveAdministration(true),
+      onOpenPeople: () => void openParticipantsAdministration(true),
       onOpenSharing: () => void openSharingAdministration(true),
       onOpenActivity: () => void openActivityAdministration(),
     });

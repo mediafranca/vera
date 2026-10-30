@@ -595,6 +595,14 @@ export interface ParticipantIdentityView {
   kind: 'human' | 'agent';
   status: 'active' | 'suspended';
   canonical: string;
+  aliases: { id: string; name: string; status: 'active' | 'suspended' }[];
+  roles: string[];
+  activity: number;
+  credentials: { active: number; revoked: number };
+  activeSessions: number;
+  permissions: number;
+  canErase: boolean;
+  retainedBy: string[];
 }
 
 /** Por qué columna se está mirando una tabla, y en qué sentido. */
@@ -1399,6 +1407,29 @@ export const api = {
     json<ParticipantProfileView>(`/participants/${encodeURIComponent(participant)}`),
 
   participants: () => json<{ participants: ParticipantIdentityView[] }>('/participants'),
+
+  declareParticipant: (name: string, kind: 'human' | 'agent') =>
+    json<{ participant: ParticipantIdentityView }>('/participants', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, kind }),
+    }),
+
+  renameParticipant: (participant: string, name: string) =>
+    json<{ participant: ParticipantIdentityView }>(`/participants/${encodeURIComponent(participant)}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+    }),
+
+  suspendParticipant: (participant: string) =>
+    json<{ participant: ParticipantIdentityView }>(`/participants/${encodeURIComponent(participant)}/suspend`, {
+      method: 'POST',
+    }),
+
+  reconcileParticipant: (duplicate: string, canonical: string, reason: string) =>
+    json<{ duplicate: string; canonical: string }>(`/participants/${encodeURIComponent(duplicate)}/reconcile`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ canonical, reason }),
+    }),
+
+  eraseParticipant: (participant: string) =>
+    json<{ erased: string }>(`/participants/${encodeURIComponent(participant)}`, { method: 'DELETE' }),
 
   /**
    * Escritura destructiva o restauradora confirmada por el corpus.
