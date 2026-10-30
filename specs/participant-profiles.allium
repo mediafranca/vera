@@ -1,0 +1,112 @@
+-- allium: 3
+-- participant-profiles.allium
+
+-- Scope: The navigable system profile of a human or agent participant
+-- Includes: One stable profile address, the participant's ontological kind and
+--   status, explicit links to semantic pages, canonical activity and the human
+--   authority under which an agent received credentials
+-- Excludes:
+--   - Editing a person's biography or an agent's semantic description
+--   - Authentication secrets, credential digests and session material
+--   - Treating a participant profile as an ordinary corpus page
+-- Dependencies: Participant and Membership are governed by core.allium;
+--   credentials by agent-participation.allium
+
+use "./core.allium" as core
+use "./agent-participation.allium" as agent
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract ParticipantProfileReading {
+    read: (reader: core/Participant, subject: core/Participant) -> ParticipantProfile
+
+    @invariant OperationalAndSemanticIdentityRemainDistinct
+        -- `Participante:Herbert Spencer` is the system identity that can author
+        -- operations; `Herbert Spencer` may be a semantic page about the person.
+        -- Linking them never makes either one a copy of the other and editing the
+        -- semantic page can neither grant access nor rewrite authorship.
+
+    @invariant SystemFactsHaveSystemSources
+        -- Kind, status, authorization and activity are projections of membership,
+        -- credentials and the canonical operation log. They are not editable
+        -- prose and no synthetic page is created for them.
+
+    @invariant SemanticIdentityIsLinkedExplicitly
+        -- A title match is never enough to claim that a content page describes a
+        -- participant. The page must explicitly name the stable participant id;
+        -- homonyms therefore remain harmless and renaming the page changes no
+        -- operational identity.
+
+    @invariant AnAgentNamesItsHumanAuthority
+        -- An agent profile names every human who issued one of its credentials,
+        -- including withdrawn credentials. Revocation stops future access but
+        -- does not erase who authorized the historical work.
+
+    @invariant AuthenticatorsAreNotParticipants
+        -- Passkeys, sessions, tokens, clients and models never receive profile
+        -- pages of their own and never appear as authors. They prove or exercise
+        -- a participant identity; they are not that identity.
+
+    @invariant SecretsNeverReachTheProfile
+        -- The profile may summarize active and revoked credentials, but never
+        -- exposes a secret, digest, session proof or recoverable authenticator.
+
+    @invariant HistoricalProfilesSurviveRemoval
+        -- Suspending a participant preserves the address and profile required to
+        -- understand older revisions while making the inactive state explicit.
+}
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+-- A read model, not another authored page in the graph.
+entity ParticipantProfile {
+    participant: core/Participant
+    semantic_pages: List<core/Page>
+    authorized_by: Set<core/Participant>
+    active_credentials: Integer
+    revoked_credentials: Integer
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor ProfileReader {
+    within: core/Graph
+    identified_by: core/Participant where core/Membership{graph: within, participant: this}.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface ParticipantIdentityProfile {
+    facing reader: ProfileReader
+    context profile: ParticipantProfile
+
+    exposes:
+        profile.participant.id
+        profile.participant.name
+        profile.participant.kind
+        profile.participant.status
+        profile.semantic_pages
+        profile.authorized_by
+        profile.active_credentials
+        profile.revoked_credentials
+
+    contracts:
+        fulfils ParticipantProfileReading
+
+    @guarantee OneAddressPerParticipant
+        -- Every participant has one stable navigable address derived from its
+        -- stable id. Roles, credentials, devices and sessions are sections or
+        -- related records, never additional participant pages.
+
+    @guarantee ActivityRemainsCanonical
+        -- The profile links to the participant's filtered reading of `VERA:
+        -- Registro de Actividad`; it does not copy operations into a second log.
+}
