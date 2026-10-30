@@ -16,11 +16,13 @@ export interface SharedSpace {
 export interface SharedSpaceAdministration extends SharedSpace {
   pageCount: number;
   effectivePages: { page: string; reasons: string[] }[];
-  invitations: { id: string; permissions: SharedPermission[]; intendedContact: string | null;
+  invitations: { id: string; participant: string | null; participantName: string | null;
+    permissions: SharedPermission[]; intendedContact: string | null;
     status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number }[];
   participants: { grant: string; participant: string; name: string; permissions: SharedPermission[];
     status: 'active' | 'revoked'; grantedAt: number; authenticators: number; activeSessions: number }[];
   proposals: SharedProposal[];
+  people: { id: string; name: string; kind: 'human'; status: 'active' | 'suspended'; canonical: string }[];
 }
 
 export interface SharedProposal {
@@ -163,9 +165,12 @@ export function administrationOf(store: Store, space: SharedSpace,
     WHERE space_id=? AND status='pending' AND expires_at<=?`).run(space.id, now);
   store.db.prepare(`UPDATE human_sessions SET status='expired'
     WHERE status='active' AND expires_at<=?`).run(now);
-  const invitations = (store.db.prepare(`SELECT id,permissions,intended_contact,status,issued_at,expires_at
-    FROM access_invitations WHERE space_id=? ORDER BY issued_at DESC`).all(space.id) as any[]).map((row) => ({
-      id: row.id, permissions: String(row.permissions).split(',') as SharedPermission[],
+  const invitations = (store.db.prepare(`SELECT i.id,i.participant_id,p.name AS participant_name,
+      i.permissions,i.intended_contact,i.status,i.issued_at,i.expires_at
+    FROM access_invitations i LEFT JOIN participants p ON p.id=i.participant_id
+    WHERE i.space_id=? ORDER BY i.issued_at DESC`).all(space.id) as any[]).map((row) => ({
+      id: row.id, participant: row.participant_id, participantName: row.participant_name,
+      permissions: String(row.permissions).split(',') as SharedPermission[],
       intendedContact: row.intended_contact, status: row.status, issuedAt: row.issued_at, expiresAt: row.expires_at,
     }));
   const participants = (store.db.prepare(`SELECT g.id AS grant,g.participant_id,p.name,g.permissions,g.status,g.granted_at,
@@ -178,7 +183,12 @@ export function administrationOf(store: Store, space: SharedSpace,
       grantedAt: row.granted_at, authenticators: Number(row.authenticators), activeSessions: Number(row.active_sessions),
     }));
   const proposals = proposalsForSpace(store, space);
-  return { ...space, pageCount: effectivePages.length, effectivePages, invitations, participants, proposals };
+  const people = store.db.prepare(`SELECT p.id,p.name,p.kind,p.status,p.id AS canonical FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=?
+    LEFT JOIN participant_reconciliations r ON r.duplicate_id=p.id
+    WHERE p.kind='human' AND r.duplicate_id IS NULL ORDER BY lower(p.name),p.id`)
+    .all(store.graphId) as SharedSpaceAdministration['people'];
+  return { ...space, pageCount: effectivePages.length, effectivePages, invitations, participants, proposals, people };
 }
 
 export function proposalsForSpace(store: Store, space: SharedSpace): SharedProposal[] {
@@ -266,7 +276,7 @@ export function revokeParticipantSessions(store: Store, space: SharedSpace, part
     WHERE participant_id=? AND status='active'`).run(Date.now(), participant).changes);
 }
 
-export function inviteToSpace(store: Store, owner: string, space: SharedSpace,
+export function inviteToSpace(store: Store, owner: string, space: SharedSpace, participant: string,
   permissions: SharedPermission[], intendedContact?: string,
   lifetimeMs = DEFAULT_INVITATION_LIFETIME): { id: string; secret: string; expiresAt: number } {
   const unique = [...new Set(permissions)];
@@ -274,43 +284,60 @@ export function inviteToSpace(store: Store, owner: string, space: SharedSpace,
   if (!(INVITATION_LIFETIMES as readonly number[]).includes(lifetimeMs)) {
     throw new Error('la duración de la invitación no está permitida');
   }
+  const person = store.db.prepare(`SELECT p.name FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    LEFT JOIN participant_reconciliations r ON r.duplicate_id=p.id
+    WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL`)
+    .get(store.graphId, participant) as { name: string } | undefined;
+  if (person === undefined) throw new Error('la invitación necesita una persona activa ya declarada');
   const proof = secret('vera_inv_');
   const invitation = id('invitation');
   const now = Date.now();
   const expiresAt = now + lifetimeMs;
   store.db.prepare(`INSERT INTO access_invitations
-    (id, space_id, issued_by, permissions, proof_digest, intended_contact, status, issued_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-    .run(invitation, space.id, owner, unique.sort().join(','), digestOf(proof),
+    (id, space_id, issued_by, participant_id, permissions, proof_digest, intended_contact, status, issued_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
+    .run(invitation, space.id, owner, participant, unique.sort().join(','), digestOf(proof),
       intendedContact ?? null, now, expiresAt);
   return { id: invitation, secret: proof, expiresAt };
 }
 
 export function inspectInvitation(store: Store, invitation: string, proof: string): any | null {
   const row = store.db.prepare(`SELECT i.id, i.status, i.permissions, i.expires_at,
-    s.name, s.slug FROM access_invitations i JOIN shared_spaces s ON s.id=i.space_id
+    i.participant_id,p.name AS participant_name,s.name, s.slug
+    FROM access_invitations i JOIN shared_spaces s ON s.id=i.space_id
+    LEFT JOIN participants p ON p.id=i.participant_id
     WHERE i.id=? AND i.proof_digest=?`).get(invitation, digestOf(proof)) as any;
   if (row === undefined) return null;
   const status = row.status === 'pending' && row.expires_at <= Date.now() ? 'expired' : row.status;
   return { id: row.id, space: row.name, slug: row.slug,
+    participant: row.participant_id, participantName: row.participant_name,
     permissions: String(row.permissions).split(','), status, expiresAt: row.expires_at };
 }
 
-export function redeemInvitation(store: Store, invitation: string, proof: string, name: string): any {
+export function redeemInvitation(store: Store, invitation: string, proof: string): any {
   const now = Date.now();
   const row = store.db.prepare(`SELECT i.*, s.graph_id, s.owner_id, s.name AS space_name, s.slug AS space_slug
     FROM access_invitations i JOIN shared_spaces s ON s.id=i.space_id
     WHERE i.id=? AND i.proof_digest=?`).get(invitation, digestOf(proof)) as any;
   if (row === undefined) throw new Error('la invitación no existe o el secreto no coincide');
   if (row.status !== 'pending' || row.expires_at <= now) throw new Error('la invitación venció o ya fue usada');
-  const participant = id('participant:guest');
+  if (row.participant_id === null) throw new Error('esta invitación antigua no nombra una identidad y fue retirada');
+  const participant = String(row.participant_id);
+  const person = store.db.prepare(`SELECT 1 FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    LEFT JOIN participant_reconciliations r ON r.duplicate_id=p.id
+    WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL`)
+    .get(store.graphId, participant);
+  if (person === undefined) throw new Error('la identidad destinataria ya no está activa');
+  const active = store.db.prepare(`SELECT 1 FROM access_grants
+    WHERE space_id=? AND participant_id=? AND status='active'`).get(row.space_id, participant);
+  if (active !== undefined) throw new Error('esta persona ya tiene acceso activo al espacio');
   const grant = id('grant');
   const enrollment = id('enrollment');
   const enrollmentSecret = secret('vera_enroll_');
   store.db.exec('BEGIN');
   try {
-    store.db.prepare(`INSERT INTO participants (id,name,kind,status) VALUES (?,?,'human','active')`).run(participant, name);
-    store.db.prepare(`INSERT INTO memberships (graph_id,participant_id,status) VALUES (?,?,'active')`).run(store.graphId, participant);
     store.db.prepare(`INSERT INTO access_grants
       (id,space_id,participant_id,permissions,status,granted_by,granted_at)
       VALUES (?,?,?,?,'active',?,?)`).run(grant, row.space_id, participant, row.permissions, row.owner_id, now);

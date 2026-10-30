@@ -11,6 +11,7 @@ import {
 import { isoUint8Array } from '@simplewebauthn/server/helpers';
 import type { Store } from '@vera/store';
 import { digestOf } from './credentials.ts';
+import { canonicalParticipant, participantAliases } from './participant-identities.ts';
 
 const opaque = (prefix: string): string => `${prefix}${randomBytes(32).toString('base64url')}`;
 const identifier = (prefix: string): string => `${prefix}:${randomBytes(8).toString('hex')}`;
@@ -21,10 +22,16 @@ const ENROLLMENT_LIFETIME_MS = 15 * 60 * 1000;
 
 function humanParticipant(store: Store, claimed: string): string {
   const rows = store.db.prepare(`SELECT id FROM participants
-    WHERE kind='human' AND status='active' AND (id=? OR lower(name)=lower(?))
+    WHERE kind='human' AND (status='active' OR id IN (SELECT duplicate_id FROM participant_reconciliations))
+      AND (id=? OR lower(name)=lower(?))
     ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END`).all(claimed, claimed, claimed) as Array<{ id: string }>;
   if (rows.length !== 1) throw new Error('la identidad no existe o no es inequívoca');
-  return rows[0]!.id;
+  const canonical = canonicalParticipant(store, rows[0]!.id);
+  const active = store.db.prepare(`SELECT 1 FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    WHERE p.id=? AND p.kind='human' AND p.status='active'`).get(store.graphId, canonical);
+  if (active === undefined) throw new Error('la identidad canónica no está activa');
+  return canonical;
 }
 
 export function ceremonyFor(host: string, forwardedProto?: string): Ceremony {
@@ -126,8 +133,10 @@ export async function finishRegistration(store: Store, enrollmentId: string, pro
 export async function authenticationOptions(store: Store, participant: string,
   ceremony: Ceremony): Promise<unknown> {
   participant = humanParticipant(store, participant);
+  const identities = participantAliases(store, participant);
+  const places = identities.map(() => '?').join(',');
   const credentials = store.db.prepare(`SELECT credential_id,transports FROM human_authenticators
-    WHERE participant_id=? AND status='active'`).all(participant) as any[];
+    WHERE participant_id IN (${places}) AND status='active'`).all(...identities) as any[];
   if (credentials.length === 0) throw new Error('no hay passkeys activas para esta identidad');
   const options = await generateAuthenticationOptions({ rpID: ceremony.rpID, userVerification: 'required',
     allowCredentials: credentials.map((one) => ({ id: one.credential_id,
@@ -146,8 +155,11 @@ export async function finishAuthentication(store: Store, participant: string,
   participant = humanParticipant(store, participant);
   const challenge = store.db.prepare(`SELECT * FROM webauthn_challenges
     WHERE participant_id=? AND purpose='authentication' AND expires_at>?`).get(participant, Date.now()) as any;
+  const identities = participantAliases(store, participant);
+  const places = identities.map(() => '?').join(',');
   const row = store.db.prepare(`SELECT * FROM human_authenticators
-    WHERE credential_id=? AND participant_id=? AND status='active'`).get(response.id, participant) as any;
+    WHERE credential_id=? AND participant_id IN (${places}) AND status='active'`)
+    .get(response.id, ...identities) as any;
   if (challenge === undefined || row === undefined) throw new Error('el desafío o la passkey no son válidos');
   const credential: WebAuthnCredential = { id: row.credential_id,
     publicKey: new Uint8Array(row.public_key as Uint8Array), counter: row.counter,
@@ -166,13 +178,16 @@ export async function finishAuthentication(store: Store, participant: string,
 export function participantForSession(store: Store, secret: string): string | null {
   if (!secret.startsWith('vera_session_')) return null;
   const row = store.db.prepare(`SELECT s.id,s.participant_id FROM human_sessions s
-    JOIN participants p ON p.id=s.participant_id AND p.status='active'
-    JOIN memberships m ON m.participant_id=s.participant_id AND m.graph_id=? AND m.status='active'
     WHERE s.proof_digest=? AND s.status='active' AND s.expires_at>?`)
-    .get(store.graphId, digestOf(secret), Date.now()) as any;
+    .get(digestOf(secret), Date.now()) as any;
   if (row === undefined) return null;
+  const participant = canonicalParticipant(store, row.participant_id);
+  const active = store.db.prepare(`SELECT 1 FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    WHERE p.id=? AND p.status='active'`).get(store.graphId, participant);
+  if (active === undefined) return null;
   store.db.prepare(`UPDATE human_sessions SET last_seen_at=? WHERE id=?`).run(Date.now(), row.id);
-  return row.participant_id;
+  return participant;
 }
 
 export function revokeSession(store: Store, secret: string): boolean {

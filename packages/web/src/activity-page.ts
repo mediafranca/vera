@@ -149,8 +149,32 @@ export async function renderActivityPage(
   };
 
   try {
-    const view = await api.activity(undefined, participant);
+    const [view, directory] = await Promise.all([
+      api.activity(undefined, participant),
+      api.participants(),
+    ]);
     root.replaceChildren();
+
+    const filter = document.createElement('label');
+    filter.className = 'activity-participant-filter';
+    const filterName = document.createElement('span'); filterName.textContent = 'Mostrar actividad de';
+    const participantSelect = document.createElement('select');
+    const everyone = document.createElement('option'); everyone.value = ''; everyone.textContent = 'Todos los participantes';
+    participantSelect.append(everyone);
+    for (const identity of directory.participants) {
+      const option = document.createElement('option'); option.value = identity.id;
+      option.textContent = `${identity.kind === 'agent' ? 'Agente' : 'Persona'} · ${identity.name}`;
+      participantSelect.append(option);
+    }
+    participantSelect.value = view.participant?.id ?? '';
+    participantSelect.onchange = () => {
+      const destination = new URL(window.location.href);
+      if (participantSelect.value === '') destination.searchParams.delete('participant');
+      else destination.searchParams.set('participant', participantSelect.value);
+      window.history.pushState({}, '', destination);
+      refresh();
+    };
+    filter.append(filterName, participantSelect); root.append(filter);
 
     if (view.participant !== null) {
       const heading = document.createElement('h2');

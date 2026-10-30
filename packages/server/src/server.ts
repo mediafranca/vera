@@ -137,6 +137,12 @@ import {
   type InvitableCollectiveRole,
 } from './instance-governance.ts';
 import {
+  canonicalParticipant,
+  declareParticipant,
+  listParticipants,
+  participantAliases,
+} from './participant-identities.ts';
+import {
   ask,
   readPage,
   mergeReadings,
@@ -3501,7 +3507,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const permissions = Array.isArray(body['permissions'])
           ? body['permissions'].filter((one): one is SharedPermission => ['read', 'contribute', 'edit'].includes(String(one))) : [];
         try {
-          const invitation = inviteToSpace(store, graph.owner!, space, permissions,
+          const participant = typeof body['participant'] === 'string' ? body['participant'] : '';
+          const invitation = inviteToSpace(store, graph.owner!, space, participant, permissions,
             typeof body['intendedContact'] === 'string' ? body['intendedContact'] : undefined,
             typeof body['lifetimeMs'] === 'number' ? body['lifetimeMs'] : DEFAULT_INVITATION_LIFETIME);
           const invitationPath = `/invite/${encodeURIComponent(invitation.id)}?secret=${encodeURIComponent(invitation.secret)}`;
@@ -3538,6 +3545,30 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'GET' && path === '/participants') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      send(response, 200, { participants: listParticipants(store) });
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/participants') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const body = await readSmallJson();
+        const name = typeof body['name'] === 'string' ? body['name'] : '';
+        const kind = body['kind'] === 'agent' ? 'agent' : 'human';
+        const participant = declareParticipant(store, who.participant, name, kind);
+        graph.addParticipant({ id: participant.id, name: participant.name, kind: participant.kind });
+        graph.admit(participant.id);
+        send(response, 201, { participant });
+      } catch (error) {
+        send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
     if (request.method === 'POST' && path === '/collective-invitations') {
       const blocked = ownerOnly();
       if (blocked !== null) { send(response, 403, blocked); return; }
@@ -3549,7 +3580,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           if (!['administrator', 'editor', 'reader'].includes(role)) {
             send(response, 400, { error: 'el rol de la invitación no es válido' }); return;
           }
-          const invitation = inviteToCollective(store, who.participant, role,
+          const participant = typeof body['participant'] === 'string' ? body['participant'] : '';
+          const invitation = inviteToCollective(store, who.participant, participant, role,
             typeof body['intendedContact'] === 'string' ? body['intendedContact'] : undefined);
           const invitationPath = `/collective-invite/${encodeURIComponent(invitation.id)}?secret=${encodeURIComponent(invitation.secret)}`;
           const canonicalDomain = publicSite()?.canonicalDomain ?? options.publicSite?.canonicalDomain;
@@ -3648,11 +3680,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
           const proof = typeof body['secret'] === 'string' ? body['secret'] : '';
-          const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
-          if (proof === '' || name === '') { send(response, 400, { error: 'el canje necesita secret y name' }); return; }
-          const redeemed = redeemCollectiveInvitation(store, invitation, proof, name);
-          graph.addParticipant({ id: redeemed.participant, name, kind: 'human' });
-          graph.admit(redeemed.participant);
+          if (proof === '') { send(response, 400, { error: 'el canje necesita secret' }); return; }
+          const redeemed = redeemCollectiveInvitation(store, invitation, proof);
           const session = issueSession(store, redeemed.participant);
           setHumanSession(session.secret, session.expiresAt);
           send(response, 201, { ...redeemed, sessionExpiresAt: session.expiresAt });
@@ -3681,12 +3710,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>; }
         catch { send(response, 400, { error: 'the body must be JSON' }); return; }
         const proof = typeof body['secret'] === 'string' ? body['secret'] : '';
-        const name = typeof body['name'] === 'string' ? body['name'].trim() : '';
-        if (proof === '' || name === '') { send(response, 400, { error: 'el canje necesita secret y name' }); return; }
+        if (proof === '') { send(response, 400, { error: 'el canje necesita secret' }); return; }
         try {
-          const redeemed = redeemInvitation(store, invitation, proof, name);
-          graph.addParticipant({ id: redeemed.participant, name, kind: 'human' });
-          graph.admit(redeemed.participant);
+          const redeemed = redeemInvitation(store, invitation, proof);
           const session = issueSession(store, redeemed.participant);
           setHumanSession(session.secret, session.expiresAt);
           send(response, 201, { ...redeemed, sessionExpiresAt: session.expiresAt });
@@ -7831,7 +7857,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 400, { error: 'la identidad de participante no es una dirección válida' });
           return;
         }
-        const participant = graph.participant(participantId);
+        const canonicalId = canonicalParticipant(store, participantId);
+        const participant = graph.participant(canonicalId);
         if (participant === undefined) {
           send(response, 404, { error: `no existe el participante ${participantId}` });
           return;
@@ -7839,15 +7866,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
         // La relación semántica es declarada y estable: compartir nombre no
         // basta para afirmar que una página habla de esta identidad operativa.
+        const aliases = participantAliases(store, canonicalId);
         const semanticPages = graph.pages()
           .filter((page) => graph.propertiesOf(page.id).some(
             (property) => property.key.trim().toLowerCase() === 'identidad participante' &&
-              property.value.trim() === participantId,
+              aliases.includes(property.value.trim()),
           ))
           .map((page) => ({ id: page.id, title: page.title }));
 
         const credentials = participant.kind === 'agent'
-          ? listCredentials(store).filter((credential) => credential.participant === participantId)
+          ? listCredentials(store).filter((credential) => aliases.includes(credential.participant))
           : [];
         const authorizedBy = [...new Set(credentials.map((credential) => credential.issuedBy))]
           .map((id) => graph.participant(id))
@@ -7861,6 +7889,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             kind: participant.kind,
             status: participant.status,
           },
+          aliases: aliases.slice(1).map((id) => {
+            const historical = graph.participant(id) ?? store.db.prepare(
+              'SELECT id,name,kind,status FROM participants WHERE id=?',
+            ).get(id);
+            const reconciliation = store.db.prepare(`SELECT reason,reconciled_by,reconciled_at
+              FROM participant_reconciliations WHERE duplicate_id=?`).get(id);
+            return { historical, reconciliation };
+          }),
+          nameHistory: store.db.prepare(`SELECT former_name AS formerName,new_name AS newName,
+            changed_by AS changedBy,changed_at AS changedAt FROM participant_name_history
+            WHERE participant_id=? ORDER BY changed_at`).all(canonicalId),
           semanticPages,
           authorization: participant.kind === 'agent'
             ? {
@@ -7877,22 +7916,24 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
       if (path === '/activity') {
         const folded = activityOf(graph);
-        const participant = url.searchParams.get('participant');
+        const requestedParticipant = url.searchParams.get('participant');
+        const participant = requestedParticipant === null ? null : canonicalParticipant(store, requestedParticipant);
         const person = participant === null ? null : graph.participant(participant);
-        if (participant !== null && person === undefined) {
-          send(response, 404, { error: `no existe el participante ${participant}` });
+        if (requestedParticipant !== null && person === undefined) {
+          send(response, 404, { error: `no existe el participante ${requestedParticipant}` });
           return;
         }
+        const participantIds = participant === null ? [] : participantAliases(store, participant);
         const before = Number(url.searchParams.get('before') ?? Number.POSITIVE_INFINITY);
         const limit = 200;
         const activity = folded.activity
-          .filter((one) => one.sequence < before && (participant === null || one.participant === participant))
+          .filter((one) => one.sequence < before && (participant === null || participantIds.includes(one.participant)))
           .slice(0, limit);
         const more = activity.length === limit;
         send(response, 200, {
           activity,
           deletedPages: folded.deletedPages.filter(
-            (one) => participant === null || one.participant === participant,
+            (one) => participant === null || participantIds.includes(one.participant),
           ),
           participant: person == null ? null : {
             id: participant!, name: person.name, kind: person.kind, status: person.status,

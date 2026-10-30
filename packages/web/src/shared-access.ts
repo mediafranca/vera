@@ -98,17 +98,13 @@ async function invitation(id: string, secret: string): Promise<void> {
     const preview = await json(`/invitations/${encodeURIComponent(id)}?secret=${encodeURIComponent(secret)}`);
     main.querySelector('h1')!.textContent = preview.space;
     const detail = document.createElement('p'); detail.className = 'invitation-detail';
-    detail.textContent = `Acceso ${preview.permissions.join(', ')}. Esta invitación vence ${new Date(preview.expiresAt).toLocaleString()}.`;
-    const field = document.createElement('label'); field.className = 'invitation-field'; field.textContent = 'Tu nombre';
-    const name = document.createElement('input'); name.placeholder = 'Nombre y apellido'; name.autocomplete = 'name'; name.required = true;
-    field.append(name);
+    detail.textContent = `Invitación para ${preview.participantName}. Acceso ${preview.permissions.join(', ')}. Vence ${new Date(preview.expiresAt).toLocaleString()}.`;
     const accept = document.createElement('button'); accept.textContent = 'Entrar a Vera';
     accept.onclick = () => void (async () => {
-      if (name.value.trim() === '') { name.focus(); notice(main, 'Escribe tu nombre para continuar.', true); return; }
-      accept.disabled = true; notice(main, 'Creando tu acceso…');
+      accept.disabled = true; notice(main, 'Activando tu acceso…');
       try {
         const redeemed = await json(`/invitations/${encodeURIComponent(id)}/redeem`, 'POST',
-          { secret, name: name.value.trim() });
+          { secret });
         sessionStorage.setItem('vera-passkey-enrollment', JSON.stringify({
           enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret,
         }));
@@ -119,7 +115,7 @@ async function invitation(id: string, secret: string): Promise<void> {
         accept.disabled = false;
       }
     })();
-    main.append(detail, field, accept);
+    main.append(detail, accept);
   } catch (error) { notice(main, error instanceof Error ? error.message : 'La invitación no está disponible.', true); }
 }
 
@@ -128,17 +124,13 @@ async function collectiveInvitation(id: string, secret: string): Promise<void> {
   try {
     const preview = await json(`/collective-invitations/${encodeURIComponent(id)}?secret=${encodeURIComponent(secret)}`);
     const detail = document.createElement('p'); detail.className = 'invitation-detail';
-    detail.textContent = `Rol: ${preview.role}. Esta invitación vence ${new Date(preview.expiresAt).toLocaleString()}.`;
-    const field = document.createElement('label'); field.className = 'invitation-field'; field.textContent = 'Tu nombre';
-    const name = document.createElement('input'); name.placeholder = 'Nombre y apellido'; name.autocomplete = 'name'; name.required = true;
-    field.append(name);
+    detail.textContent = `Invitación para ${preview.participantName}. Rol: ${preview.role}. Vence ${new Date(preview.expiresAt).toLocaleString()}.`;
     const accept = document.createElement('button'); accept.textContent = 'Entrar a Vera';
     accept.onclick = () => void (async () => {
-      if (name.value.trim() === '') { name.focus(); notice(main, 'Escribe tu nombre para continuar.', true); return; }
-      accept.disabled = true; notice(main, 'Creando tu identidad y autoridad…');
+      accept.disabled = true; notice(main, 'Activando tu autoridad…');
       try {
         const redeemed = await json(`/collective-invitations/${encodeURIComponent(id)}/redeem`, 'POST',
-          { secret, name: name.value.trim() });
+          { secret });
         sessionStorage.setItem('vera-passkey-enrollment', JSON.stringify({
           enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret,
         }));
@@ -149,7 +141,7 @@ async function collectiveInvitation(id: string, secret: string): Promise<void> {
         accept.disabled = false;
       }
     })();
-    main.append(detail, field, accept);
+    main.append(detail, accept);
   } catch (error) { notice(main, error instanceof Error ? error.message : 'La invitación no está disponible.', true); }
 }
 

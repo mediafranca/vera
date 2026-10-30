@@ -327,7 +327,8 @@ interface SharedAdministration {
   audience: 'restricted' | 'anybody';
   status: 'active' | 'withdrawn'; pageCount: number;
   effectivePages: { page: string; reasons: string[] }[];
-  invitations: { id: string; permissions: SharedPermission[]; intendedContact: string | null;
+  invitations: { id: string; participant: string | null; participantName: string | null;
+    permissions: SharedPermission[]; intendedContact: string | null;
     status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number }[];
   participants: { grant: string; participant: string; name: string; permissions: SharedPermission[];
     status: 'active' | 'revoked'; grantedAt: number; authenticators: number; activeSessions: number }[];
@@ -335,6 +336,11 @@ interface SharedAdministration {
     channel: 'typed_text' | 'drawn' | 'walked'; change: Record<string, unknown>;
     status: 'awaiting_review' | 'accepted' | 'rejected';
     proposedAt: number; reviewedBy: string | null; reviewedAt: number | null }[];
+  people: ParticipantIdentity[];
+}
+
+interface ParticipantIdentity {
+  id: string; name: string; kind: 'human' | 'agent'; status: 'active' | 'suspended'; canonical: string;
 }
 
 type CollectiveRole = 'root_custodian' | 'administrator' | 'editor' | 'contributor' | 'reader' | 'publisher';
@@ -342,7 +348,8 @@ interface CollectiveGovernance {
   profile: 'personal' | 'collective'; participant: string; roles: CollectiveRole[];
   people: { participant: string; name: string; roles: CollectiveRole[];
     authenticators: number; activeSessions: number }[];
-  invitations: { id: string; role: 'administrator' | 'editor' | 'reader'; intendedContact: string | null;
+  invitations: { id: string; participant: string | null; participantName: string | null;
+    role: 'administrator' | 'editor' | 'reader'; intendedContact: string | null;
     status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number;
     redeemedBy: string | null }[];
 }
@@ -378,16 +385,18 @@ export async function drawSharing(host: HTMLElement): Promise<void> {
   let spaces: SharedAdministration[];
   let publicSite: PublicationSiteView;
   let pages: PageSummary[];
+  let participants: ParticipantIdentity[];
   try {
-    [spaces, publicSite, pages] = await Promise.all([
+    [spaces, publicSite, pages, participants] = await Promise.all([
       sharingRequest('/shared-spaces').then((value) => value.spaces as SharedAdministration[]),
       api.publicationSite(),
       api.pages(),
+      sharingRequest('/participants').then((value) => value.participants as ParticipantIdentity[]),
     ]);
   }
   catch (error) { status.textContent = error instanceof Error ? error.message : 'No se pudo leer la configuración.'; return; }
   status.textContent = `${spaces.length + 1} ${spaces.length === 0 ? 'forma' : 'formas'} de compartir: una pública y ${spaces.length} con acceso autenticado.`;
-  host.append(peopleDirectory(spaces));
+  host.append(participantDirectory(host, participants));
   host.append(publicSiteAdministration(host, publicSite, pages));
   for (const space of spaces) {
     host.append(spaceAdministration(host, space, pages, publicSite.canonicalDomain));
@@ -489,12 +498,38 @@ async function drawCollectiveAdministration(host: HTMLElement): Promise<void> {
   }
   people.append(list); host.append(people);
 
+  const declaration = document.createElement('section'); declaration.className = 'sharing-group';
+  const declarationTitle = document.createElement('h4'); declarationTitle.textContent = 'Declarar persona';
+  const declarationNote = document.createElement('p'); declarationNote.className = 'settings-note';
+  declarationNote.textContent = 'Primero crea la identidad estable. Después podrás emitirle invitaciones, roles y passkeys sin duplicarla.';
+  const declarationForm = document.createElement('form'); declarationForm.className = 'sharing-publish';
+  const personName = document.createElement('input'); personName.placeholder = 'Nombre de la persona'; personName.autocomplete = 'name';
+  const declare = document.createElement('button'); declare.type = 'submit'; declare.textContent = 'Declarar';
+  declarationForm.append(personName, declare); declaration.append(declarationTitle, declarationNote, declarationForm);
+  host.append(declaration);
+  declarationForm.onsubmit = (event) => void (async () => {
+    event.preventDefault(); if (personName.value.trim() === '') { personName.focus(); return; }
+    declare.disabled = true;
+    try {
+      await sharingRequest('/participants', 'POST', { name: personName.value.trim(), kind: 'human' });
+      await drawCollectiveAdministration(host);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo declarar la identidad.');
+      declare.disabled = false;
+    }
+  })();
+
   const invite = document.createElement('section'); invite.className = 'sharing-group';
   const inviteTitle = document.createElement('h4'); inviteTitle.textContent = 'Nueva invitación';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
   explanation.textContent = 'El enlace es secreto, vence y se usa una sola vez. Al aceptarlo, la persona entra y puede registrar su propia passkey.';
   const form = document.createElement('form'); form.className = 'sharing-publish';
-  const contact = document.createElement('input'); contact.placeholder = 'nombre o contacto (opcional)';
+  const participant = document.createElement('select');
+  for (const person of view.people) {
+    const option = document.createElement('option'); option.value = person.participant; option.textContent = person.name;
+    participant.append(option);
+  }
+  const contact = document.createElement('input'); contact.placeholder = 'contacto de entrega (opcional)';
   const role = document.createElement('select');
   for (const [value, label] of [['reader', 'Lectura'], ['editor', 'Edición'],
     ['administrator', 'Administración']] as const) {
@@ -502,12 +537,12 @@ async function drawCollectiveAdministration(host: HTMLElement): Promise<void> {
   }
   const create = document.createElement('button'); create.type = 'submit'; create.textContent = 'Crear invitación';
   const result = document.createElement('div'); result.className = 'sharing-invitation-result';
-  form.append(contact, role, create); invite.append(inviteTitle, explanation, form, result); host.append(invite);
+  form.append(participant, contact, role, create); invite.append(inviteTitle, explanation, form, result); host.append(invite);
   form.onsubmit = (event) => void (async () => {
     event.preventDefault(); create.disabled = true;
     try {
       const made = await sharingRequest('/collective-invitations', 'POST', {
-        role: role.value, intendedContact: contact.value.trim() || undefined,
+        participant: participant.value, role: role.value, intendedContact: contact.value.trim() || undefined,
       });
       const url = new URL(String(made.url), location.origin).href;
       rememberInvitationUrl(String(made.id), url);
@@ -813,28 +848,38 @@ function effectivePages(space: SharedAdministration, pages: PageSummary[]): HTML
   box.append(list); return box;
 }
 
-function peopleDirectory(spaces: SharedAdministration[]): HTMLElement {
-  const people = new Map<string, { name: string; grants: { space: string; permissions: SharedPermission[]; status: string }[] }>();
-  for (const space of spaces) for (const participant of space.participants.filter((one) => one.status === 'active')) {
-    const person = people.get(participant.participant) ?? { name: participant.name, grants: [] };
-    person.grants.push({ space: space.name, permissions: participant.permissions, status: participant.status });
-    people.set(participant.participant, person);
-  }
+function participantDirectory(host: HTMLElement, participants: ParticipantIdentity[]): HTMLElement {
   const details = document.createElement('details'); details.className = 'sharing-people';
-  const summary = document.createElement('summary'); summary.textContent = `Personas · ${people.size}`; details.append(summary);
+  details.open = true;
+  const humans = participants.filter((one) => one.kind === 'human');
+  const summary = document.createElement('summary'); summary.textContent = `Identidades declaradas · ${humans.length}`; details.append(summary);
   const note = document.createElement('p'); note.className = 'settings-note';
-  note.textContent = 'Vista transversal de identidades con acceso activo; las invitaciones pendientes y los accesos revocados no aparecen aquí.';
+  note.textContent = 'La persona se declara una sola vez. Después puede recibir varias invitaciones, passkeys, sesiones y permisos sin convertirse en otra identidad.';
   details.append(note);
   const list = document.createElement('ul'); list.className = 'sharing-list';
-  for (const person of people.values()) {
+  for (const person of humans) {
     const row = document.createElement('li'); const text = document.createElement('span');
     text.textContent = person.name;
-    const grants = document.createElement('small'); grants.textContent = person.grants
-      .map((grant) => `${grant.space}: ${grant.permissions.join(', ')} · ${grant.status}`).join(' / ');
-    text.append(grants); row.append(text); list.append(row);
+    const identity = document.createElement('small'); identity.textContent = `${person.id} · ${person.status}`;
+    text.append(identity); row.append(text); list.append(row);
   }
-  if (people.size === 0) { const empty = document.createElement('li'); empty.textContent = 'Todavía no hay participantes autenticados.'; list.append(empty); }
-  details.append(list); return details;
+  if (humans.length === 0) { const empty = document.createElement('li'); empty.textContent = 'Todavía no hay personas declaradas.'; list.append(empty); }
+  const declaration = document.createElement('form'); declaration.className = 'sharing-publish';
+  const name = document.createElement('input'); name.placeholder = 'Nombre de la persona'; name.autocomplete = 'name';
+  const create = document.createElement('button'); create.type = 'submit'; create.textContent = 'Declarar persona';
+  declaration.append(name, create);
+  declaration.onsubmit = (event) => void (async () => {
+    event.preventDefault(); if (name.value.trim() === '') { name.focus(); return; }
+    create.disabled = true;
+    try {
+      await sharingRequest('/participants', 'POST', { name: name.value.trim(), kind: 'human' });
+      await drawSharing(host);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo declarar la identidad.');
+      create.disabled = false;
+    }
+  })();
+  details.append(list, declaration); return details;
 }
 
 function criteriaAdministration(host: HTMLElement, space: SharedAdministration): HTMLElement {
@@ -923,8 +968,16 @@ function invitationForm(host: HTMLElement, space: SharedAdministration): HTMLEle
   const box = document.createElement('div'); box.className = 'sharing-group';
   const heading = document.createElement('h4'); heading.textContent = 'Nueva invitación';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = 'Cada enlace es de un solo uso y corresponde a una persona. Puedes crear tantos enlaces como participantes quieras invitar.';
-  const contact = field('Para (opcional)', '', 'nombre o contacto');
+  explanation.textContent = 'Elige una identidad ya declarada. El enlace añade acceso a esa persona; no crea otra identidad.';
+  const personLabel = document.createElement('label'); personLabel.className = 'sharing-field';
+  const personName = document.createElement('span'); personName.textContent = 'Persona';
+  const participant = document.createElement('select');
+  for (const person of space.people.filter((one) => one.kind === 'human' && one.status === 'active')) {
+    const option = document.createElement('option'); option.value = person.id; option.textContent = person.name;
+    participant.append(option);
+  }
+  personLabel.append(personName, participant);
+  const contact = field('Contacto de entrega (opcional)', '', 'correo o referencia');
   const permissions = document.createElement('div'); permissions.className = 'sharing-permissions';
   const controls: { permission: SharedPermission; input: HTMLInputElement }[] = [];
   for (const permission of ['read', 'contribute', 'edit'] as SharedPermission[]) {
@@ -947,6 +1000,7 @@ function invitationForm(host: HTMLElement, space: SharedAdministration): HTMLEle
     create.disabled = true; create.textContent = 'Creando…';
     try {
       const made = await sharingRequest(`/shared-spaces/${encodeURIComponent(space.slug)}/invitations`, 'POST', {
+        participant: participant.value,
         intendedContact: contact.input.value,
         permissions: controls.filter((one) => one.input.checked).map((one) => one.permission),
         lifetimeMs: Number(duration.value),
@@ -977,7 +1031,7 @@ function invitationForm(host: HTMLElement, space: SharedAdministration): HTMLEle
       create.textContent = 'Crear enlace de invitación'; create.disabled = false;
     }
   })();
-  box.append(heading, explanation, contact.label, durationLabel, permissions, create, result); return box;
+  box.append(heading, explanation, personLabel, contact.label, durationLabel, permissions, create, result); return box;
 }
 
 function invitations(host: HTMLElement, space: SharedAdministration): HTMLElement {
