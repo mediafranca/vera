@@ -483,6 +483,25 @@ rule OwnerAuthorizesOwnAuthenticatorFromMachine {
     )
 }
 
+rule ExistingHumanSessionAuthorizesAnotherAuthenticator {
+    when: AuthorizeAnotherAuthenticator(participant, session)
+
+    requires: session.instance = instance
+    requires: session.participant = participant
+    requires: session.status = active
+
+    ensures: AuthenticatorEnrollment.created(
+        instance: instance,
+        participant: participant,
+        authorized_by: participant,
+        status: pending,
+        expires_at: now + config.enrollment_lifetime
+    )
+
+    -- This transition adds only an authenticator enrollment. The participant,
+    -- their membership and every grant already exist and remain unchanged.
+}
+
 rule FreshInstanceBeginsOwnerAuthenticationBootstrap {
     when: fresh_instance: identity/VeraInstance.created
 

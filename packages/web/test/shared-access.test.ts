@@ -16,14 +16,21 @@ describe('entrada por invitación', () => {
     assert.match(invitation, /export function offerPasskeyEnrollment/);
   });
 
-  it('anticipa la ventana propia del sistema y permite postergarla', () => {
-    assert.match(invitation, /No tienes que crear nada antes ni buscar una opción en Chrome/);
-    assert.match(invitation, /Crear y guardar mi acceso/);
-    assert.match(invitation, /Chrome abrirá su propia ventana/);
+  it('anticipa la ventana propia del sistema sin enseñar la infraestructura', () => {
+    assert.match(invitation, /no tienes que guardar ni recordar nada/i);
+    assert.match(invitation, /Guardar mi acceso aquí/);
+    assert.match(invitation, /dispositivo abrirá su propia ventana/);
     assert.match(invitation, /PIN, huella o rostro/);
     assert.match(invitation, /Vera no recibe ese dato/);
     assert.match(invitation, /Ahora no/);
     assert.match(invitation, /necesitarás otra invitación/);
+  });
+
+  it('añade otro dispositivo a la identidad que ya existe', () => {
+    assert.match(invitation, /enroll-device/);
+    assert.match(invitation, /Estás añadiendo este dispositivo a la identidad de/);
+    assert.match(invitation, /registration\/verify/);
+    assert.match(invitation, /history\.replaceState/);
   });
 
   it('conserva la oferta al recargar hasta completarla o rechazarla explícitamente', () => {

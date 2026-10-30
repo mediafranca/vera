@@ -220,6 +220,7 @@ import {
 } from './shared-spaces.ts';
 import {
   authenticationOptions,
+  beginDeviceEnrollment,
   ceremonyFor,
   finishAuthentication,
   finishRegistration,
@@ -1704,6 +1705,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     ) || (request.method === 'POST' && (
       /^\/invitations\/[^/]+\/redeem$/.test(path) ||
       /^\/collective-invitations\/[^/]+\/redeem$/.test(path) ||
+      path === '/human-auth/device-enrollments' ||
       path === '/human-auth/registration/options' ||
       path === '/human-auth/registration/verify' ||
       path === '/human-auth/authentication/options' ||
@@ -1752,6 +1754,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path.startsWith('/graph/') ||
         path.startsWith('/media/') ||
         path.startsWith('/invite/') ||
+        path.startsWith('/enroll-device/') ||
+        path === '/human-auth/me' ||
         /^\/invitations\/[^/]+$/.test(path) ||
         path.startsWith('/collective-invite/') ||
         /^\/collective-invitations\/[^/]+$/.test(path) ||
@@ -3591,6 +3595,39 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 200, { status: 'revoked' });
       } catch (error) {
         send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/human-auth/me') {
+      const participant = participantForSession(store, cookie('vera_session'));
+      if (participant === null) { send(response, 401, { error: 'hace falta una sesión humana activa' }); return; }
+      const person = graph.participant(participant);
+      if (person?.kind !== 'human') { send(response, 403, { error: 'esta identidad no es humana' }); return; }
+      const authenticators = Number((store.db.prepare(`SELECT count(*) AS count FROM human_authenticators
+        WHERE participant_id=? AND status='active'`).get(participant) as { count: number }).count);
+      const sessions = Number((store.db.prepare(`SELECT count(*) AS count FROM human_sessions
+        WHERE participant_id=? AND status='active' AND expires_at>?`).get(participant, Date.now()) as { count: number }).count);
+      send(response, 200, { participant, name: person.name, authenticators, activeSessions: sessions });
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/human-auth/device-enrollments') {
+      const participant = participantForSession(store, cookie('vera_session'));
+      if (participant === null) { send(response, 401, { error: 'hace falta una sesión humana activa' }); return; }
+      const person = graph.participant(participant);
+      if (person?.kind !== 'human') { send(response, 403, { error: 'esta identidad no es humana' }); return; }
+      try {
+        const body = await readSmallJson();
+        const requestedReturn = typeof body['returnTo'] === 'string' ? body['returnTo'] : '/';
+        const returnTo = /^\/s\/[^/]+(?:\/.*)?$/.test(requestedReturn) ? requestedReturn : '/';
+        const made = beginDeviceEnrollment(store, participant);
+        const destination = new URL(`/enroll-device/${encodeURIComponent(made.enrollment)}`, ceremony().origin);
+        destination.searchParams.set('returnTo', returnTo);
+        destination.hash = new URLSearchParams({ secret: made.secret }).toString();
+        send(response, 201, { url: destination.toString(), expiresAt: made.expiresAt });
+      } catch (error) {
+        send(response, 400, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }
