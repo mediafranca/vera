@@ -5117,6 +5117,181 @@ body.settings-open #text {
 #vera-root.special-surface #text { max-width: none; width: 100%; }
 #vera-root.special-surface #view-switch { display: none; }
 
+.governing-facets {
+  display: flex;
+  gap: .45rem;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: .25rem 0 .8rem;
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.governing-facet {
+  min-height: 2.25rem;
+  padding: .35rem .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.governing-facet:hover,
+.governing-facet:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.governing-facet.selected {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+  cursor: default;
+}
+
+.governing-facet:disabled:not(.selected) {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+#graph.ontology-government-map {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  background: var(--bg);
+}
+
+.ontology-government-map-header {
+  display: grid;
+  gap: .2rem;
+  padding: .85rem 1rem .75rem;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--bg-raised) 72%, transparent);
+}
+
+.ontology-government-map-header strong {
+  color: var(--text);
+  font-size: .92rem;
+}
+
+.ontology-government-map-header span {
+  color: var(--text-dim);
+  font-size: .75rem;
+}
+
+.ontology-government-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ontology-government-stage {
+  position: relative;
+}
+
+.ontology-government-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.ontology-government-edges path {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.ontology-government-edges text {
+  fill: var(--text-dim);
+  font: .68rem var(--font-ui);
+}
+
+.ontology-government-node {
+  position: absolute;
+  display: grid;
+  align-content: center;
+  gap: .35rem;
+  padding: .65rem .75rem;
+  border: 1px solid var(--rule);
+  border-radius: .45rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
+  cursor: pointer;
+}
+
+.ontology-government-node-edit {
+  justify-self: start;
+  min-height: 1.65rem;
+  padding: .15rem .4rem;
+  border: 1px solid transparent;
+  border-radius: .25rem;
+  background: transparent;
+  color: var(--text-dim);
+  font: .68rem var(--font-ui);
+  cursor: pointer;
+}
+
+.ontology-government-node-edit:hover,
+.ontology-government-node-edit:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ontology-government-node-input {
+  min-width: 0;
+  width: 100%;
+  padding: .2rem .3rem;
+  border: 1px solid var(--accent);
+  border-radius: .2rem;
+  background: var(--bg);
+  color: var(--text);
+  font: .84rem var(--font-ui);
+}
+
+.ontology-government-node strong,
+.ontology-government-node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ontology-government-node strong { font-size: .84rem; }
+.ontology-government-node span { color: var(--text-dim); font-size: .7rem; }
+
+.ontology-government-node.properties { border-inline-start: .28rem solid var(--warm); }
+.ontology-government-node.relations { border-inline-start: .28rem solid var(--accent); }
+
+.ontology-government-node:hover,
+.ontology-government-node:focus-visible,
+.ontology-government-node.selected {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.governing-row-revealed {
+  animation: governing-reveal 1.8s ease-out;
+}
+
+@keyframes governing-reveal {
+  0%, 35% { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  100% { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .governing-row-revealed { animation: none; }
+}
+
 .participant-profile {
   box-sizing: border-box;
   width: min(var(--content-width), 100%);

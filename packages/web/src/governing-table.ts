@@ -71,8 +71,8 @@ export function kindSays(value: string): { label: string; mode: SpecialPageMode;
   return GOVERNING_KINDS.find((one) => one.key === value.trim().toLowerCase()) ?? null;
 }
 
-/** Las dos clases de página que se leen así. */
-export type GoverningKind = 'objects' | 'properties';
+/** Las tres caras del mismo gobierno ontológico. */
+export type GoverningKind = 'objects' | 'properties' | 'relations';
 
 /**
  * Qué gobierna esta página, de las que esta tabla sabe dibujar.
@@ -87,11 +87,14 @@ export function governingKind(
     .find((one) => one.key === 'special-kind')
     ?.value.trim()
     .toLowerCase();
-  return said === 'objects' || said === 'properties' ? said : null;
+  return said === 'objects' || said === 'properties' || said === 'relations' ? said : null;
 }
 
 /** Escribe un cambio y devuelve si se aplicó. Lo pone el outliner, que ya sabe. */
 export type Write = (change: Change) => Promise<boolean>;
+
+/** Abre la página rectora real de una faceta; nunca una copia del visor. */
+export type OpenFacet = (page: string) => void;
 
 /**
  * Los papeles que el código conoce.
@@ -129,6 +132,7 @@ function fieldSays(field: string | null, many: boolean, values: readonly string[
 export async function renderGoverning(
   kind: GoverningKind,
   write: Write,
+  openFacet?: OpenFacet,
 ): Promise<{ element: HTMLElement; declaring: Set<string> } | null> {
   let said: OntologyView;
   try {
@@ -140,6 +144,39 @@ export async function renderGoverning(
   const declaring = new Set<string>();
   const element = document.createElement('div');
   element.className = 'governing-tables';
+
+  /*
+   * Un gobierno, tres páginas canónicas.
+   *
+   * La banda no inventa una cuarta portada ni cambia la fuente de verdad. Cada
+   * faceta abre la página especial que ya declara esos bloques; por eso atrás,
+   * enlaces, historial y permisos continúan hablando de las páginas reales.
+   */
+  const facets = document.createElement('nav');
+  facets.className = 'governing-facets';
+  facets.setAttribute('aria-label', 'facetas del gobierno ontológico');
+  const facetKinds: { kind: GoverningKind; label: string }[] = [
+    { kind: 'objects', label: 'Objetos' },
+    { kind: 'properties', label: 'Propiedades' },
+    { kind: 'relations', label: 'Relaciones' },
+  ];
+  const knownPages = openFacet === undefined
+    ? []
+    : await api.specialPages().catch(() => [] as { id: string; title: string; kind: string }[]);
+  for (const facet of facetKinds) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = facet.kind === kind ? 'governing-facet selected' : 'governing-facet';
+    button.textContent = facet.label;
+    button.setAttribute('aria-current', facet.kind === kind ? 'page' : 'false');
+    const destination = knownPages.find((page) => page.kind === facet.kind);
+    button.disabled = destination === undefined && facet.kind !== kind;
+    if (destination !== undefined && facet.kind !== kind) {
+      button.addEventListener('click', () => openFacet?.(destination.id));
+    }
+    facets.append(button);
+  }
+  element.append(facets);
 
   const sectionIn = (
     title: string | null,
@@ -221,7 +258,7 @@ export async function renderGoverning(
         put(object.block, 'qué'),
       );
     }
-  } else {
+  } else if (kind === 'properties') {
     const fields: Choice[] = said.fields.map((one) => ({ value: one }));
     const roles: Choice[] = ROLES.map((one) => ({ value: one, hint: 'papel del código' }));
     const subjects: Choice[] = [
@@ -318,8 +355,86 @@ export async function renderGoverning(
       );
       for (const property of vocabulary) written(property, body, false);
     }
+  } else {
+    const objectChoices: Choice[] = said.objects.map((one) => ({
+      value: one.name,
+      hint: one.says ?? 'objeto declarado',
+    }));
+    const relationChoices: Choice[] = said.relations.map((one) => ({
+      value: one.name,
+      hint: one.says ?? 'relación declarada',
+    }));
+    const states: Choice[] = [
+      { value: 'borrador' },
+      { value: 'aprobada' },
+      { value: 'obsoleta' },
+    ];
+    const body = sectionIn(
+      null,
+      'Cada fila declara una arista del corpus: cómo se llama desde ambos extremos, qué puede unir y qué comportamiento tiene.',
+      ['Relación', 'Inversa', 'Dominio', 'Rango', 'Simétrica', 'Transitiva', 'Estado', 'Descripción'],
+    );
+
+    for (const relation of said.relations) {
+      const row = rowFor(body, relation.block);
+      let at = 0;
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.name, label: 'el nombre de la relación', placeholder: 'sin nombre' },
+        (next) => write({ kind: 'edit_block', block: relation.block, content: next.trim() }),
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.inverse, label: 'cómo se lee en sentido inverso', placeholder: 'sin inversa' },
+        put(relation.block, 'inversa'),
+        relationChoices,
+      );
+      chipsCell(
+        cellIn(row, at++),
+        relation.domain,
+        { offered: objectChoices, label: 'objeto de origen', add: '+ objeto' },
+        (next) => put(relation.block, 'dominio')(next.join(', ')),
+      );
+      chipsCell(
+        cellIn(row, at++),
+        relation.range,
+        { offered: objectChoices, label: 'objeto de destino', add: '+ objeto' },
+        (next) => put(relation.block, 'rango')(next.join(', ')),
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.symmetric === true ? 'sí' : relation.symmetric === false ? 'no' : '', label: 'si es simétrica', placeholder: '—' },
+        put(relation.block, 'simétrica'),
+        [{ value: 'sí' }, { value: 'no' }],
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.transitive === true ? 'sí' : relation.transitive === false ? 'no' : '', label: 'si es transitiva', placeholder: '—' },
+        put(relation.block, 'transitiva'),
+        [{ value: 'sí' }, { value: 'no' }],
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.status ?? '', label: 'estado de la relación', placeholder: 'sin estado' },
+        put(relation.block, 'estado'),
+        states,
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.says ?? '', label: 'qué afirma esta relación', placeholder: 'sin descripción' },
+        put(relation.block, 'qué'),
+      );
+    }
   }
 
   if (declaring.size === 0) return null;
+  const mirrorFocus = (event: Event): void => {
+    const row = (event.target as HTMLElement).closest<HTMLElement>('tr[data-block]');
+    const block = row?.dataset['block'];
+    if (block === undefined) return;
+    document.dispatchEvent(new CustomEvent('vera:ontology-focus', { detail: { block } }));
+  };
+  element.addEventListener('click', mirrorFocus);
+  element.addEventListener('focusin', mirrorFocus);
   return { element, declaring };
 }

@@ -44,7 +44,7 @@ import {
 import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
 import { isDay, today } from './autocomplete.ts';
-import { GOVERNING_KINDS } from './governing-table.ts';
+import { GOVERNING_KINDS, governingKind } from './governing-table.ts';
 import { renderCollectiveAdministration, renderFilesAdministration, renderSettings,
   renderSharingAdministration, type Section } from './settings.ts';
 import { parseRoute, routeTo, searchRoute } from './router.ts';
@@ -2654,6 +2654,45 @@ async function drawGraph(reach = 1): Promise<void> {
   graphDelivery?.abort();
   const delivery = new AbortController();
   graphDelivery = delivery;
+
+  /*
+   * Las páginas rectoras no necesitan el vecindario del corpus para gobernar:
+   * necesitan ver la estructura que declaran. El panel sigue siendo el segundo
+   * lado de Vera —texto a la izquierda, figura a la derecha—, pero su contenido
+   * se deriva del mismo `/ontology` que alimenta las tablas.
+   */
+  const governing = governingKind(openView?.properties ?? []);
+  if (governing !== null) {
+    try {
+      const [ontology, diagram] = await Promise.all([
+        api.ontology(),
+        import('./ontology-governance-map.ts'),
+      ]);
+      if (turn !== graphTurn || governingKind(openView?.properties ?? []) !== governing) return;
+      await diagram.renderOntologyGovernanceMap(
+        container,
+        ontology,
+        governing,
+        async (change) => {
+          const result = await api.submitCanonical(change, 'drawn');
+          if (result.status === 'rejected') {
+            notice(`No se pudo cambiar la ontología: ${result.reason}`);
+            return false;
+          }
+          if (workspace.activePage !== null) await openPage(workspace.activePage);
+          return true;
+        },
+      );
+    } catch {
+      if (turn !== graphTurn) return;
+      container.classList.add('map-stale');
+      container.innerHTML = '<p class="map-unavailable">el esquema necesita la ontología · sin conexión</p>';
+    }
+    return;
+  }
+  container.classList.remove('ontology-government-map');
+  container.querySelector<HTMLElement>('#map-controls')?.removeAttribute('hidden');
+  container.querySelector<HTMLElement>('#map-trail')?.removeAttribute('hidden');
   if (
     workspace.mapScope === 'published' &&
     openView?.publication?.publishedAt == null

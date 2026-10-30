@@ -5297,10 +5297,14 @@ export function renderOutliner(
   const governing = governingKind(page.properties);
   if (governing !== null) {
     list.hidden = true;
-    void renderGoverning(governing, (change) => submitQuietly(change).then((applied) => {
-      if (applied) callbacks.onReload(null);
-      return applied;
-    })).then((made) => {
+    void renderGoverning(
+      governing,
+      (change) => submitQuietly(change).then((applied) => {
+        if (applied) callbacks.onReload(null);
+        return applied;
+      }),
+      (page) => callbacks.onOpen(page, 'followed_reference'),
+    ).then((made) => {
       list.hidden = false;
       if (made === null) return;
       // Los bloques que declaran ya están dibujados: se retiran, y la tabla
