@@ -1325,6 +1325,37 @@ export function foldedOnPage(store: Store, participant: string, page: string): s
   ).map((row) => row.block);
 }
 
+/**
+ * El dueño compone la primera lectura que reciben las demás superficies.
+ * Ausencia significa desplegado, igual que en el plegado personal.
+ */
+export function setPresentationFold(
+  store: Store,
+  owner: string,
+  block: string,
+  folded: boolean,
+): void {
+  if (!folded) {
+    store.db.prepare('DELETE FROM block_presentation_folds WHERE block_id = ?').run(block);
+    return;
+  }
+  store.db.prepare(
+    `INSERT INTO block_presentation_folds (block_id, set_by, set_at) VALUES (?, ?, ?)
+     ON CONFLICT (block_id) DO UPDATE SET set_by=excluded.set_by,set_at=excluded.set_at`,
+  ).run(block, owner, Date.now());
+}
+
+/** Los bloques que una página presenta plegados antes de cualquier lectura local. */
+export function presentationFoldsOnPage(store: Store, page: string): string[] {
+  return (
+    store.db.prepare(
+      `SELECT s.block_id AS block
+         FROM block_presentation_folds s JOIN blocks b ON b.id = s.block_id
+        WHERE b.page_id = ? ORDER BY b.position, b.id`,
+    ).all(page) as { block: string }[]
+  ).map((row) => row.block);
+}
+
 // ---------------------------------------------------------------------------
 // La cascada de validación desde la voz
 // ---------------------------------------------------------------------------

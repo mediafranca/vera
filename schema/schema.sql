@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS access_invitations (
     permissions       TEXT NOT NULL,
     proof_digest      TEXT NOT NULL UNIQUE,
     intended_contact  TEXT,
+    proof_mode        TEXT NOT NULL DEFAULT 'bearer' CHECK (proof_mode IN ('bearer', 'identified')),
     status            TEXT NOT NULL CHECK (status IN ('pending', 'redeemed', 'revoked', 'expired')),
     issued_at         INTEGER NOT NULL,
     expires_at        INTEGER NOT NULL,
@@ -713,6 +714,14 @@ CREATE TABLE IF NOT EXISTS block_collapse_state (
     block_id        TEXT NOT NULL REFERENCES blocks (id) ON DELETE CASCADE,
     collapsed       INTEGER NOT NULL CHECK (collapsed IN (0, 1)),
     PRIMARY KEY (participant_id, block_id)
+) STRICT;
+
+-- El montaje inicial que el dueño decidió para todas las proyecciones. Es
+-- presentación compartida, no contenido: no entra al registro de operaciones.
+CREATE TABLE IF NOT EXISTS block_presentation_folds (
+    block_id        TEXT PRIMARY KEY REFERENCES blocks (id) ON DELETE CASCADE,
+    set_by          TEXT NOT NULL REFERENCES participants (id),
+    set_at          INTEGER NOT NULL
 ) STRICT;
 
 ------------------------------------------------------------

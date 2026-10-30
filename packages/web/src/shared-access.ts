@@ -92,22 +92,40 @@ const notice = (main: HTMLElement, said: string, bad = false): void => {
   node.dataset['bad'] = String(bad); node.textContent = said;
 };
 
+async function authenticateNamedParticipant(participant: string): Promise<void> {
+  const current = await fetch('/human-auth/me', { credentials: 'same-origin' });
+  if (current.ok) {
+    const me = await current.json() as { participant?: string };
+    if (me.participant === participant) return;
+  }
+  const options = await json('/human-auth/authentication/options', 'POST', { participant });
+  const response = await startAuthentication({ optionsJSON: options });
+  await json('/human-auth/authentication/verify', 'POST', { participant, response });
+}
+
 async function invitation(id: string, secret: string): Promise<void> {
   const main = shell('Invitación');
   try {
     const preview = await json(`/invitations/${encodeURIComponent(id)}?secret=${encodeURIComponent(secret)}`);
     main.querySelector('h1')!.textContent = preview.space;
     const detail = document.createElement('p'); detail.className = 'invitation-detail';
-    detail.textContent = `Invitación para ${preview.participantName}. Acceso ${preview.permissions.join(', ')}. Vence ${new Date(preview.expiresAt).toLocaleString()}.`;
-    const accept = document.createElement('button'); accept.textContent = 'Entrar a Vera';
+    detail.textContent = preview.proofMode === 'identified'
+      ? `Enlace privado para ${preview.participantName}. Sólo su passkey puede abrirlo; reenviar esta URL no concede acceso. Vence ${new Date(preview.expiresAt).toLocaleString()}.`
+      : `Invitación para ${preview.participantName}. Acceso ${preview.permissions.join(', ')}. Vence ${new Date(preview.expiresAt).toLocaleString()}.`;
+    const accept = document.createElement('button');
+    accept.textContent = preview.proofMode === 'identified' ? 'Abrir con mi passkey' : 'Entrar a Vera';
     accept.onclick = () => void (async () => {
-      accept.disabled = true; notice(main, 'Activando tu acceso…');
+      accept.disabled = true;
+      notice(main, preview.proofMode === 'identified' ? 'Comprobando tu identidad…' : 'Activando tu acceso…');
       try {
+        if (preview.proofMode === 'identified') await authenticateNamedParticipant(preview.participant);
         const redeemed = await json(`/invitations/${encodeURIComponent(id)}/redeem`, 'POST',
           { secret });
-        sessionStorage.setItem('vera-passkey-enrollment', JSON.stringify({
-          enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret,
-        }));
+        if (redeemed.enrollment !== null && redeemed.enrollmentSecret !== null) {
+          sessionStorage.setItem('vera-passkey-enrollment', JSON.stringify({
+            enrollment: redeemed.enrollment, secret: redeemed.enrollmentSecret,
+          }));
+        }
         localStorage.setItem(`vera-human:${redeemed.spaceSlug}`, redeemed.participant);
         location.assign(`/s/${encodeURIComponent(redeemed.spaceSlug)}`);
       } catch (error) {

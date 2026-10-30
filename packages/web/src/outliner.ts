@@ -1242,12 +1242,14 @@ async function toggleFold(
   callbacks: OutlinerCallbacks,
   returnTo: { block: string; at: number } | null,
 ): Promise<void> {
-  try {
-    const response = await api.fold(block, folded);
-    if (!response.ok) throw new Error(`fold failed: ${response.status}`);
-  } catch {
-    toast('no se pudo plegar: sin conexión con el servidor');
-    return;
+  if (page.foldPersistence !== 'local') {
+    try {
+      const response = await api.fold(block, folded);
+      if (!response.ok) throw new Error(`fold failed: ${response.status}`);
+    } catch {
+      toast('no se pudo plegar: sin conexión con el servidor');
+      return;
+    }
   }
   // `onReload` normalmente repinta desde la réplica local. El plegado no forma
   // parte de esa réplica porque es estado de lectura y no una operación del

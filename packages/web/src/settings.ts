@@ -341,6 +341,7 @@ interface SharedAdministration {
 
 interface ParticipantIdentity {
   id: string; name: string; kind: 'human' | 'agent'; status: 'active' | 'suspended'; canonical: string;
+  credentials?: { active: number; revoked: number };
 }
 
 type CollectiveRole = 'root_custodian' | 'administrator' | 'editor' | 'contributor' | 'reader' | 'publisher';
@@ -605,7 +606,12 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
   const body = document.createElement('div'); body.className = 'settings-body'; host.append(body);
   const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo pertenencia…'; body.append(status);
   try {
-    const spaces = (await sharingRequest('/shared-spaces')).spaces as SharedAdministration[];
+    const [spaceView, participantView] = await Promise.all([
+      sharingRequest('/shared-spaces'), sharingRequest('/participants'),
+    ]);
+    const spaces = spaceView.spaces as SharedAdministration[];
+    const people = (participantView.participants as ParticipantIdentity[])
+      .filter((one) => one.kind === 'human' && one.status === 'active' && (one.credentials?.active ?? 0) > 0);
     status.textContent = 'La pertenencia por criterio es derivada; la inclusión explícita puede cambiarse aquí.';
     const list = document.createElement('ul'); list.className = 'sharing-list';
     for (const space of spaces) {
@@ -622,6 +628,43 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
     }
     if (spaces.length === 0) { const empty = document.createElement('li'); empty.textContent = 'No hay espacios compartidos.'; list.append(empty); }
     body.append(list);
+
+    const privateBox = document.createElement('section'); privateBox.className = 'sharing-group';
+    const privateHeading = document.createElement('h3'); privateHeading.textContent = 'Enviar enlace privado';
+    const explanation = document.createElement('p'); explanation.className = 'settings-note';
+    explanation.textContent = 'La URL sólo localiza la página. Para abrirla, la persona elegida debe confirmar su propia passkey.';
+    const personLabel = document.createElement('label'); personLabel.className = 'sharing-field';
+    const personName = document.createElement('span'); personName.textContent = 'Persona';
+    const participant = document.createElement('select');
+    for (const person of people) {
+      const option = document.createElement('option'); option.value = person.id; option.textContent = person.name;
+      participant.append(option);
+    }
+    personLabel.append(personName, participant);
+    const send = document.createElement('button'); send.type = 'button'; send.textContent = 'Crear enlace privado';
+    send.disabled = people.length === 0;
+    const result = document.createElement('div'); result.className = 'sharing-invitation-result';
+    send.onclick = () => void (async () => {
+      send.disabled = true; send.textContent = 'Creando…'; result.replaceChildren();
+      try {
+        const made = await sharingRequest(`/pages/${encodeURIComponent(page)}/private-invitations`, 'POST', {
+          participant: participant.value, lifetimeMs: 604_800_000,
+        });
+        const url = new URL(String(made.url), location.origin).href;
+        const output = document.createElement('input'); output.readOnly = true; output.value = url;
+        const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copiar enlace';
+        copy.onclick = () => void navigator.clipboard.writeText(url).then(() => { copy.textContent = 'Copiado'; });
+        const warning = document.createElement('p'); warning.className = 'settings-note';
+        warning.textContent = 'Reenviar el enlace no concede acceso: el destinatario debe usar la passkey de la identidad elegida.';
+        result.append(output, copy, warning);
+      } catch (error) {
+        const failure = document.createElement('p'); failure.className = 'settings-note';
+        failure.textContent = error instanceof Error ? error.message : 'No se pudo crear el enlace.';
+        result.append(failure);
+      } finally { send.disabled = people.length === 0; send.textContent = 'Crear enlace privado'; }
+    })();
+    privateBox.append(privateHeading, explanation, personLabel, send, result);
+    body.append(privateBox);
   } catch (error) { status.textContent = error instanceof Error ? error.message : 'No se pudo leer la pertenencia.'; }
 }
 

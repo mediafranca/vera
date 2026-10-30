@@ -140,6 +140,9 @@ export interface PageView {
    */
   domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
   blocks: BlockView[];
+  /** La proyección pública comienza con el montaje editorial, pero cada lector
+   * puede apartarse localmente sin reescribir la decisión del dueño. */
+  foldPersistence?: 'participant' | 'local';
   /** Vista derivada de una página cuyo tipo es `concepto`. */
   concept?: {
     members: {

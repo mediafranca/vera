@@ -986,6 +986,35 @@ const stabiliseParticipantIdentity: Migration = {
   },
 };
 
+/** 26 — el dueño compone el plegado inicial sin convertirlo en contenido. */
+const addEditorialFolds: Migration = {
+  version: 26,
+  name: 'plegado editorial compartido',
+  apply(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS block_presentation_folds (
+      block_id TEXT PRIMARY KEY REFERENCES blocks (id) ON DELETE CASCADE,
+      set_by TEXT NOT NULL REFERENCES participants (id),
+      set_at INTEGER NOT NULL
+    ) STRICT`);
+  },
+};
+
+/** 27 — distingue enlaces portadores de enlaces ligados a una identidad. */
+const addIdentifiedInvitations: Migration = {
+  version: 27,
+  name: 'invitaciones ligadas a identidad',
+  apply(db) {
+    const invitations = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name='access_invitations'",
+    ).get() as { present: number } | undefined;
+    if (invitations === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(access_invitations)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'proof_mode')) {
+      db.exec("ALTER TABLE access_invitations ADD COLUMN proof_mode TEXT NOT NULL DEFAULT 'bearer' CHECK (proof_mode IN ('bearer','identified'))");
+    }
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1012,6 +1041,8 @@ export const MIGRATIONS: readonly Migration[] = [
   addInstanceProfiles,
   addSharedSpaceEntryPoint,
   stabiliseParticipantIdentity,
+  addEditorialFolds,
+  addIdentifiedInvitations,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

@@ -4,6 +4,7 @@ import type { Store } from '@vera/store';
 import { digestOf } from './credentials.ts';
 
 export type SharedPermission = 'read' | 'contribute' | 'edit';
+export type InvitationProofMode = 'bearer' | 'identified';
 export interface SharedSpaceCriterion {
   id: string; key: string; value: string; status: 'active' | 'removed';
 }
@@ -18,7 +19,8 @@ export interface SharedSpaceAdministration extends SharedSpace {
   effectivePages: { page: string; reasons: string[] }[];
   invitations: { id: string; participant: string | null; participantName: string | null;
     permissions: SharedPermission[]; intendedContact: string | null;
-    status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number }[];
+    proofMode: InvitationProofMode; status: 'pending' | 'redeemed' | 'revoked' | 'expired';
+    issuedAt: number; expiresAt: number }[];
   participants: { grant: string; participant: string; name: string; permissions: SharedPermission[];
     status: 'active' | 'revoked'; grantedAt: number; authenticators: number; activeSessions: number }[];
   proposals: SharedProposal[];
@@ -86,7 +88,8 @@ function hydrateSpace(store: Store, row: any): SharedSpace {
 
 export function sharedSpaceBySlug(store: Store, slug: string): SharedSpace | null {
   const row = store.db.prepare(`SELECT id, name, slug, selector_key, selector_value,
-    audience, status, entry_point, created_at FROM shared_spaces WHERE graph_id = ? AND slug = ?`)
+    criterion_combination, audience, status, entry_point, created_at
+    FROM shared_spaces WHERE graph_id = ? AND slug = ?`)
     .get(store.graphId, slug) as any;
   return row === undefined ? null : hydrateSpace(store, row);
 }
@@ -166,12 +169,13 @@ export function administrationOf(store: Store, space: SharedSpace,
   store.db.prepare(`UPDATE human_sessions SET status='expired'
     WHERE status='active' AND expires_at<=?`).run(now);
   const invitations = (store.db.prepare(`SELECT i.id,i.participant_id,p.name AS participant_name,
-      i.permissions,i.intended_contact,i.status,i.issued_at,i.expires_at
+      i.permissions,i.intended_contact,i.proof_mode,i.status,i.issued_at,i.expires_at
     FROM access_invitations i LEFT JOIN participants p ON p.id=i.participant_id
     WHERE i.space_id=? ORDER BY i.issued_at DESC`).all(space.id) as any[]).map((row) => ({
       id: row.id, participant: row.participant_id, participantName: row.participant_name,
       permissions: String(row.permissions).split(',') as SharedPermission[],
-      intendedContact: row.intended_contact, status: row.status, issuedAt: row.issued_at, expiresAt: row.expires_at,
+      intendedContact: row.intended_contact, proofMode: row.proof_mode, status: row.status,
+      issuedAt: row.issued_at, expiresAt: row.expires_at,
     }));
   const participants = (store.db.prepare(`SELECT g.id AS grant,g.participant_id,p.name,g.permissions,g.status,g.granted_at,
       (SELECT count(*) FROM human_authenticators a WHERE a.participant_id=g.participant_id AND a.status='active') AS authenticators,
@@ -278,7 +282,8 @@ export function revokeParticipantSessions(store: Store, space: SharedSpace, part
 
 export function inviteToSpace(store: Store, owner: string, space: SharedSpace, participant: string,
   permissions: SharedPermission[], intendedContact?: string,
-  lifetimeMs = DEFAULT_INVITATION_LIFETIME): { id: string; secret: string; expiresAt: number } {
+  lifetimeMs = DEFAULT_INVITATION_LIFETIME, proofMode: InvitationProofMode = 'bearer'):
+  { id: string; secret: string; expiresAt: number; proofMode: InvitationProofMode } {
   const unique = [...new Set(permissions)];
   if (unique.length === 0 || !unique.includes('read')) throw new Error('la invitación debe incluir read');
   if (!(INVITATION_LIFETIMES as readonly number[]).includes(lifetimeMs)) {
@@ -290,20 +295,27 @@ export function inviteToSpace(store: Store, owner: string, space: SharedSpace, p
     WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL`)
     .get(store.graphId, participant) as { name: string } | undefined;
   if (person === undefined) throw new Error('la invitación necesita una persona activa ya declarada');
+  if (proofMode === 'identified') {
+    const authenticator = store.db.prepare(`SELECT 1 FROM human_authenticators
+      WHERE participant_id=? AND status='active' LIMIT 1`).get(participant);
+    if (authenticator === undefined) {
+      throw new Error('el enlace privado exige que la persona ya tenga una passkey activa');
+    }
+  }
   const proof = secret('vera_inv_');
   const invitation = id('invitation');
   const now = Date.now();
   const expiresAt = now + lifetimeMs;
   store.db.prepare(`INSERT INTO access_invitations
-    (id, space_id, issued_by, participant_id, permissions, proof_digest, intended_contact, status, issued_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
+    (id, space_id, issued_by, participant_id, permissions, proof_digest, intended_contact, proof_mode, status, issued_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
     .run(invitation, space.id, owner, participant, unique.sort().join(','), digestOf(proof),
-      intendedContact ?? null, now, expiresAt);
-  return { id: invitation, secret: proof, expiresAt };
+      intendedContact ?? null, proofMode, now, expiresAt);
+  return { id: invitation, secret: proof, expiresAt, proofMode };
 }
 
 export function inspectInvitation(store: Store, invitation: string, proof: string): any | null {
-  const row = store.db.prepare(`SELECT i.id, i.status, i.permissions, i.expires_at,
+  const row = store.db.prepare(`SELECT i.id, i.status, i.permissions, i.proof_mode, i.expires_at,
     i.participant_id,p.name AS participant_name,s.name, s.slug
     FROM access_invitations i JOIN shared_spaces s ON s.id=i.space_id
     LEFT JOIN participants p ON p.id=i.participant_id
@@ -312,10 +324,12 @@ export function inspectInvitation(store: Store, invitation: string, proof: strin
   const status = row.status === 'pending' && row.expires_at <= Date.now() ? 'expired' : row.status;
   return { id: row.id, space: row.name, slug: row.slug,
     participant: row.participant_id, participantName: row.participant_name,
-    permissions: String(row.permissions).split(','), status, expiresAt: row.expires_at };
+    permissions: String(row.permissions).split(','), proofMode: row.proof_mode,
+    status, expiresAt: row.expires_at };
 }
 
-export function redeemInvitation(store: Store, invitation: string, proof: string): any {
+export function redeemInvitation(store: Store, invitation: string, proof: string,
+  authenticatedParticipant: string | null = null): any {
   const now = Date.now();
   const row = store.db.prepare(`SELECT i.*, s.graph_id, s.owner_id, s.name AS space_name, s.slug AS space_slug
     FROM access_invitations i JOIN shared_spaces s ON s.id=i.space_id
@@ -330,25 +344,33 @@ export function redeemInvitation(store: Store, invitation: string, proof: string
     WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL`)
     .get(store.graphId, participant);
   if (person === undefined) throw new Error('la identidad destinataria ya no está activa');
+  if (row.proof_mode === 'identified' && authenticatedParticipant !== participant) {
+    throw new Error(authenticatedParticipant === null
+      ? 'este enlace exige entrar con la passkey de la persona destinataria'
+      : 'la sesión activa no corresponde a la persona destinataria');
+  }
   const active = store.db.prepare(`SELECT 1 FROM access_grants
     WHERE space_id=? AND participant_id=? AND status='active'`).get(row.space_id, participant);
   if (active !== undefined) throw new Error('esta persona ya tiene acceso activo al espacio');
   const grant = id('grant');
-  const enrollment = id('enrollment');
-  const enrollmentSecret = secret('vera_enroll_');
+  const identified = row.proof_mode === 'identified';
+  const enrollment = identified ? null : id('enrollment');
+  const enrollmentSecret = identified ? null : secret('vera_enroll_');
   store.db.exec('BEGIN');
   try {
     store.db.prepare(`INSERT INTO access_grants
       (id,space_id,participant_id,permissions,status,granted_by,granted_at)
       VALUES (?,?,?,?,'active',?,?)`).run(grant, row.space_id, participant, row.permissions, row.owner_id, now);
-    store.db.prepare(`INSERT INTO authenticator_enrollments
-      (id,graph_id,participant_id,authorized_by,proof_digest,status,expires_at)
-      VALUES (?,?,?,?,?,'pending',?)`).run(enrollment, store.graphId, participant,
-        row.owner_id, digestOf(enrollmentSecret), now + 15 * 60 * 1000);
+    if (!identified) {
+      store.db.prepare(`INSERT INTO authenticator_enrollments
+        (id,graph_id,participant_id,authorized_by,proof_digest,status,expires_at)
+        VALUES (?,?,?,?,?,'pending',?)`).run(enrollment, store.graphId, participant,
+          row.owner_id, digestOf(enrollmentSecret!), now + 15 * 60 * 1000);
+    }
     store.db.prepare(`UPDATE access_invitations SET status='redeemed',redeemed_by=?,redeemed_at=? WHERE id=?`)
       .run(participant, now, invitation);
     store.db.exec('COMMIT');
   } catch (error) { store.db.exec('ROLLBACK'); throw error; }
-  return { participant, grant, enrollment, enrollmentSecret,
+  return { participant, grant, enrollment, enrollmentSecret, proofMode: row.proof_mode,
     space: row.space_name, spaceSlug: row.space_slug };
 }
