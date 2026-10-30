@@ -14,7 +14,8 @@ export interface CollectiveGovernanceView {
   roles: CollectiveRole[];
   people: Array<{ participant: string; name: string; roles: CollectiveRole[];
     authenticators: number; activeSessions: number }>;
-  invitations: Array<{ id: string; role: InvitableCollectiveRole; intendedContact: string | null;
+  invitations: Array<{ id: string; participant: string | null; participantName: string | null;
+    role: InvitableCollectiveRole; intendedContact: string | null;
     status: 'pending' | 'redeemed' | 'revoked' | 'expired'; issuedAt: number; expiresAt: number;
     redeemedBy: string | null }>;
 }
@@ -90,20 +91,26 @@ export function isCollectiveAdministrator(store: Store, participant: string): bo
   return collectiveRoles(store, participant).includes('administrator');
 }
 
-export function inviteToCollective(store: Store, issuedBy: string, role: InvitableCollectiveRole,
+export function inviteToCollective(store: Store, issuedBy: string, participant: string, role: InvitableCollectiveRole,
   intendedContact?: string): { id: string; secret: string; expiresAt: number } {
   if (instanceProfile(store) !== 'collective') throw new Error('esta instancia no es colectiva');
   if (!isCollectiveAdministrator(store, issuedBy)) throw new Error('sólo un administrador puede invitar');
   const instance = store.db.prepare('SELECT id FROM instances WHERE graph_id=?').get(store.graphId) as
     { id: string };
+  const person = store.db.prepare(`SELECT 1 FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    LEFT JOIN participant_reconciliations r ON r.duplicate_id=p.id
+    WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL`)
+    .get(store.graphId, participant);
+  if (person === undefined) throw new Error('la invitación necesita una persona activa ya declarada');
   const id = identifier('collective-invitation');
   const secret = opaque('vera_collective_inv_');
   const now = Date.now();
   const expiresAt = now + INVITATION_LIFETIME_MS;
   store.db.prepare(`INSERT INTO collective_invitations
-    (id,instance_id,issued_by,role,proof_digest,intended_contact,status,issued_at,expires_at)
-    VALUES (?,?,?,?,?,?,'pending',?,?)`)
-    .run(id, instance.id, issuedBy, role, digestOf(secret), intendedContact ?? null, now, expiresAt);
+    (id,instance_id,issued_by,participant_id,role,proof_digest,intended_contact,status,issued_at,expires_at)
+    VALUES (?,?,?,?,?,?,?,'pending',?,?)`)
+    .run(id, instance.id, issuedBy, participant, role, digestOf(secret), intendedContact ?? null, now, expiresAt);
   return { id, secret, expiresAt };
 }
 
@@ -125,10 +132,14 @@ export function collectiveGovernanceView(store: Store, participant: string): Col
       authenticators: Number(person.authenticators),
       activeSessions: Number(person.active_sessions),
     }));
-  const invitations = (store.db.prepare(`SELECT id,role,intended_contact,status,issued_at,expires_at,redeemed_by
-    FROM collective_invitations WHERE instance_id=(SELECT id FROM instances WHERE graph_id=?)
+  const invitations = (store.db.prepare(`SELECT i.id,i.participant_id,p.name AS participant_name,
+      i.role,i.intended_contact,i.status,i.issued_at,i.expires_at,i.redeemed_by
+    FROM collective_invitations i LEFT JOIN participants p ON p.id=i.participant_id
+    WHERE i.instance_id=(SELECT id FROM instances WHERE graph_id=?)
     ORDER BY issued_at DESC`).all(store.graphId) as Array<any>).map((invitation) => ({
       id: invitation.id,
+      participant: invitation.participant_id as string | null,
+      participantName: invitation.participant_name as string | null,
       role: invitation.role as InvitableCollectiveRole,
       intendedContact: invitation.intended_contact as string | null,
       status: invitation.status === 'pending' && invitation.expires_at <= Date.now()
@@ -172,15 +183,19 @@ export function revokeCollectiveRole(store: Store, participant: string, role: Co
 }
 
 export function inspectCollectiveInvitation(store: Store, id: string, proof: string):
-  { id: string; role: InvitableCollectiveRole; status: string; expiresAt: number } | null {
-  const row = store.db.prepare(`SELECT id,role,status,expires_at FROM collective_invitations
-    WHERE id=? AND proof_digest=?`).get(id, digestOf(proof)) as any;
+  { id: string; participant: string | null; participantName: string | null;
+    role: InvitableCollectiveRole; status: string; expiresAt: number } | null {
+  const row = store.db.prepare(`SELECT i.id,i.participant_id,p.name AS participant_name,
+    i.role,i.status,i.expires_at FROM collective_invitations i
+    LEFT JOIN participants p ON p.id=i.participant_id
+    WHERE i.id=? AND i.proof_digest=?`).get(id, digestOf(proof)) as any;
   if (row === undefined) return null;
   const status = row.status === 'pending' && row.expires_at <= Date.now() ? 'expired' : row.status;
-  return { id: row.id, role: row.role, status, expiresAt: row.expires_at };
+  return { id: row.id, participant: row.participant_id, participantName: row.participant_name,
+    role: row.role, status, expiresAt: row.expires_at };
 }
 
-export function redeemCollectiveInvitation(store: Store, id: string, proof: string, name: string): {
+export function redeemCollectiveInvitation(store: Store, id: string, proof: string): {
   participant: string; role: InvitableCollectiveRole; enrollment: string; enrollmentSecret: string;
 } {
   const now = Date.now();
@@ -188,15 +203,18 @@ export function redeemCollectiveInvitation(store: Store, id: string, proof: stri
     .get(id, digestOf(proof)) as any;
   if (row === undefined) throw new Error('la invitación no existe o el secreto no coincide');
   if (row.status !== 'pending' || row.expires_at <= now) throw new Error('la invitación venció o ya fue usada');
-  const participant = identifier('participant:person');
+  if (row.participant_id === null) throw new Error('esta invitación antigua no nombra una identidad y fue retirada');
+  const participant = String(row.participant_id);
+  const person = store.db.prepare(`SELECT 1 FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    LEFT JOIN participant_reconciliations r ON r.duplicate_id=p.id
+    WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL`)
+    .get(store.graphId, participant);
+  if (person === undefined) throw new Error('la identidad destinataria ya no está activa');
   const enrollment = identifier('enrollment');
   const enrollmentSecret = opaque('vera_enroll_');
   store.db.exec('BEGIN');
   try {
-    store.db.prepare("INSERT INTO participants (id,name,kind,status) VALUES (?,?,'human','active')")
-      .run(participant, name);
-    store.db.prepare("INSERT INTO memberships (graph_id,participant_id,status) VALUES (?,?,'active')")
-      .run(store.graphId, participant);
     store.db.prepare(`INSERT INTO instance_governance_grants
       (id,instance_id,participant_id,role,status,granted_by,granted_at)
       VALUES (?,?,?,?,'active',?,?)`)

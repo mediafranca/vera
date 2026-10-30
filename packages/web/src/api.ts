@@ -572,6 +572,11 @@ export interface ParticipantProfileView {
     kind: 'human' | 'agent';
     status: 'active' | 'suspended';
   };
+  aliases: {
+    historical: { id: string; name: string; kind: 'human' | 'agent'; status: 'active' | 'suspended' } | null;
+    reconciliation: { reason: string; reconciled_by: string; reconciled_at: number } | null;
+  }[];
+  nameHistory: { formerName: string; newName: string; changedBy: string; changedAt: number }[];
   semanticPages: { id: string; title: string }[];
   authorization: {
     authorizedBy: {
@@ -582,6 +587,14 @@ export interface ParticipantProfileView {
     }[];
     credentials: { active: number; revoked: number };
   } | null;
+}
+
+export interface ParticipantIdentityView {
+  id: string;
+  name: string;
+  kind: 'human' | 'agent';
+  status: 'active' | 'suspended';
+  canonical: string;
 }
 
 /** Por qué columna se está mirando una tabla, y en qué sentido. */
@@ -1384,6 +1397,8 @@ export const api = {
 
   participantProfile: (participant: string) =>
     json<ParticipantProfileView>(`/participants/${encodeURIComponent(participant)}`),
+
+  participants: () => json<{ participants: ParticipantIdentityView[] }>('/participants'),
 
   /**
    * Escritura destructiva o restauradora confirmada por el corpus.

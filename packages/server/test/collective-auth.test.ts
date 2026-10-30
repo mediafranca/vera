@@ -49,10 +49,15 @@ const sessionCookie = (participant: string): string => {
 };
 
 async function inviteAndRedeem(ownerCookie: string, role: string, name: string) {
-  const issued = await call('/collective-invitations', 'POST', { role }, ownerCookie);
+  const declared = await call('/participants', 'POST', { name, kind: 'human' }, ownerCookie);
+  assert.equal(declared.status, 201, JSON.stringify(declared.json));
+  const issued = await call('/collective-invitations', 'POST', {
+    participant: declared.json['participant'].id,
+    role,
+  }, ownerCookie);
   assert.equal(issued.status, 201, JSON.stringify(issued.json));
   const redeemed = await call(`/collective-invitations/${encodeURIComponent(issued.json['id'])}/redeem`,
-    'POST', { secret: issued.json['secret'], name });
+    'POST', { secret: issued.json['secret'] });
   assert.equal(redeemed.status, 201, JSON.stringify(redeemed.json));
   return {
     participant: redeemed.json['participant'] as string,
@@ -134,7 +139,11 @@ describe('autenticación de una instancia colectiva', () => {
 
   it('el administrador ve el gobierno y revoca invitaciones pendientes', async () => {
     const ownerCookie = sessionCookie(OWNER);
+    const declared = await call('/participants', 'POST', {
+      name: 'Persona pendiente', kind: 'human',
+    }, ownerCookie);
     const issued = await call('/collective-invitations', 'POST', {
+      participant: declared.json['participant'].id,
       role: 'reader', intendedContact: 'persona@example.net',
     }, ownerCookie);
     assert.equal(issued.status, 201);
