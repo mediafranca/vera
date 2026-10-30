@@ -19,6 +19,7 @@ describe('superficies especiales', () => {
     const rule = styles.match(/#vera-root\.special-surface\s*\{([^}]+)\}/)?.[1] ?? '';
     assert.match(rule, /grid-template-columns:\s*1fr/);
     assert.match(rule, /grid-template-areas:\s*'bar'\s*'text'/);
+    assert.match(styles, /#vera-root\.special-surface #view-switch \{ display: none; \}/);
   });
 
   it('administra los espacios compartidos en una ruta completa desde configuración', () => {

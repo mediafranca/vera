@@ -109,4 +109,10 @@ surface ParticipantIdentityProfile {
     @guarantee ActivityRemainsCanonical
         -- The profile links to the participant's filtered reading of `VERA:
         -- Registro de Actividad`; it does not copy operations into a second log.
+
+    @guarantee SystemSurfaceRemainsLegible
+        -- A profile is presented as a system surface rather than a corpus page:
+        -- it offers no map or document-view controls that cannot affect it, and
+        -- its identity, states and links remain legible under the active Vera
+        -- appearance and through keyboard navigation.
 }
