@@ -5102,9 +5102,62 @@ body.settings-open #text {
   padding: 0.2rem;
 }
 
+.settings-add-device {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.settings-add-device:hover,
+.settings-add-device:focus-visible { color: var(--accent); }
+.settings-add-device .icon { width: 1.05rem; height: 1.05rem; }
+
 .settings-close:hover {
   color: var(--accent);
 }
+
+.device-enrollment-dialog {
+  width: min(25rem, calc(100vw - 2rem));
+  box-sizing: border-box;
+  padding: 1.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.75rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+.device-enrollment-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+.device-enrollment-dialog h2 { margin: 0 0 0.65rem; font: 600 1.2rem/1.25 var(--font-ui); }
+.device-enrollment-dialog p { color: var(--text-dim); line-height: 1.45; }
+.device-enrollment-dialog img {
+  display: block;
+  width: min(17.5rem, 100%);
+  height: auto;
+  margin: 1rem auto;
+  border-radius: 0.35rem;
+  image-rendering: pixelated;
+}
+.device-enrollment-dialog img[hidden] { display: none; }
+.device-enrollment-dialog .device-enrollment-state { text-align: center; font-size: 0.78rem; }
+.device-enrollment-dialog .device-enrollment-state[data-bad='true'] { color: var(--warm); }
+.device-enrollment-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 0.55rem; margin-top: 1rem; }
+.device-enrollment-dialog button {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.45rem;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.device-enrollment-dialog button:disabled { cursor: wait; opacity: 0.55; }
 
 .settings-close .icon {
   width: 1.05rem;

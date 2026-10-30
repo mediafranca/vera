@@ -14,6 +14,7 @@ import { COMMANDS } from './autocomplete.ts';
 import { api, type CatalogAsset, type PageSummary, type PublicationSiteView } from './api.ts';
 import { icon } from './icons.ts';
 import { openMediaDetails } from './media-dialog.ts';
+import { toDataURL } from 'qrcode';
 import {
   DEFAULT_TOKENS,
   FONT_STACKS,
@@ -104,6 +105,7 @@ export function renderSettings(
   close.addEventListener('click', () => handlers.onClose());
   head.append(close);
   host.append(head);
+  void greetHuman(head, title, close);
 
   const tabs = document.createElement('nav');
   tabs.className = 'settings-tabs';
@@ -126,6 +128,79 @@ export function renderSettings(
   if (active === 'memoria') drawMemory(body, handlers);
   else if (active === 'teclado') drawKeyboard(body);
   else drawAppearance(body, tokens, handlers);
+}
+
+interface HumanIdentity {
+  participant: string;
+  name: string;
+  authenticators: number;
+  activeSessions: number;
+}
+
+/**
+ * La configuración recibe a la persona, no a la credencial que trajo consigo.
+ * La identidad sólo aparece cuando una sesión humana real la demuestra; el
+ * dueño local sin sesión conserva el encabezado administrativo habitual.
+ */
+async function greetHuman(head: HTMLElement, title: HTMLHeadingElement, close: HTMLButtonElement): Promise<void> {
+  const response = await fetch('/human-auth/me').catch(() => null);
+  if (response === null || !response.ok) return;
+  const identity = await response.json() as HumanIdentity;
+  const familiar = identity.name.trim().split(/\s+/)[0] || identity.name;
+  title.textContent = `Hola, ${familiar}`;
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'settings-add-device';
+  add.setAttribute('aria-label', 'Abrir Vera en otro dispositivo');
+  add.title = 'Abrir Vera en otro dispositivo';
+  add.innerHTML = icon('qrcode');
+  add.addEventListener('click', () => void openDeviceEnrollment(identity));
+  head.insertBefore(add, close);
+}
+
+async function openDeviceEnrollment(identity: HumanIdentity): Promise<void> {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'device-enrollment-dialog';
+  const heading = document.createElement('h2'); heading.textContent = 'Abrir Vera en otro dispositivo';
+  const explanation = document.createElement('p');
+  explanation.textContent = `Escanea este código con el dispositivo que quieres añadir a la identidad de ${identity.name}.`;
+  const state = document.createElement('p'); state.className = 'device-enrollment-state';
+  state.textContent = 'Creando un código de un solo uso…';
+  const qr = document.createElement('img'); qr.alt = ''; qr.hidden = true;
+  const actions = document.createElement('div'); actions.className = 'dialog-actions';
+  const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copiar enlace'; copy.disabled = true;
+  const close = document.createElement('button'); close.type = 'button'; close.textContent = 'Cerrar';
+  close.addEventListener('click', () => dialog.close());
+  actions.append(copy, close);
+  dialog.append(heading, explanation, qr, state, actions);
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+
+  try {
+    const response = await fetch('/human-auth/device-enrollments', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ returnTo: location.pathname }),
+    });
+    const made = await response.json() as { url?: string; expiresAt?: number; error?: string };
+    if (!response.ok || made.url === undefined || made.expiresAt === undefined) {
+      throw new Error(made.error ?? `HTTP ${response.status}`);
+    }
+    qr.src = await toDataURL(made.url, { width: 280, margin: 1,
+      color: { dark: '#111111', light: '#ffffff' }, errorCorrectionLevel: 'M' });
+    qr.hidden = false;
+    state.textContent = `Este código vence a las ${new Date(made.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+    copy.disabled = false;
+    copy.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(made.url!);
+      copy.textContent = 'Enlace copiado';
+      window.setTimeout(() => { copy.textContent = 'Copiar enlace'; }, 1200);
+    });
+  } catch (error) {
+    state.dataset['bad'] = 'true';
+    state.textContent = error instanceof Error ? error.message : 'No se pudo crear el código.';
+  }
 }
 
 type SharedPermission = 'read' | 'contribute' | 'edit';

@@ -111,6 +111,52 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.equal(passkey.status, 200, JSON.stringify(passkey.json));
   });
 
+  it('una sesión añade otro dispositivo a la misma persona sin repetir la invitación', async () => {
+    const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
+    const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
+      secret: issued.json['secret'], name: 'Arturo',
+    });
+    const cookie = (redeemed.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    const participantsBefore = Number((running.vera.store.db.prepare(
+      `SELECT count(*) AS count FROM participants WHERE kind='human'`,
+    ).get() as { count: number }).count);
+    const grantsBefore = Number((running.vera.store.db.prepare(
+      `SELECT count(*) AS count FROM access_grants`,
+    ).get() as { count: number }).count);
+
+    const made = await fetch(`${publicBase}/human-auth/device-enrollments`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie,
+        referer: `${publicBase}/s/doctorado` },
+      body: JSON.stringify({ returnTo: '/s/doctorado' }),
+    });
+    const body = await made.json() as any;
+    assert.equal(made.status, 201, JSON.stringify(body));
+    const url = new URL(body.url);
+    assert.equal(url.pathname.startsWith('/enroll-device/'), true);
+    assert.equal(url.searchParams.get('returnTo'), '/s/doctorado');
+    const secret = new URLSearchParams(url.hash.slice(1)).get('secret');
+    assert.match(secret ?? '', /^vera_enroll_/);
+
+    const row = running.vera.store.db.prepare(`SELECT participant_id,authorized_by,status
+      FROM authenticator_enrollments WHERE id=?`).get(decodeURIComponent(url.pathname.split('/').at(-1)!)) as any;
+    assert.equal(row.participant_id, redeemed.json['participant']);
+    assert.equal(row.authorized_by, redeemed.json['participant']);
+    assert.equal(row.status, 'pending');
+    assert.equal(Number((running.vera.store.db.prepare(
+      `SELECT count(*) AS count FROM participants WHERE kind='human'`,
+    ).get() as { count: number }).count), participantsBefore);
+    assert.equal(Number((running.vera.store.db.prepare(
+      `SELECT count(*) AS count FROM access_grants`,
+    ).get() as { count: number }).count), grantsBefore);
+
+    const me = await fetch(`${publicBase}/human-auth/me`, {
+      headers: { cookie, referer: `${publicBase}/s/doctorado` },
+    });
+    assert.equal(me.status, 200);
+    assert.equal((await me.json() as any).name, 'Arturo');
+  });
+
   it('un secreto incorrecto no revela siquiera el nombre del espacio', async () => {
     const issued = await call('/shared-spaces/doctorado/invitations', 'POST', { permissions: ['read'] });
     const invitation = issued.json['id'] as string;

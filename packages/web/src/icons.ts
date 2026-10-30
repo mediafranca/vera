@@ -28,6 +28,12 @@ const SHAPES = {
     '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>' +
     '<rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
 
+  // Tabler `qrcode`: continuidad de una identidad entre dispositivos, no una
+  // credencial que la persona deba aprender a custodiar o localizar.
+  qrcode:
+    '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/>' +
+    '<rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"/>',
+
   maximize:
     '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
 
