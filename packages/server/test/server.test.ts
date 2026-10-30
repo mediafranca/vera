@@ -612,11 +612,11 @@ describe('GET /activity', () => {
     assert.deepEqual(after.activity[0]?.page, { id: page, title: 'Página que vuelve' });
 
     const mine = (await get(`/activity?participant=${encodeURIComponent(OWNER)}`)) as {
-      participant: { id: string; name: string; kind: string } | null;
+      participant: { id: string; name: string; kind: string; status: string } | null;
       activity: { participant: string; participantKind: string | null; block: string | null }[];
       deletedPages: { participant: string }[];
     };
-    assert.deepEqual(mine.participant, { id: OWNER, name: 'Dueña', kind: 'human' });
+    assert.deepEqual(mine.participant, { id: OWNER, name: 'Dueña', kind: 'human', status: 'active' });
     assert.ok(mine.activity.length > 0);
     assert.ok(mine.activity.every((one) => one.participant === OWNER));
     assert.ok(mine.activity.every((one) => one.participantKind === 'human'));

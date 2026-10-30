@@ -102,6 +102,7 @@ import {
 import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
 import { wirePullToRefresh } from './pull-to-refresh.ts';
+import { participantProfileTitle, renderParticipantProfile } from './participant-profile.ts';
 
 const PHONE = 640;
 
@@ -1740,6 +1741,13 @@ async function applyRoute(): Promise<void> {
     await openFilesAdministration();
     return;
   }
+  const participantRoute = /^\/participantes\/([^/]+)$/.exec(window.location.pathname);
+  if (participantRoute !== null) {
+    let participant = participantRoute[1] ?? '';
+    try { participant = decodeURIComponent(participant); } catch { /* conserva la dirección literal */ }
+    await openParticipantProfile(participant);
+    return;
+  }
   const here = new URL(window.location.href);
   let route = parseRoute(here);
   if (route.search !== null) {
@@ -1810,6 +1818,36 @@ async function openFilesAdministration(push = false): Promise<void> {
   $('#vera-root').classList.add('special-surface');
   closeSettings();
   await renderFilesAdministration($('#text'));
+}
+
+async function openParticipantProfile(participant: string): Promise<void> {
+  opening += 1;
+  pageDelivery?.abort();
+  pageDelivery = null;
+  graphDelivery?.abort();
+  workspace.activePage = null;
+  workspace.focusRoot = null;
+  openView = null;
+  replica = null;
+  closeSettings();
+  $('#vera-root').classList.add('special-surface');
+  const host = $('#text');
+  const loading = document.createElement('p');
+  loading.className = 'participant-profile-loading';
+  loading.textContent = 'leyendo la identidad…';
+  host.replaceChildren(loading);
+
+  try {
+    const view = await api.participantProfile(participant);
+    nameWindow(participantProfileTitle(view.participant.name));
+    host.replaceChildren(renderParticipantProfile(view));
+  } catch (error) {
+    nameWindow('Participante');
+    const failure = document.createElement('p');
+    failure.className = 'participant-profile-error';
+    failure.textContent = error instanceof Error ? error.message : 'No se pudo leer esta identidad.';
+    host.replaceChildren(failure);
+  }
 }
 
 /** Abre la proyección canónica de actividad, descubierta por su clase y no por su título. */
