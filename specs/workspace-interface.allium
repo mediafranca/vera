@@ -125,9 +125,10 @@ contract NativeMarkdownEditing {
         -- of the Markdown renderer.
 
     @invariant FormattingIsOneEditingTool
-        -- While a Markdown block is being edited, its bullet becomes a tools
-        -- control and the formatting bar begins collapsed. Activating that
-        -- control reveals one bar above the source of that same block. Its
+        -- While a Markdown block is being edited, a tools control appears above
+        -- its upper-right edge and the formatting bar begins collapsed. Activating
+        -- that control reveals one bar on the same horizon, extending leftward
+        -- above the source of that same block. Its
         -- observable order is the split heading control;
         -- bold, italic, strikethrough, underline, superscript and subscript;
         -- quotation and code; then Vera internal link and external web link. H1
@@ -166,23 +167,23 @@ contract NativeMarkdownEditing {
         -- only through their explicit block command or recognised attachment.
 
     @invariant FormattingStaysWithTheEditedBlock
-        -- While collapsed, the formatting tool occupies only the bullet's usual
-        -- place. While a block taller than the viewport is edited, that tool
+        -- While collapsed, the formatting tool occupies the upper-right end of
+        -- the bar's horizon. It has the same height and corner geometry as the
+        -- bar's actions; opening the bar reveals it from the control toward the
+        -- left without moving the source. While a block taller than the viewport is edited, that tool
         -- remains at the top of the visible text pane so the bar can always be
-        -- opened or closed. When opened, the bar takes its own row above the
-        -- source inside the edited block and stays horizontally aligned with that
-        -- editor. The bar travels in the ordinary flow with the beginning of the
-        -- source instead of floating over text; scrolling down leaves it above,
-        -- and returning to the beginning reveals it before the first line. Tool
-        -- and bar are bounded by the edited block and never enter a neighbour.
-        -- The collapsed tool is a circular control aligned exactly with the
-        -- centre of the block bullet and large enough to remain legible without
-        -- shifting the bullet, fold control or source from their ordinary axes.
+        -- opened or closed. When opened, the bar occupies a clear band above the
+        -- source inside the edited block, stays aligned with that editor and never
+        -- covers its first line. Scrolling a tall source keeps its controls
+        -- reachable. Tool and bar are bounded by the edited block and never enter
+        -- a neighbour.
+        -- The collapsed tool never replaces or shifts the bullet, fold control
+        -- or source from their ordinary axes.
 
     @invariant FormattingNeverCoversWhatIsBeingWritten
         -- The bar never covers the source, caret, current selection or an
-        -- autocomplete result. It occupies its own row before the source rather
-        -- than asking the participant to read or write underneath it.
+        -- autocomplete result. Its complete horizon stays before the source
+        -- rather than asking the participant to read or write underneath it.
 }
 
 -- A block has one primary way of being read, but no stored type field is needed.

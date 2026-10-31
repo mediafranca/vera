@@ -759,9 +759,6 @@ button { touch-action: manipulation; }
    * traslación la resta después. Por eso, al desplazarse, su borde visible queda
    * a 0.65rem del viewport aunque la barra envuelva en dos filas.
    */
-  position: sticky;
-  top: calc(0.65rem + var(--format-bar-measured-height) + var(--format-bar-gap));
-  z-index: 90;
   display: flex;
   flex-wrap: wrap;
   box-sizing: border-box;
@@ -775,10 +772,10 @@ button { touch-action: manipulation; }
    * hacia la derecha. La barra ocupa como máximo su ancho natural y sus botones
    * ceden dentro de ella, de modo que el documento nunca gana otro eje.
    */
-  width: min(calc(100% - 1rem), 27.2rem);
+  flex: 0 1 27.2rem;
+  width: min(calc(100% - 2.6rem), 27.2rem);
   min-height: var(--format-bar-height);
   margin: 0;
-  transform: translateY(calc(0px - var(--format-bar-measured-height) - var(--format-bar-gap)));
   overflow: visible;
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 5px;
@@ -786,6 +783,32 @@ button { touch-action: manipulation; }
   box-shadow: 0 0.3rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
   scrollbar-width: none;
   pointer-events: auto;
+}
+
+.format-tools-row {
+  --format-bar-height: 2.15rem;
+  --format-bar-gap: 0.45rem;
+  --format-bar-measured-height: var(--format-bar-height);
+  position: sticky;
+  top: calc(0.65rem + var(--format-bar-measured-height) + var(--format-bar-gap));
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--format-bar-gap);
+  width: 100%;
+  transform: translateY(calc(0px - var(--format-bar-measured-height) - var(--format-bar-gap)));
+  pointer-events: none;
+}
+
+.format-bar:not([hidden]) {
+  transform-origin: right center;
+  animation: format-tools-slide-in 150ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+@keyframes format-tools-slide-in {
+  from { opacity: 0; transform: translateX(.65rem) scaleX(.96); }
+  to { opacity: 1; transform: translateX(0) scaleX(1); }
 }
 
 .format-bar-anchor {
@@ -6993,32 +7016,27 @@ body.settings-open #text {
 }
 
 /*
- * Al escribir aparece una herramienta fuera del esquema. No sustituye la
- * viñeta: ésta conserva su menú, su procedencia y su función de arrastre. El
- * margen izquierdo negativo y su compensación derecha hacen sitio al botón sin
- * desplazar el chevron, la viñeta ni el texto; también en el primer nivel queda
- * más afuera que todos ellos. El icono va en negativo para acompañar los temas.
+ * La herramienta remata la barra por su derecha. No sustituye la viñeta: ésta
+ * conserva su menú, su procedencia y su función de arrastre. Cerrada ocupa el
+ * mismo cuadrado que una acción de la barra; abierta permanece en ese horizonte
+ * mientras las herramientas se despliegan hacia la izquierda.
  */
 .format-tools-trigger {
-  position: sticky;
-  top: 0.65rem;
-  z-index: 91;
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  align-self: flex-start;
-  flex: none;
-  width: 1.65rem;
-  height: 1.65rem;
-  margin-top: calc(var(--thread-y) - 0.825rem);
-  margin-left: -2.5rem;
-  margin-right: 0.55rem;
+  flex: 0 0 var(--format-bar-height);
+  width: var(--format-bar-height);
+  height: var(--format-bar-height);
+  margin: 0;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--text) 24%, var(--accent));
-  border-radius: 50%;
+  border-radius: 5px;
   color: var(--bg);
   background: var(--accent);
-  box-shadow: 0 0.18rem 0.42rem color-mix(in srgb, var(--text) 22%, transparent);
-  transform: translateX(var(--format-tools-shift, 0px));
+  box-shadow: 0 0.3rem 1rem color-mix(in srgb, var(--text) 14%, transparent);
+  pointer-events: auto;
   cursor: pointer;
   font-size: 1rem;
 }
@@ -11666,11 +11684,22 @@ html[data-working-slow='true']::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .format-bar:not([hidden]) { animation: none; }
   .service-status-indicator[data-state='checking'] .service-status-mark .icon,
   .service-status-indicator[data-state='unknown'] .service-status-mark .icon { animation: none; }
 }
 
 @media (max-width: 640px) {
+  .format-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    touch-action: pan-x;
+  }
+
+  .format-action { flex: 0 0 2.35rem; }
+
   .service-status-viewer { padding: .8rem; }
   .service-status-facts { grid-template-columns: 1fr; gap: .05rem; }
   .service-status-facts dd + dt { margin-top: .35rem; }
