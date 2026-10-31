@@ -11,9 +11,21 @@
 
 import { BINDINGS, GESTURES, TRIGGERS } from './bindings.ts';
 import { COMMANDS } from './autocomplete.ts';
-import { api, type CatalogAsset, type PageSummary, type PublicationSiteView } from './api.ts';
+import {
+  api,
+  type CatalogAsset,
+  type ObservedServiceStatus,
+  type PageSummary,
+  type PublicationSiteView,
+} from './api.ts';
 import { icon } from './icons.ts';
 import { openMediaDetails } from './media-dialog.ts';
+import {
+  createServiceStatusIndicator,
+  createServiceStatusViewer,
+  type ServiceStatus,
+  type ServiceStatusViewer,
+} from './service-status.ts';
 import { toDataURL } from 'qrcode';
 import {
   clearTokenImportBackup,
@@ -119,6 +131,89 @@ const GROUPS: { id: string; label: string; note?: string }[] = [
   { id: 'autocompletado', label: 'Autocompletado', note: 'Con la lista de sugerencias abierta.' },
 ];
 
+const waitingService = (id: ObservedServiceStatus['id']): ServiceStatus => ({
+  service: id === 'mcp' ? 'MCP' : 'Conecta',
+  condition: 'checking',
+});
+
+const visibleService = (status: ObservedServiceStatus): ServiceStatus => ({
+  service: status.service,
+  condition: status.condition,
+  detail: status.detail,
+  checkedAt: new Date(status.checkedAt),
+  ...(status.latencyMs === null ? {} : { latencyMs: status.latencyMs }),
+});
+
+/** Las dos señales de servicio que Herbert situó en la barra del Centro. */
+function serviceStatusBar(): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'settings-service-status';
+  bar.setAttribute('aria-label', 'Estado de los servicios de Vera');
+  const slots = new Map<ObservedServiceStatus['id'], {
+    indicator: HTMLElement;
+    viewer: ServiceStatusViewer;
+  }>();
+  let refresh = async (): Promise<void> => undefined;
+
+  for (const id of ['mcp', 'conecta'] as const) {
+    const waiting = waitingService(id);
+    const service = document.createElement('details');
+    service.className = 'settings-service';
+    const summary = document.createElement('summary');
+    summary.className = 'settings-service-summary';
+    const name = document.createElement('span');
+    name.className = 'settings-service-name';
+    name.textContent = waiting.service;
+    const indicator = document.createElement('span');
+    indicator.className = 'settings-service-indicator';
+    indicator.append(createServiceStatusIndicator(waiting));
+    summary.append(name, indicator);
+    const viewer = createServiceStatusViewer(waiting, { onCheck: () => refresh() });
+    service.append(summary, viewer.element);
+    service.addEventListener('toggle', () => {
+      if (!service.open) return;
+      for (const other of bar.querySelectorAll<HTMLDetailsElement>('.settings-service[open]')) {
+        if (other !== service) other.open = false;
+      }
+    });
+    bar.append(service);
+    slots.set(id, { indicator, viewer });
+  }
+
+  const show = (status: ObservedServiceStatus): void => {
+    const slot = slots.get(status.id);
+    if (slot === undefined) return;
+    const visible = visibleService(status);
+    slot.indicator.replaceChildren(createServiceStatusIndicator(visible));
+    slot.viewer.update(visible);
+  };
+
+  refresh = async (): Promise<void> => {
+    for (const id of ['mcp', 'conecta'] as const) {
+      const slot = slots.get(id)!;
+      const waiting = waitingService(id);
+      slot.indicator.replaceChildren(createServiceStatusIndicator(waiting));
+      slot.viewer.update(waiting);
+    }
+    try {
+      for (const status of await api.serviceStatus()) show(status);
+    } catch {
+      for (const id of ['mcp', 'conecta'] as const) {
+        show({
+          id,
+          service: id === 'mcp' ? 'MCP' : 'Conecta',
+          condition: 'unknown',
+          detail: 'No se pudo completar la comprobación desde esta Vera.',
+          checkedAt: Date.now(),
+          latencyMs: null,
+        });
+      }
+    }
+  };
+  void refresh();
+  return bar;
+}
+
 /** Un nombre legible para un token, sin obligar a leer la variable CSS. */
 const LABELS: Record<string, string> = {
   '--bg': 'fondo',
@@ -156,6 +251,8 @@ export function renderSettings(
   const title = document.createElement('h2');
   title.textContent = 'Centro de Vera';
   head.append(title);
+
+  head.append(serviceStatusBar());
 
   const close = document.createElement('button');
   close.type = 'button';
