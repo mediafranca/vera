@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import type { OntologyView } from '../src/api.ts';
-import { governanceDiagram, governanceNodeSize } from '../src/ontology-governance-map.ts';
+import {
+  governanceDiagram,
+  governanceNodeSize,
+  reflectOntologyChange,
+} from '../src/ontology-governance-map.ts';
 
 const ontology: OntologyView = {
   objects: [
@@ -27,6 +31,8 @@ const ontology: OntologyView = {
 };
 
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
+const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+const table = readFileSync(new URL('../src/table.ts', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 const map = readFileSync(new URL('../src/ontology-governance-map.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
@@ -112,11 +118,26 @@ describe('gobierno ontológico facetado', () => {
   it('reemplaza sólo el mapa ordinario mientras las tablas conservan sus operaciones', () => {
     assert.match(main, /governingKind\(openView\?\.properties/);
     assert.match(main, /diagram\.renderOntologyGovernanceMap\([\s\S]*?container,[\s\S]*?ontology,[\s\S]*?governing/);
-    assert.match(main, /api\.submitCanonical\(change, 'drawn'\)/);
+    assert.match(main, /api\.submit\(change, 'drawn'\)/);
+    assert.match(main, /vera:ontology-local-change/);
     assert.match(governing, /vera:ontology-focus/);
     for (const change of ['edit_block', 'set_property', 'remove_property']) {
       assert.match(governing, new RegExp(change));
     }
+  });
+
+  it('refleja una edición local en tabla y mapa sin reconstruir la página', () => {
+    const local = structuredClone(ontology);
+    assert.equal(reflectOntologyChange(local, {
+      kind: 'set_property', block: 'person', propertyKey: 'propiedades', propertyValue: 'nombre, equipo',
+    }), true);
+    assert.deepEqual(local.objects[0]?.properties, ['nombre', 'equipo']);
+    assert.match(table, /cell\.focus\(\{ preventScroll: true \}\)/);
+    assert.match(table, /current = \[\.\.\.next\][\s\S]*?draw\(\)[\s\S]*?focusCurrent/);
+    assert.doesNotMatch(
+      outliner.slice(outliner.indexOf('void renderGoverning('), outliner.indexOf('const renderProcess')),
+      /callbacks\.onReload/,
+    );
   });
 
   it('pone el mapa a la izquierda y mantiene completa la ruta no visual', () => {

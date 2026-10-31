@@ -148,6 +148,19 @@ export interface EditableCell {
   label: string;
   /** Qué se lee cuando no hay nada dicho. Se dibuja atenuado. */
   placeholder: string;
+  /**
+   * Cómo se refleja localmente lo editado cuando la lectura compone más de un
+   * dato. Por ejemplo, editar `campo` escribe «enlace» mientras la celda puede
+   * leer «enlace · varios». Sin esta proyección, guardar obligaría a volver a
+   * pedir la página para saber qué enseñar, justo lo que una edición local no
+   * debe hacer.
+   */
+  reflects?: (next: string) => string;
+}
+
+export interface EditableCellController {
+  /** Refleja una edición aceptada por la otra notación del mismo objeto. */
+  reflect(next: string): void;
 }
 
 /**
@@ -163,26 +176,60 @@ export function editableCell(
   said: EditableCell,
   commit: (next: string) => Promise<boolean>,
   choices?: readonly Choice[],
-): void {
-  const held = said.edits ?? said.shows;
+): EditableCellController {
+  let shown = said.shows;
+  let edited = said.edits ?? said.shows;
 
   const draw = (): void => {
     cell.innerHTML = '';
-    cell.classList.toggle('governing-empty', said.shows === '');
-    cell.textContent = said.shows === '' ? said.placeholder : said.shows;
+    cell.classList.toggle('governing-empty', shown === '');
+    cell.textContent = shown === '' ? said.placeholder : shown;
+    cell.title = edited === '' ? `escribir ${said.label}` : `corregir ${said.label}`;
   };
   draw();
 
   cell.tabIndex = 0;
-  cell.title = held === '' ? `escribir ${said.label}` : `corregir ${said.label}`;
+  const save = async (next: string): Promise<boolean> => {
+    const beforeShown = shown;
+    const beforeEdited = edited;
+
+    /*
+     * El dominio local ya recibió el gesto al invocar `commit`. La celda sigue
+     * esa misma decisión en el acto y conserva el foco; el viaje canónico queda
+     * detrás. Un acuse de red no tiene significado nuevo y por tanto no vuelve
+     * a dibujar la página. Ver offline-reconciliation.allium:
+     * RenderingFollowsChangedMeaning.
+     */
+    const pending = commit(next);
+    edited = next;
+    shown = said.reflects?.(next) ?? next;
+    draw();
+    cell.focus({ preventScroll: true });
+
+    const applied = await pending;
+    if (applied) return true;
+    shown = beforeShown;
+    edited = beforeEdited;
+    draw();
+    cell.focus({ preventScroll: true });
+    return false;
+  };
+
   cell.addEventListener('click', () => {
     if (cell.querySelector('input') !== null) return;
     if (choices === undefined) {
-      editInPlace(cell, held, said.label, commit);
+      editInPlace(cell, edited, said.label, save);
       return;
     }
-    completeInPlace(cell, said.label, commit, { initial: held, choices, onCancel: draw });
+    completeInPlace(cell, said.label, save, { initial: edited, choices, onCancel: draw });
   });
+  return {
+    reflect(next: string): void {
+      edited = next;
+      shown = said.reflects?.(next) ?? next;
+      draw();
+    },
+  };
 }
 
 /**
@@ -198,11 +245,37 @@ export function chipsCell(
   said: { offered: readonly Choice[]; label: string; add: string },
   commit: (next: readonly string[]) => Promise<boolean>,
 ): void {
+  let current = [...held];
+
+  const focusCurrent = (added?: string): void => {
+    const controls = [...cell.querySelectorAll<HTMLButtonElement>('.governing-chip-drop')];
+    const chip = added === undefined
+      ? controls.at(-1)
+      : controls.find((button) => button.getAttribute('aria-label') === `quitar ${added}`);
+    (chip ?? cell.querySelector<HTMLButtonElement>('.governing-chip-add'))
+      ?.focus({ preventScroll: true });
+  };
+
+  const save = async (next: readonly string[], added?: string): Promise<boolean> => {
+    const before = current;
+    const pending = commit(next);
+    current = [...next];
+    draw();
+    focusCurrent(added);
+
+    const applied = await pending;
+    if (applied) return true;
+    current = before;
+    draw();
+    focusCurrent();
+    return false;
+  };
+
   const draw = (): void => {
     cell.innerHTML = '';
-    cell.classList.toggle('governing-empty', held.length === 0);
+    cell.classList.toggle('governing-empty', current.length === 0);
 
-    for (const one of held) {
+    for (const one of current) {
       const chip = document.createElement('span');
       chip.className = 'governing-chip';
       const name = document.createElement('span');
@@ -215,7 +288,7 @@ export function chipsCell(
       drop.title = `quitar ${one}`;
       drop.addEventListener('click', (event) => {
         event.stopPropagation();
-        void commit(held.filter((other) => other !== one));
+        void save(current.filter((other) => other !== one));
       });
       chip.append(name, drop);
       cell.append(chip);
@@ -224,17 +297,17 @@ export function chipsCell(
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'governing-chip-add';
-    add.textContent = held.length === 0 ? said.add : '+';
+    add.textContent = current.length === 0 ? said.add : '+';
     add.setAttribute('aria-label', said.add);
     add.addEventListener('click', (event) => {
       event.stopPropagation();
       const slot = document.createElement('span');
       slot.className = 'governing-chip-slot';
       add.before(slot);
-      completeInPlace(slot, said.label, async (next) => commit([...held, next]), {
+      completeInPlace(slot, said.label, async (next) => save([...current, next], next), {
         // Lo que ya está no se vuelve a ofrecer: añadirlo dos veces no declara
         // nada nuevo y deja la lista con un duplicado.
-        choices: said.offered.filter((one) => !held.includes(one.value)),
+        choices: said.offered.filter((one) => !current.includes(one.value)),
         onCancel: () => slot.remove(),
       });
     });

@@ -2710,12 +2710,16 @@ async function drawGraph(reach = 1): Promise<void> {
         ontology,
         governing,
         async (change) => {
-          const result = await api.submitCanonical(change, 'drawn');
+          const result = await api.submit(change, 'drawn');
           if (result.status === 'rejected') {
             notice(`No se pudo cambiar la ontología: ${result.reason}`);
             return false;
           }
-          if (workspace.activePage !== null) await openPage(workspace.activePage);
+          const notation = document.querySelector('.governing-tables') ?? document;
+          notation.dispatchEvent(new CustomEvent('vera:ontology-local-change', {
+            bubbles: true,
+            detail: { change },
+          }));
           return true;
         },
       );

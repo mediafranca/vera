@@ -5301,10 +5301,22 @@ export function renderOutliner(
     list.hidden = true;
     void renderGoverning(
       governing,
-      (change) => submitQuietly(change).then((applied) => {
-        if (applied) callbacks.onReload(null);
+      async (change) => {
+        /*
+         * La tabla ya proyectó el gesto en su celda y `api.submit` lo aplicó a
+         * la réplica local. Reconstruir la página aquí consultaba `/ontology`
+         * antes de que la bandeja terminara de sincronizar: reaparecía el valor
+         * anterior, saltaba el scroll y se perdía el foco. El mismo cambio
+         * despierta al mapa; el transporte canónico continúa por detrás.
+         */
+        const applied = await submitQuietly(change);
+        if (applied) {
+          document.dispatchEvent(new CustomEvent('vera:ontology-local-change', {
+            detail: { change },
+          }));
+        }
         return applied;
-      }),
+      },
       (page) => callbacks.onOpen(page, 'followed_reference'),
     ).then((made) => {
       list.hidden = false;
