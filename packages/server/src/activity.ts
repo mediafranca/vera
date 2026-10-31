@@ -13,6 +13,7 @@ export interface ActivityItem {
   participant: string;
   participantKind: 'human' | 'agent' | null;
   channel: string;
+  originId: string;
   kind: Change['kind'];
   subjectId: string;
   page: { id: string; title: string } | null;
@@ -77,8 +78,20 @@ const excerptOf = (content: string | null): string | null => {
   return compact.length <= 180 ? compact : `${compact.slice(0, 177).trimEnd()}…`;
 };
 
-const summaryOf = (change: Change, title: string | null): string => {
+const summaryOf = (change: Change, title: string | null, originId: string): string => {
   const page = title === null ? 'la página' : `«${title}»`;
+  if (change.kind === 'edit_block' && originId.startsWith('media-remove:')) {
+    return `retiró un archivo; Vera quitó una referencia de ${page}`;
+  }
+  if (change.kind === 'edit_block' && originId.startsWith('media-rename:')) {
+    return `renombró un archivo; Vera actualizó una referencia en ${page}`;
+  }
+  if (change.kind === 'edit_block' && originId.startsWith('repair-media-collateral:')) {
+    return `rectificó una reescritura accidental del almacén en ${page}`;
+  }
+  if (change.kind === 'edit_block' && originId.startsWith('media:')) {
+    return `inició una acción del almacén; Vera reescribió un bloque en ${page}`;
+  }
   switch (change.kind) {
     case 'create_page': return `creó ${page}`;
     case 'rename_page': return `renombró ${page}`;
@@ -268,6 +281,7 @@ export function activityOf(graph: VeraGraph): {
       participant: operation.submission.submittedBy,
       participantKind: author?.kind ?? null,
       channel: operation.submission.channel,
+      originId: operation.originId,
       kind: change.kind,
       subjectId: operation.subjectId,
       page: pageId === null ? null : { id: pageId, title: title ?? pageId },
@@ -277,7 +291,7 @@ export function activityOf(graph: VeraGraph): {
           : 'block' in change && typeof change.block === 'string'
             ? change.block
             : null,
-      summary: summaryOf(change, title),
+      summary: summaryOf(change, title, operation.originId),
       excerpt,
     });
   }

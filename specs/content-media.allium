@@ -43,6 +43,18 @@ contract NativeMediaSupport {
         -- embeddings in the same accepted action. A page never keeps a broken
         -- reference to a file that the catalogue says no longer exists.
 
+    @invariant UnrelatedContentIsByteStable
+        -- Renaming or deleting a managed file may rewrite only content that
+        -- actually refers to that resource. Every unrelated block returns byte
+        -- for byte unchanged, including its leading, trailing and repeated
+        -- whitespace.
+
+    @invariant AdministrativeTransformationIsNotHumanAuthorship
+        -- The activity register distinguishes the participant who requested a
+        -- file action from Vera's automatic rewriting of its embeddings. It
+        -- never presents an administrative transformation as ordinary prose
+        -- authored by that participant.
+
     @invariant NativePresentation
         -- Every declared media variant can be presented within a Vera page
         -- without requiring the reader to export it to another application.

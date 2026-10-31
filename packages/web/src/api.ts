@@ -539,6 +539,7 @@ export interface ActivityItem {
   participant: string;
   participantKind: 'human' | 'agent' | null;
   channel: string;
+  originId: string;
   kind: Change['kind'];
   subjectId: string;
   page: { id: string; title: string } | null;
