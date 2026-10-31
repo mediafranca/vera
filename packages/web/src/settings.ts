@@ -168,12 +168,12 @@ export function renderSettings(
   void greetHuman(head, title, close);
 
   const tabs = document.createElement('nav');
-  tabs.className = 'settings-tabs';
+  tabs.className = 'settings-pills';
   tabs.setAttribute('aria-label', 'Secciones del Centro de Vera');
   for (const section of SECTIONS) {
     const tab = document.createElement('button');
     tab.type = 'button';
-    tab.className = section.id === active ? 'settings-tab selected' : 'settings-tab';
+    tab.className = section.id === active ? 'settings-pill selected' : 'settings-pill';
     tab.textContent = section.label;
     tab.setAttribute('aria-pressed', String(section.id === active));
     tab.addEventListener('click', () => {

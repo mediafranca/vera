@@ -60,6 +60,15 @@ describe('arquitectura de configuración', () => {
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.settings-destinations\s*\{\s*grid-template-columns:\s*1fr/);
   });
 
+  it('presenta las secciones como nav-pills que conservan sentido al envolver', () => {
+    assert.match(settings, /tabs\.className = 'settings-pills'/);
+    assert.match(settings, /'settings-pill selected' : 'settings-pill'/);
+    assert.match(main, /querySelectorAll\('\.settings-pill'\)/);
+    assert.match(styles, /\.settings-pills\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+    assert.match(styles, /\.settings-pill\s*\{[\s\S]*?border-radius:\s*999px/);
+    assert.match(styles, /\.settings-pill\.selected\s*\{[\s\S]*?background:\s*var\(--accent\)/);
+  });
+
   it('deja respaldo e identidad de instancia en Sistema', () => {
     assert.match(settings, /function drawSystem[\s\S]*'Esta Vera'[\s\S]*drawPortability/);
     assert.match(settings, /settings-backup/);

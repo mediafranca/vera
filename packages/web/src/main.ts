@@ -3915,7 +3915,7 @@ function wireTheme(): void {
     });
     document.body.classList.add('settings-open');
     // Recordar la sección entre aperturas: se vuelve a la misma que se dejó.
-    panel.querySelectorAll('.settings-tab').forEach((tab) => {
+    panel.querySelectorAll('.settings-pill').forEach((tab) => {
       if (isAnybody() && tab.textContent !== 'Apariencia') {
         (tab as HTMLElement).hidden = true;
       }
