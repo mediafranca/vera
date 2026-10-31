@@ -6,7 +6,7 @@
 // significado, los bloques y las operaciones.
 
 import ELK from 'elkjs/lib/elk.bundled.js';
-import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk-api.js';
+import type { ElkNode } from 'elkjs/lib/elk-api.js';
 import type { OntologyView } from './api.ts';
 import type { Change } from './api.ts';
 import type { GoverningKind } from './governing-table.ts';
@@ -127,19 +127,42 @@ export function governanceDiagram(said: OntologyView, facet: GoverningKind): Gov
 
 const elk = new ELK();
 
-function nodeSize(node: GovernanceNode): { width: number; height: number } {
-  const longest = Math.max(node.title.length, ...node.details.map((one) => one.length));
-  return {
-    width: Math.min(270, Math.max(150, 62 + longest * 6.4)),
-    height: 52 + node.details.length * 20,
-  };
+function wrappedLines(value: string, columns: number): number {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 1;
+  let lines = 1;
+  let used = 0;
+  for (const word of words) {
+    const length = Math.max(1, word.length);
+    if (used === 0) {
+      lines += Math.floor((length - 1) / columns);
+      used = ((length - 1) % columns) + 1;
+      continue;
+    }
+    if (used + 1 + length <= columns) {
+      used += 1 + length;
+      continue;
+    }
+    lines += 1 + Math.floor((length - 1) / columns);
+    used = ((length - 1) % columns) + 1;
+  }
+  return lines;
 }
 
-function pointAlong(edge: ElkExtendedEdge): { x: number; y: number } | null {
-  const section = edge.sections?.[0];
-  if (section === undefined) return null;
-  const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
-  return points[Math.floor(points.length / 2)] ?? null;
+/** Reserva en ELK la geometría completa que después ocupa la tarjeta HTML. */
+export function governanceNodeSize(
+  node: GovernanceNode,
+  editable = false,
+  interfaceScale = 1,
+): { width: number; height: number } {
+  const detail = node.details.join(' · ');
+  const longest = Math.max(node.title.length, detail.length);
+  const width = Math.min(304, Math.max(190, 58 + longest * 6.2));
+  const innerWidth = width - 30;
+  const titleLines = wrappedLines(node.title, Math.max(12, Math.floor(innerWidth / 7.2)));
+  const detailLines = wrappedLines(detail, Math.max(14, Math.floor(innerWidth / 6.2)));
+  const height = 34 + titleLines * 18 + detailLines * 16 + (editable ? 31 * interfaceScale + 10 : 0);
+  return { width, height };
 }
 
 /**
@@ -154,17 +177,26 @@ export async function renderOntologyGovernanceMap(
   write?: (change: Change) => Promise<boolean>,
 ): Promise<void> {
   const diagram = governanceDiagram(said, facet);
+  const interfaceScale = Math.max(
+    1,
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize) / 16,
+  );
   const graph: ElkNode = {
     id: 'ontology-government',
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': 'RIGHT',
       'elk.edgeRouting': 'ORTHOGONAL',
-      'elk.spacing.nodeNode': '36',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '72',
-      'elk.padding': '[top=36,left=36,bottom=36,right=36]',
+      'elk.spacing.nodeNode': '48',
+      'elk.spacing.edgeEdge': '14',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '112',
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '14',
+      'elk.padding': '[top=48,left=48,bottom=48,right=48]',
     },
-    children: diagram.nodes.map((node) => ({ id: node.id, ...nodeSize(node) })),
+    children: diagram.nodes.map((node) => ({
+      id: node.id,
+      ...governanceNodeSize(node, node.kind === facet && write !== undefined, interfaceScale),
+    })),
     edges: diagram.edges.map((edge) => ({
       id: edge.id,
       sources: [edge.source],
@@ -189,6 +221,36 @@ export async function renderOntologyGovernanceMap(
   const note = document.createElement('span');
   note.textContent = 'proyección de la página rectora · seleccionar revela su declaración';
   heading.append(title, note);
+
+  const nodeKinds = [...new Set(diagram.nodes.map((node) => node.kind))];
+  const edgeKinds = [...new Set(diagram.edges.map((edge) => edge.label))];
+  if (nodeKinds.length > 0 || edgeKinds.length > 0) {
+    const legend = document.createElement('div');
+    legend.className = 'ontology-government-legend';
+    legend.setAttribute('aria-label', 'convenciones del esquema');
+    const kindNames: Record<GoverningKind, string> = {
+      objects: 'objeto',
+      properties: 'propiedad',
+      relations: 'relación',
+    };
+    for (const nodeKind of nodeKinds) {
+      const item = document.createElement('span');
+      const swatch = document.createElement('i');
+      swatch.className = `ontology-government-legend-kind ${nodeKind}`;
+      swatch.setAttribute('aria-hidden', 'true');
+      item.append(swatch, kindNames[nodeKind]);
+      legend.append(item);
+    }
+    for (const edgeKind of edgeKinds) {
+      const item = document.createElement('span');
+      const swatch = document.createElement('i');
+      swatch.className = `ontology-government-legend-line edge-${edgeKind}`;
+      swatch.setAttribute('aria-hidden', 'true');
+      item.append(swatch, edgeKind);
+      legend.append(item);
+    }
+    heading.append(legend);
+  }
 
   const mobileMirror = document.createElement('nav');
   mobileMirror.className = 'ontology-mobile-switch ontology-mobile-switch-graph';
@@ -229,16 +291,9 @@ export async function renderOntologyGovernanceMap(
     const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint];
     const path = document.createElementNS(svg.namespaceURI, 'path');
     path.setAttribute('d', points.map((point, at) => `${at === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' '));
-    svg.append(path);
-    const middle = pointAlong(edge);
     const source = edgeById.get(edge.id);
-    if (middle !== null && source !== undefined) {
-      const label = document.createElementNS(svg.namespaceURI, 'text');
-      label.setAttribute('x', String(middle.x + 5));
-      label.setAttribute('y', String(middle.y - 5));
-      label.textContent = source.label;
-      svg.append(label);
-    }
+    if (source !== undefined) path.classList.add(`edge-${source.label}`);
+    svg.append(path);
   }
   stage.append(svg);
 

@@ -5309,6 +5309,10 @@ export function renderOutliner(
     ).then((made) => {
       list.hidden = false;
       if (made === null) return;
+      // Las tres páginas son una sola superficie facetada. Su navegación vive
+      // junto al título de la página; la tabla conserva debajo la declaración.
+      const facets = made.element.querySelector<HTMLElement>('.governing-facets');
+      if (facets !== null) header.after(facets);
       // Los bloques que declaran ya están dibujados: se retiran, y la tabla
       // ocupa el sitio del primero para que quede donde el documento la tenía.
       const rows = [...list.querySelectorAll<HTMLElement>('.block')].filter((row) =>

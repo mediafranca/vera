@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import type { OntologyView } from '../src/api.ts';
-import { governanceDiagram } from '../src/ontology-governance-map.ts';
+import { governanceDiagram, governanceNodeSize } from '../src/ontology-governance-map.ts';
 
 const ontology: OntologyView = {
   objects: [
@@ -36,6 +36,10 @@ describe('gobierno ontológico facetado', () => {
     assert.match(governing, /type GoverningKind = 'objects' \| 'properties' \| 'relations'/);
     assert.match(governing, /api\.specialPages\(\)/);
     assert.match(governing, /callbacks\.onOpen|openFacet/);
+    assert.match(governing, /`governing-facet \$\{facet\.kind\} selected`/);
+    assert.match(styles, /governing-facet\.selected[\s\S]*?background: var\(--accent\)/);
+    assert.match(readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8'),
+      /header\.after\(facets\)/);
   });
 
   it('proyecta objetos sin inventar relaciones', () => {
@@ -68,6 +72,42 @@ describe('gobierno ontológico facetado', () => {
     );
   });
 
+  it('reserva la tarjeta completa para nombres largos y edición visual', () => {
+    const short = governanceNodeSize({
+      id: 'short', block: 'short', kind: 'relations', title: 'dialoga con', details: ['aprobada'],
+    });
+    const long = governanceNodeSize({
+      id: 'long', block: 'long', kind: 'relations',
+      title: 'es una relación constitutiva extraordinariamente extensa',
+      details: ['↔ tiene una formulación inversa también extensa', 'aprobada'],
+    }, true);
+    const phone = governanceNodeSize({
+      id: 'phone', block: 'phone', kind: 'relations', title: 'dialoga con', details: ['aprobada'],
+    }, true, 1.4);
+    assert.ok(long.width >= short.width);
+    assert.ok(long.width <= 304);
+    assert.ok(long.height > short.height);
+    assert.ok(phone.height > governanceNodeSize({
+      id: 'desktop', block: 'desktop', kind: 'relations', title: 'dialoga con', details: ['aprobada'],
+    }, true).height);
+  });
+
+  it('explica las aristas una vez y distingue el rango por forma de línea', () => {
+    assert.match(map, /ontology-government-legend/);
+    assert.match(map, /kindNames: Record<GoverningKind, string>/);
+    assert.match(map, /path\.classList\.add\(`edge-\$\{source\.label\}`\)/);
+    assert.doesNotMatch(map, /createElementNS\(svg\.namespaceURI, 'text'\)/);
+    assert.match(styles, /path\.edge-rango[\s\S]*?stroke-dasharray/);
+  });
+
+  it('distingue objetos, propiedades y relaciones con nombre y color', () => {
+    for (const kind of ['objects', 'properties', 'relations']) {
+      assert.match(styles, new RegExp(`legend-kind\\.${kind},[\\s\\S]*?node\\.${kind}`));
+    }
+    assert.match(styles, /border-inline-start: \.28rem solid var\(--ontology-kind\)/);
+    assert.match(styles, /color-mix\(in srgb, var\(--ontology-kind\) 7%/);
+  });
+
   it('reemplaza sólo el mapa ordinario mientras las tablas conservan sus operaciones', () => {
     assert.match(main, /governingKind\(openView\?\.properties/);
     assert.match(main, /diagram\.renderOntologyGovernanceMap\([\s\S]*?container,[\s\S]*?ontology,[\s\S]*?governing/);
@@ -78,12 +118,15 @@ describe('gobierno ontológico facetado', () => {
     }
   });
 
-  it('pone la declaración a la izquierda y mantiene completa la ruta no visual', () => {
-    assert.match(styles, /ontology-government-open\[data-layout='split'\][\s\S]*?'text divider graph'/);
+  it('pone el mapa a la izquierda y mantiene completa la ruta no visual', () => {
+    assert.match(styles, /ontology-government-open\[data-layout='split'\][\s\S]*?'graph divider text'/);
     assert.match(map, /card\.tabIndex = 0/);
     assert.match(map, /event\.key !== 'Enter' && event\.key !== ' '/);
     assert.match(map, /setAttribute\('aria-label'/);
     assert.match(styles, /prefers-reduced-motion: reduce/);
+    assert.match(styles, /ontology-government-node[\s\S]*?box-sizing: border-box/);
+    assert.match(styles, /ontology-government-node[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+    assert.match(styles, /ontology-government-node strong,[\s\S]*?white-space: normal/);
   });
 
   it('conserva el espejo en móvil como alternancia explícita y reversible', () => {

@@ -5152,22 +5152,24 @@ body.settings-open #text {
 
 .governing-facets {
   display: flex;
-  gap: .45rem;
+  gap: .55rem;
   align-items: center;
-  margin: 0 0 1rem;
-  padding: .25rem 0 .8rem;
+  width: 100%;
+  margin: .2rem 0 1.2rem;
+  padding: .45rem 0 1rem;
   border-bottom: 1px solid var(--rule);
   overflow-x: auto;
 }
 
 .governing-facet {
-  min-height: 2.25rem;
-  padding: .35rem .8rem;
+  min-height: 2.65rem;
+  padding: .48rem 1rem;
   border: 1px solid var(--rule);
   border-radius: 999px;
-  background: var(--bg);
+  background: var(--bg-raised);
   color: var(--text-dim);
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -5179,8 +5181,8 @@ body.settings-open #text {
 }
 
 .governing-facet.selected {
-  border-color: var(--text);
-  background: var(--text);
+  border-color: var(--accent);
+  background: var(--accent);
   color: var(--bg);
   cursor: default;
 }
@@ -5191,16 +5193,15 @@ body.settings-open #text {
 }
 
 /*
- * En el gobierno round-trip se lee primero la declaración y después su figura.
- * Es una excepción deliberada al mapa «ante» de una página ordinaria: aquí no
- * se navega del corpus al documento, sino entre dos notaciones del mismo acto.
- * El divisor sigue midiendo la columna izquierda y conserva su gesto habitual.
+ * El gobierno round-trip conserva la gramática espacial de Vera: el mapa
+ * presenta la estructura a la izquierda y la declaración la desarrolla a la
+ * derecha. Son dos notaciones sincronizadas del mismo acto.
  */
 @media (min-width: 641px) {
   #vera-root.ontology-government-open[data-layout='split'] {
     grid-template-areas:
       'bar bar bar'
-      'text divider graph';
+      'graph divider text';
   }
 }
 
@@ -5237,6 +5238,50 @@ body.settings-open #text {
   font-size: .75rem;
 }
 
+.ontology-government-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem 1rem;
+  margin-top: .25rem;
+}
+
+.ontology-government-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.ontology-government-legend-line {
+  display: inline-block;
+  width: 1.65rem;
+  border-top: 1.5px solid var(--text-dim);
+}
+
+.ontology-government-legend-kind {
+  display: inline-block;
+  box-sizing: border-box;
+  width: .8rem;
+  height: .8rem;
+  border: 1px solid var(--ontology-kind);
+  border-radius: .18rem;
+  background: color-mix(in srgb, var(--ontology-kind) 14%, var(--bg-raised));
+}
+
+.ontology-government-legend-kind.objects,
+.ontology-government-node.objects { --ontology-kind: var(--link-in); }
+
+.ontology-government-legend-kind.properties,
+.ontology-government-node.properties { --ontology-kind: var(--warm); }
+
+.ontology-government-legend-kind.relations,
+.ontology-government-node.relations { --ontology-kind: var(--accent); }
+
+.ontology-government-legend-line.edge-rango,
+.ontology-government-edges path.edge-rango {
+  border-top-style: dashed;
+  stroke-dasharray: 5 4;
+}
+
 .ontology-government-viewport {
   min-width: 0;
   min-height: 0;
@@ -5264,21 +5309,22 @@ body.settings-open #text {
   vector-effect: non-scaling-stroke;
 }
 
-.ontology-government-edges text {
-  fill: var(--text-dim);
-  font: .68rem var(--font-ui);
-}
-
 .ontology-government-node {
   position: absolute;
+  box-sizing: border-box;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: center;
   gap: .35rem;
+  margin: 0;
   padding: .65rem .75rem;
   border: 1px solid var(--rule);
   border-radius: .45rem;
-  background: var(--bg-raised);
+  border-inline-start: .28rem solid var(--ontology-kind);
+  background: color-mix(in srgb, var(--ontology-kind) 7%, var(--bg-raised));
   color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 1rem;
   text-align: left;
   box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
   cursor: pointer;
@@ -5315,16 +5361,13 @@ body.settings-open #text {
 
 .ontology-government-node strong,
 .ontology-government-node span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
-.ontology-government-node strong { font-size: .84rem; }
-.ontology-government-node span { color: var(--text-dim); font-size: .7rem; }
-
-.ontology-government-node.properties { border-inline-start: .28rem solid var(--warm); }
-.ontology-government-node.relations { border-inline-start: .28rem solid var(--accent); }
+.ontology-government-node strong { font-size: .84rem; line-height: 1.12rem; }
+.ontology-government-node span { color: var(--text-dim); font-size: .7rem; line-height: 1rem; }
 
 .ontology-government-node:hover,
 .ontology-government-node:focus-visible,
