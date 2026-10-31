@@ -44,14 +44,17 @@ describe('prioridades de interfaz posteriores al móvil', () => {
   });
 
   it('separa ajustes comunes y avanzados y distingue controles repetidos', () => {
-    assert.match(settings, /Apariencia avanzada/);
-    assert.match(settings, /simpleTokens/);
+    assert.match(settings, /Lectura e interfaz/);
+    assert.match(settings, /Colores del tema/);
+    assert.match(settings, /kind === 'color' \? advancedList : list/);
     assert.match(graph, /Visualización del grafo de conocimiento/);
     assert.match(outliner, /acciones del bloque: \$\{blockSummary\}/);
   });
 
-  it('hace operables los diseños completos desde Apariencia', () => {
-    assert.match(settings, /textContent = 'Diseños'/);
+  it('separa medidas generales de los temas cromáticos y ofrece muestras vivas', () => {
+    assert.match(settings, /textContent = 'Temas de color'/);
+    assert.match(settings, /readingLabel\.textContent = 'Texto'/);
+    assert.match(settings, /mapLabel\.textContent = 'Mapa'/);
     assert.match(settings, /onDesignSelected/);
     assert.match(settings, /onDesignCreated\(false\)/);
     assert.match(settings, /onDesignCreated\(true\)/);

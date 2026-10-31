@@ -854,6 +854,7 @@ entity Workspace {
     map_content_scope: MapContentScope
     colour_scheme: ColourScheme
     navigation_history: List<TraceStep>
+    common_appearance: CommonAppearanceToken with workspace = this
     designs: Design with workspace = this
     active_design: Design
 }
@@ -885,6 +886,15 @@ entity Design {
 
 entity DesignToken {
     design: Design
+    name: String
+    light_value: String
+    dark_value: String
+}
+
+-- Tipografías y medidas pertenecen al espacio de trabajo. Cambiar de tema
+-- conserva esta base común.
+entity CommonAppearanceToken {
+    workspace: Workspace
     name: String
     light_value: String
     dark_value: String
@@ -1066,7 +1076,7 @@ rule ParticipantCreatesDesign {
             workspace: workspace,
             stable_id: new_stable_id(),
             name: unique_design_name(workspace, name),
-            tokens: canonical_tokens(workspace)
+            tokens: canonical_colour_tokens(workspace)
         )
         workspace.active_design = design
 }
@@ -1310,6 +1320,17 @@ rule ParticipantEditsDesignToken {
         token.dark_value = dark_value
 }
 
+rule ParticipantEditsCommonAppearanceToken {
+    when: EditCommonAppearanceToken(participant, workspace, token, light_value, dark_value)
+
+    requires: workspace.participant = participant
+    requires: token.workspace = workspace
+
+    ensures:
+        token.light_value = light_value
+        token.dark_value = dark_value
+}
+
 rule ParticipantExportsDesignTokens {
     when: ExportDesignTokens(participant, workspace)
 
@@ -1324,8 +1345,9 @@ rule ParticipantExportsDesignTokens {
     )
 
     @invariant AppearanceOnly
-        -- The package contains the complete named light/dark token set and its
-        -- schema identity. It excludes documents, graph data, credentials,
+        -- The package contains the named light/dark colour tokens and its
+        -- schema identity. It excludes common typography and measures,
+        -- documents, graph data, credentials,
         -- colour-scheme choice and every device or workspace preference.
 }
 
@@ -1344,8 +1366,8 @@ rule ParticipantImportsDesignTokens {
                 stable_id: new_stable_id(),
                 name: unique_design_name(workspace, package.name),
                 tokens: imported_tokens(
-                    current: canonical_tokens(workspace),
-                    defaults: canonical_tokens(workspace),
+                    current: canonical_colour_tokens(workspace),
+                    defaults: canonical_colour_tokens(workspace),
                     package: package,
                     mode: replace
                 )
@@ -1357,7 +1379,7 @@ rule ParticipantImportsDesignTokens {
             -- names never become live CSS.
             workspace.active_design.tokens = imported_tokens(
                 current: workspace.active_design.tokens,
-                defaults: canonical_tokens(workspace),
+                defaults: canonical_colour_tokens(workspace),
                 package: package,
                 mode: mode
             )
@@ -1374,7 +1396,7 @@ rule ParticipantImportsDesignTokens {
 
     @invariant ImportCanBeUndone
         -- Immediately before a successful import Vera stores one local backup
-        -- of the complete previous token set. Restoring it is one explicit act
+        -- of the previous colour set. Restoring it is one explicit act
         -- and synchronizes the restored values like any other token edit.
 }
 
@@ -1553,6 +1575,7 @@ surface VeraWorkspace {
         workspace.navigation_history
         workspace.designs
         workspace.active_design
+        workspace.common_appearance
 
     provides:
         ChangeWorkspaceLayout(participant, workspace, layout)
@@ -1573,6 +1596,7 @@ surface VeraWorkspace {
         OpenPageFrontMatter(participant, workspace, page)
         OpenMobileGraphNode(participant, workspace, page)
         EditDesignToken(participant, workspace, token, light_value, dark_value)
+        EditCommonAppearanceToken(participant, workspace, token, light_value, dark_value)
         ExportDesignTokens(participant, workspace)
         ImportDesignTokens(participant, workspace, package, mode)
         SearchGraph(participant, workspace, text)
@@ -1709,22 +1733,33 @@ surface VeraWorkspace {
         -- roles y espacios comunes; cada agente mantiene como principal a la
         -- persona que lo constituyó.
 
+    @guarantee ParticipantClassesRevealHumanAuthority
+        -- Participantes separa Personas y Agentes mediante nav-pills. Una
+        -- persona puede mostrar los agentes que gobierna; cada agente nombra a
+        -- su principal humano. La interfaz expresa así que la agencia
+        -- tecnológica recibe autoridad, contexto y continuidad de una persona.
+
+    @guarantee LocalGesturesKeepTheirPlace
+        -- Toda superficie editable aplica primero el gesto a su proyección
+        -- local y conserva foco, scroll y geometría. La sincronización continúa
+        -- en segundo plano. Un acuse exitoso reconcilia el control afectado sin
+        -- reconstruir la página; un rechazo revierte ese control y le devuelve
+        -- el foco. Participantes, ontología y tareas obedecen la misma regla.
+
     @guarantee EditableDesignSystem
         -- General styles and design tokens are editable from within Vera and
         -- remain accessible as source rather than opaque application state.
 
     @guarantee NamedDesignsAreOperable
-        -- Apariencia muestra la lista de diseños guardados y permite seleccionar,
+        -- Apariencia muestra la lista de temas guardados y permite seleccionar,
         -- crear desde la reserva, duplicar, renombrar y eliminar. Debe quedar al
-        -- menos uno. Cada diseño contiene el juego completo de tipografías,
-        -- medidas y valores claro/oscuro; cambiar el esquema no cambia de diseño.
+        -- menos uno. Cada tema contiene sólo colores claros y oscuros. Las
+        -- tipografías y medidas son comunes; cambiar tema o esquema las conserva.
 
     @guarantee CommonAppearancePrecedesTheDesignSystem
-        -- Appearance first offers the few choices a reader routinely changes:
-        -- scheme, text size, line height, column width and phone scale. The full
-        -- named token system remains available under an explicitly advanced
-        -- disclosure rather than confronting every reader with implementation
-        -- variables before those ordinary choices.
+        -- Apariencia comienza con tipografías y medidas generales y las muestra
+        -- sobre dos muestras vivas: texto y mapa. Después ofrece tema de color y
+        -- esquema claro u oscuro. Cada cambio se aprecia en ambas muestras.
 
     @guarantee RepeatedControlsNameTheirSubject
         -- Repeated controls expose the thing they govern in their accessible

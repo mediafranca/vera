@@ -103,6 +103,21 @@ describe('identidad estable de participantes', () => {
     assert.ok(row.retainedBy.includes('historia de nombres'));
   });
 
+  it('presenta cada agente bajo la autoridad de su principal humano', async () => {
+    const human = await call('/participants', 'POST', { name: 'Profesora guía', kind: 'human' });
+    const agent = await call('/participants', 'POST', {
+      name: 'Bibliotecario de tesis',
+      kind: 'agent',
+      principal: human.json['participant'].id,
+    });
+    assert.equal(agent.status, 201, JSON.stringify(agent.json));
+    assert.deepEqual(agent.json['participant'].principal, {
+      id: human.json['participant'].id,
+      name: 'Profesora guía',
+      status: 'active',
+    });
+  });
+
   it('borra sólo identidades realmente vacías', async () => {
     const empty = await call('/participants', 'POST', { name: 'Prueba fallida', kind: 'agent' });
     const emptyId = empty.json['participant'].id as string;

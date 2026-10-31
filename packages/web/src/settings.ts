@@ -1,8 +1,8 @@
 // La configuración de Vera.
 //
-// Dos secciones por ahora: las teclas y la apariencia. Las teclas se leen de
+// El Centro de Vera reúne ajustes, gobierno y ayuda. Las teclas se leen de
 // bindings.ts, que es de donde el editor también las lee, así que esta página
-// no puede enseñar un atajo que ya no exista.
+// siempre enseña los atajos que la aplicación ejecuta.
 //
 // @guarantee EditableDesignSystem: los tokens siguen siendo fuente legible y
 // editable desde dentro de Vera. Lo que cambia es el control: un color se elige
@@ -17,7 +17,6 @@ import { openMediaDetails } from './media-dialog.ts';
 import { toDataURL } from 'qrcode';
 import {
   clearTokenImportBackup,
-  DEFAULT_TOKENS,
   FONT_STACKS,
   kindOf,
   loadTokenImportBackup,
@@ -105,7 +104,7 @@ const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'conexiones', label: 'Puerta de conexiones', note: 'Entradas, salidas, canales y credenciales', terms: 'mcp extensión web telegram zotero', open: (h) => h.onOpenPage('VERA: Conexiones') },
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
   { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
-  { section: 'apariencia', label: 'Apariencia', note: 'Tema, lectura, tipografías y diseños' },
+  { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
   { section: 'ayuda', label: 'Manual de Vera', note: 'Guía completa con búsqueda', terms: 'documentación aprender', open: (h) => h.onOpenPage('VERA — Manual') },
   { section: 'ayuda', label: 'Teclado y gestos', note: 'Atajos, mapa, comandos y autocompletado', terms: 'ayuda teclas' },
   { section: 'sistema', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
@@ -1749,7 +1748,8 @@ function drawKeyboard(host: HTMLElement): void {
 }
 
 function downloadDesignTokenPackage(tokens: DesignToken[], name: string): void {
-  const contents = serialiseDesignTokenPackage(tokens, new Date(), name);
+  const colours = tokens.filter((token) => kindOf(token) === 'color');
+  const contents = serialiseDesignTokenPackage(colours, new Date(), name);
   const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
   const link = document.createElement('a');
   const day = new Date().toISOString().slice(0, 10);
@@ -1794,9 +1794,9 @@ function drawTokenImportPreview(
   modeText.textContent = 'Cómo aplicarlo';
   const mode = document.createElement('select');
   const choices: { value: TokenImportMode; label: string }[] = [
-    { value: 'new', label: 'Añadir como un diseño nuevo' },
-    { value: 'merge', label: 'Fusionar con la apariencia actual' },
-    { value: 'replace', label: 'Reemplazar la apariencia actual' },
+    { value: 'new', label: 'Añadir como un tema nuevo' },
+    { value: 'merge', label: 'Fusionar con los colores del tema actual' },
+    { value: 'replace', label: 'Reemplazar los colores del tema actual' },
   ];
   for (const choice of choices) {
     const option = document.createElement('option');
@@ -1830,7 +1830,7 @@ function drawTokenImportPreview(
   const paint = (): void => {
     plan = planDesignTokenImport(current, imported, mode.value as TokenImportMode);
     consequence.textContent = plan.mode === 'new'
-      ? 'Se añadirá un diseño nuevo y el actual permanecerá intacto.'
+      ? 'Se añadirá un tema nuevo y el actual permanecerá intacto.'
       : plan.mode === 'merge'
         ? 'Sólo cambiarán los tokens presentes en el respaldo; los demás conservarán su valor actual.'
         : 'Los tokens ausentes volverán a la reserva canónica de Vera antes de aplicar el respaldo.';
@@ -1896,7 +1896,7 @@ function drawTokenPortability(
   const exportButton = document.createElement('button');
   exportButton.type = 'button';
   exportButton.className = 'settings-action';
-  exportButton.textContent = 'Exportar diseño…';
+  exportButton.textContent = 'Exportar tema…';
   exportButton.addEventListener('click', () => {
     const library = handlers.designs();
     const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
@@ -1905,7 +1905,7 @@ function drawTokenPortability(
   const importButton = document.createElement('button');
   importButton.type = 'button';
   importButton.className = 'settings-action';
-  importButton.textContent = 'Importar diseño…';
+  importButton.textContent = 'Importar tema…';
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'application/json,.json';
@@ -1957,6 +1957,13 @@ function drawAppearance(
 ): void {
   const scheme = handlers.scheme();
 
+  const commonHeading = document.createElement('h3');
+  commonHeading.textContent = 'Lectura e interfaz';
+  const commonNote = document.createElement('p');
+  commonNote.className = 'settings-note';
+  commonNote.textContent = 'Tipografías y medidas rigen toda Vera. Se conservan al cambiar de tema o de esquema.';
+  host.append(commonHeading, commonNote, appearancePreview());
+
   const library = handlers.designs();
   // @guarantee NamedDesignsAreOperable: todas las operaciones tienen una
   // perilla visible aquí; ninguna exige editar JSON ni metadatos del corpus.
@@ -1964,17 +1971,17 @@ function drawAppearance(
   const designs = document.createElement('section');
   designs.className = 'appearance-designs';
   const designsHeading = document.createElement('h3');
-  designsHeading.textContent = 'Diseños';
+  designsHeading.textContent = 'Temas de color';
   const designsNote = document.createElement('p');
   designsNote.className = 'settings-note';
   designsNote.textContent =
-    'Cada diseño reúne tipografías, medidas y los colores claro y oscuro. El esquema que estás viendo se elige aparte.';
+    'Cada tema reúne una paleta clara y otra oscura. El esquema visible se elige aparte.';
   const chooserRow = document.createElement('label');
   chooserRow.className = 'settings-field';
   const chooserLabel = document.createElement('span');
-  chooserLabel.textContent = 'Diseño actual';
+  chooserLabel.textContent = 'Tema actual';
   const designChoice = document.createElement('select');
-  designChoice.setAttribute('aria-label', 'Diseño actual');
+  designChoice.setAttribute('aria-label', 'Tema de color actual');
   for (const design of library.designs) {
     const option = document.createElement('option');
     option.value = design.id;
@@ -2000,22 +2007,21 @@ function drawAppearance(
   const add = document.createElement('button');
   add.type = 'button';
   add.textContent = 'Nuevo';
-  add.title = 'Crea un diseño con los valores de origen';
+  add.title = 'Crea un tema con la paleta de origen';
   add.addEventListener('click', () => handlers.onDesignCreated(false));
   const duplicate = document.createElement('button');
   duplicate.type = 'button';
   duplicate.textContent = 'Duplicar';
-  duplicate.title = 'Copia el diseño actual con otro nombre';
+  duplicate.title = 'Copia el tema actual con otro nombre';
   duplicate.addEventListener('click', () => handlers.onDesignCreated(true));
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.textContent = 'Eliminar';
   remove.disabled = library.designs.length < 2;
-  remove.title = remove.disabled ? 'Debe quedar al menos un diseño' : `Elimina ${active.name}`;
+  remove.title = remove.disabled ? 'Debe quedar al menos un tema' : `Elimina ${active.name}`;
   remove.addEventListener('click', () => handlers.onDesignRemoved());
   actions.append(add, duplicate, remove);
   designs.append(designsHeading, designsNote, chooserRow, nameRow, actions);
-  host.append(designs);
 
   /*
    * Claro u oscuro, aquí y no en la barra.
@@ -2064,18 +2070,16 @@ function drawAppearance(
   intro.className = 'settings-note';
   intro.textContent =
     `Se está editando el esquema ${scheme === 'dark' ? 'oscuro' : 'claro'}. ` +
-    'Los ajustes habituales están primero. El sistema completo de tokens queda disponible como apariencia avanzada.';
-  host.append(intro);
+    'El tema modifica sus colores y conserva las medidas generales.';
 
   const list = document.createElement('div');
   list.className = 'tokens';
   const advanced = document.createElement('details');
   advanced.className = 'appearance-advanced';
   const advancedSummary = document.createElement('summary');
-  advancedSummary.textContent = 'Apariencia avanzada';
+  advancedSummary.textContent = 'Colores del tema';
   const advancedList = document.createElement('div'); advancedList.className = 'tokens';
   advanced.append(advancedSummary, advancedList);
-  const simpleTokens = new Set(['--text-size', '--line-height', '--content-width', '--phone-scale']);
 
   for (const token of tokens) {
     const row = document.createElement('label');
@@ -2211,16 +2215,51 @@ function drawAppearance(
     }
 
     row.append(name, control);
-    (simpleTokens.has(token.name) ? list : advancedList).append(row);
+    (kind === 'color' ? advancedList : list).append(row);
   }
 
-  host.append(list, advanced);
+  host.append(list, designs, chooser, intro, advanced);
   drawTokenPortability(host, tokens, handlers);
 
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.className = 'settings-reset';
-  reset.textContent = `Restituir los ${DEFAULT_TOKENS.length} tokens de origen`;
+  reset.textContent = 'Restituir los colores del tema';
   reset.addEventListener('click', () => handlers.onReset());
   host.append(reset);
+}
+
+function appearancePreview(): HTMLElement {
+  const preview = document.createElement('section');
+  preview.className = 'appearance-preview';
+  preview.setAttribute('aria-label', 'Muestra viva de texto y mapa');
+
+  const reading = document.createElement('article');
+  reading.className = 'appearance-preview-text';
+  const readingLabel = document.createElement('strong'); readingLabel.textContent = 'Texto';
+  const heading = document.createElement('h4'); heading.textContent = 'Una biblioteca que piensa contigo';
+  const paragraph = document.createElement('p');
+  paragraph.textContent = 'La medida, la tipografía y la interlínea se aplican a toda Vera.';
+  const code = document.createElement('code'); code.textContent = 'tipo:: documento';
+  reading.append(readingLabel, heading, paragraph, code);
+
+  const map = document.createElement('article');
+  map.className = 'appearance-preview-map';
+  const mapLabel = document.createElement('strong'); mapLabel.textContent = 'Mapa';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 240 130'); svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Tres páginas relacionadas');
+  svg.innerHTML = `
+    <line x1="52" y1="66" x2="120" y2="34"></line>
+    <line x1="52" y1="66" x2="184" y2="88"></line>
+    <line x1="120" y1="34" x2="184" y2="88"></line>
+    <circle class="central" cx="52" cy="66" r="16"></circle>
+    <circle cx="120" cy="34" r="12"></circle>
+    <circle cx="184" cy="88" r="12"></circle>
+    <text x="52" y="99" text-anchor="middle">Vera</text>
+    <text x="120" y="15" text-anchor="middle">Fuente</text>
+    <text x="184" y="116" text-anchor="middle">Idea</text>`;
+  map.append(mapLabel, svg);
+  preview.append(reading, map);
+  return preview;
 }

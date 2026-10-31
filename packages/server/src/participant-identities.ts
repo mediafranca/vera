@@ -19,9 +19,11 @@ export interface ParticipantSummary extends ParticipantIdentity {
   activity: number;
   credentials: { active: number; revoked: number };
   activeSessions: number;
+  authenticators: number;
   permissions: number;
   canErase: boolean;
   retainedBy: string[];
+  principal: { id: string; name: string; status: 'active' | 'suspended' } | null;
 }
 
 const hasTable = (store: Store, table: string): boolean => store.db.prepare(
@@ -167,6 +169,13 @@ export function participantSummaries(store: Store): ParticipantSummary[] {
       FROM human_authenticators WHERE participant_id IN (${ids.map(() => '?').join(',')}) AND status='revoked'`)
       .get(...ids) as { amount: number }).amount) : 0;
     const retained = retainedReferences(store, participant.id);
+    const principal = participant.kind === 'agent' && hasTable(store, 'agent_principals')
+      ? store.db.prepare(`SELECT human.id,human.name,human.status
+          FROM agent_principals ap
+          JOIN participants human ON human.id=ap.human_id
+          WHERE ap.agent_id=?`).get(participant.id) as
+          { id: string; name: string; status: 'active' | 'suspended' } | undefined
+      : undefined;
     return {
       ...participant,
       aliases,
@@ -176,11 +185,13 @@ export function participantSummaries(store: Store): ParticipantSummary[] {
       activeSessions: hasTable(store, 'human_sessions') ? Number((store.db.prepare(`SELECT count(*) AS amount
         FROM human_sessions WHERE participant_id IN (${ids.map(() => '?').join(',')})
           AND status='active' AND expires_at>?`).get(...ids, Date.now()) as { amount: number }).amount) : 0,
+      authenticators: activePasskeys,
       permissions: hasTable(store, 'access_grants') ? Number((store.db.prepare(`SELECT count(*) AS amount
         FROM access_grants WHERE participant_id IN (${ids.map(() => '?').join(',')}) AND status='active'`)
         .get(...ids) as { amount: number }).amount) : 0,
       canErase: aliases.length === 0 && retained.length === 0,
       retainedBy: [...new Set(retained.map((one) => retainedLabel(one.table)))],
+      principal: principal ?? null,
     };
   });
 }
