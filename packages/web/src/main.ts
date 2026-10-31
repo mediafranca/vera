@@ -29,6 +29,7 @@ import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
 import { editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
+  askLibrarian,
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
@@ -516,6 +517,15 @@ function drawMemory(host: HTMLElement): void {
       item.disabled = true;
     }
   });
+}
+
+function drawCorpusSummary(host: HTMLElement): void {
+  const status = document.createElement('p');
+  status.className = 'settings-corpus-summary';
+  status.textContent = corpus === null
+    ? 'Vera está preparando el corpus.'
+    : `${corpus.pages} páginas · ${corpus.blocks} bloques · secuencia ${corpus.lastSequence}`;
+  host.append(status);
 }
 
 const $ = <T extends HTMLElement>(selector: string): T =>
@@ -3615,6 +3625,35 @@ function wireTheme(): void {
   $('#search-open').innerHTML = icon('search');
   $('#search-close').innerHTML = icon('x');
   $('#settings').innerHTML = icon('settings');
+  $('#librarian').innerHTML = icon('message-square');
+
+  const theme = $<HTMLButtonElement>('#theme');
+  const drawTheme = (): void => {
+    const next = workspace.scheme === 'dark' ? 'claro' : 'oscuro';
+    theme.innerHTML = icon(workspace.scheme === 'dark' ? 'sun' : 'moon');
+    theme.title = `Usar tema ${next}`;
+    theme.setAttribute('aria-label', `Usar tema ${next}`);
+  };
+  drawTheme();
+  theme.addEventListener('click', () => {
+    const next = workspace.scheme === 'dark' ? 'light' : 'dark';
+    workspace.scheme = next;
+    if (isAnybody()) session.setPublicScheme(next);
+    else session.setScheme(next);
+    applyTokens(tokens, next);
+    drawTheme();
+    void refreshGraph();
+    if (workspace.activePage !== null) void openPage(workspace.activePage);
+  });
+
+  const librarian = $<HTMLButtonElement>('#librarian');
+  librarian.addEventListener('click', () => {
+    if (openView === null || corpus?.canAskLibrarian !== true) {
+      notice('El bibliotecario estará disponible cuando esta Vera tenga uno conectado.');
+      return;
+    }
+    void askLibrarian(openView, null, callbacksFor(openView));
+  });
 
   // Atrás y adelante son los del navegador, no un rastro propio: cada documento
   // tiene dirección, así que el historial que ya existe es el correcto y no hay
@@ -3785,13 +3824,19 @@ function wireTheme(): void {
   // La configuración vive en su propia superficie, no en un panel suelto: son
   // varias secciones y van a ser más.
   const panel = $('#tokens');
-  let section: Section = 'memoria';
+  let section: Section = 'inicio';
 
 
   const openSettings = (): void => {
     if (isAnybody()) section = 'apariencia';
     renderSettings(panel, tokens, section, {
       drawMemory,
+      drawSummary: drawCorpusSummary,
+      onSectionChange: (next) => { section = next; },
+      onOpenPage: (title) => {
+        closeSettings();
+        void openTitle(title, 'opened_directly');
+      },
       scheme: () => workspace.scheme,
       onScheme: (next) => {
         if (next === workspace.scheme) return;
@@ -3870,13 +3915,10 @@ function wireTheme(): void {
     });
     document.body.classList.add('settings-open');
     // Recordar la sección entre aperturas: se vuelve a la misma que se dejó.
-    panel.querySelectorAll('.settings-tab').forEach((tab, at) => {
+    panel.querySelectorAll('.settings-tab').forEach((tab) => {
       if (isAnybody() && tab.textContent !== 'Apariencia') {
         (tab as HTMLElement).hidden = true;
       }
-      tab.addEventListener('click', () => {
-        section = (['memoria', 'teclado', 'apariencia'] as Section[])[at] ?? 'memoria';
-      });
     });
   };
 

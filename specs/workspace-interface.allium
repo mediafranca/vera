@@ -1678,6 +1678,37 @@ surface VeraWorkspace {
         -- writing: naming a thought is a judgement about it, and requiring that
         -- judgement first is how thoughts go unwritten. See daily-log.allium.
 
+    @guarantee TheBarKeepsDailyActsAtHand
+        -- La barra reúne los gestos que acompañan la lectura y la escritura:
+        -- navegar, escoger vista, buscar, hablar, cambiar el esquema, conversar
+        -- con el bibliotecario y abrir el Centro de Vera. Cambiar entre claro y
+        -- oscuro actúa allí mismo. El bibliotecario usa la página activa como
+        -- contexto y comunica su disponibilidad efectiva.
+
+    @guarantee TheCentreFollowsHumanPurposes
+        -- El Centro de Vera agrupa sus destinos bajo Inicio, Biblioteca,
+        -- Personas, Conexiones, Gobierno, Apariencia, Ayuda y Sistema. Cada
+        -- pestaña presenta botones grandes con una consecuencia legible. Los
+        -- controles frecuentes aparecen primero; la identidad y el perfil de la
+        -- instancia cierran Sistema como decisiones estructurales infrecuentes.
+
+    @guarantee HelpAndSettingsShareOneSearch
+        -- Una búsqueda del Centro encuentra ajustes, destinos administrativos,
+        -- manual y atajos desde un solo campo. Cada resultado nombra su pestaña
+        -- y abre el destino o la sección correspondiente.
+
+    @guarantee ConnectionsDeclareTheirDirection
+        -- Conexiones distingue las salidas de Vera hacia otras aplicaciones,
+        -- las entradas autorizadas desde agentes, extensiones e importadores y
+        -- los canales de conversación. Cada botón nombra la dirección, el
+        -- alcance y el estado de la conexión que gobierna.
+
+    @guarantee ParticipantsGovernTheirOwnPresence
+        -- Una persona invitada gobierna su presencia, sesiones, passkeys,
+        -- preferencias y agentes desde Personas. El gobierno colectivo conserva
+        -- roles y espacios comunes; cada agente mantiene como principal a la
+        -- persona que lo constituyó.
+
     @guarantee EditableDesignSystem
         -- General styles and design tokens are editable from within Vera and
         -- remain accessible as source rather than opaque application state.
