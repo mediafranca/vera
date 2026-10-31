@@ -6,18 +6,32 @@ import { COMMANDS } from '../src/autocomplete.ts';
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
-  it('separa destinos administrativos de ajustes personales', () => {
-    assert.match(settings, /label: 'Vera'/);
-    assert.match(settings, /label: 'Editores externos'/);
-    assert.match(settings, /label: 'Teclado'/);
-    assert.match(settings, /label: 'Apariencia'/);
-    assert.doesNotMatch(settings, /id: 'archivos', label: 'Archivos'/);
+  it('ordena el Centro de Vera por propósitos humanos', () => {
+    for (const label of ['Inicio', 'Biblioteca', 'Personas', 'Conexiones', 'Gobierno', 'Apariencia', 'Ayuda', 'Sistema']) {
+      assert.match(settings, new RegExp(`label: '${label}'`));
+    }
     assert.match(settings, /'Participantes',[\s\S]*handlers\.onOpenPeople/);
     assert.match(settings, /'Espacios compartidos',[\s\S]*handlers\.onOpenSharing/);
     assert.match(settings, /'Archivos',[\s\S]*handlers\.onOpenFiles/);
     assert.match(settings, /'Registro de actividad',[\s\S]*handlers\.onOpenActivity/);
+  });
+
+  it('mantiene tema, bibliotecario y Centro en la barra cotidiana', () => {
+    assert.match(shell, /id="theme"/);
+    assert.match(shell, /id="librarian"/);
+    assert.match(shell, /id="settings" aria-label="Centro de Vera"/);
+    assert.match(main, /askLibrarian\(openView, null, callbacksFor\(openView\)\)/);
+    assert.match(main, /workspace\.scheme === 'dark' \? 'light' : 'dark'/);
+  });
+
+  it('busca ajustes y ayuda desde un campo transversal', () => {
+    assert.match(settings, /placeholder = 'Buscar ajustes y ayuda'/);
+    assert.match(settings, /CENTRE_DESTINATIONS\.filter/);
+    assert.match(settings, /entry\.terms/);
+    assert.match(settings, /handlers\.onSectionChange\(entry\.section\)/);
   });
 
   it('explica que una Vera personal no se convierte con un interruptor', () => {
@@ -46,10 +60,8 @@ describe('arquitectura de configuración', () => {
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.settings-destinations\s*\{\s*grid-template-columns:\s*1fr/);
   });
 
-  it('deja respaldo y traslado al final de la portada', () => {
-    const government = settings.indexOf("'Gobierno de Vera'");
-    const backup = settings.indexOf("'Respaldo y traslado'");
-    assert.ok(government >= 0 && backup > government);
+  it('deja respaldo e identidad de instancia en Sistema', () => {
+    assert.match(settings, /function drawSystem[\s\S]*'Esta Vera'[\s\S]*drawPortability/);
     assert.match(settings, /settings-backup/);
   });
 

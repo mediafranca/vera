@@ -33,7 +33,15 @@ import {
   type TokenImportMode,
 } from './tokens.ts';
 
-export type Section = 'memoria' | 'editores' | 'teclado' | 'apariencia';
+export type Section =
+  | 'inicio'
+  | 'biblioteca'
+  | 'personas'
+  | 'conexiones'
+  | 'gobierno'
+  | 'apariencia'
+  | 'ayuda'
+  | 'sistema';
 
 export interface SettingsHandlers {
   scheme(): ColourScheme;
@@ -49,6 +57,8 @@ export interface SettingsHandlers {
   onDesignRemoved(): void;
   onReset(): void;
   onClose(): void;
+  onSectionChange(section: Section): void;
+  onOpenPage(title: string): void;
   onOpenFiles(): void;
   onOpenPeople(): void;
   onOpenAgents(): void;
@@ -62,13 +72,43 @@ export interface SettingsHandlers {
    * costar una petición más.
    */
   drawMemory?(host: HTMLElement): void;
+  drawSummary?(host: HTMLElement): void;
 }
 
 const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'memoria', label: 'Vera' },
-  { id: 'editores', label: 'Editores externos' },
-  { id: 'teclado', label: 'Teclado' },
+  { id: 'inicio', label: 'Inicio' },
+  { id: 'biblioteca', label: 'Biblioteca' },
+  { id: 'personas', label: 'Personas' },
+  { id: 'conexiones', label: 'Conexiones' },
+  { id: 'gobierno', label: 'Gobierno' },
   { id: 'apariencia', label: 'Apariencia' },
+  { id: 'ayuda', label: 'Ayuda' },
+  { id: 'sistema', label: 'Sistema' },
+];
+
+type CentreDestination = {
+  section: Section;
+  label: string;
+  note: string;
+  terms?: string;
+  open?: (handlers: SettingsHandlers) => void;
+};
+
+const CENTRE_DESTINATIONS: CentreDestination[] = [
+  { section: 'inicio', label: 'Estado de Vera', note: 'Corpus, actividad y accesos frecuentes', terms: 'salud resumen' },
+  { section: 'biblioteca', label: 'Archivos', note: 'Imágenes, audios, documentos y adjuntos', open: (h) => h.onOpenFiles() },
+  { section: 'personas', label: 'Participantes', note: 'Presencia, passkeys, sesiones y roles', open: (h) => h.onOpenPeople() },
+  { section: 'personas', label: 'Bibliotecarios y agentes', note: 'Principal humano, constitución y estado', open: (h) => h.onOpenAgents() },
+  { section: 'personas', label: 'Espacios compartidos', note: 'Superficies, invitaciones y permisos', open: (h) => h.onOpenSharing() },
+  { section: 'conexiones', label: 'Puerta de conexiones', note: 'Entradas, salidas, canales y credenciales', terms: 'mcp extensión web telegram zotero', open: (h) => h.onOpenPage('VERA: Conexiones') },
+  { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
+  { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
+  { section: 'apariencia', label: 'Apariencia', note: 'Tema, lectura, tipografías y diseños' },
+  { section: 'ayuda', label: 'Manual de Vera', note: 'Guía completa con búsqueda', terms: 'documentación aprender', open: (h) => h.onOpenPage('VERA — Manual') },
+  { section: 'ayuda', label: 'Teclado y gestos', note: 'Atajos, mapa, comandos y autocompletado', terms: 'ayuda teclas' },
+  { section: 'sistema', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
+  { section: 'sistema', label: 'Registro de actividad', note: 'Cambios, eliminaciones y restauraciones', open: (h) => h.onOpenActivity() },
+  { section: 'sistema', label: 'Esta Vera', note: 'Nombre, perfil Personal o Colectiva y ubicación de datos', terms: 'instancia identidad', open: (h) => h.onOpenPage('Vera — Perfiles de instancia') },
 ];
 
 const GROUPS: { id: string; label: string; note?: string }[] = [
@@ -113,7 +153,7 @@ export function renderSettings(
   head.className = 'settings-head';
 
   const title = document.createElement('h2');
-  title.textContent = 'Configuración de Vera';
+  title.textContent = 'Centro de Vera';
   head.append(title);
 
   const close = document.createElement('button');
@@ -129,26 +169,75 @@ export function renderSettings(
 
   const tabs = document.createElement('nav');
   tabs.className = 'settings-tabs';
-  tabs.setAttribute('aria-label', 'Secciones de configuración');
+  tabs.setAttribute('aria-label', 'Secciones del Centro de Vera');
   for (const section of SECTIONS) {
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.className = section.id === active ? 'settings-tab selected' : 'settings-tab';
     tab.textContent = section.label;
     tab.setAttribute('aria-pressed', String(section.id === active));
-    tab.addEventListener('click', () => renderSettings(host, tokens, section.id, handlers));
+    tab.addEventListener('click', () => {
+      handlers.onSectionChange(section.id);
+      renderSettings(host, tokens, section.id, handlers);
+    });
     tabs.append(tab);
   }
   host.append(tabs);
+
+  const search = document.createElement('div');
+  search.className = 'settings-search';
+  const query = document.createElement('input');
+  query.type = 'search';
+  query.placeholder = 'Buscar ajustes y ayuda';
+  query.setAttribute('aria-label', 'Buscar en el Centro de Vera');
+  const matches = document.createElement('div');
+  matches.className = 'settings-search-results';
+  matches.hidden = true;
+  search.append(query, matches);
+  host.append(search);
+
+  const drawMatches = (): void => {
+    const asked = query.value.trim().toLocaleLowerCase('es');
+    matches.innerHTML = '';
+    matches.hidden = asked === '';
+    if (asked === '') return;
+    const found = CENTRE_DESTINATIONS.filter((entry) =>
+      `${entry.label} ${entry.note} ${entry.terms ?? ''} ${SECTIONS.find((one) => one.id === entry.section)?.label ?? ''}`
+        .toLocaleLowerCase('es').includes(asked),
+    );
+    if (found.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'settings-note';
+      empty.textContent = 'Prueba con el nombre de una tarea, una conexión o una sección.';
+      matches.append(empty);
+      return;
+    }
+    for (const entry of found) {
+      const button = destination(entry.label, `${SECTIONS.find((one) => one.id === entry.section)?.label} · ${entry.note}`, () => {
+        if (entry.open !== undefined) {
+          entry.open(handlers);
+          return;
+        }
+        handlers.onSectionChange(entry.section);
+        renderSettings(host, tokens, entry.section, handlers);
+      });
+      matches.append(button);
+    }
+  };
+  query.addEventListener('input', drawMatches);
 
   const body = document.createElement('div');
   body.className = 'settings-body';
   host.append(body);
 
-  if (active === 'memoria') drawMemory(body, handlers);
-  else if (active === 'editores') void drawExternalEditors(body);
-  else if (active === 'teclado') drawKeyboard(body);
-  else drawAppearance(body, tokens, handlers);
+  if (active === 'inicio') drawStart(body, handlers, host, tokens);
+  else if (active === 'biblioteca') drawLibrary(body, handlers);
+  else if (active === 'personas') drawPeople(body, handlers);
+  else if (active === 'conexiones') void drawConnections(body, handlers);
+  else if (active === 'gobierno') drawGovernment(body, handlers);
+  else if (active === 'apariencia') drawAppearance(body, tokens, handlers);
+  else if (active === 'ayuda') drawHelp(body, handlers);
+  else drawSystem(body, handlers);
 }
 
 type ExternalEditorsBridge = {
@@ -1365,15 +1454,51 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
   return row;
 }
 
-/**
- * Memoria: qué hay en el corpus y cómo está compuesto.
- *
- * Vivía en un panel lateral permanente, ocupando ancho en cada pantalla para
- * decir algo que se consulta de vez en cuando. Aquí se consulta cuando se
- * quiere, y el ancho vuelve al mapa y al texto.
- */
-function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
-  heading(host, 'Administrar', 'Destinos completos para tareas que necesitan su propio espacio.');
+function drawStart(
+  host: HTMLElement,
+  handlers: SettingsHandlers,
+  centre: HTMLElement,
+  tokens: DesignToken[],
+): void {
+  heading(host, 'Tu Vera', 'Estado y tareas habituales.');
+  const actions = document.createElement('div');
+  actions.className = 'settings-destinations';
+  actions.append(
+    destination('Biblioteca', 'Archivos y materiales de tu cuaderno', () => {
+      handlers.onSectionChange('biblioteca');
+      renderSettings(centre, tokens, 'biblioteca', handlers);
+    }),
+    destination('Personas', 'Tu presencia, participantes y bibliotecarios', () => {
+      handlers.onSectionChange('personas');
+      renderSettings(centre, tokens, 'personas', handlers);
+    }),
+    destination('Respaldo', 'Descargar o trasladar una copia completa', () => {
+      handlers.onSectionChange('sistema');
+      renderSettings(centre, tokens, 'sistema', handlers);
+    }),
+    destination('Registro de actividad', 'Cambios, eliminaciones y restauraciones', handlers.onOpenActivity),
+  );
+  host.append(actions);
+  heading(host, 'Estado');
+  const status = document.createElement('div');
+  status.className = 'settings-government';
+  handlers.drawSummary?.(status);
+  host.append(status);
+}
+
+function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
+  heading(host, 'Biblioteca', 'Los materiales que forman el cuaderno.');
+  const actions = document.createElement('div');
+  actions.className = 'settings-destinations';
+  actions.append(
+    destination('Archivos', 'Encontrar, describir y cuidar imágenes, audios y documentos', handlers.onOpenFiles),
+    destination('Importar una biblioteca', 'Incorporar páginas y archivos desde un respaldo .vera', () => drawPortability(host)),
+  );
+  host.append(actions);
+}
+
+function drawPeople(host: HTMLElement, handlers: SettingsHandlers): void {
+  heading(host, 'Personas', 'Cada participante gobierna su presencia y sus agentes.');
   const administration = document.createElement('div');
   administration.className = 'settings-destinations';
   administration.append(
@@ -1392,18 +1517,25 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
       'Publicación, páginas, participantes e invitaciones',
       handlers.onOpenSharing,
     ),
-    destination(
-      'Archivos',
-      'Encontrar, describir y limpiar imágenes, audios y documentos',
-      handlers.onOpenFiles,
-    ),
-    destination(
-      'Registro de actividad',
-      'Revisar cambios, eliminaciones y restauraciones',
-      handlers.onOpenActivity,
-    ),
   );
   host.append(administration);
+}
+
+async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
+  heading(host, 'Conexiones', 'Puertas de Vera hacia afuera, entradas autorizadas y canales.');
+  const actions = document.createElement('div');
+  actions.className = 'settings-destinations';
+  actions.append(
+    destination('Puerta de conexiones', 'Identidad, alcance, estado y revocación', () => handlers.onOpenPage('VERA: Conexiones')),
+    destination('Captura web', 'Extensión y entradas desde el navegador', () => handlers.onOpenPage('VERA: Conexiones')),
+    destination('Canales', 'Chat interno, Telegram y futuras puertas', () => handlers.onOpenPage('VERA: Conexiones')),
+  );
+  host.append(actions);
+  heading(host, 'Vera hacia afuera', 'Aplicaciones que abren o procesan los materiales.');
+  await drawExternalEditors(host);
+}
+
+function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {
 
   heading(
     host,
@@ -1415,6 +1547,35 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
   host.append(government);
   handlers.drawMemory?.(government);
 
+}
+
+function drawHelp(host: HTMLElement, handlers: SettingsHandlers): void {
+  heading(host, 'Ayuda', 'Manual, gestos y atajos desde el mismo lugar.');
+  const actions = document.createElement('div');
+  actions.className = 'settings-destinations';
+  actions.append(
+    destination('Manual de Vera', 'Guía completa y enlazada', () => handlers.onOpenPage('VERA — Manual')),
+    destination('Primeros pasos', 'Escribir, importar, relacionar y compartir', () => handlers.onOpenPage('VERA — Manual')),
+  );
+  host.append(actions);
+  drawKeyboard(host);
+}
+
+function drawSystem(host: HTMLElement, handlers: SettingsHandlers): void {
+  heading(host, 'Sistema', 'Continuidad, actividad e identidad de esta instancia.');
+  const actions = document.createElement('div');
+  actions.className = 'settings-destinations';
+  actions.append(
+    destination('Registro de actividad', 'Cambios, eliminaciones y restauraciones', handlers.onOpenActivity),
+    destination('Esta Vera', 'Nombre, perfil Personal o Colectiva y ubicación de datos', () => handlers.onOpenPage('Vera — Perfiles de instancia')),
+  );
+  host.append(actions);
+  drawPortability(host);
+}
+
+function drawPortability(host: HTMLElement): void {
+  const existing = host.querySelector('.settings-backup');
+  if (existing !== null) existing.remove();
   const backup = document.createElement('section');
   backup.className = 'settings-backup';
   heading(backup, 'Respaldo y traslado');
@@ -1422,7 +1583,7 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
   note.className = 'settings-note';
   note.textContent =
     'Una copia completa en formato .vera contiene el grafo, su registro y todos los archivos. ' +
-    'Importar agrega contenido: nunca reemplaza las páginas que ya existen.';
+    'Importar suma contenido y conserva las páginas que ya existen.';
 
   const actions = document.createElement('div');
   actions.className = 'memory-portability';

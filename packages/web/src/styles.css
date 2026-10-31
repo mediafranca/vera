@@ -5713,10 +5713,42 @@ body.settings-open #text {
 
 .settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.2rem;
   padding: 0.55rem 1rem 0;
   border-bottom: 1px solid var(--rule);
 }
+
+.settings-search {
+  position: relative;
+  padding: .65rem 1rem 0;
+}
+
+.settings-search > input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: .6rem .72rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.settings-search > input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+.settings-search-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .45rem;
+  margin-top: .55rem;
+  padding: .55rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--bg-raised);
+}
+
+.settings-search-results[hidden] { display: none; }
 
 .settings-tab {
   background: none;
@@ -5830,6 +5862,7 @@ body.settings-open #text {
 
 @media (max-width: 640px) {
   .settings-destinations { grid-template-columns: 1fr; }
+  .settings-search-results { grid-template-columns: 1fr; }
   .sharing-administration { padding: 1rem .8rem 3rem; }
 }
 
@@ -6916,7 +6949,7 @@ body.settings-open #text {
 /* Ajustes y micrófono son pares en la barra: mismo blanco táctil. El dibujo
    Feather es algo más expansivo que los iconos propios de las vistas, así que
    se reduce dentro del botón sin reducir el área que se puede pulsar. */
-#controls button#settings {
+#controls button:is(#theme, #librarian, #settings) {
   box-sizing: border-box;
   width: var(--bar-control-height);
   height: var(--bar-control-height);
@@ -6924,7 +6957,7 @@ body.settings-open #text {
   font-size: 1.3rem;
 }
 
-#controls :is(#insert-voice, #settings) .icon {
+#controls :is(#insert-voice, #theme, #librarian, #settings) .icon {
   width: 1.12rem;
   height: 1.12rem;
 }

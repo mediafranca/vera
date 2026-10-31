@@ -808,7 +808,7 @@ async function moveBlockToPage(
   callbacks.onOpen(destination.id, 'searched');
 }
 
-async function askLibrarian(
+export async function askLibrarian(
   page: PageView,
   block: BlockView | null,
   callbacks: OutlinerCallbacks,
