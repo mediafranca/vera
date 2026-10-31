@@ -36,7 +36,8 @@ describe('gobierno ontológico facetado', () => {
     assert.match(governing, /type GoverningKind = 'objects' \| 'properties' \| 'relations'/);
     assert.match(governing, /api\.specialPages\(\)/);
     assert.match(governing, /callbacks\.onOpen|openFacet/);
-    assert.match(governing, /`governing-facet \$\{facet\.kind\} selected`/);
+    assert.match(governing, /`governing-facet facet-\$\{facet\.kind\} selected`/);
+    assert.doesNotMatch(governing, /`governing-facet \$\{facet\.kind\}/);
     assert.match(styles, /governing-facet\.selected[\s\S]*?background: var\(--accent\)/);
     assert.match(readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8'),
       /header\.after\(facets\)/);
