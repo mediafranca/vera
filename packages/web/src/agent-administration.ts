@@ -25,11 +25,10 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
   const section = document.createElement('section'); section.className = 'agent-constitution-sources';
   const heading = document.createElement('h3'); heading.textContent = 'Páginas constitutivas';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = 'Son páginas privadas ordinarias: conservan historia y pueden leerse fuera de esta administración.';
+  explanation.textContent = 'Son páginas canónicas de Vera: conservan visibilidad, historia y lectura fuera de esta administración.';
   const rows = document.createElement('div'); rows.className = 'agent-source-rows';
   const selected = new Map(agent.sources.map((source) => [source.page, source.role]));
-  const choices = pages.filter((page) => page.visibility === 'private')
-    .sort((a, b) => a.title.localeCompare(b.title, 'es'));
+  const choices = [...pages].sort((a, b) => a.title.localeCompare(b.title, 'es'));
   const rowFor = (page: PageSummary, chosenRole: ConstitutionRole): void => {
     const row = document.createElement('label'); row.className = 'agent-source-row';
     row.dataset['page'] = page.id;
@@ -50,7 +49,7 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
 
   const finder = document.createElement('div'); finder.className = 'agent-source-finder';
   const search = document.createElement('input'); search.type = 'search';
-  search.placeholder = 'buscar una página privada';
+  search.placeholder = 'buscar una página de Vera';
   search.setAttribute('aria-label', `Añadir página a ${agent.agent.name}`);
   const offered = document.createElement('div'); offered.className = 'agent-source-offered'; offered.hidden = true;
   const suggest = (): void => {
