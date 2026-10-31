@@ -115,6 +115,7 @@ export async function renderMermaid(root: HTMLElement): Promise<void> {
     counter += 1;
     const figure = document.createElement('div');
     figure.className = 'mermaid-figure';
+    figure.dataset['mermaidSource'] = source;
 
     try {
       const { svg } = await mermaid.render(`vera-mermaid-${counter}`, source);
@@ -130,6 +131,23 @@ export async function renderMermaid(root: HTMLElement): Promise<void> {
       pre.after(note);
     }
   }
+}
+
+/** Repinta sólo los diagramas visibles cuando cambia la apariencia. */
+export async function repaintMermaid(root: HTMLElement): Promise<void> {
+  const figures = [...root.querySelectorAll<HTMLElement>('.mermaid-figure[data-mermaid-source]')];
+  if (figures.length === 0) return;
+  const scroller = root.closest<HTMLElement>('#text') ?? root;
+  const scroll = scroller.scrollTop;
+  for (const figure of figures) {
+    const source = figure.dataset['mermaidSource'] ?? '';
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.className = 'language-mermaid'; code.textContent = source;
+    pre.append(code); figure.replaceWith(pre);
+    await renderMermaid(pre);
+  }
+  scroller.scrollTop = scroll;
 }
 
 const scheduled = new WeakSet<HTMLElement>();

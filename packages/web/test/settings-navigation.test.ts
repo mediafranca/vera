@@ -70,6 +70,12 @@ describe('arquitectura de configuración', () => {
     assert.match(styles, /\.settings-pill\.selected\s*\{[\s\S]*?background:\s*var\(--accent\)/);
   });
 
+  it('conserva el lugar al reconciliar ajustes locales con su nueva representación', () => {
+    assert.match(main, /const heldScroll = panel\.scrollTop/);
+    assert.match(main, /panel\.scrollTop = heldScroll/);
+    assert.match(main, /focus\(\{ preventScroll: true \}\)/);
+  });
+
   it('deja respaldo e identidad de instancia en Sistema', () => {
     assert.match(settings, /function drawSystem[\s\S]*'Esta Vera'[\s\S]*drawPortability/);
     assert.match(settings, /settings-backup/);

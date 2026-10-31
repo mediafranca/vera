@@ -91,6 +91,7 @@ import {
   type GraphViewMode,
   type WorkspaceLayout,
 } from './tokens.ts';
+import { repaintMermaid } from './mermaid.ts';
 import {
   clearTrace,
   dropped,
@@ -3644,7 +3645,7 @@ function wireTheme(): void {
     applyTokens(tokens, next);
     drawTheme();
     void refreshGraph();
-    if (workspace.activePage !== null) void openPage(workspace.activePage);
+    void repaintMermaid($('#text'));
   });
 
   const librarian = $<HTMLButtonElement>('#librarian');
@@ -3829,6 +3830,11 @@ function wireTheme(): void {
 
 
   const openSettings = (): void => {
+    const activeSetting = panel.contains(document.activeElement) && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const focusLabel = activeSetting?.getAttribute('aria-label');
+    const heldScroll = panel.scrollTop;
     if (isAnybody()) section = corpus?.canEdit === true ? 'biblioteca' : 'apariencia';
     renderSettings(panel, tokens, section, {
       drawMemory,
@@ -3854,10 +3860,7 @@ function wireTheme(): void {
         else session.setScheme(next);
         applyTokens(tokens, next);
         void refreshGraph();
-        // Se redibuja la página: el texto sigue al tema por variables CSS, pero
-        // un diagrama Mermaid ya está pintado con los colores del anterior y no
-        // puede repintarse solo.
-        if (workspace.activePage !== null) void openPage(workspace.activePage);
+        void repaintMermaid($('#text'));
         openSettings();
       },
       onTokenChange: (token, value) => {
@@ -3930,6 +3933,13 @@ function wireTheme(): void {
         (tab as HTMLElement).hidden = true;
       }
     });
+    if (focusLabel !== null && focusLabel !== undefined) {
+      requestAnimationFrame(() => {
+        panel.scrollTop = heldScroll;
+        panel.querySelector<HTMLElement>(`[aria-label="${CSS.escape(focusLabel)}"]`)
+          ?.focus({ preventScroll: true });
+      });
+    }
   };
 
   /**

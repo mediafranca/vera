@@ -3647,7 +3647,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         graph.addParticipant({ id: participant.id, name: participant.name, kind: participant.kind });
         graph.admit(participant.id);
-        send(response, 201, { participant });
+        send(response, 201, {
+          participant: participantSummaries(store).find((one) => one.id === participant.id) ?? participant,
+        });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -3728,7 +3730,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (typeof body['name'] !== 'string') throw new Error('el nuevo nombre es obligatorio');
         const participant = renameParticipant(store, who.participant, participantId, body['name']);
         graph.renameParticipant(participant.id, participant.name);
-        send(response, 200, { participant });
+        send(response, 200, {
+          participant: participantSummaries(store).find((one) => one.id === participant.id) ?? participant,
+        });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -3742,7 +3746,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const participantId = decodeURIComponent(path.split('/')[2] ?? '');
         const participant = suspendParticipant(store, who.participant, participantId);
         graph.suspend(participant.id);
-        send(response, 200, { participant });
+        send(response, 200, {
+          participant: participantSummaries(store).find((one) => one.id === participant.id) ?? participant,
+        });
       } catch (error) {
         send(response, 409, { error: error instanceof Error ? error.message : String(error) });
       }

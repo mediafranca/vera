@@ -603,9 +603,11 @@ export interface ParticipantIdentityView {
   activity: number;
   credentials: { active: number; revoked: number };
   activeSessions: number;
+  authenticators: number;
   permissions: number;
   canErase: boolean;
   retainedBy: string[];
+  principal: { id: string; name: string; status: 'active' | 'suspended' } | null;
 }
 
 export type ConstitutionRole = 'identity' | 'purpose' | 'practice' | 'memory' | 'governance';

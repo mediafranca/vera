@@ -16,7 +16,7 @@ export interface DesignToken {
 }
 
 export const DESIGN_LIBRARY_FORMAT = 'vera.designs';
-export const DESIGN_LIBRARY_VERSION = 1;
+export const DESIGN_LIBRARY_VERSION = 2;
 export const DEFAULT_DESIGN_NAME = 'Vera';
 
 export interface SavedDesign {
@@ -29,12 +29,14 @@ export interface DesignLibrary {
   format: typeof DESIGN_LIBRARY_FORMAT;
   version: typeof DESIGN_LIBRARY_VERSION;
   active: string;
+  /** Tipografías y medidas compartidas por todos los temas. */
+  common: DesignToken[];
   designs: SavedDesign[];
 }
 
 // @guarantee NamedDesignsAreOperable: la biblioteca es de la persona, un
-// diseño reúne los dos esquemas y la selección nunca se confunde con el esquema
-// que el dispositivo muestra ahora.
+// tema reúne sólo color claro/oscuro. Tipografías y medidas son comunes y la
+// selección nunca se confunde con el esquema que el dispositivo muestra ahora.
 
 export const DESIGN_TOKEN_PACKAGE_FORMAT = 'vera.design-tokens';
 export const DESIGN_TOKEN_PACKAGE_VERSION = 1;
@@ -297,9 +299,12 @@ export function planDesignTokenImport(
   imported: ParsedDesignTokenPackage,
   mode: TokenImportMode,
 ): DesignTokenImportPlan {
-  const base = mode === 'merge' ? current : DEFAULT_TOKENS;
-  const incoming = new Map(imported.supported.map((token) => [token.name, token]));
-  const tokens = base.map((token) => ({ ...(incoming.get(token.name) ?? token) }));
+  const common = commonOf(current);
+  const base = mode === 'merge' ? coloursOf(current) : coloursOf(DEFAULT_TOKENS);
+  const incoming = new Map(imported.supported.filter(isColour).map((token) => [token.name, token]));
+  const selectedColours = base.map((token) => ({ ...(incoming.get(token.name) ?? token) }));
+  const values = new Map([...common, ...selectedColours].map((token) => [token.name, token]));
+  const tokens = DEFAULT_TOKENS.map((token) => ({ ...(values.get(token.name) ?? token) }));
   const before = new Map(current.map((token) => [token.name, token]));
   const changes = tokens.flatMap((token): DesignTokenChange[] => {
     const held = before.get(token.name);
@@ -396,6 +401,18 @@ function normaliseTokens(value: unknown): DesignToken[] {
   }
 }
 
+const isColour = (token: DesignToken): boolean => kindOf(token) === 'color';
+const coloursOf = (tokens: DesignToken[]): DesignToken[] =>
+  normaliseTokens(tokens).filter(isColour);
+const commonOf = (tokens: DesignToken[]): DesignToken[] =>
+  normaliseTokens(tokens).filter((token) => !isColour(token));
+
+function effectiveTokens(library: DesignLibrary, design?: SavedDesign): DesignToken[] {
+  const active = design ?? library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  const byName = new Map([...library.common, ...active.tokens].map((token) => [token.name, token]));
+  return DEFAULT_TOKENS.map((token) => ({ ...(byName.get(token.name) ?? token) }));
+}
+
 function safeDesignName(wanted: string, held: readonly SavedDesign[], except?: string): string {
   const base = wanted.trim() || DEFAULT_DESIGN_NAME;
   const taken = new Set(held.filter((one) => one.id !== except).map((one) => one.name));
@@ -412,8 +429,10 @@ function newDesignId(): string {
 function parsedLibrary(source: string | null): DesignLibrary | null {
   if (source === null) return null;
   try {
-    const value = JSON.parse(source) as Partial<DesignLibrary>;
-    if (value.format !== DESIGN_LIBRARY_FORMAT || value.version !== DESIGN_LIBRARY_VERSION) return null;
+    const value = JSON.parse(source) as Omit<Partial<DesignLibrary>, 'version'> & {
+      version?: number;
+    };
+    if (value.format !== DESIGN_LIBRARY_FORMAT || (value.version !== 1 && value.version !== DESIGN_LIBRARY_VERSION)) return null;
     if (!Array.isArray(value.designs) || value.designs.length === 0) return null;
     const designs = value.designs.flatMap((candidate): SavedDesign[] => {
       if (candidate === null || typeof candidate !== 'object') return [];
@@ -421,12 +440,17 @@ function parsedLibrary(source: string | null): DesignLibrary | null {
       return [{
         id: candidate.id,
         name: candidate.name.trim() || DEFAULT_DESIGN_NAME,
-        tokens: normaliseTokens(candidate.tokens),
+        tokens: coloursOf(candidate.tokens),
       }];
     });
     if (designs.length === 0) return null;
     const active = designs.some((one) => one.id === value.active) ? value.active! : designs[0]!.id;
-    return { format: DESIGN_LIBRARY_FORMAT, version: DESIGN_LIBRARY_VERSION, active, designs };
+    const activeDesign = designs.find((one) => one.id === active) ?? designs[0]!;
+    const original = (value.designs as SavedDesign[]).find((one) => one?.id === activeDesign.id)?.tokens;
+    const common = value.version === DESIGN_LIBRARY_VERSION && Array.isArray(value.common)
+      ? commonOf(value.common)
+      : commonOf(normaliseTokens(original));
+    return { format: DESIGN_LIBRARY_FORMAT, version: DESIGN_LIBRARY_VERSION, active, common, designs };
   } catch {
     return null;
   }
@@ -440,10 +464,11 @@ export function loadDesignLibrary(): DesignLibrary {
     format: DESIGN_LIBRARY_FORMAT,
     version: DESIGN_LIBRARY_VERSION,
     active: 'design:vera',
+    common: commonOf(normaliseTokens(localStorage.getItem(TOKENS_KEY))),
     designs: [{
       id: 'design:vera',
       name: DEFAULT_DESIGN_NAME,
-      tokens: normaliseTokens(localStorage.getItem(TOKENS_KEY)),
+      tokens: coloursOf(normaliseTokens(localStorage.getItem(TOKENS_KEY))),
     }],
   };
 }
@@ -452,20 +477,21 @@ function storeDesignLibrary(library: DesignLibrary): void {
   const serialised = JSON.stringify(library);
   localStorage.setItem(DESIGNS_KEY, serialised);
   const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(active.tokens));
+  localStorage.setItem(TOKENS_KEY, JSON.stringify(effectiveTokens(library, active)));
   void push({ designTokens: serialised });
 }
 
 export function loadTokens(): DesignToken[] {
   const library = loadDesignLibrary();
   const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
-  return structuredClone(active.tokens);
+  return structuredClone(effectiveTokens(library, active));
 }
 
 export function saveTokens(tokens: DesignToken[]): void {
   const library = loadDesignLibrary();
   const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
-  active.tokens = normaliseTokens(tokens);
+  library.common = commonOf(tokens);
+  active.tokens = coloursOf(tokens);
   storeDesignLibrary(library);
   // Y viajan. El sistema de diseño es de quien lo ajustó, no del aparato desde
   // el que lo ajustó. Si el servidor no responde no pasa nada: lo local ya está
@@ -485,12 +511,12 @@ export function createDesign(copyCurrent: boolean): DesignToken[] {
   const design: SavedDesign = {
     id: newDesignId(),
     name: safeDesignName(copyCurrent ? `Copia de ${current.name}` : 'Diseño', library.designs),
-    tokens: copyCurrent ? structuredClone(current.tokens) : structuredClone(DEFAULT_TOKENS),
+    tokens: copyCurrent ? structuredClone(current.tokens) : coloursOf(DEFAULT_TOKENS),
   };
   library.designs.push(design);
   library.active = design.id;
   storeDesignLibrary(library);
-  return structuredClone(design.tokens);
+  return structuredClone(effectiveTokens(library, design));
 }
 
 export function importDesign(name: string, tokens: DesignToken[]): DesignToken[] {
@@ -498,12 +524,12 @@ export function importDesign(name: string, tokens: DesignToken[]): DesignToken[]
   const design: SavedDesign = {
     id: newDesignId(),
     name: safeDesignName(name, library.designs),
-    tokens: normaliseTokens(tokens),
+    tokens: coloursOf(tokens),
   };
   library.designs.push(design);
   library.active = design.id;
   storeDesignLibrary(library);
-  return structuredClone(design.tokens);
+  return structuredClone(effectiveTokens(library, design));
 }
 
 export function renameActiveDesign(name: string): string {
@@ -520,15 +546,15 @@ export function removeActiveDesign(): DesignToken[] | null {
   library.designs = library.designs.filter((one) => one.id !== library.active);
   library.active = library.designs[0]!.id;
   storeDesignLibrary(library);
-  return structuredClone(library.designs[0]!.tokens);
+  return structuredClone(effectiveTokens(library, library.designs[0]!));
 }
 
 export function resetActiveDesign(): DesignToken[] {
   const library = loadDesignLibrary();
   const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
-  active.tokens = structuredClone(DEFAULT_TOKENS);
+  active.tokens = coloursOf(DEFAULT_TOKENS);
   storeDesignLibrary(library);
-  return structuredClone(active.tokens);
+  return structuredClone(effectiveTokens(library, active));
 }
 
 /**

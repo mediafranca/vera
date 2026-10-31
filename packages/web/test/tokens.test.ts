@@ -171,10 +171,10 @@ describe('superficies del sistema de diseño', () => {
 
     assert.equal(merge.changes.length, 1);
     assert.equal(merge.tokens.find((token) => token.name === '--text-size')!.dark, '22px');
-    assert.equal(replace.changes.length, 2);
+    assert.equal(replace.changes.length, 1);
     assert.equal(
       replace.tokens.find((token) => token.name === '--text-size')!.dark,
-      DEFAULT_TOKENS.find((token) => token.name === '--text-size')!.dark,
+      '22px',
     );
   });
 
@@ -216,12 +216,12 @@ describe('superficies del sistema de diseño', () => {
   });
 
   it('hace encontrables exportación, vista previa, modos y deshacer', () => {
-    assert.match(settings, /Exportar diseño…/);
-    assert.match(settings, /Importar diseño…/);
-    assert.match(settings, /Añadir como un diseño nuevo/);
+    assert.match(settings, /Exportar tema…/);
+    assert.match(settings, /Importar tema…/);
+    assert.match(settings, /Añadir como un tema nuevo/);
     assert.match(settings, /Vista previa de la importación/);
-    assert.match(settings, /Fusionar con la apariencia actual/);
-    assert.match(settings, /Reemplazar la apariencia actual/);
+    assert.match(settings, /Fusionar con los colores del tema actual/);
+    assert.match(settings, /Reemplazar los colores del tema actual/);
     assert.match(settings, /Deshacer la última importación/);
   });
 
@@ -233,6 +233,9 @@ describe('superficies del sistema de diseño', () => {
     storage.setItem('vera.tokens', JSON.stringify(legacy));
 
     assert.equal(loadDesignLibrary().designs.length, 1);
+    assert.ok(loadDesignLibrary().common.some((token) => token.name === '--text-size'));
+    assert.ok(loadDesignLibrary().common.some((token) => token.name === '--font-body'));
+    assert.ok(loadDesignLibrary().designs[0]!.tokens.every((token) => token.name !== '--text-size' && token.name !== '--font-body'));
     assert.equal(loadTokens()[0]!.light, '#010203');
 
     createDesign(true);
