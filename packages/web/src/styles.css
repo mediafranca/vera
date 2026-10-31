@@ -5110,16 +5110,6 @@ body.settings-open #text {
     overscroll-behavior: contain;
   }
 
-  .settings-tabs {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-  }
-
-  .settings-tab {
-    flex: 0 0 auto;
-  }
-
   .settings-body,
   .settings-body > * {
     min-width: 0;
@@ -5711,11 +5701,12 @@ body.settings-open #text {
   height: 1.05rem;
 }
 
-.settings-tabs {
+.settings-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2rem;
-  padding: 0.55rem 1rem 0;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.7rem 1rem;
   border-bottom: 1px solid var(--rule);
 }
 
@@ -5750,21 +5741,30 @@ body.settings-open #text {
 
 .settings-search-results[hidden] { display: none; }
 
-.settings-tab {
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 4px 4px 0 0;
+.settings-pill {
+  min-height: 2.55rem;
+  box-sizing: border-box;
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
   color: var(--text-dim);
-  padding: 0.3rem 0.7rem;
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.settings-tab.selected {
+.settings-pill:hover,
+.settings-pill:focus-visible {
+  border-color: var(--accent);
   color: var(--accent);
-  border-color: var(--rule);
-  border-bottom-color: transparent;
-  background: var(--bg);
-  margin-bottom: -1px;
+}
+
+.settings-pill.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
 }
 
 .settings-body {
