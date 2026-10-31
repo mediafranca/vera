@@ -617,17 +617,23 @@ function renameMediaPaths(content: string, paths: readonly string[], next: strin
  */
 function removeMediaPaths(content: string, paths: readonly string[]): string {
   let rewritten = content;
+  let touched = false;
   for (const path of paths) {
     for (const spelling of new Set([path, path.replace(/ /g, '%20')])) {
       const target = regexEscape(spelling);
-      rewritten = rewritten
+      const next = rewritten
         .replace(new RegExp(`!?\\[[^\\]]*\\]\\(\\s*<?${target}>?(?:\\s+["'][^"']*["'])?\\s*\\)`, 'g'), '')
         .replace(new RegExp(`<(?:img|source)\\b[^>]*(?:src|href)=["']${target}["'][^>]*>`, 'gi'), '')
         .replace(new RegExp(`<(?:audio|video|iframe|a)\\b[^>]*(?:src|href)=["']${target}["'][^>]*>[\\s\\S]*?<\\/(?:audio|video|iframe|a)>`, 'gi'), '')
         .split(spelling).join('');
+      if (next !== rewritten) touched = true;
+      rewritten = next;
     }
   }
-  return rewritten.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  // Un bloque que no menciona el archivo debe volver byte por byte igual. La
+  // antigua limpieza final aplicaba `trim()` a todo el corpus y convertía una
+  // acción del almacén en ediciones textuales ajenas al archivo retirado.
+  return touched ? rewritten : content;
 }
 
 /** Valida la forma del cuerpo antes de dejarlo entrar al dominio. */
@@ -869,6 +875,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (originId.startsWith('capture:')) return 'Vera Clip';
     if (originId.startsWith('zotero:')) return 'Zotero';
     if (originId.startsWith('vera-file:')) return 'archivo administrado por Vera';
+    if (originId.startsWith('media-remove:')) return 'retiro de archivo administrado por Vera';
+    if (originId.startsWith('media-rename:')) return 'renombre de archivo administrado por Vera';
+    if (originId.startsWith('repair-media-collateral:')) return 'rectificación del almacén de Vera';
+    if (originId.startsWith('media:')) return 'acción histórica del almacén de Vera';
     if (originId.startsWith('voice:')) return 'captura de voz';
     if (originId.startsWith('librarian:')) return 'bibliotecario de Vera';
     if (originId.startsWith('local-model:')) return 'modelo local';
@@ -1923,6 +1933,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * lados, o no cambia ninguno.
      */
     const commitMediaChange = (
+      gesture: 'rename' | 'remove',
       permission: 'write' | 'discard',
       changes: readonly { block: string; content: string }[],
       mutateCatalogue: () => void,
@@ -1941,7 +1952,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const channel: ContributionChannel =
         trial.participant(who.participant)?.kind === 'agent' ? 'agent_generation' : 'typed_text';
       const fence = credential === null ? null : confinementOf(store, credential.id);
-      const origin = `media:${randomUUID()}`;
+      const origin = `media-${gesture}:${randomUUID()}`;
       for (const [at, change] of changes.entries()) {
         const proposal: Change = { kind: 'edit_block', block: change.block, content: change.content };
         if (fence !== null) {
@@ -4770,7 +4781,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             const content = renameMediaPaths(block.content, paths, wanted.path);
             return content === block.content ? [] : [{ block: block.stableId, content }];
           }));
-        const committed = commitMediaChange('write', changes, () => {
+        const committed = commitMediaChange('rename', 'write', changes, () => {
           store.db.prepare('DELETE FROM media_references WHERE graph_id = ? AND hash = ?').run(store.graphId, hash);
           store.db.prepare('INSERT INTO media_references (graph_id, path, hash) VALUES (?, ?, ?)')
             .run(store.graphId, wanted.path, hash);
@@ -4821,7 +4832,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
         const stored = putObject(objectsRoot, bytes);
         let deleteOldObject = false;
-        const committed = commitMediaChange('write', [], () => {
+        const committed = commitMediaChange('rename', 'write', [], () => {
           for (const entry of held) {
             recordMedia(store, {
               path: entry.path,
@@ -4909,7 +4920,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return content === block.content ? [] : [{ block: block.stableId, content }];
         }));
       let deleteObject = false;
-      const committed = commitMediaChange('discard', changes, () => {
+      const committed = commitMediaChange('remove', 'discard', changes, () => {
         store.db.prepare('DELETE FROM media_references WHERE graph_id = ? AND hash = ?').run(store.graphId, hash);
         const remaining = store.db.prepare('SELECT 1 FROM media_references WHERE hash = ? LIMIT 1').get(hash);
         const recording = store.db.prepare('SELECT 1 FROM recordings WHERE audio_hash = ? LIMIT 1').get(hash);

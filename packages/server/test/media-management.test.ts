@@ -54,13 +54,17 @@ describe('gestión coherente de archivos', () => {
     const original = await upload.json() as { path: string; url: string };
     const originalHash = original.url.split('/').pop() as string;
     const encoded = original.path.replace(/ /g, '%20');
-    await write({
+    const firstReference = await write({
       kind: 'create_block', page, parent: null, position: 0,
       content: `antes ![primera](${encoded}) después`,
     });
-    await write({
+    const secondReference = await write({
       kind: 'create_block', page, parent: null, position: 1,
       content: `![segunda](${original.path})`,
+    });
+    const unrelated = await write({
+      kind: 'create_block', page, parent: null, position: 2,
+      content: '  texto ajeno al archivo  \n\n\ncon espacios deliberados  ',
     });
 
     const renamedResponse = await fetch(`${base}/media/${originalHash}/rename`, {
@@ -75,10 +79,17 @@ describe('gestión coherente de archivos', () => {
     assert.equal(renamed.usages.length, 2);
 
     const afterRename = await fetch(`${base}/pages/${encodeURIComponent(page)}`).then((response) => response.json()) as {
-      blocks: { content: string }[];
+      blocks: { stableId: string; content: string }[];
     };
-    assert.ok(afterRename.blocks.every((block) => block.content.includes('../assets/imagen%20definitiva.png')));
-    assert.ok(afterRename.blocks.every((block) => !block.content.includes('imagen%20inicial.png')));
+    const renamedReferences = afterRename.blocks.filter(
+      (block) => block.stableId === firstReference || block.stableId === secondReference,
+    );
+    assert.ok(renamedReferences.every((block) => block.content.includes('../assets/imagen%20definitiva.png')));
+    assert.ok(renamedReferences.every((block) => !block.content.includes('imagen%20inicial.png')));
+    assert.equal(
+      afterRename.blocks.find((block) => block.stableId === unrelated)?.content,
+      '  texto ajeno al archivo  \n\n\ncon espacios deliberados  ',
+    );
 
     const wrongKind = await fetch(`${base}/media/${originalHash}`, {
       method: 'PUT',
@@ -112,12 +123,25 @@ describe('gestión coherente de archivos', () => {
     assert.equal(removed.detached, 2);
 
     const afterDelete = await fetch(`${base}/pages/${encodeURIComponent(page)}`).then((response) => response.json()) as {
-      blocks: { content: string }[];
+      blocks: { stableId: string; content: string }[];
       assets: unknown[];
     };
     assert.ok(afterDelete.blocks.every((block) => !block.content.includes('imagen%20definitiva.png')));
     assert.ok(afterDelete.blocks.every((block) => !block.content.includes('![')));
+    assert.equal(
+      afterDelete.blocks.find((block) => block.stableId === unrelated)?.content,
+      '  texto ajeno al archivo  \n\n\ncon espacios deliberados  ',
+      'administrar un archivo conserva byte por byte los bloques que no lo mencionan',
+    );
     assert.deepEqual(afterDelete.assets, []);
     assert.deepEqual(await fetch(`${base}/media`).then((response) => response.json()), []);
+
+    const activity = await fetch(`${base}/activity`).then((response) => response.json()) as {
+      activity: { block: string | null; originId: string; summary: string }[];
+    };
+    const removal = activity.activity.filter((one) => one.originId.startsWith('media-remove:'));
+    assert.deepEqual(new Set(removal.map((one) => one.block)), new Set([firstReference, secondReference]));
+    assert.ok(removal.every((one) => one.summary.includes('Vera quitó una referencia')));
+    assert.ok(removal.every((one) => one.block !== unrelated));
   });
 });
