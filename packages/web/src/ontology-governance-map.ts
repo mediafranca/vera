@@ -5,6 +5,7 @@
 // dispone con geometría de esquema. ELK decide posiciones; Vera conserva el
 // significado, los bloques y las operaciones.
 
+import { fieldKindOf } from '@vera/core';
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { ElkNode } from 'elkjs/lib/elk-api.js';
 import type { OntologyView } from './api.ts';
@@ -32,6 +33,74 @@ export interface GovernanceDiagram {
 }
 
 const key = (kind: GoverningKind, name: string): string => `${kind}:${name}`;
+
+const listed = (value: string | null): string[] =>
+  (value ?? '').split(',').map((one) => one.trim()).filter((one) => one !== '');
+
+const truth = (value: string | null): boolean | null => {
+  if (value === null) return null;
+  if (/^(sí|si|yes|true)$/i.test(value.trim())) return true;
+  if (/^(no|false)$/i.test(value.trim())) return false;
+  return null;
+};
+
+/**
+ * Aplica a la proyección visual el mismo cambio que la réplica ya aceptó.
+ *
+ * El mapa conserva una lectura de `/ontology` para disponer las tres páginas
+ * rectoras juntas. Cuando se edita la página abierta, esperar otra lectura del
+ * servidor haría reaparecer por un instante el estado anterior. Este pliegue es
+ * deliberadamente pequeño: refleja las operaciones que la superficie ofrece y
+ * deja la reconciliación canónica al transporte local-first.
+ */
+export function reflectOntologyChange(said: OntologyView, change: Change): boolean {
+  if (change.kind === 'edit_block') {
+    const declaration = [...said.objects, ...said.properties, ...said.relations]
+      .find((one) => one.block === change.block);
+    if (declaration === undefined) return false;
+    declaration.name = change.content.trim();
+    return true;
+  }
+
+  if (change.kind !== 'set_property' && change.kind !== 'remove_property') return false;
+  if (change.block === undefined) return false;
+  const value = change.kind === 'set_property' ? change.propertyValue : null;
+  const property = change.propertyKey.trim().toLocaleLowerCase('es');
+
+  const object = said.objects.find((one) => one.block === change.block);
+  if (object !== undefined) {
+    if (property === 'propiedades') object.properties = listed(value);
+    else if (property === 'papel') object.role = value;
+    else if (property === 'qué' || property === 'nota') object.says = value;
+    else return false;
+    return true;
+  }
+
+  const declared = said.properties.find((one) => one.block === change.block);
+  if (declared !== undefined) {
+    if (property === 'campo') declared.field = fieldKindOf(value ?? '');
+    else if (property === 'papel') declared.role = value;
+    else if (property === 'sujeto') declared.subject = /^(bloque|block)$/i.test(value ?? '') ? 'bloque' : 'página';
+    else if (property === 'varios') declared.many = truth(value) === true;
+    else if (property === 'valores') declared.values = listed(value);
+    else if (property === 'qué' || property === 'nota') declared.says = value;
+    else return false;
+    return true;
+  }
+
+  const relation = said.relations.find((one) => one.block === change.block);
+  if (relation === undefined) return false;
+  if (property === 'inversa') relation.inverse = value ?? relation.name;
+  else if (property === 'dominio') relation.domain = listed(value);
+  else if (property === 'rango') relation.range = listed(value);
+  else if (property === 'simétrica' || property === 'simetrica') relation.symmetric = truth(value);
+  else if (property === 'transitiva') relation.transitive = truth(value);
+  else if (property === 'estado') relation.status = value;
+  else if (property === 'qué' || property === 'nota') relation.says = value;
+  else if (property === 'equivalente externo') relation.external = listed(value);
+  else return false;
+  return true;
+}
 
 /** La figura pertinente a cada faceta, derivada de una sola lectura canónica. */
 export function governanceDiagram(said: OntologyView, facet: GoverningKind): GovernanceDiagram {
@@ -393,6 +462,11 @@ export async function renderOntologyGovernanceMap(
   document.addEventListener('vera:ontology-focus', (event) => {
     const block = (event as CustomEvent<{ block?: string }>).detail?.block;
     if (block !== undefined) selectBlock(block, false);
+  }, { signal: focusController.signal });
+  document.addEventListener('vera:ontology-local-change', (event) => {
+    const change = (event as CustomEvent<{ change?: Change }>).detail?.change;
+    if (change === undefined || !reflectOntologyChange(said, change)) return;
+    void renderOntologyGovernanceMap(container, said, facet, write);
   }, { signal: focusController.signal });
 
   viewport.append(stage);

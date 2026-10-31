@@ -24,7 +24,15 @@
 import { DEFAULT_PROPERTY_NAMES } from '@vera/core';
 import { api, type Change, type OntologyView } from './api.ts';
 import type { Choice } from './fields.ts';
-import { cellIn, chipsCell, editableCell, rowIn, section, type TableBody } from './table.ts';
+import {
+  cellIn,
+  chipsCell,
+  editableCell,
+  rowIn,
+  section,
+  type EditableCellController,
+  type TableBody,
+} from './table.ts';
 
 /**
  * Las clases de página que gobiernan, con cómo se leen.
@@ -142,6 +150,7 @@ export async function renderGoverning(
   }
 
   const declaring = new Set<string>();
+  const nameEditors = new Map<string, EditableCellController>();
   const element = document.createElement('div');
   element.className = 'governing-tables';
 
@@ -248,11 +257,11 @@ export async function renderGoverning(
       const row = rowFor(body, object.block);
       let at = 0;
 
-      editableCell(
+      nameEditors.set(object.block, editableCell(
         cellIn(row, at++),
         { shows: object.name, label: 'el nombre de la clase', placeholder: 'sin nombre' },
         (next) => write({ kind: 'edit_block', block: object.block, content: next.trim() }),
-      );
+      ));
 
       chipsCell(
         cellIn(row, at++),
@@ -305,11 +314,11 @@ export async function renderGoverning(
       const row = rowFor(body, property.block);
       let at = 0;
 
-      editableCell(
+      nameEditors.set(property.block, editableCell(
         cellIn(row, at++),
         { shows: property.name, label: 'el nombre de la propiedad', placeholder: 'sin nombre' },
         (next) => write({ kind: 'edit_block', block: property.block, content: next.trim() }),
-      );
+      ));
 
       editableCell(
         cellIn(row, at++),
@@ -333,6 +342,7 @@ export async function renderGoverning(
           edits: property.field ?? '',
           label: 'de qué clase es el campo',
           placeholder: 'sin decir',
+          reflects: (next) => fieldSays(next === '' ? null : next, property.many, property.values),
         },
         put(property.block, 'campo'),
         fields,
@@ -400,11 +410,11 @@ export async function renderGoverning(
     for (const relation of said.relations) {
       const row = rowFor(body, relation.block);
       let at = 0;
-      editableCell(
+      nameEditors.set(relation.block, editableCell(
         cellIn(row, at++),
         { shows: relation.name, label: 'el nombre de la relación', placeholder: 'sin nombre' },
         (next) => write({ kind: 'edit_block', block: relation.block, content: next.trim() }),
-      );
+      ));
       editableCell(
         cellIn(row, at++),
         { shows: relation.inverse, label: 'cómo se lee en sentido inverso', placeholder: 'sin inversa' },
@@ -458,5 +468,10 @@ export async function renderGoverning(
   };
   element.addEventListener('click', mirrorFocus);
   element.addEventListener('focusin', mirrorFocus);
+  element.addEventListener('vera:ontology-local-change', (event) => {
+    const change = (event as CustomEvent<{ change?: Change }>).detail?.change;
+    if (change?.kind !== 'edit_block') return;
+    nameEditors.get(change.block)?.reflect(change.content.trim());
+  });
   return { element, declaring };
 }
