@@ -102,6 +102,7 @@ const publicOutput = setting('VERA_PUBLIC_OUTPUT');
 const publicPreviewPort = setting('VERA_PUBLIC_PREVIEW_PORT');
 const publicPreviewUrl = setting('VERA_PUBLIC_PREVIEW_URL');
 const publicMcpOrigin = setting('VERA_PUBLIC_MCP_ORIGIN');
+const conectaHealthUrl = setting('VERA_CONECTA_HEALTH_URL') ?? 'https://conecta.mediafranca.net/health';
 const librarianHookUrl = setting('VERA_LIBRARIAN_HOOK_URL');
 const librarianCredentialDirectory = setting('CREDENTIALS_DIRECTORY');
 const librarianHookToken = setting('VERA_LIBRARIAN_HOOK_TOKEN') ?? (
@@ -145,6 +146,7 @@ const { vera } = listen({
   ...(publicPreviewPort === undefined ? {} : { publicPreviewPort: Number(publicPreviewPort) }),
   ...(publicPreviewUrl === undefined ? {} : { publicPreviewUrl }),
   ...(publicMcpOrigin === undefined ? {} : { publicMcpOrigin }),
+  conectaHealthUrl,
   ...(librarianHook === undefined ? {} : { librarianHook }),
   ...(processConnections === undefined ? {} : { processConnections }),
   ...(declaredOwner === undefined ? {} : { owner: declaredOwner }),

@@ -96,7 +96,7 @@ export interface ServiceStatusViewer {
 }
 
 export interface ServiceStatusViewerOptions {
-  /** Se conecta al sondeo real cuando se decida dónde vive la ficha. */
+  /** Permite que la superficie anfitriona repita su sondeo real. */
   onCheck?: () => void | Promise<void>;
 }
 

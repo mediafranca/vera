@@ -11,6 +11,8 @@ import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from
 import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
 
+import { observeServiceStatuses } from './service-status.ts';
+
 import {
   TESTIMONY_KEY,
   VeraGraph,
@@ -351,6 +353,8 @@ export interface ServerOptions {
   publicSite?: { title: string; canonicalDomain: string };
   /** Origen loopback de la única ruta MCP expuesta por el dominio público. */
   publicMcpOrigin?: string;
+  /** Endpoint público que demuestra identidad y versión de Vera Conecta. */
+  conectaHealthUrl?: string;
   /** Puerta MCP autenticada embebida por Vera Desktop para el relay saliente. */
   localMcpHandler?: (request: IncomingMessage, response: ServerResponse) => void | Promise<void>;
   /** Directorio estable que Tailscale Serve o el alojamiento público sirven. */
@@ -7174,6 +7178,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           // El cursor del log privado no es información de la publicación.
           lastSequence: publicAccess ? 0 : graph.log().lastSequence,
         });
+        return;
+      }
+
+      if (path === '/service-status') {
+        send(response, 200, await observeServiceStatuses({
+          ...(options.publicMcpOrigin === undefined ? {} : { mcpOrigin: options.publicMcpOrigin }),
+          ...(options.conectaHealthUrl === undefined ? {} : { conectaHealthUrl: options.conectaHealthUrl }),
+        }));
         return;
       }
 

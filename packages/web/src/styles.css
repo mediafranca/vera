@@ -5665,6 +5665,69 @@ body.settings-open #text {
   font-weight: 400;
 }
 
+.settings-service-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .65rem;
+  margin-left: auto;
+  padding-inline: 1rem .4rem;
+  font-family: var(--font-ui);
+}
+
+.settings-service { position: relative; }
+
+.settings-service-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: .38rem;
+  min-height: 1.8rem;
+  padding: .15rem .28rem;
+  border-radius: .35rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  list-style: none;
+  font-size: .76rem;
+}
+
+.settings-service-summary::-webkit-details-marker { display: none; }
+.settings-service-summary::marker { content: ''; }
+.settings-service-summary:hover,
+.settings-service-summary:focus-visible,
+.settings-service[open] > .settings-service-summary {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  outline: none;
+}
+
+.settings-service-summary .service-status-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.settings-service-summary .service-status-mark {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.settings-service-summary .service-status-mark .icon { width: .66rem; height: .66rem; }
+
+.settings-service > .service-status-viewer {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + .55rem);
+  right: 0;
+  width: min(25rem, calc(100vw - 2rem));
+  box-shadow: 0 .7rem 2rem color-mix(in srgb, var(--text) 18%, transparent);
+}
+
 .settings-close {
   display: flex;
   align-items: center;
@@ -11486,8 +11549,8 @@ html[data-working-slow='true']::after {
 /* --- Estado de servicios -------------------------------------------------
  *
  * La misma evidencia puede vivir como una señal compacta o como una ficha.
- * Ninguna conoce su ubicación: Configuración decide después si la incorpora en
- * Inicio, Conexiones o Sistema. El color acompaña a una palabra y nunca la
+ * Ninguna conoce su ubicación: hoy el Centro las compone en su cabecera y otras
+ * superficies pueden reutilizarlas. El color acompaña a una palabra y nunca la
  * reemplaza; así «verde» sigue diciendo Disponible cuando el color no se ve.
  * -------------------------------------------------------------------------- */
 
@@ -11612,4 +11675,24 @@ html[data-working-slow='true']::after {
   .service-status-facts { grid-template-columns: 1fr; gap: .05rem; }
   .service-status-facts dd + dt { margin-top: .35rem; }
   .service-status-check { width: 100%; min-height: 2.75rem; }
+
+  .settings-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .settings-service-status {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    margin-left: 0;
+    padding: .45rem 0 0;
+  }
+
+  .settings-service > .service-status-viewer {
+    position: fixed;
+    inset: auto .75rem max(.75rem, env(safe-area-inset-bottom));
+    width: auto;
+  }
 }

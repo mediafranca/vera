@@ -979,6 +979,9 @@ export const api = {
    */
   mcp: () => json<MCPView>('/mcp'),
 
+  /** Estado comprobado de las puertas; no basta que el puerto exista. */
+  serviceStatus: () => json<ObservedServiceStatus[]>('/service-status'),
+
   applyDiscards: (decisions: readonly DiscardDecision[]) =>
     json<{ applied: DiscardDecision[] }>('/mcp/discards', {
       method: 'POST',
@@ -1929,6 +1932,16 @@ export interface MCPView {
   marked?: DiscardRequest[];
   /** Con qué palabra se marca en este corpus. La declara la ontología. */
   markKey?: string;
+}
+
+/** Una comprobación del servicio, sin direcciones internas ni logs. */
+export interface ObservedServiceStatus {
+  id: 'mcp' | 'conecta';
+  service: string;
+  condition: 'available' | 'degraded' | 'unavailable' | 'unknown';
+  detail: string;
+  checkedAt: number;
+  latencyMs: number | null;
 }
 
 export interface OperationReviewProposal {

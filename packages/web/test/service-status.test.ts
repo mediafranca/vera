@@ -5,6 +5,7 @@ import { serviceStatusPresentation, type ServiceCondition } from '../src/service
 
 const source = readFileSync(new URL('../src/service-status.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 
 describe('visor de estado de un servicio', () => {
   it('nombra todos los estados sin depender sólo del color', () => {
@@ -36,5 +37,15 @@ describe('visor de estado de un servicio', () => {
     assert.doesNotMatch(source, /fetch\(|https?:\/\//);
     assert.doesNotMatch(source, /(?:token|credential|authorization)\s*[:=]/i);
     assert.doesNotMatch(source, /console\.(?:log|error|warn)/);
+  });
+
+  it('sitúa MCP y Conecta en la cabecera y deja el detalle detrás de cada señal', () => {
+    const title = settings.indexOf("title.textContent = 'Centro de Vera'");
+    const status = settings.indexOf('head.append(serviceStatusBar())');
+    const close = settings.indexOf("close.className = 'settings-close'");
+    assert.ok(title >= 0 && status > title && close > status);
+    assert.match(settings, /\['mcp', 'conecta'\] as const/);
+    assert.match(settings, /createServiceStatusViewer/);
+    assert.match(styles, /\.settings-service > \.service-status-viewer/);
   });
 });
