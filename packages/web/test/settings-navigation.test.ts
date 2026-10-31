@@ -17,6 +17,7 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /'Espacios compartidos',[\s\S]*handlers\.onOpenSharing/);
     assert.match(settings, /'Archivos',[\s\S]*handlers\.onOpenFiles/);
     assert.match(settings, /'Registro de actividad',[\s\S]*handlers\.onOpenActivity/);
+    assert.match(settings, /'Importar documentos',[\s\S]*handlers\.onImportDocuments/);
   });
 
   it('mantiene tema, bibliotecario y Centro en la barra cotidiana', () => {

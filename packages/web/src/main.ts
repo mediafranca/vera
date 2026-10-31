@@ -116,6 +116,7 @@ import { wirePullToRefresh } from './pull-to-refresh.ts';
 import { participantProfileTitle, renderParticipantProfile } from './participant-profile.ts';
 import { renderParticipantAdministration } from './participant-administration.ts';
 import { renderAgentAdministration } from './agent-administration.ts';
+import { openDocumentImportDialog } from './document-import-dialog.ts';
 
 const PHONE = 640;
 
@@ -3828,7 +3829,7 @@ function wireTheme(): void {
 
 
   const openSettings = (): void => {
-    if (isAnybody()) section = 'apariencia';
+    if (isAnybody()) section = corpus?.canEdit === true ? 'biblioteca' : 'apariencia';
     renderSettings(panel, tokens, section, {
       drawMemory,
       drawSummary: drawCorpusSummary,
@@ -3837,6 +3838,14 @@ function wireTheme(): void {
         closeSettings();
         void openTitle(title, 'opened_directly');
       },
+      onImportDocuments: () => openDocumentImportDialog({
+        sharedSpace: corpus?.sharedSpace ?? null,
+        onOpen: (title) => {
+          closeSettings();
+          void openTitle(title, 'opened_directly');
+        },
+      }),
+      sharedSpace: () => corpus?.sharedSpace ?? null,
       scheme: () => workspace.scheme,
       onScheme: (next) => {
         if (next === workspace.scheme) return;
@@ -3916,7 +3925,8 @@ function wireTheme(): void {
     document.body.classList.add('settings-open');
     // Recordar la sección entre aperturas: se vuelve a la misma que se dejó.
     panel.querySelectorAll('.settings-pill').forEach((tab) => {
-      if (isAnybody() && tab.textContent !== 'Apariencia') {
+      const allowedInSharedEditor = corpus?.canEdit === true && tab.textContent === 'Biblioteca';
+      if (isAnybody() && tab.textContent !== 'Apariencia' && !allowedInSharedEditor) {
         (tab as HTMLElement).hidden = true;
       }
     });

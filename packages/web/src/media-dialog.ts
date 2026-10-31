@@ -86,7 +86,7 @@ export function openMediaDetails(asset: MediaDetails): void {
     ? 'image/*'
     : asset.mediaType.startsWith('audio/')
       ? 'audio/*'
-      : 'application/pdf';
+      : asset.mediaType.split(';')[0] ?? '';
 
   const actions = document.createElement('div');
   actions.className = 'media-metadata-actions';

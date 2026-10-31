@@ -1,5 +1,8 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { listen } from '../src/server.ts';
 import { digestOf } from '../src/credentials.ts';
 import { issueSession } from '../src/human-auth.ts';
@@ -10,16 +13,21 @@ let base: string;
 let publicBase: string;
 let running: ReturnType<typeof listen>;
 let sequence = 0;
+const objectsRoot = mkdtempSync(join(tmpdir(), 'vera-shared-objects-'));
 
 before(() => {
   running = listen({ port: PORT, publicPreviewPort: PORT + 1,
     databasePath: ':memory:', owner: { id: OWNER, name: 'Herbert' },
+    objectsRoot,
     webRoot: new URL('../../web/dist', import.meta.url).pathname,
     publicSite: { title: 'Vera', canonicalDomain: 'https://vera.mediafranca.net' } });
   base = `http://localhost:${PORT}`;
   publicBase = `http://localhost:${PORT + 1}`;
 });
-after(async () => running.close());
+after(async () => {
+  await running.close();
+  rmSync(objectsRoot, { recursive: true, force: true });
+});
 
 async function call(path: string, method = 'GET', body?: unknown, headers: Record<string, string> = {}) {
   const response = await fetch(`${base}${path}`, {
@@ -480,6 +488,83 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.deepEqual(space.effectivePages.find((one: any) => one.page === pageId).reasons,
       ['inclusión explícita']);
     assert.equal((await call('/shared-spaces/creacion', 'DELETE')).status, 200);
+  });
+
+  it('Arturo importa un documento dentro de su superficie y la página nace visible y firmada por él', async () => {
+    const seed = await write({ kind: 'create_page', title: 'Semilla de ingesta compartida', visibility: 'private' });
+    assert.equal((await call('/shared-spaces', 'POST', {
+      name: 'Archivo compartido', slug: 'archivo-compartido',
+    })).status, 201);
+    assert.equal((await call('/shared-spaces/archivo-compartido/pages', 'POST', { page: seed })).status, 201);
+    const issued = await issueInvitation('/shared-spaces/archivo-compartido/invitations', {
+      permissions: ['read', 'edit'],
+    }, 'Arturo');
+    const redeemed = await call(`/invitations/${encodeURIComponent(issued.json['id'])}/redeem`, 'POST', {
+      secret: issued.json['secret'], name: 'Arturo',
+    });
+    const participant = redeemed.json['participant'] as string;
+    const session = 'vera_session_arturo_importador';
+    const now = Date.now();
+    running.vera.store.db.prepare(`INSERT INTO human_sessions
+      (id,participant_id,proof_digest,status,began_at,expires_at,last_seen_at)
+      VALUES (?,?,?,'active',?,?,?)`).run('session:arturo-importador', participant,
+        digestOf(session), now, now + 60_000, now);
+    const headers = {
+      cookie: `vera_session=${session}`,
+      referer: `${publicBase}/s/archivo-compartido/p/Semilla%20de%20ingesta%20compartida`,
+      'content-type': 'text/markdown',
+      'x-filename': encodeURIComponent('Cuaderno de Arturo.md'),
+      'x-import-title': encodeURIComponent('Cuaderno importado por Arturo'),
+      'x-import-provenance': 'own',
+      'x-import-tags': encodeURIComponent('taller, memoria'),
+    };
+    const source = '# Primera nota\n\nContenido escrito por Arturo.';
+
+    const preview = await fetch(`${publicBase}/import/preview`, {
+      method: 'POST', headers, body: source,
+    });
+    const previewBody = await preview.json() as any;
+    assert.equal(preview.status, 200, JSON.stringify(previewBody));
+    assert.equal(previewBody.blocks, 1);
+    assert.equal(running.vera.graph.pageTitled('Cuaderno importado por Arturo'), undefined,
+      'la vista previa no escribe');
+
+    const imported = await fetch(`${publicBase}/import`, {
+      method: 'POST', headers, body: source,
+    });
+    const result = await imported.json() as any;
+    assert.equal(imported.status, 201, JSON.stringify(result));
+    assert.deepEqual(result.scope, { slug: 'archivo-compartido', name: 'Archivo compartido' });
+    const page = running.vera.graph.page(result.page)!;
+    assert.equal(page.title, 'Cuaderno importado por Arturo');
+    const properties = running.vera.graph.propertiesOf(result.page);
+    assert.ok(properties.some((one) => one.key === 'tipo' && one.value === 'documento'));
+    assert.ok(properties.some((one) => one.key === 'autor' && one.value === 'Arturo'));
+    assert.ok(properties.some((one) => one.key === 'procedencia' && one.value === 'documento propio'));
+    assert.ok(running.vera.graph.blocksOf(result.page).some((one) =>
+      one.content.includes('[Archivo original: Cuaderno de Arturo.md]')));
+    const importedOperations = running.vera.graph.operations().filter((operation) =>
+      operation.subjectId === result.page || operation.submission.change.kind === 'create_block' &&
+        operation.submission.change.page === result.page);
+    assert.ok(importedOperations.length >= 4);
+    assert.ok(importedOperations.every((operation) =>
+      operation.submission.submittedBy === participant && operation.submission.channel === 'import'));
+
+    const visible = await fetch(`${publicBase}/s/archivo-compartido/api/pages`, { headers });
+    const pages = await visible.json() as any;
+    assert.equal(visible.status, 200, JSON.stringify(pages));
+    assert.ok(pages.pages.some((one: any) => one.id === result.page));
+    const administration = await call('/shared-spaces');
+    const space = (administration.json['spaces'] as any[])
+      .find((one) => one.slug === 'archivo-compartido');
+    assert.deepEqual(space.effectivePages.find((one: any) => one.page === result.page).reasons,
+      ['inclusión explícita']);
+
+    const original = await fetch(`${publicBase}${result.asset.url}`, { headers });
+    const originalBody = await original.text();
+    assert.equal(original.status, 200, originalBody);
+    assert.equal(originalBody, source);
+    assert.equal((await call('/shared-spaces/archivo-compartido', 'DELETE')).status, 200);
   });
 
   it('una participante conversa privadamente con el bibliotecario dentro del espacio', async () => {

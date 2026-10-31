@@ -587,10 +587,13 @@ function portableMediaPath(fileName: string): { path: string; name: string } | n
   return { path: `../assets/${clean}`, name: clean };
 }
 
-function mediaFamily(mediaType: string): 'image' | 'audio' | 'pdf' | null {
+function mediaFamily(mediaType: string): 'image' | 'audio' | 'pdf' | 'document' | null {
   if (mediaType.startsWith('image/')) return 'image';
   if (mediaType.startsWith('audio/')) return 'audio';
   if (mediaType === 'application/pdf') return 'pdf';
+  if (mediaType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    mediaType === 'application/rtf' || mediaType === 'text/rtf' ||
+    mediaType === 'text/plain' || mediaType === 'text/markdown') return 'document';
   return null;
 }
 
@@ -1736,6 +1739,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const publicAdmission = humanAdmission;
     const publicSharedEdit = request.method === 'POST' && path === '/operations' &&
       publicScopedSpace !== null && canEditScopedSpace;
+    const publicSharedImport = request.method === 'POST' &&
+      (path === '/import' || path === '/import/preview') &&
+      publicScopedSpace !== null && canEditScopedSpace;
     const publicSharedContribution = request.method === 'POST' && path === '/shared-proposals' &&
       publicScopedSpace !== null && canContributeScopedSpace;
     const publicSharedConversation = publicScopedSpace !== null && scopedParticipant !== null &&
@@ -1747,7 +1753,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       );
     if (publicAccess && request.method !== 'GET' && request.method !== 'HEAD' &&
       !publicReadThroughBody && !publicAdmission && !publicSharedEdit && !publicSharedContribution &&
-      !publicSharedConversation) {
+      !publicSharedConversation && !publicSharedImport) {
       send(response, 405, { error: 'anybody sólo puede leer' });
       return;
     }
@@ -1783,6 +1789,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         /^\/collective-invitations\/[^/]+$/.test(path) ||
         publicAdmission ||
         publicSharedEdit ||
+        publicSharedImport ||
         publicSharedContribution ||
         publicSharedConversation ||
         publicSharedPath ||
@@ -4799,7 +4806,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const declared = String(request.headers['content-type'] ?? '').split(';')[0] ?? '';
         const incomingName = decodeURIComponent(String(request.headers['x-filename'] ?? previous.originalName ?? 'archivo'));
         const mediaType = sniffMediaType(bytes) ?? (declared && declared !== 'application/octet-stream' ? declared : mediaTypeFor(incomingName));
-        if (mediaFamily(mediaType) === null) return send(response, 415, { error: 'Vera admite imágenes, audios y PDF' });
+        if (mediaFamily(mediaType) === null) return send(response, 415, {
+          error: 'Vera admite imágenes, audios, PDF y documentos de texto',
+        });
         if (mediaFamily(mediaType) !== mediaFamily(previous.mediaType)) {
           return send(response, 409, { error: 'el reemplazo debe conservar el tipo general del archivo' });
         }
@@ -4973,21 +4982,24 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     /*
-     * Importar un documento: entra un archivo y sale una página.
+     * Preparar o importar un documento.
      *
-     * Ver specs/document-import.allium. El cuerpo son los bytes del archivo y el
-     * nombre viaja en una cabecera, igual que en `/recordings`: no cabe nada más
-     * al lado de un binario.
-     *
-     * Se lee entero antes de escribir nada. Si el archivo no se puede leer, el
-     * grafo queda exactamente como estaba —@invariant NoPageSurvivesARefusal—, en
-     * vez de dejar una página vacía con el nombre del archivo que alguien tenga
-     * que ir a borrar después.
+     * Ver specs/document-import.allium. La vista previa sólo lee. La importación
+     * prueba primero todas las operaciones sobre una réplica y persiste página,
+     * propiedades, bloques, archivo original e inclusión compartida dentro de
+     * una sola transacción.
      */
-    if (request.method === 'POST' && path === '/import') {
+    if (request.method === 'POST' && (path === '/import' || path === '/import/preview')) {
       const chunks: Buffer[] = [];
-      request.on('data', (chunk: Buffer) => chunks.push(chunk));
-      request.on('end', () => {
+      let size = 0;
+      let tooLarge = false;
+      request.on('data', (chunk: Buffer) => {
+        size += chunk.byteLength;
+        if (size > 50 * 1024 * 1024) tooLarge = true;
+        else chunks.push(chunk);
+      });
+      request.on('end', () => void (async () => {
+        if (tooLarge) return send(response, 413, { error: 'el archivo supera los 50 MB' });
         const bytes = Buffer.concat(chunks);
         if (bytes.byteLength === 0) {
           send(response, 400, { error: 'no llegó ningún archivo' });
@@ -5001,11 +5013,46 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         const mediaType = String(request.headers['content-type'] ?? '').split(';')[0] ?? '';
 
-        const parsed = parseDocument(bytes, filename, mediaType);
+        const parsed = await parseDocument(bytes, filename, mediaType);
         if ('error' in parsed) {
           send(response, 422, parsed);
           return;
         }
+
+        if (path === '/import/preview') {
+          send(response, 200, {
+            filename,
+            title: parsed.title ?? filename.replace(/\.[^.]+$/, ''),
+            blocks: parsed.pieces.length,
+            format: parsed.format,
+            losses: parsed.losses,
+            excerpt: parsed.pieces.slice(0, 3).map((piece) => piece.content).join('\n\n').slice(0, 900),
+          });
+          return;
+        }
+
+        const submitter = publicSharedImport && scopedParticipant !== null
+          ? { participant: scopedParticipant, channel: null, credential: null } satisfies Submitter
+          : authorise(store, graph, request.headers.authorization, humanSession, profile, undefined, 'create_page');
+        if ('error' in submitter) {
+          send(response, submitter.status, { error: submitter.error });
+          return;
+        }
+
+        const header = (name: string): string => {
+          const raw = request.headers[name];
+          if (raw === undefined || Array.isArray(raw)) return '';
+          try { return decodeURIComponent(raw).trim(); } catch { return String(raw).trim(); }
+        };
+        const provenance = header('x-import-provenance') === 'external' ? 'external' : 'own';
+        const declaredAuthor = header('x-import-author');
+        if (provenance === 'external' && declaredAuthor === '') {
+          send(response, 422, { error: 'una fuente de otra persona necesita autoría' });
+          return;
+        }
+        const author = declaredAuthor || graph.participant(submitter.participant)?.name || submitter.participant;
+        const importedDate = header('x-import-date');
+        const tags = header('x-import-tags');
 
         /*
          * El título sale del documento, y si no, de su nombre.
@@ -5015,38 +5062,50 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * distingue. Escribir dentro de una página que alguien ya tenía es una
          * pérdida que no se deshace mirando el registro.
          */
-        const wanted = parsed.title ?? filename.replace(/\.[^.]+$/, '');
+        const wanted = header('x-import-title') || parsed.title || filename.replace(/\.[^.]+$/, '');
         let title = wanted;
         for (let attempt = 2; graph.pageTitled(title) !== undefined; attempt += 1) {
           title = `${wanted} (${attempt})`;
         }
 
-        const write = (change: Change): string | { error: string } => {
-          const outcome = graph.submitOperation({
-            originId: `import:${Date.now()}:${made}`,
-            participant: owner.id,
-            // No lo escribió quien pulsó el botón y no lo escribió la máquina: lo
-            // trajo. @invariant EverythingArrivesAsImport.
-            channel: 'import',
-            change,
-          });
-          if (outcome.status === 'rejected') return { error: outcome.reason };
-          // Un duplicado no se vuelve a persistir: la operación ya está en el
-          // registro y su sujeto es el mismo.
-          if (outcome.status === 'applied') {
-            const failure = persist(outcome.operation);
-            if (failure !== null) return { error: failure };
-          }
-          made += 1;
-          return outcome.operation.subjectId;
-        };
-
-        let made = 0;
-        const page = write({ kind: 'create_page', title, visibility: 'private' });
-        if (typeof page !== 'string') {
-          send(response, 422, page);
+        if (objectsRoot === null) {
+          send(response, 500, { error: 'esta instancia no tiene almacén de objetos' });
           return;
         }
+        const portable = portableMediaPath(filename);
+        if (portable === null) {
+          send(response, 422, { error: 'el nombre del archivo no se puede conservar' });
+          return;
+        }
+        const objectHash = hashBytes(bytes);
+        let assetPath = portable.path;
+        const occupied = media.find((entry) => entry.path === assetPath);
+        if (occupied !== undefined && occupied.hash !== objectHash) {
+          const dot = portable.name.lastIndexOf('.');
+          assetPath = dot < 1
+            ? `../assets/${portable.name}-${objectHash.slice(0, 8)}`
+            : `../assets/${portable.name.slice(0, dot)}-${objectHash.slice(0, 8)}${portable.name.slice(dot)}`;
+        }
+        const declaredMediaType = sniffMediaType(bytes) ??
+          (mediaType !== '' && mediaType !== 'application/octet-stream' ? mediaType : mediaTypeFor(filename));
+
+        const page = `page:${randomUUID()}`;
+        const batch = `import:${randomUUID()}`;
+        const changes: Change[] = [
+          { kind: 'create_page', stableId: page, title, visibility: 'private' },
+          { kind: 'set_property', page, propertyKey: propertyNames().kind, propertyValue: 'documento' },
+          { kind: 'set_property', page, propertyKey: 'autor', propertyValue: author },
+          { kind: 'set_property', page, propertyKey: 'procedencia', propertyValue: provenance === 'own' ? 'documento propio' : 'fuente externa' },
+          { kind: 'set_property', page, propertyKey: 'archivo original', propertyValue: filename },
+        ];
+        if (importedDate !== '') changes.push({ kind: 'set_property', page, propertyKey: 'fecha', propertyValue: importedDate });
+        if (tags !== '') changes.push({ kind: 'set_property', page, propertyKey: 'etiquetas', propertyValue: tags });
+
+        const attachment = `block:${randomUUID()}`;
+        changes.push({
+          kind: 'create_block', stableId: attachment, page, parent: null, position: 0,
+          content: `[Archivo original: ${portable.name.replace(/[\[\]]/g, '')}](${assetPath.replace(/ /g, '%20')})`,
+        });
 
         /*
          * De profundidades a padres.
@@ -5057,7 +5116,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * después ya no es hijo de aquello.
          */
         const open = new Map<number, string>();
-        let written = 0;
+        let rootPosition = 1;
         for (const piece of parsed.pieces) {
           const depth = Math.max(0, piece.depth);
           let parent: string | null = null;
@@ -5068,27 +5127,75 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               break;
             }
           }
-          const block = write({
-            kind: 'create_block',
-            page,
-            parent,
-            position: Number.MAX_SAFE_INTEGER,
+          const block = `block:${randomUUID()}`;
+          changes.push({
+            kind: 'create_block', stableId: block, page, parent,
+            position: parent === null ? rootPosition++ : Number.MAX_SAFE_INTEGER,
             content: piece.content,
           });
-          if (typeof block !== 'string') continue;
           open.set(depth, block);
           for (const level of [...open.keys()]) if (level > depth) open.delete(level);
-          written += 1;
+        }
+
+        const trial = graph.replayFromLog();
+        const applied: Operation[] = [];
+        for (const [at, change] of changes.entries()) {
+          const outcome = trial.submitOperation({
+            originId: `${batch}:${at}`,
+            participant: submitter.participant,
+            // @invariant EverythingArrivesAsImport.
+            channel: 'import',
+            change,
+          });
+          if (outcome.status !== 'applied') {
+            send(response, 422, {
+              error: outcome.status === 'duplicate' ? 'la importación ya existe' : outcome.reason,
+            });
+            return;
+          }
+          applied.push(outcome.operation);
+        }
+
+        const stored = putObject(objectsRoot, bytes);
+        store.db.exec('BEGIN');
+        try {
+          recordMedia(store, {
+            path: assetPath, hash: stored.hash, mediaType: declaredMediaType,
+            byteSize: stored.byteSize, at: Date.now(), originalName: filename,
+          });
+          for (const operation of applied) recordOperation(store, trial, operation);
+          if (publicSharedImport && publicScopedSpace !== null) {
+            includeManualPage(store, submitter.participant, publicScopedSpace, page);
+          }
+          store.db.exec('COMMIT');
+          graph = trial;
+          const held = media.findIndex((entry) => entry.path === assetPath);
+          const entry = { path: assetPath, hash: stored.hash, mediaType: declaredMediaType, description: null, alternativeText: null };
+          if (held < 0) media.push(entry);
+          else media[held] = entry;
+        } catch (error) {
+          store.db.exec('ROLLBACK');
+          send(response, 500, {
+            error: 'no se pudo persistir el documento; no se aplicó ningún cambio',
+            detail: error instanceof Error ? error.message : String(error),
+          });
+          return;
         }
 
         send(response, 201, {
           page,
           title,
-          blocks: written,
+          blocks: parsed.pieces.length,
           format: parsed.format,
           losses: parsed.losses,
+          asset: { path: assetPath, url: `/media/${stored.hash}` },
+          scope: publicSharedImport && publicScopedSpace !== null
+            ? { slug: publicScopedSpace.slug, name: publicScopedSpace.name }
+            : null,
         });
-      });
+      })().catch((error: unknown) => {
+        send(response, 500, { error: error instanceof Error ? error.message : String(error) });
+      }));
       return;
     }
 
@@ -7028,6 +7135,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             ? publicScopedSpace !== null && scopedParticipant !== null && scopedGrant !== undefined
             : true,
           canViewOwner: !publicOrigin,
+          sharedSpace: publicAccess && publicScopedSpace !== null
+            ? { slug: publicScopedSpace.slug, name: publicScopedSpace.name }
+            : null,
           entryPoint: publicAccess && siteEntry !== null && isPublicPage(siteEntry) ? siteEntry : null,
           transparentBlockTraceability: publicAccess && publicScopedSpace === null
             ? (publicSite()?.transparentBlockTraceability ?? false)

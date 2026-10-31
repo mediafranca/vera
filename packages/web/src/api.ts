@@ -875,6 +875,8 @@ export interface CorpusHealth {
   canAskLibrarian?: boolean;
   /** Falso en el origen público: anybody nunca puede elevarse desde allí. */
   canViewOwner?: boolean;
+  /** Superficie compartida que cerca esta sesión, cuando existe. */
+  sharedSpace?: { slug: string; name: string } | null;
   /** Portada del sitio cuando la lectura ocurre por el origen público. */
   entryPoint?: string | null;
   /** La superficie pública permite abrir la historia pública desde la viñeta. */
@@ -1279,13 +1281,13 @@ export const api = {
    * porque una cabecera HTTP no admite acentos, y los archivos de alguien que
    * escribe en español los llevan.
    */
-  importDocument: async (
+  previewDocument: async (
     file: File,
   ): Promise<
-    { page: string; title: string; blocks: number; format: string; losses: string[] } | { error: string }
+    { filename: string; title: string; blocks: number; format: string; losses: string[]; excerpt: string } | { error: string }
   > => {
     try {
-      const response = await fetch('/import', {
+      const response = await fetch('/import/preview', {
         method: 'POST',
         headers: {
           'content-type': file.type || 'application/octet-stream',
@@ -1295,7 +1297,49 @@ export const api = {
       });
       const body = (await response.json()) as { error?: string } & Record<string, unknown>;
       if (!response.ok) return { error: body.error ?? `error ${response.status}` };
-      return body as unknown as { page: string; title: string; blocks: number; format: string; losses: string[] };
+      return body as unknown as {
+        filename: string; title: string; blocks: number; format: string; losses: string[]; excerpt: string;
+      };
+    } catch {
+      return { error: 'sin conexión con el servidor' };
+    }
+  },
+
+  importDocument: async (
+    file: File,
+    metadata?: {
+      title?: string;
+      provenance?: 'own' | 'external';
+      author?: string;
+      date?: string;
+      tags?: string;
+    },
+  ): Promise<
+    {
+      page: string; title: string; blocks: number; format: string; losses: string[];
+      asset: { path: string; url: string }; scope: { slug: string; name: string } | null;
+    } | { error: string }
+  > => {
+    try {
+      const response = await fetch('/import', {
+        method: 'POST',
+        headers: {
+          'content-type': file.type || 'application/octet-stream',
+          'x-filename': encodeURIComponent(file.name),
+          ...(metadata?.title === undefined ? {} : { 'x-import-title': encodeURIComponent(metadata.title) }),
+          ...(metadata?.provenance === undefined ? {} : { 'x-import-provenance': metadata.provenance }),
+          ...(metadata?.author === undefined ? {} : { 'x-import-author': encodeURIComponent(metadata.author) }),
+          ...(metadata?.date === undefined ? {} : { 'x-import-date': encodeURIComponent(metadata.date) }),
+          ...(metadata?.tags === undefined ? {} : { 'x-import-tags': encodeURIComponent(metadata.tags) }),
+        },
+        body: await file.arrayBuffer(),
+      });
+      const body = (await response.json()) as { error?: string } & Record<string, unknown>;
+      if (!response.ok) return { error: body.error ?? `error ${response.status}` };
+      return body as unknown as {
+        page: string; title: string; blocks: number; format: string; losses: string[];
+        asset: { path: string; url: string }; scope: { slug: string; name: string } | null;
+      };
     } catch {
       return { error: 'sin conexión con el servidor' };
     }

@@ -9,8 +9,9 @@
 // otra cosa. No se mira el largo de los párrafos ni la tipografía.
 
 import { inflateRawSync } from 'node:zlib';
+import { PDFParse } from 'pdf-parse';
 
-export type DocumentFormat = 'markdown' | 'docx';
+export type DocumentFormat = 'markdown' | 'docx' | 'pdf' | 'rtf';
 
 export interface DocumentPiece {
   /** Cero es raíz de la página. Un hijo declara uno más que su padre. */
@@ -25,6 +26,22 @@ export interface ParsedDocument {
   pieces: DocumentPiece[];
   /** Lo que se leyó y no se supo representar, dicho en palabras. */
   losses: string[];
+}
+
+/** Convierte prosa plana en párrafos sin inventar jerarquía. */
+function parsePlainTextDocument(
+  source: string,
+  format: 'pdf' | 'rtf',
+  title: string | null = null,
+  losses: string[] = [],
+): ParsedDocument {
+  const pieces = source
+    .replace(/\r\n?/g, '\n')
+    .split(/\n\s*\n+/)
+    .map((content) => content.replace(/[ \t]+\n/g, '\n').trim())
+    .filter((content) => content !== '')
+    .map((content) => ({ depth: 0, content }));
+  return { format, title, pieces, losses };
 }
 
 /**
@@ -325,6 +342,115 @@ export function parseDocx(bytes: Buffer): ParsedDocument | null {
   return { format: 'docx', title, pieces, losses };
 }
 
+// ---------------------------------------------------------------------------
+// PDF y RTF
+// ---------------------------------------------------------------------------
+
+/**
+ * Extrae el texto visible de un RTF sin convertir sus decisiones tipográficas
+ * en estructura inventada. Los destinos de metadatos, imágenes y objetos se
+ * omiten; la pérdida se declara en el resultado.
+ */
+export function parseRtf(bytes: Buffer): ParsedDocument | null {
+  const source = bytes.toString('latin1');
+  if (!/^\s*\{\\rtf\d/.test(source)) return null;
+
+  type State = { skip: boolean; starred: boolean; unicodeFallback: number };
+  const stack: State[] = [];
+  let state: State = { skip: false, starred: false, unicodeFallback: 1 };
+  let text = '';
+  let skippedPictures = 0;
+  const ignored = new Set([
+    'fonttbl', 'colortbl', 'stylesheet', 'info', 'header', 'headerl', 'headerr',
+    'footer', 'footerl', 'footerr', 'object', 'filetbl', 'listtable', 'listoverridetable',
+  ]);
+
+  for (let at = 0; at < source.length; at += 1) {
+    const character = source[at] ?? '';
+    if (character === '{') {
+      stack.push({ ...state });
+      continue;
+    }
+    if (character === '}') {
+      state = stack.pop() ?? state;
+      continue;
+    }
+    if (character !== '\\') {
+      if (!state.skip && character !== '\r' && character !== '\n') text += character;
+      continue;
+    }
+
+    const next = source[at + 1] ?? '';
+    if (next === '\\' || next === '{' || next === '}') {
+      if (!state.skip) text += next;
+      at += 1;
+      continue;
+    }
+    if (next === '*') {
+      state.starred = true;
+      at += 1;
+      continue;
+    }
+    if (next === "'") {
+      const hex = source.slice(at + 2, at + 4);
+      if (!state.skip && /^[0-9a-f]{2}$/i.test(hex)) text += Buffer.from([Number.parseInt(hex, 16)]).toString('latin1');
+      at += 3;
+      continue;
+    }
+    if (!/[a-z]/i.test(next)) {
+      if (!state.skip && next === '~') text += '\u00a0';
+      at += 1;
+      continue;
+    }
+
+    const control = /^\\([a-z]+)(-?\d+)? ?/i.exec(source.slice(at));
+    if (control === null) continue;
+    const word = (control[1] ?? '').toLowerCase();
+    const parameter = control[2] === undefined ? null : Number(control[2]);
+    at += (control[0]?.length ?? 1) - 1;
+
+    if (word === 'pict') { skippedPictures += 1; state.skip = true; continue; }
+    if (ignored.has(word) || state.starred) { state.skip = true; continue; }
+    if (state.skip) continue;
+    if (word === 'par' || word === 'line') text += '\n\n';
+    else if (word === 'tab') text += '\t';
+    else if (word === 'uc' && parameter !== null) state.unicodeFallback = Math.max(0, parameter);
+    else if (word === 'u' && parameter !== null) {
+      const code = parameter < 0 ? parameter + 65_536 : parameter;
+      text += String.fromCodePoint(code);
+      at += state.unicodeFallback;
+    } else if (word === 'bin' && parameter !== null) {
+      at += Math.max(0, parameter);
+    }
+  }
+
+  const losses = skippedPictures === 0
+    ? []
+    : [`${skippedPictures} ${skippedPictures === 1 ? 'imagen' : 'imágenes'} sin traer`];
+  return parsePlainTextDocument(text, 'rtf', null, losses);
+}
+
+async function parsePdf(bytes: Buffer): Promise<ParsedDocument | null> {
+  const parser = new PDFParse({ data: new Uint8Array(bytes) });
+  try {
+    // pdf.js mantiene estado interno durante el análisis: pedir texto e
+    // información en paralelo puede hacer que un documento válido parezca
+    // ilegible. La lectura es secuencial y sigue ocurriendo una sola vez.
+    const text = await parser.getText();
+    const info = await parser.getInfo();
+    const title = typeof info.info?.Title === 'string' && info.info.Title.trim() !== ''
+      ? info.info.Title.trim()
+      : null;
+    return parsePlainTextDocument(text.text, 'pdf', title, [
+      'el PDF conserva su archivo original; diagramas, imágenes y disposición de página no se convierten en bloques',
+    ]);
+  } catch {
+    return null;
+  } finally {
+    await parser.destroy().catch(() => undefined);
+  }
+}
+
 /**
  * Lee lo que llegue, decidiendo el formato por el nombre y el tipo declarado.
  *
@@ -332,11 +458,11 @@ export function parseDocx(bytes: Buffer): ParsedDocument | null {
  * documento vacío que después haya que comprobar en otro sitio; devuelve el
  * motivo por el que no hay nada que traer.
  */
-export function parseDocument(
+export async function parseDocument(
   bytes: Buffer,
   filename: string,
   mediaType: string,
-): ParsedDocument | { error: string } {
+): Promise<ParsedDocument | { error: string }> {
   const name = filename.toLowerCase();
   const looksDocx =
     name.endsWith('.docx') ||
@@ -350,10 +476,16 @@ export function parseDocument(
     if (parsed === null) {
       return { error: 'no se pudo leer este .docx; ¿es un documento de Word?' };
     }
+  } else if (name.endsWith('.pdf') || mediaType === 'application/pdf') {
+    parsed = await parsePdf(bytes);
+    if (parsed === null) return { error: 'no se pudo leer este PDF; puede estar cifrado o no contener texto extraíble' };
+  } else if (name.endsWith('.rtf') || mediaType === 'application/rtf' || mediaType === 'text/rtf') {
+    parsed = parseRtf(bytes);
+    if (parsed === null) return { error: 'no se pudo leer este RTF' };
   } else if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt') || mediaType.startsWith('text/')) {
     parsed = parseMarkdownDocument(bytes.toString('utf8'));
   } else {
-    return { error: `no sé leer «${filename}»; por ahora entran .md y .docx` };
+    return { error: `no sé leer «${filename}»; entran .md, .txt, .docx, .pdf y .rtf` };
   }
 
   if (parsed.pieces.length === 0 && parsed.title === null) {
