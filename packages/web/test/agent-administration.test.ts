@@ -18,6 +18,8 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /api\.pages\(\)/);
     assert.match(administration, /setAgentConstitution/);
     assert.match(administration, /Páginas constitutivas/);
+    assert.match(administration, /conservan visibilidad, historia y lectura/);
+    assert.doesNotMatch(administration, /page\.visibility === 'private'/);
   });
 
   it('hace visibles revisión activa, rollback y separación del runtime', () => {
