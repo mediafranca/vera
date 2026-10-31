@@ -50,6 +50,11 @@ function retainedReferences(store: Store, participant: string): Array<{ table: s
     'collective_invitations.participant_id',
     'collective_invitations.redeemed_by',
     'instance_governance_grants.participant_id',
+    // Declarar un agente crea simultáneamente este vínculo. Si el agente nunca
+    // llegó a tener constitución, credencial, manifiesto ni actividad, el
+    // vínculo no puede volverlo imborrable por definición. El sentido inverso
+    // (`human_id`) sí retiene a la persona mientras tenga agentes a su cargo.
+    'agent_principals.agent_id',
   ]);
   const tables = (store.db.prepare(`SELECT name FROM sqlite_schema
     WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`).all() as Array<{ name: string }>);
@@ -248,6 +253,7 @@ export function eraseEmptyParticipant(store: Store, changedBy: string, participa
     erase('collective_invitations', 'participant_id');
     erase('instance_governance_grants', 'participant_id');
     erase('access_tokens', 'participant_id');
+    erase('agent_principals', 'agent_id');
     store.db.prepare('DELETE FROM memberships WHERE participant_id=?').run(canonical);
     const removed = store.db.prepare('DELETE FROM participants WHERE id=?').run(canonical).changes;
     if (removed !== 1) throw new Error('el participante no existe');

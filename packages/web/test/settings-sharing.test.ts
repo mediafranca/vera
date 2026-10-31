@@ -43,4 +43,11 @@ describe('administración de invitaciones', () => {
     assert.match(settings, /Accesos revocados · \$\{revoked\.length\}/);
     assert.match(settings, /sharing-revoked-history/);
   });
+
+  it('crea desde la página un enlace privado dirigido a una identidad con passkey', () => {
+    assert.match(settings, /Enviar enlace privado/);
+    assert.match(settings, /private-invitations/);
+    assert.match(settings, /persona elegida debe confirmar su propia passkey/);
+    assert.match(settings, /Reenviar el enlace no concede acceso/);
+  });
 });

@@ -1732,6 +1732,10 @@ button { touch-action: manipulation; }
   }
 }
 
+.ontology-mobile-switch {
+  display: none;
+}
+
 @media (max-width: 640px) {
   /* El rastro y el gesto nativo de iOS ya permiten volver. En una barra de
      teléfono, dos flechas redundantes cuestan el ancho de una acción real. */
@@ -4808,6 +4812,35 @@ body:has(.embedded-map-frame) {
     display: none;
   }
 
+  .ontology-mobile-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    margin: 0.65rem 0 0.85rem;
+    padding: 0.18rem;
+    gap: 0.18rem;
+    border: 1px solid var(--rule);
+    background: var(--bg-raised);
+  }
+
+  .ontology-mobile-switch button {
+    min-height: 2.35rem;
+    border: 0;
+    color: var(--text-dim);
+    background: transparent;
+    font: inherit;
+  }
+
+  .ontology-mobile-switch button.selected {
+    color: var(--text);
+    background: var(--bg);
+    box-shadow: 0 0 0 1px var(--rule);
+  }
+
+  .ontology-government-map-header {
+    flex-wrap: wrap;
+  }
+
   #vera-root,
   #vera-root[data-layout='split'],
   #vera-root[data-layout='text_only'],
@@ -5117,6 +5150,203 @@ body.settings-open #text {
 #vera-root.special-surface #text { max-width: none; width: 100%; }
 #vera-root.special-surface #view-switch { display: none; }
 
+.governing-facets {
+  display: flex;
+  gap: .45rem;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: .25rem 0 .8rem;
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.governing-facet {
+  min-height: 2.25rem;
+  padding: .35rem .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.governing-facet:hover,
+.governing-facet:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.governing-facet.selected {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+  cursor: default;
+}
+
+.governing-facet:disabled:not(.selected) {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/*
+ * En el gobierno round-trip se lee primero la declaración y después su figura.
+ * Es una excepción deliberada al mapa «ante» de una página ordinaria: aquí no
+ * se navega del corpus al documento, sino entre dos notaciones del mismo acto.
+ * El divisor sigue midiendo la columna izquierda y conserva su gesto habitual.
+ */
+@media (min-width: 641px) {
+  #vera-root.ontology-government-open[data-layout='split'] {
+    grid-template-areas:
+      'bar bar bar'
+      'text divider graph';
+  }
+}
+
+.governing-tables {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.governing-cols-8 { min-width: 68rem; }
+
+#graph.ontology-government-map {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  background: var(--bg);
+}
+
+.ontology-government-map-header {
+  display: grid;
+  gap: .2rem;
+  padding: .85rem 1rem .75rem;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--bg-raised) 72%, transparent);
+}
+
+.ontology-government-map-header strong {
+  color: var(--text);
+  font-size: .92rem;
+}
+
+.ontology-government-map-header span {
+  color: var(--text-dim);
+  font-size: .75rem;
+}
+
+.ontology-government-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ontology-government-stage {
+  position: relative;
+}
+
+.ontology-government-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.ontology-government-edges path {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.ontology-government-edges text {
+  fill: var(--text-dim);
+  font: .68rem var(--font-ui);
+}
+
+.ontology-government-node {
+  position: absolute;
+  display: grid;
+  align-content: center;
+  gap: .35rem;
+  padding: .65rem .75rem;
+  border: 1px solid var(--rule);
+  border-radius: .45rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  text-align: left;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 8%, transparent);
+  cursor: pointer;
+}
+
+.ontology-government-node-edit {
+  justify-self: start;
+  min-height: 1.65rem;
+  padding: .15rem .4rem;
+  border: 1px solid transparent;
+  border-radius: .25rem;
+  background: transparent;
+  color: var(--text-dim);
+  font: .68rem var(--font-ui);
+  cursor: pointer;
+}
+
+.ontology-government-node-edit:hover,
+.ontology-government-node-edit:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ontology-government-node-input {
+  min-width: 0;
+  width: 100%;
+  padding: .2rem .3rem;
+  border: 1px solid var(--accent);
+  border-radius: .2rem;
+  background: var(--bg);
+  color: var(--text);
+  font: .84rem var(--font-ui);
+}
+
+.ontology-government-node strong,
+.ontology-government-node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ontology-government-node strong { font-size: .84rem; }
+.ontology-government-node span { color: var(--text-dim); font-size: .7rem; }
+
+.ontology-government-node.properties { border-inline-start: .28rem solid var(--warm); }
+.ontology-government-node.relations { border-inline-start: .28rem solid var(--accent); }
+
+.ontology-government-node:hover,
+.ontology-government-node:focus-visible,
+.ontology-government-node.selected {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.governing-row-revealed {
+  animation: governing-reveal 1.8s ease-out;
+}
+
+@keyframes governing-reveal {
+  0%, 35% { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  100% { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .governing-row-revealed { animation: none; }
+}
+
 .participant-profile {
   box-sizing: border-box;
   width: min(var(--content-width), 100%);
@@ -5304,6 +5534,50 @@ body.settings-open #text {
   .participant-directory-card { grid-template-columns: 1fr; }
   .participant-directory-actions { justify-content: flex-start; }
   .participant-directory-retained { text-align: left; }
+}
+
+.agent-administration {
+  box-sizing: border-box;
+  width: min(76rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1rem 0 4rem;
+}
+
+.agent-administration-intro { max-width: 52rem; color: var(--text-dim); }
+.agent-administration-body { display: grid; gap: 1.25rem; margin-top: 1.5rem; }
+.agent-administration-card { padding: 1.2rem; border: 1px solid var(--rule); border-radius: .5rem; background: var(--bg-raised); }
+.agent-administration-card h2 { margin: 0; font: 500 1.3rem var(--font-body); }
+.agent-principal { margin: .3rem 0 1rem; color: var(--accent); }
+.agent-administration-card h3 { margin: 1.2rem 0 .4rem; font: 500 1rem var(--font-body); }
+.agent-administration-card > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; min-height: 2.75rem; cursor: pointer; }
+.agent-administration-card > summary .agent-principal { margin: 0; color: var(--text-dim); }
+.agent-administration :is(button, select, input) {
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: .45rem .7rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.agent-administration button { cursor: pointer; }
+.agent-administration button.primary { border-color: var(--accent); color: var(--accent); }
+.agent-source-rows { display: grid; gap: .35rem; max-height: 22rem; margin: .75rem 0; padding: .5rem; overflow: auto; border: 1px solid var(--rule); }
+.agent-source-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, auto) auto; gap: .65rem; align-items: center; padding: .3rem; }
+.agent-source-row input { min-height: auto; }
+.agent-source-finder { position: relative; margin-block: .75rem; }
+.agent-source-finder > input { width: 100%; }
+.agent-source-offered { position: absolute; z-index: 4; inset: 100% 0 auto; display: grid; max-height: 16rem; overflow: auto; border: 1px solid var(--rule); background: var(--bg-raised); box-shadow: 0 .5rem 1.5rem color-mix(in srgb, var(--bg) 70%, transparent); }
+.agent-source-offered button { text-align: left; border: 0; border-bottom: 1px solid var(--rule); background: transparent; }
+.agent-manifest-actions { margin: .7rem 0; }
+.agent-manifest-history ol { display: grid; gap: .45rem; padding-left: 1.4rem; }
+.agent-manifest-history li { padding-left: .2rem; }
+.agent-manifest-history li button { min-height: 2.25rem; margin-left: .7rem; }
+
+@media (max-width: 640px) {
+  .agent-source-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .agent-source-row select { grid-column: 1; width: 100%; }
 }
 
 .settings-head {

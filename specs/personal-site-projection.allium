@@ -18,6 +18,7 @@ use "./page-on-paper.allium" as paper
 use "./special-pages.allium" as special
 use "./workspace-interface.allium" as workspace
 use "./trail.allium" as trail
+use "./editorial-folding.allium" as folding
 
 ------------------------------------------------------------
 -- Política de privacidad por ámbito
@@ -326,7 +327,7 @@ rule PublicReadingOpensInVera {
         colour_scheme: dark,
         reach: 1,
         properties_visible: false,
-        folded_blocks: {},
+        folded_blocks: folding/initial_folds(entry.page),
         local_tokens: [],
         navigation_history: append([], entry),
         navigation_position: 0
@@ -432,6 +433,7 @@ rule AnybodyNavigatesWithinThePublicSite {
 
     ensures:
         public_workspace.active_publication = publication
+        public_workspace.folded_blocks = folding/initial_folds(publication.page)
         public_workspace.navigation_history = next_history
         public_workspace.navigation_position = next_history.count - 1
 }
@@ -451,6 +453,9 @@ rule AnybodyReturnsWithinThePublicSite {
             public_workspace.navigation_history,
             previous_position
         )
+        public_workspace.folded_blocks = folding/initial_folds(
+            item_at(public_workspace.navigation_history, previous_position).page
+        )
 }
 
 rule AnybodyAdvancesWithinThePublicSite {
@@ -467,6 +472,9 @@ rule AnybodyAdvancesWithinThePublicSite {
         public_workspace.active_publication = item_at(
             public_workspace.navigation_history,
             next_position
+        )
+        public_workspace.folded_blocks = folding/initial_folds(
+            item_at(public_workspace.navigation_history, next_position).page
         )
 }
 
@@ -921,9 +929,15 @@ surface PublicVeraWorkspace {
         -- directly is still refused under `anybody`.
 
     @guarantee PresentationChangesStayInTheReadingSession
-        -- Layout, divider, reach, folding, light/dark choice and token overrides
-        -- change only this local reading session. They create no Revision,
-        -- Submission, operation, exposure or shared theme change.
+        -- Layout, divider, reach, a reader's overrides to the initial folds,
+        -- light/dark choice and token overrides change only this local reading
+        -- session. They create no Revision, Submission, operation, exposure or
+        -- shared theme change.
+
+    @guarantee PublicReadingBeginsWithTheOwnersEditorialFolds
+        -- Every page first appears with the branches its sovereign owner chose
+        -- to fold. A public reader may immediately open or close any of them;
+        -- that override neither changes another reader nor the owner's default.
 
     @guarantee PublicFoldingKeepsTheReadingPlace
         -- Folding or unfolding a published branch preserves its visible place

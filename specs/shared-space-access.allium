@@ -197,7 +197,8 @@ contract ScopedPageAddressing {
 
 contract InvitationCapability {
     deliver: (invitation: AccessInvitation, channel: DeliveryChannel) -> AccessInvitation
-    redeem: (invitation: AccessInvitation, proof: String) -> AccessInvitation
+    redeem_bearer: (invitation: AccessInvitation, proof: String) -> AccessInvitation
+    redeem_identified: (invitation: AccessInvitation, proof: String, session: HumanSession) -> AccessInvitation
     revoke: (owner: core/Participant, invitation: AccessInvitation) -> AccessInvitation
     delete: (owner: core/Participant, invitation: AccessInvitation) -> AccessInvitation
 
@@ -216,9 +217,15 @@ contract InvitationCapability {
         -- represented.
 
     @invariant ACapabilityIsSingleUseAndExpiring
-        -- A successful redemption consumes the invitation and creates one
-        -- bounded session for its participant. An expired, revoked or already
-        -- redeemed invitation creates no session, identity or grant.
+        -- A successful redemption consumes the invitation and creates one grant
+        -- for its participant. An expired, revoked or already redeemed
+        -- invitation creates no identity, session or grant.
+
+    @invariant TheLinkAloneNeverProvesTheInvitee
+        -- An identity-bound invitation, including every direct private-page
+        -- link, cannot be activated by possessing or forwarding its URL.
+        -- Redemption also requires an active session already proved by an
+        -- authenticator of the participant named before the link was issued.
 
     @invariant TheSecretIsNotRecoverableFromVera
         -- Vera retains what is needed to verify an invitation secret, never the
@@ -258,6 +265,7 @@ enum AuthenticatorKind { passkey }
 enum AuthenticatorStatus { active | revoked }
 enum SessionStatus { active | ended | expired }
 enum SessionAuthenticationMethod { invitation | passkey | federated_vera }
+enum InvitationProofMode { bearer | identified }
 enum BootstrapStatus { awaiting_first_passkey | ready }
 enum SpaceStatus { active | withdrawn }
 enum InvitationStatus { pending | redeemed | revoked | expired }
@@ -401,6 +409,7 @@ entity AccessInvitation {
     permissions: Set<Permission>
     proof_digest: String
     intended_contact: String?
+    proof_mode: InvitationProofMode
     status: InvitationStatus
     issued_at: Timestamp
     expires_at: Timestamp
@@ -722,7 +731,7 @@ rule OwnerRemovesExplicitPageInclusion {
 }
 
 rule OwnerCreatesInvitationCapability {
-    when: InviteToSharedSpace(owner, space, participant, permissions, lifetime, proof_digest, intended_contact?)
+    when: InviteToSharedSpace(owner, space, participant, permissions, lifetime, proof_digest, intended_contact?, proof_mode)
 
     requires: space.owner = owner
     requires: space.status = active
@@ -732,6 +741,7 @@ rule OwnerCreatesInvitationCapability {
     requires: lifetime <= config.maximum_invitation_lifetime
     requires: participant.kind = human
     requires: participant.status = active
+    requires: proof_mode = bearer or exists HumanAuthenticator{participant: participant, status: active}
     requires: exists core/Membership{graph: space.graph, participant: participant, status: active}
 
     ensures: AccessInvitation.created(
@@ -741,6 +751,7 @@ rule OwnerCreatesInvitationCapability {
         permissions: permissions,
         proof_digest: proof_digest,
         intended_contact: intended_contact,
+        proof_mode: proof_mode,
         status: pending,
         issued_at: now,
         expires_at: now + lifetime,
@@ -781,9 +792,10 @@ rule OwnerDeletesInvitation {
         -- The participant and access to any other shared spaces remain.
 }
 
-rule DeclaredPersonRedeemsInvitation {
-    when: RedeemInvitation(invitation, proof)
+rule DeclaredPersonRedeemsBearerInvitation {
+    when: RedeemBearerInvitation(invitation, proof)
 
+    requires: invitation.proof_mode = bearer
     requires: invitation.status = pending
     requires: invitation.expires_at > now
     requires: verifies(proof, invitation.proof_digest)
@@ -823,6 +835,40 @@ rule DeclaredPersonRedeemsInvitation {
             began_at: now,
             expires_at: now + config.session_lifetime,
             ended_at: null
+        )
+        invitation.status = redeemed
+        invitation.redeemed_by = invitation.participant
+        invitation.redeemed_at = now
+}
+
+rule IdentifiedPersonRedeemsInvitation {
+    when: RedeemIdentifiedInvitation(invitation, proof, session)
+
+    requires: invitation.proof_mode = identified
+    requires: invitation.status = pending
+    requires: invitation.expires_at > now
+    requires: verifies(proof, invitation.proof_digest)
+    requires: invitation.participant.kind = human
+    requires: invitation.participant.status = active
+    requires: session.status = active
+    requires: session.participant = invitation.participant
+    requires: session.authenticator != null
+    requires: session.authenticator.status = active
+    requires: exists core/Membership{
+        graph: invitation.space.graph,
+        participant: invitation.participant,
+        status: active
+    }
+
+    ensures:
+        AccessGrant.created(
+            space: invitation.space,
+            participant: invitation.participant,
+            permissions: invitation.permissions,
+            status: active,
+            granted_by: invitation.space.owner,
+            granted_at: now,
+            revoked_at: null
         )
         invitation.status = redeemed
         invitation.redeemed_by = invitation.participant
@@ -1135,6 +1181,15 @@ actor InvitationBearer {
     identified_by: AccessInvitation where this.status = pending
 }
 
+actor IdentifiedInvitee {
+    within: AccessInvitation
+    identified_by: HumanSession where
+        this.status = active and
+        this.participant = within.participant and
+        this.authenticator != null and
+        this.authenticator.status = active
+}
+
 actor FederatedParticipant {
     within: FederatedIdentityBinding
     identified_by: core/Participant where this = within.participant and within.status = active
@@ -1238,17 +1293,17 @@ surface SharedSpaceCreation {
 }
 
 surface InvitationRedemption {
-    facing invitation: InvitationBearer
-    context space: SharedSpace where invitations.any(one => one = invitation)
+    facing session: IdentifiedInvitee
+    context invitation: AccessInvitation where participant = session.participant and status = pending
 
     exposes:
-        space.name
-        space.entry_page
+        invitation.space.name
+        invitation.space.entry_page
         invitation.permissions
         invitation.expires_at
 
     provides:
-        RedeemInvitation(invitation, proof, person_name)
+        RedeemIdentifiedInvitation(invitation, proof, session)
 
     contracts:
         fulfils InvitationCapability
@@ -1258,22 +1313,47 @@ surface InvitationRedemption {
         -- and expiry, not its pages or any fact about the surrounding graph.
 
     @guarantee RedemptionContinuesIntoTheInvitedSpace
-        -- Successful redemption opens a bounded session and takes the person to
-        -- the invited space without first requiring an operating-system
-        -- authentication ceremony. If the invitation was reached while
-        -- requesting one of its pages, that page is the continuation; otherwise
-        -- its space home is.
+        -- Successful redemption takes the already authenticated person to the
+        -- page carried by the shared address, or to the space home when no page
+        -- was requested. Authentication precedes content disclosure.
+}
 
-    @guarantee APasskeyIsProgressiveAndExplained
-        -- Once inside, Vera offers to preserve access with a passkey but allows
-        -- the person to defer it. Before invoking the operating-system dialog,
-        -- Vera says that nothing needs to be created beforehand or found in the
-        -- browser settings, names the action that opens the browser's own dialog,
-        -- and explains that the device may ask for face, fingerprint or PIN.
-        -- Vera receives none of those secrets. Reloading before deciding offers
-        -- the same action again; only completing it or explicitly deferring it
-        -- dismisses the offer. Deferring means a lost or expired session requires
-        -- another invitation.
+surface BearerInvitationRedemption {
+    facing invitation: InvitationBearer
+    context space: SharedSpace where invitations.any(one => one = invitation) and invitation.proof_mode = bearer
+
+    exposes:
+        space.name
+        space.entry_page
+        invitation.permissions
+        invitation.expires_at
+
+    provides:
+        RedeemBearerInvitation(invitation, proof)
+
+    contracts:
+        fulfils InvitationCapability
+
+    @guarantee BearerAdmissionRemainsExplicitlyWeaker
+        -- This compatibility path can enrol a person who has no authenticator,
+        -- so whoever holds the secret can claim it. Vera labels that difference
+        -- and never uses this mode for a direct private-page link.
+}
+
+surface InvitationPreview {
+    facing invitation: InvitationBearer
+    context space: SharedSpace where invitations.any(one => one = invitation)
+
+    exposes:
+        space.name
+        invitation.participant.name
+        invitation.permissions
+        invitation.expires_at
+
+    @guarantee PreviewIsNotAccess
+        -- The bearer learns only whom the invitation names, its boundary,
+        -- permissions and expiry. No page title, block or private relationship
+        -- crosses the boundary before the named participant authenticates.
 }
 
 surface HumanSessionBoundary {

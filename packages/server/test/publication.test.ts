@@ -132,6 +132,15 @@ describe('publicación del sitio personal', () => {
         content: 'Primera versión',
       })
     ).subjectId;
+    await write({
+      kind: 'create_block', page, parent: block, position: 0,
+      content: 'Detalle inicialmente plegado',
+    });
+    const folded = await fetch(`${base}/folds`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ block, folded: true }),
+    });
+    assert.equal(folded.status, 200, await folded.text());
     await write({ kind: 'set_block_gloss', block, content: 'nota privada para presentar' });
 
     const eligible = await fetch(`${base}/pages/${encodeURIComponent(page)}`).then((response) =>
@@ -292,7 +301,9 @@ describe('publicación del sitio personal', () => {
       pendingLinks: string[];
       references: { title: string; page: string | null }[];
       glosses: Record<string, unknown>;
+      folded: string[];
     };
+    assert.deepEqual(publicPage.folded, [block], 'la proyección pública comienza con el plegado editorial del dueño');
     assert.deepEqual(publicPage.pendingLinks, ['Secreta']);
     assert.equal(publicPage.references.find((one) => one.title === 'Secreta')?.page, null);
     assert.deepEqual(publicPage.glosses, {}, 'publicar una presentación no publica sus glosas');

@@ -1,0 +1,295 @@
+-- allium: 3
+-- ontology-roundtrip.allium
+
+-- Scope: Round-trip government of Vera's controlled ontology by enriching the
+--   three existing rector pages (Objects, Properties and Relations) with two
+--   equally authoritative notations: readable declarations and a spatial map
+-- Includes: Shared focus, proposals from either notation, validation, impact,
+--   publication through Vera's canonical operation history, and lossless
+--   projection back to both notations
+-- Excludes:
+--   - A fourth governing page, a parallel application or replacement routes
+--   - Layout algorithms and rendering technology
+--   - A second ontology store, RDF migration or an OWL editor
+--   - Automatic approval by an agent
+--   - Domain-specific university ontology content
+-- Dependencies: The governed ontology is defined in controlled-ontology.allium;
+--   participants, membership and canonical operations in core.allium
+
+use "./core.allium" as core
+use "./controlled-ontology.allium" as ontology
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+value DeclarationSnapshot {
+    kind: DeclarationKind
+    key: String
+    content: String
+}
+
+value ValidationIssue {
+    severity: IssueSeverity
+    says: String
+}
+
+value ImpactSummary {
+    affected_declarations: Integer
+    affected_content: Integer
+    says: String
+}
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract RoundTripNotation {
+    read_text: (governed: ontology/Ontology) -> String
+    read_map: (governed: ontology/Ontology) -> String
+    meaning_of_text: (text: String) -> DeclarationSnapshot
+    meaning_of_gesture: (gesture: String) -> DeclarationSnapshot
+
+    @invariant TwoSurfacesOneMeaning
+        -- A declaration selected or changed in one notation resolves to the
+        -- same declaration and meaning in the other. Neither notation owns a
+        -- private semantic state.
+
+    @invariant UnchangedWritingSurvivesRoundTrips
+        -- A change to one declaration preserves every other declaration,
+        -- comment, order and authored word byte for byte. Projection never
+        -- regenerates a governing page wholesale.
+
+    @invariant InvalidTextProducesNoInventedMap
+        -- Text that cannot be interpreted remains visible as text and carries
+        -- its issue. The map retains the last valid projection and never guesses
+        -- what the participant meant.
+
+    @invariant GeometryIsNotOntology
+        -- Moving or framing a visual element changes a participant's view, not
+        -- the governed meaning. Creating or reconnecting a semantic edge does
+        -- create a proposal, because that gesture changes meaning.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum DeclarationKind { object | property | relation }
+enum NotationKind { text | map }
+enum DraftStatus { editing | valid | invalid | published | discarded }
+enum IssueSeverity { notice | warning | blocking }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity OntologyDraft {
+    governed: ontology/Ontology
+    original: DeclarationSnapshot
+    proposed: DeclarationSnapshot
+    origin: NotationKind
+    status: DraftStatus
+    issues: List<ValidationIssue>
+    impact: ImpactSummary
+    source_revision: Integer
+    proposed_by: core/Participant
+
+    transitions status {
+        editing -> valid
+        editing -> invalid
+        valid -> editing
+        invalid -> editing
+        valid -> published
+        editing -> discarded
+        valid -> discarded
+        invalid -> discarded
+        terminal: published, discarded
+    }
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Both interaction surfaces arrive at the same entity. Origin records how the
+-- proposal began; it never changes what the proposal means or how it is judged.
+rule ParticipantProposesFromText {
+    when: ProposeFromText(participant, governed, original, edited, source_revision)
+
+    let membership = core/Membership{graph: governed.graph, participant: participant}
+    let proposed = meaning_of_text(edited)
+    let issues = validate_declaration(governed, proposed)
+
+    requires: exists membership
+    requires: membership.status = active
+
+    ensures: OntologyDraft.created(
+        governed: governed,
+        original: original,
+        proposed: proposed,
+        origin: text,
+        status: if issues.count = 0: valid else: invalid,
+        issues: issues,
+        impact: impact_of(governed, original, proposed),
+        source_revision: source_revision,
+        proposed_by: participant
+    )
+}
+
+rule ParticipantProposesFromMap {
+    when: ProposeFromMap(participant, governed, original, gesture, source_revision)
+
+    let membership = core/Membership{graph: governed.graph, participant: participant}
+    let proposed = meaning_of_gesture(gesture)
+    let issues = validate_declaration(governed, proposed)
+
+    requires: exists membership
+    requires: membership.status = active
+
+    ensures: OntologyDraft.created(
+        governed: governed,
+        original: original,
+        proposed: proposed,
+        origin: map,
+        status: if issues.count = 0: valid else: invalid,
+        issues: issues,
+        impact: impact_of(governed, original, proposed),
+        source_revision: source_revision,
+        proposed_by: participant
+    )
+}
+
+rule ParticipantRevisesDraft {
+    when: ReviseOntologyDraft(participant, draft, proposed)
+
+    let membership = core/Membership{graph: draft.governed.graph, participant: participant}
+    let issues = validate_declaration(draft.governed, proposed)
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: draft.status in {editing, valid, invalid}
+
+    ensures:
+        draft.proposed = proposed
+        draft.status = if issues.count = 0: valid else: invalid
+        draft.issues = issues
+        draft.impact = impact_of(draft.governed, draft.original, proposed)
+}
+
+rule HumanPublishesValidDraft {
+    when: PublishOntologyDraft(participant, draft)
+
+    requires: participant.kind = human
+    requires: draft.status = valid
+    requires: draft.source_revision = current_revision(draft.governed)
+
+    ensures:
+        core/ParticipantSubmits(
+            participant: participant,
+            graph: draft.governed.graph,
+            origin_id: draft.id,
+            change: patch_declaration(draft.original, draft.proposed),
+            channel: notation_channel(draft.origin)
+        )
+        draft.status = published
+
+    @invariant PublicationIsOneSemanticAct
+        -- The history records one ontology change even though both notations
+        -- update. A map edit and its textual projection are never two writes.
+
+    @invariant StaleDraftsNeverOverwriteNewerGovernment
+        -- Publication compares the revision the proposal was made from with the
+        -- current governed revision. A concurrent change returns the proposal to
+        -- review with a visible difference; it is never silently rebased.
+}
+
+rule ParticipantDiscardsDraft {
+    when: DiscardOntologyDraft(participant, draft)
+
+    let membership = core/Membership{graph: draft.governed.graph, participant: participant}
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: draft.status in {editing, valid, invalid}
+
+    ensures: draft.status = discarded
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor OntologyGovernor {
+    within: ontology/Ontology
+    identified_by: core/Participant where core/Membership{participant: this, graph: within.graph}.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface RoundTripOntologyGovernment {
+    facing participant: OntologyGovernor
+    context governed: ontology/Ontology
+
+    contracts:
+        fulfils RoundTripNotation
+
+    exposes:
+        governed.types
+        governed.property_definitions
+        governed.relations
+        for draft in OntologyDrafts where governed = governed:
+            draft.original
+            draft.proposed
+            draft.status
+            draft.issues
+            draft.impact
+
+    provides:
+        ProposeFromText(participant, governed, original, edited, source_revision)
+        ProposeFromMap(participant, governed, original, gesture, source_revision)
+        ReviseOntologyDraft(participant, draft, proposed) when draft.governed = governed
+        PublishOntologyDraft(participant, draft) when draft.governed = governed and draft.status = valid
+        DiscardOntologyDraft(participant, draft) when draft.governed = governed
+        FocusDeclaration(participant, governed, declaration)
+
+    @guarantee FocusIsMirrored
+        -- Focusing a textual declaration identifies the same object in the map;
+        -- focusing a visual object identifies and reveals its exact declaration.
+
+    @guarantee ExistingRectorPagesRemainCanonical
+        -- The surface is one faceted reader over the existing Objects,
+        -- Properties and Relations pages. Opening a facet navigates to that
+        -- canonical page; removing this experiment leaves its blocks, tables,
+        -- operations, history and URLs intact.
+
+    @guarantee FacetsNeverBecomeAnotherOntology
+        -- The three facets are projections of the same `/ontology` reading and
+        -- write only through the canonical operations that already edit the
+        -- declaring blocks. They keep no private semantic store.
+
+    @guarantee TextAndMapHaveEqualAgency
+        -- Every semantic change available from one notation is available from
+        -- the other, including object, property and relation changes. Personal
+        -- layout gestures remain visual preferences rather than semantic acts.
+
+    @guarantee EveryProposalShowsImpactBeforePublication
+        -- A participant sees affected declarations and corpus content before a
+        -- valid draft can be published. An empty impact is shown as empty rather
+        -- than omitted.
+
+    @guarantee TheNonVisualRouteIsComplete
+        -- The complete governing flow is operable as structured text without a
+        -- pointing device or spatial perception. Visual government broadens the
+        -- available cognitive styles; it never makes vision a condition of
+        -- sovereignty.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "When a text edit temporarily makes one declaration syntactically incomplete, does its existing valid map remain selectable for comparison or become a read-only ghost until the text is valid again?"
+open question "Are personal map positions worth preserving between sessions, or should the experimental surface always derive a fresh deterministic layout until spatial memory has been evaluated with participants?"

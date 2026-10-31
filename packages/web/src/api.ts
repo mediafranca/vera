@@ -140,6 +140,9 @@ export interface PageView {
    */
   domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
   blocks: BlockView[];
+  /** La proyección pública comienza con el montaje editorial, pero cada lector
+   * puede apartarse localmente sin reescribir la decisión del dueño. */
+  foldPersistence?: 'participant' | 'local';
   /** Vista derivada de una página cuyo tipo es `concepto`. */
   concept?: {
     members: {
@@ -603,6 +606,19 @@ export interface ParticipantIdentityView {
   permissions: number;
   canErase: boolean;
   retainedBy: string[];
+}
+
+export type ConstitutionRole = 'identity' | 'purpose' | 'practice' | 'memory' | 'governance';
+
+export interface AgentAdministrationView {
+  agent: { id: string; name: string; status: string };
+  human: { id: string; name: string; status: string } | null;
+  sources: { page: string; title: string; role: ConstitutionRole; position: number }[];
+  manifests: {
+    id: string; version: number; digest: string;
+    status: 'draft' | 'active' | 'superseded' | 'failed';
+    createdAt: number; activatedAt: number | null;
+  }[];
 }
 
 /** Por qué columna se está mirando una tabla, y en qué sentido. */
@@ -1408,10 +1424,33 @@ export const api = {
 
   participants: () => json<{ participants: ParticipantIdentityView[] }>('/participants'),
 
-  declareParticipant: (name: string, kind: 'human' | 'agent') =>
+  declareParticipant: (name: string, kind: 'human' | 'agent', principal?: string) =>
     json<{ participant: ParticipantIdentityView }>('/participants', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, kind }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, kind, principal }),
     }),
+
+  agentAdministration: () => json<{ agents: AgentAdministrationView[] }>('/agent-administration'),
+
+  establishAgentPrincipal: (agent: string, human: string) =>
+    json<{ agent: string; human: string }>(`/agents/${encodeURIComponent(agent)}/principal`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ human }),
+    }),
+
+  setAgentConstitution: (agent: string, sources: Array<{ page: string; role: ConstitutionRole }>) =>
+    json<{ agent: string }>(`/agents/${encodeURIComponent(agent)}/constitution`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sources }),
+    }),
+
+  buildAgentManifest: (agent: string) =>
+    json<{ manifest: AgentAdministrationView['manifests'][number] }>(`/agents/${encodeURIComponent(agent)}/manifests`, {
+      method: 'POST',
+    }),
+
+  activateAgentManifest: (agent: string, manifest: string) =>
+    json<{ manifest: AgentAdministrationView['manifests'][number] }>(
+      `/agents/${encodeURIComponent(agent)}/manifests/${encodeURIComponent(manifest)}/activate`,
+      { method: 'POST' },
+    ),
 
   renameParticipant: (participant: string, name: string) =>
     json<{ participant: ParticipantIdentityView }>(`/participants/${encodeURIComponent(participant)}`, {

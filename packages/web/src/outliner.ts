@@ -1242,12 +1242,14 @@ async function toggleFold(
   callbacks: OutlinerCallbacks,
   returnTo: { block: string; at: number } | null,
 ): Promise<void> {
-  try {
-    const response = await api.fold(block, folded);
-    if (!response.ok) throw new Error(`fold failed: ${response.status}`);
-  } catch {
-    toast('no se pudo plegar: sin conexión con el servidor');
-    return;
+  if (page.foldPersistence !== 'local') {
+    try {
+      const response = await api.fold(block, folded);
+      if (!response.ok) throw new Error(`fold failed: ${response.status}`);
+    } catch {
+      toast('no se pudo plegar: sin conexión con el servidor');
+      return;
+    }
   }
   // `onReload` normalmente repinta desde la réplica local. El plegado no forma
   // parte de esa réplica porque es estado de lectura y no una operación del
@@ -5297,10 +5299,14 @@ export function renderOutliner(
   const governing = governingKind(page.properties);
   if (governing !== null) {
     list.hidden = true;
-    void renderGoverning(governing, (change) => submitQuietly(change).then((applied) => {
-      if (applied) callbacks.onReload(null);
-      return applied;
-    })).then((made) => {
+    void renderGoverning(
+      governing,
+      (change) => submitQuietly(change).then((applied) => {
+        if (applied) callbacks.onReload(null);
+        return applied;
+      }),
+      (page) => callbacks.onOpen(page, 'followed_reference'),
+    ).then((made) => {
       list.hidden = false;
       if (made === null) return;
       // Los bloques que declaran ya están dibujados: se retiran, y la tabla
