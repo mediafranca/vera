@@ -85,4 +85,13 @@ describe('gobierno ontológico facetado', () => {
     assert.match(map, /setAttribute\('aria-label'/);
     assert.match(styles, /prefers-reduced-motion: reduce/);
   });
+
+  it('conserva el espejo en móvil como alternancia explícita y reversible', () => {
+    assert.match(governing, /Declaración/);
+    assert.match(governing, /detail: \{ layout: 'graph_only' \}/);
+    assert.match(map, /detail: \{ layout: 'text_only' \}/);
+    assert.match(main, /vera:ontology-layout/);
+    assert.match(main, /setLayout\(layout\)/);
+    assert.match(styles, /\.ontology-mobile-switch[\s\S]*?grid-template-columns: 1fr 1fr/);
+  });
 });

@@ -73,6 +73,47 @@ CREATE TABLE IF NOT EXISTS participant_name_history (
     changed_at      INTEGER NOT NULL
 ) STRICT;
 
+-- Una IA participa con identidad propia, pero su autoridad nace de una persona.
+-- La relación no se deriva de la credencial: una persona puede renovar o
+-- revocar muchas credenciales sin que el agente cambie de principal.
+CREATE TABLE IF NOT EXISTS agent_principals (
+    agent_id        TEXT PRIMARY KEY REFERENCES participants (id),
+    human_id        TEXT NOT NULL REFERENCES participants (id),
+    established_by  TEXT NOT NULL REFERENCES participants (id),
+    established_at  INTEGER NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('active','revoked'))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS agent_constitution_pages (
+    agent_id    TEXT NOT NULL REFERENCES participants (id),
+    page_id     TEXT NOT NULL REFERENCES pages (id) ON DELETE CASCADE,
+    role        TEXT NOT NULL CHECK (role IN ('identity','purpose','practice','memory','governance')),
+    position    INTEGER NOT NULL,
+    added_by    TEXT NOT NULL REFERENCES participants (id),
+    added_at    INTEGER NOT NULL,
+    status      TEXT NOT NULL CHECK (status IN ('active','removed')),
+    PRIMARY KEY (agent_id, page_id)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS agent_manifests (
+    id              TEXT PRIMARY KEY,
+    agent_id        TEXT NOT NULL REFERENCES participants (id),
+    version         INTEGER NOT NULL,
+    digest          TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('draft','active','superseded','failed')),
+    created_by      TEXT NOT NULL REFERENCES participants (id),
+    created_at      INTEGER NOT NULL,
+    activated_by    TEXT REFERENCES participants (id),
+    activated_at    INTEGER,
+    supersedes_id   TEXT REFERENCES agent_manifests (id),
+    failure_reason  TEXT,
+    UNIQUE (agent_id, version)
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_agent_manifest
+    ON agent_manifests(agent_id) WHERE status = 'active';
+
 CREATE TABLE IF NOT EXISTS graphs (
     id    TEXT PRIMARY KEY,
     name  TEXT NOT NULL

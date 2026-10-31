@@ -51,6 +51,7 @@ export interface SettingsHandlers {
   onClose(): void;
   onOpenFiles(): void;
   onOpenPeople(): void;
+  onOpenAgents(): void;
   onOpenSharing(): void;
   onOpenActivity(): void;
   /**
@@ -1380,6 +1381,11 @@ function drawMemory(host: HTMLElement, handlers: SettingsHandlers): void {
       'Participantes',
       'Perfil de instancia, roles, passkeys, sesiones e invitaciones',
       handlers.onOpenPeople,
+    ),
+    destination(
+      'Bibliotecarios y agentes',
+      'Principal humano, constitución, versiones y estado efectivo',
+      handlers.onOpenAgents,
     ),
     destination(
       'Espacios compartidos',

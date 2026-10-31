@@ -69,9 +69,19 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
     for (const [value, label] of [['human', 'Persona'], ['agent', 'Agente']] as const) {
       const option = document.createElement('option'); option.value = value; option.textContent = label; nature.append(option);
     }
-    participantDialog('Declarar identidad', [name, nature], 'Declarar', async () => {
+    const principal = document.createElement('select'); principal.hidden = true; principal.disabled = true;
+    principal.setAttribute('aria-label', 'Principal humano del agente');
+    for (const human of people.filter((one) => one.kind === 'human' && one.status === 'active')) {
+      const option = document.createElement('option'); option.value = human.id; option.textContent = `De ${human.name}`; principal.append(option);
+    }
+    nature.onchange = () => {
+      principal.hidden = nature.value !== 'agent'; principal.disabled = nature.value !== 'agent';
+    };
+    participantDialog('Declarar identidad', [name, nature, principal], 'Declarar', async () => {
       if (name.value.trim() === '') throw new Error('la identidad necesita un nombre');
-      await api.declareParticipant(name.value.trim(), nature.value as 'human' | 'agent');
+      const agent = nature.value === 'agent';
+      if (agent && principal.value === '') throw new Error('un agente necesita un principal humano');
+      await api.declareParticipant(name.value.trim(), nature.value as 'human' | 'agent', agent ? principal.value : undefined);
       await renderParticipantAdministration(host);
     });
     name.focus();

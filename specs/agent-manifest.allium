@@ -1,0 +1,194 @@
+-- allium: 3
+-- agent-manifest.allium
+
+-- Scope: constitución portable y administración humana de agentes embebidos en Vera.
+-- Includes: principal humano, páginas constitutivas, manifiestos versionados,
+--           activación, lectura por el runtime y rollback.
+-- Excludes: ejecución del modelo, transporte de canales, almacenamiento de
+--           secretos y reemplazo del Gateway; son adaptadores externos.
+
+use "./core.allium" as core
+
+entity AgentPrincipal {
+    agent: core/Participant
+    human: core/Participant
+    established_by: core/Participant
+    established_at: Timestamp
+    status: active | revoked
+}
+
+entity ConstitutionSource {
+    agent: core/Participant
+    page: core/Page
+    role: identity | purpose | practice | memory | governance
+    position: Integer
+    added_by: core/Participant
+    added_at: Timestamp
+    status: active | removed
+}
+
+entity AgentManifest {
+    id: String
+    agent: core/Participant
+    version: Integer
+    digest: String
+    content: String
+    status: draft | active | superseded | failed
+    created_by: core/Participant
+    created_at: Timestamp
+    activated_by: core/Participant?
+    activated_at: Timestamp?
+    supersedes: AgentManifest?
+    failure_reason: String?
+}
+
+external entity RuntimeInstance {
+    id: String
+    agent: core/Participant
+}
+
+actor HumanPrincipal {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+actor AgentRuntime {
+    identified_by: RuntimeInstance where this.agent.kind = agent and this.agent.status = active
+}
+
+invariant EveryBoundAgentHasOneActiveHuman {
+    for binding in AgentPrincipal where status = active:
+        binding.agent.kind = agent and binding.human.kind = human
+}
+
+rule HumanEstablishesAgentPrincipal {
+    when: EstablishAgentPrincipal(human, agent, established_by)
+    requires: human.kind = human
+    requires: human.status = active
+    requires: agent.kind = agent
+    requires: agent.status = active
+    requires: not exists AgentPrincipal{agent: agent, status: active}
+    ensures: AgentPrincipal.created(
+        agent: agent,
+        human: human,
+        established_by: established_by,
+        established_at: now,
+        status: active
+    )
+}
+
+rule HumanChoosesConstitutionSources {
+    when: ChooseConstitutionSources(human, agent, sources)
+    let principal = AgentPrincipal{agent: agent, human: human, status: active}
+    requires: exists principal
+    requires: sources.count > 0
+    ensures:
+        for old in ConstitutionSource where agent = agent and status = active:
+            old.status = removed
+    ensures:
+        for source in sources:
+            ConstitutionSource.created(
+                agent: agent,
+                page: source.page,
+                role: source.role,
+                position: source.position,
+                added_by: human,
+                added_at: now,
+                status: active
+            )
+}
+
+rule HumanBuildsManifestDraft {
+    when: BuildAgentManifest(human, agent)
+    requires: exists AgentPrincipal{agent: agent, human: human, status: active}
+    let sources = ConstitutionSource where agent = agent and status = active
+    requires: sources.count > 0
+    ensures: AgentManifest.created(
+        id: generated_id,
+        agent: agent,
+        version: next_version(agent),
+        digest: digest(sources),
+        content: sanitised_projection(sources),
+        status: draft,
+        created_by: human,
+        created_at: now,
+        activated_by: null,
+        activated_at: null,
+        supersedes: null,
+        failure_reason: null
+    )
+}
+
+rule HumanActivatesManifest {
+    when: ActivateAgentManifest(human, manifest)
+    requires: exists AgentPrincipal{agent: manifest.agent, human: human, status: active}
+    requires: manifest.status in {draft, superseded}
+    let prior = AgentManifest{agent: manifest.agent, status: active}
+    ensures:
+        if exists prior:
+            prior.status = superseded
+    ensures: manifest.status = active
+    ensures: manifest.activated_by = human
+    ensures: manifest.activated_at = now
+    ensures: manifest.supersedes = prior
+}
+
+rule RuntimeReadsOnlyItsActiveManifest {
+    when: RuntimeRequestsManifest(runtime)
+    let manifest = AgentManifest{agent: runtime.agent, status: active}
+    requires: exists manifest
+    ensures: ActiveManifestReturned(runtime, manifest)
+}
+
+surface AgentAdministration {
+    facing human: HumanPrincipal
+    context binding: AgentPrincipal where human = binding.human and status = active
+
+    exposes:
+        binding.agent
+        binding.human
+        for source in ConstitutionSource where agent = binding.agent and status = active:
+            source.page
+            source.role
+            source.position
+        for manifest in AgentManifest where agent = binding.agent:
+            manifest.id
+            manifest.version
+            manifest.digest
+            manifest.status
+            manifest.created_at
+            manifest.activated_at
+
+    provides:
+        ChooseConstitutionSources(human, binding.agent, sources)
+        BuildAgentManifest(human, binding.agent)
+        ActivateAgentManifest(human, manifest)
+
+    @guarantee AdministrationDoesNotTransferOwnership
+        -- Administrar el runtime, los modelos o el manifiesto nunca cambia el
+        -- principal humano ni la autoría histórica del agente.
+
+    @guarantee SecretsStayOutsideTheCorpus
+        -- El manifiesto sólo contiene texto y referencias gobernadas; credenciales,
+        -- tokens y secretos se expresan como referencias y nunca como valores.
+
+    @guarantee OnlyOneActiveManifestPerAgent
+        -- Activar un manifiesto reemplaza al activo de ese agente; nunca quedan
+        -- dos constituciones efectivas compitiendo.
+}
+
+surface ActiveManifestDoor {
+    facing runtime: AgentRuntime
+    context manifest: AgentManifest where agent = runtime.agent and status = active
+
+    exposes:
+        manifest.id
+        manifest.version
+        manifest.digest
+        manifest.content
+
+    @guarantee ACredentialCannotReadAnotherAgentsConstitution
+        -- La identidad de la credencial determina el único manifiesto legible.
+
+    @guarantee LastKnownGoodRemainsAddressable
+        -- Activar o revertir nunca borra manifiestos anteriores ni su digest.
+}

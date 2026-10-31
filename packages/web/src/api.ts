@@ -608,6 +608,19 @@ export interface ParticipantIdentityView {
   retainedBy: string[];
 }
 
+export type ConstitutionRole = 'identity' | 'purpose' | 'practice' | 'memory' | 'governance';
+
+export interface AgentAdministrationView {
+  agent: { id: string; name: string; status: string };
+  human: { id: string; name: string; status: string } | null;
+  sources: { page: string; title: string; role: ConstitutionRole; position: number }[];
+  manifests: {
+    id: string; version: number; digest: string;
+    status: 'draft' | 'active' | 'superseded' | 'failed';
+    createdAt: number; activatedAt: number | null;
+  }[];
+}
+
 /** Por qué columna se está mirando una tabla, y en qué sentido. */
 export interface QuerySort {
   by: 'title' | 'type' | 'topic' | 'created' | 'updated';
@@ -1411,10 +1424,33 @@ export const api = {
 
   participants: () => json<{ participants: ParticipantIdentityView[] }>('/participants'),
 
-  declareParticipant: (name: string, kind: 'human' | 'agent') =>
+  declareParticipant: (name: string, kind: 'human' | 'agent', principal?: string) =>
     json<{ participant: ParticipantIdentityView }>('/participants', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, kind }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, kind, principal }),
     }),
+
+  agentAdministration: () => json<{ agents: AgentAdministrationView[] }>('/agent-administration'),
+
+  establishAgentPrincipal: (agent: string, human: string) =>
+    json<{ agent: string; human: string }>(`/agents/${encodeURIComponent(agent)}/principal`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ human }),
+    }),
+
+  setAgentConstitution: (agent: string, sources: Array<{ page: string; role: ConstitutionRole }>) =>
+    json<{ agent: string }>(`/agents/${encodeURIComponent(agent)}/constitution`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sources }),
+    }),
+
+  buildAgentManifest: (agent: string) =>
+    json<{ manifest: AgentAdministrationView['manifests'][number] }>(`/agents/${encodeURIComponent(agent)}/manifests`, {
+      method: 'POST',
+    }),
+
+  activateAgentManifest: (agent: string, manifest: string) =>
+    json<{ manifest: AgentAdministrationView['manifests'][number] }>(
+      `/agents/${encodeURIComponent(agent)}/manifests/${encodeURIComponent(manifest)}/activate`,
+      { method: 'POST' },
+    ),
 
   renameParticipant: (participant: string, name: string) =>
     json<{ participant: ParticipantIdentityView }>(`/participants/${encodeURIComponent(participant)}`, {

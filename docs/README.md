@@ -35,6 +35,7 @@ desplegar y contribuir al programa.
 
 ### Planes y registro de decisiones
 
+- [Vera: bazar de catedrales](bazar-de-catedrales.md)
 - [Fundamentos epistémicos y recorridos argumentales](fundamentos-epistemicos.md)
 - [Gobierno ontológico visual: corte experimental](experimento-gobierno-ontologico-visual.md)
 - [Que la mano no espere](plan-local-first.md)

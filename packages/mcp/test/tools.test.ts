@@ -60,6 +60,7 @@ describe('el catálogo', () => {
         'vera_historia_bloque',
         'vera_indice',
         'vera_leer_pagina',
+        'vera_mi_constitucion',
         'vera_mover_bloque_propio',
         'vera_ontologia',
         'vera_preparar_escritura',
@@ -102,6 +103,21 @@ describe('quién soy', () => {
     const { ask } = fakeVera({});
     const said = await run('vera_quien_soy', {}, ask);
     assert.match(said, /No pude leer eso/);
+  });
+});
+
+describe('constitución propia', () => {
+  it('lee sólo la puerta ligada a la credencial actual y presenta su digest', async () => {
+    const { ask, asked } = fakeVera({
+      '/agent-manifest': {
+        summary: { version: 3, digest: 'abc123' },
+        document: { agent: { id: 'participant:cotito', human: { id: 'participant:herbert' } }, constitution: [] },
+      },
+    });
+    const said = await run('vera_mi_constitucion', {}, ask);
+    assert.deepEqual(asked, [{ path: '/agent-manifest', parameters: {} }]);
+    assert.match(said, /Constitución activa v3/);
+    assert.match(said, /participant:herbert/);
   });
 });
 

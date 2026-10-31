@@ -190,6 +190,26 @@ export async function renderOntologyGovernanceMap(
   note.textContent = 'proyección de la página rectora · seleccionar revela su declaración';
   heading.append(title, note);
 
+  const mobileMirror = document.createElement('nav');
+  mobileMirror.className = 'ontology-mobile-switch ontology-mobile-switch-graph';
+  mobileMirror.setAttribute('aria-label', 'inscripción del gobierno ontológico');
+  const declaration = document.createElement('button');
+  declaration.type = 'button';
+  declaration.textContent = 'Declaración';
+  declaration.setAttribute('aria-pressed', 'false');
+  declaration.addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('vera:ontology-layout', {
+      detail: { layout: 'text_only' },
+    }));
+  });
+  const scheme = document.createElement('button');
+  scheme.type = 'button';
+  scheme.className = 'selected';
+  scheme.textContent = 'Esquema';
+  scheme.setAttribute('aria-pressed', 'true');
+  mobileMirror.append(declaration, scheme);
+  heading.append(mobileMirror);
+
   const viewport = document.createElement('div');
   viewport.className = 'ontology-government-viewport';
   const stage = document.createElement('div');

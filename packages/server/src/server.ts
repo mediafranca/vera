@@ -149,6 +149,15 @@ import {
   suspendParticipant,
 } from './participant-identities.ts';
 import {
+  activeManifest,
+  activateManifest,
+  agentAdministration,
+  buildManifest,
+  chooseConstitutionSources,
+  establishAgentPrincipal,
+  type ConstitutionRole,
+} from './agent-manifests.ts';
+import {
   ask,
   readPage,
   mergeReadings,
@@ -3625,11 +3634,80 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const name = typeof body['name'] === 'string' ? body['name'] : '';
         const kind = body['kind'] === 'agent' ? 'agent' : 'human';
         const participant = declareParticipant(store, who.participant, name, kind);
+        if (kind === 'agent') {
+          const principal = typeof body['principal'] === 'string' ? body['principal'] : who.participant;
+          establishAgentPrincipal(store, participant.id, principal, who.participant);
+        }
         graph.addParticipant({ id: participant.id, name: participant.name, kind: participant.kind });
         graph.admit(participant.id);
         send(response, 201, { participant });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/agent-administration') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      send(response, 200, { agents: agentAdministration(store, graph) });
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/agents\/[^/]+\/principal$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const agent = decodeURIComponent(path.split('/')[2] ?? '');
+        const body = await readSmallJson();
+        const human = typeof body['human'] === 'string' ? body['human'] : '';
+        establishAgentPrincipal(store, agent, human, who.participant);
+        send(response, 200, { agent, human });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'PUT' && /^\/agents\/[^/]+\/constitution$/.test(path)) {
+      try {
+        const agent = decodeURIComponent(path.split('/')[2] ?? '');
+        const body = await readSmallJson();
+        const raw = Array.isArray(body['sources']) ? body['sources'] : [];
+        const roles = new Set<ConstitutionRole>(['identity', 'purpose', 'practice', 'memory', 'governance']);
+        const sources = raw.map((one) => {
+          const said = one as Record<string, unknown>;
+          const page = typeof said['page'] === 'string' ? said['page'] : '';
+          const role = typeof said['role'] === 'string' && roles.has(said['role'] as ConstitutionRole)
+            ? said['role'] as ConstitutionRole : 'practice';
+          return { page, role };
+        });
+        chooseConstitutionSources(store, graph, who.participant, agent, sources);
+        send(response, 200, { agent, sources });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/agents\/[^/]+\/manifests$/.test(path)) {
+      try {
+        const agent = decodeURIComponent(path.split('/')[2] ?? '');
+        send(response, 201, { manifest: buildManifest(store, graph, who.participant, agent) });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/agents\/[^/]+\/manifests\/[^/]+\/activate$/.test(path)) {
+      try {
+        const parts = path.split('/');
+        const agent = decodeURIComponent(parts[2] ?? '');
+        const manifest = decodeURIComponent(parts[4] ?? '');
+        send(response, 200, { manifest: activateManifest(store, who.participant, agent, manifest) });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }
@@ -3980,6 +4058,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    /** Constitución efectiva para el runtime que porta la credencial. */
+    if (request.method === 'GET' && path === '/agent-manifest') {
+      if (who.credential === null || graph.participant(who.participant)?.kind !== 'agent') {
+        send(response, 403, { error: 'esta puerta exige la credencial de un agente' });
+        return;
+      }
+      const manifest = activeManifest(store, who.participant);
+      if (manifest === null) { send(response, 404, { error: 'el agente no tiene manifiesto activo' }); return; }
+      send(response, 200, manifest);
+      return;
+    }
+
     /** Admitir un agente en el grafo. rule OwnerInvitesParticipant. */
     if (request.method === 'POST' && path === '/agents') {
       const blocked = ownerOnly();
@@ -3990,7 +4080,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
-        let body: { id?: unknown; name?: unknown };
+        let body: { id?: unknown; name?: unknown; principal?: unknown };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
         } catch {
@@ -4009,6 +4099,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         try {
           saveParticipant(store, { id, name, kind: 'agent' });
+          const principal = typeof body.principal === 'string' ? body.principal : who.participant;
+          establishAgentPrincipal(store, id, principal, who.participant);
           graph.addParticipant({ id, name, kind: 'agent' });
           graph.admit(id);
         } catch (error) {
@@ -4118,6 +4210,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           : `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
         if (deal !== 'capturar' && graph.participant(participant) === undefined) {
           saveParticipant(store, { id: participant, name, kind: 'agent' });
+          establishAgentPrincipal(store, participant, owner, owner);
           graph.addParticipant({ id: participant, name, kind: 'agent' });
           graph.admit(participant);
         }
@@ -6191,7 +6284,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * tiene por qué llevar dentro un participante que no escribió nada.
          */
         if (graph.participant(LOCAL_MODEL) === undefined) {
+          const human = graph.owner;
+          if (human === null) { send(response, 500, { error: 'this graph has no owner' }); return; }
           saveParticipant(store, { id: LOCAL_MODEL, name: LOCAL_MODEL_NAME, kind: 'agent' });
+          establishAgentPrincipal(store, LOCAL_MODEL, human, human);
           graph.addParticipant({ id: LOCAL_MODEL, name: LOCAL_MODEL_NAME, kind: 'agent' });
           graph.admit(LOCAL_MODEL);
         }

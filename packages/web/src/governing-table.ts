@@ -178,6 +178,26 @@ export async function renderGoverning(
   }
   element.append(facets);
 
+  const mobileMirror = document.createElement('nav');
+  mobileMirror.className = 'ontology-mobile-switch ontology-mobile-switch-text';
+  mobileMirror.setAttribute('aria-label', 'inscripción del gobierno ontológico');
+  const declaration = document.createElement('button');
+  declaration.type = 'button';
+  declaration.className = 'selected';
+  declaration.textContent = 'Declaración';
+  declaration.setAttribute('aria-pressed', 'true');
+  const scheme = document.createElement('button');
+  scheme.type = 'button';
+  scheme.textContent = 'Esquema';
+  scheme.setAttribute('aria-pressed', 'false');
+  scheme.addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('vera:ontology-layout', {
+      detail: { layout: 'graph_only' },
+    }));
+  });
+  mobileMirror.append(declaration, scheme);
+  element.append(mobileMirror);
+
   const sectionIn = (
     title: string | null,
     note: string | null,

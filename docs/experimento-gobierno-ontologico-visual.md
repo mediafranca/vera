@@ -35,6 +35,9 @@ no se observa un vecindario documental, sino dos notaciones de una misma regla.
   redibujan desde ella.
 - La ruta no visual permanece completa: tabla editable, teclado, rótulos
   accesibles y movimiento reducido.
+- En teléfono las dos inscripciones no se reducen hasta quedar ilegibles: una
+  alternancia explícita **Declaración ↔ Esquema** conserva el mismo bloque y
+  permite volver al otro lado del gesto.
 
 ## Prueba sobre el corpus real
 
@@ -47,7 +50,8 @@ identificador de bloque.
 
 La verificación automatizada cubre las tres facetas, la relación como entidad,
 la conservación del vocabulario de operaciones, el orden texto–figura y la
-ruta accesible. El corte converge con 1.803 pruebas.
+ruta accesible. El corte convergente que lo integra con el bibliotecario
+embebido pasa 1.817 pruebas.
 
 ## Límites deliberados
 

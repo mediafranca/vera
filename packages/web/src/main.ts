@@ -114,6 +114,7 @@ import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts'
 import { wirePullToRefresh } from './pull-to-refresh.ts';
 import { participantProfileTitle, renderParticipantProfile } from './participant-profile.ts';
 import { renderParticipantAdministration } from './participant-administration.ts';
+import { renderAgentAdministration } from './agent-administration.ts';
 
 const PHONE = 640;
 
@@ -1831,6 +1832,10 @@ async function applyRoute(): Promise<void> {
     await openParticipantsAdministration();
     return;
   }
+  if (window.location.pathname === '/agentes') {
+    await openAgentAdministration();
+    return;
+  }
   if (window.location.pathname === '/personas') {
     await openCollectiveAdministration();
     return;
@@ -1920,6 +1925,16 @@ async function openParticipantsAdministration(push = false): Promise<void> {
   $('#vera-root').classList.add('special-surface');
   closeSettings();
   await renderParticipantAdministration($('#text'));
+}
+
+async function openAgentAdministration(push = false): Promise<void> {
+  workspace.activePage = null;
+  workspace.focusRoot = null;
+  nameWindow('Bibliotecarios y agentes');
+  if (push && window.location.pathname !== '/agentes') window.history.pushState({}, '', '/agentes');
+  $('#vera-root').classList.add('special-surface');
+  closeSettings();
+  await renderAgentAdministration($('#text'));
 }
 
 async function openSharingAdministration(push = false): Promise<void> {
@@ -3825,6 +3840,7 @@ function wireTheme(): void {
       onClose: closeSettings,
       onOpenFiles: () => void openFilesAdministration(true),
       onOpenPeople: () => void openParticipantsAdministration(true),
+      onOpenAgents: () => void openAgentAdministration(true),
       onOpenSharing: () => void openSharingAdministration(true),
       onOpenActivity: () => void openActivityAdministration(),
     });
@@ -4141,6 +4157,16 @@ async function start(): Promise<void> {
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-layout]')) {
     button.addEventListener('click', () => setLayout(button.dataset['layout'] as WorkspaceLayout));
   }
+  /*
+   * En el gobierno ontológico el teléfono no rompe el espejo: lo vuelve
+   * secuencial. Ambos lados emiten el mismo gesto para pasar de la declaración
+   * al esquema y regresar, y `setLayout` conserva la preferencia por el mismo
+   * camino que usa la barra general.
+   */
+  document.addEventListener('vera:ontology-layout', (event) => {
+    const layout = (event as CustomEvent<{ layout?: WorkspaceLayout }>).detail?.layout;
+    if (layout === 'text_only' || layout === 'graph_only') setLayout(layout);
+  });
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
     button.addEventListener('click', () => {
       setGraphView(button.dataset['view'] as GraphViewMode);

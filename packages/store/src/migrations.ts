@@ -1015,6 +1015,69 @@ const addIdentifiedInvitations: Migration = {
   },
 };
 
+/** 28 — una IA tiene principal humano y una constitución portable versionada. */
+const addAgentManifests: Migration = {
+  version: 28,
+  name: 'principal y manifiesto de agentes',
+  apply(db) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_principals (
+        agent_id TEXT PRIMARY KEY REFERENCES participants (id),
+        human_id TEXT NOT NULL REFERENCES participants (id),
+        established_by TEXT NOT NULL REFERENCES participants (id),
+        established_at INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','revoked'))
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS agent_constitution_pages (
+        agent_id TEXT NOT NULL REFERENCES participants (id),
+        page_id TEXT NOT NULL REFERENCES pages (id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('identity','purpose','practice','memory','governance')),
+        position INTEGER NOT NULL,
+        added_by TEXT NOT NULL REFERENCES participants (id),
+        added_at INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','removed')),
+        PRIMARY KEY (agent_id, page_id)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS agent_manifests (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES participants (id),
+        version INTEGER NOT NULL,
+        digest TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('draft','active','superseded','failed')),
+        created_by TEXT NOT NULL REFERENCES participants (id),
+        created_at INTEGER NOT NULL,
+        activated_by TEXT REFERENCES participants (id),
+        activated_at INTEGER,
+        supersedes_id TEXT REFERENCES agent_manifests (id),
+        failure_reason TEXT,
+        UNIQUE (agent_id, version)
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_agent_manifest
+        ON agent_manifests(agent_id) WHERE status = 'active';
+    `);
+
+    // Una Vera personal ya declara quién es su persona soberana. Los agentes
+    // históricos quedan ligados a ella sin deducir identidad desde el nombre ni
+    // desde una credencial concreta. En una Vera colectiva la elección exige un
+    // acto humano posterior: no se apropian agentes por omisión.
+    const has = (table: string): boolean => db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?",
+    ).get(table) !== undefined;
+    const participantColumns = has('participants')
+      ? db.prepare('PRAGMA table_info(participants)').all() as Array<{ name: string }>
+      : [];
+    if (has('instances') && participantColumns.some((one) => one.name === 'kind')) {
+      db.exec(`INSERT OR IGNORE INTO agent_principals
+        (agent_id,human_id,established_by,established_at,status)
+        SELECT p.id,i.owner_id,i.owner_id,unixepoch('now') * 1000,'active'
+        FROM participants p
+        JOIN instances i ON i.profile='personal'
+        WHERE p.kind='agent'`);
+    }
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1043,6 +1106,7 @@ export const MIGRATIONS: readonly Migration[] = [
   stabiliseParticipantIdentity,
   addEditorialFolds,
   addIdentifiedInvitations,
+  addAgentManifests,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */
