@@ -166,7 +166,9 @@ export async function renderGoverning(
   for (const facet of facetKinds) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = facet.kind === kind ? 'governing-facet selected' : 'governing-facet';
+    button.className = facet.kind === kind
+      ? `governing-facet ${facet.kind} selected`
+      : `governing-facet ${facet.kind}`;
     button.textContent = facet.label;
     button.setAttribute('aria-current', facet.kind === kind ? 'page' : 'false');
     const destination = knownPages.find((page) => page.kind === facet.kind);

@@ -455,8 +455,28 @@ function drawMemory(host: HTMLElement): void {
       return at === -1 ? KNOWN.length : at;
     };
 
+    const ontologyKinds = new Set(['objects', 'properties', 'relations']);
+    const ontology = found
+      .filter((page) => ontologyKinds.has(page.kind))
+      .sort((a, b) => rank(a.kind) - rank(b.kind));
+
+    /*
+     * Las tres páginas rectoras forman un solo destino operativo. Cada una
+     * conserva su identidad, URL e historia; el visor facetado permite pasar
+     * de una a otra. La página Gobierno mantiene el inventario exhaustivo.
+     */
+    if (ontology.length > 0) {
+      const entrance = ontology.find((page) => page.kind === 'objects') ?? ontology[0]!;
+      const item = row('Ontología', 'Objetos, propiedades y relaciones en un visor facetado');
+      item.addEventListener('click', () => {
+        closeSettings();
+        void openPage(entrance.id, null, { gesture: 'opened_directly' });
+      });
+    }
+
     const declared = found
       .filter((page) => page.kind !== 'activity' && page.kind !== 'publication')
+      .filter((page) => !ontologyKinds.has(page.kind))
       .sort(
       (a, b) => rank(a.kind) - rank(b.kind) || a.title.localeCompare(b.title, 'es'),
       );

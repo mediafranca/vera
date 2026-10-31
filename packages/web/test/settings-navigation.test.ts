@@ -53,6 +53,14 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /settings-backup/);
   });
 
+  it('reúne el gobierno ontológico en un destino y conserva Gobierno como inventario', () => {
+    assert.match(main, /row\('Ontología', 'Objetos, propiedades y relaciones en un visor facetado'\)/);
+    assert.match(main, /ontologyKinds = new Set\(\['objects', 'properties', 'relations'\]\)/);
+    assert.match(main, /page\.kind === 'objects'/);
+    assert.match(main, /!ontologyKinds\.has\(page\.kind\)/);
+    assert.doesNotMatch(main, /page\.kind !== 'governance'/);
+  });
+
   it('presenta cada comando una sola vez en Teclado', () => {
     const names = COMMANDS.map((command) => command.name);
     assert.equal(new Set(names).size, names.length);
