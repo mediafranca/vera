@@ -8320,6 +8320,8 @@ function startEditing(
    */
   const spoken = body.querySelector('.audio-block');
   const row = body.parentElement;
+  const formatTools = document.createElement('div');
+  formatTools.className = 'format-tools-row';
   const formatBar = document.createElement('div');
   formatBar.className = 'format-bar';
   formatBar.setAttribute('role', 'toolbar');
@@ -8328,13 +8330,12 @@ function startEditing(
   formatBar.id = `format-${block.stableId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const rememberFormatBarHeight = (): void => {
     const height = formatBar.getBoundingClientRect().height;
-    if (height > 0) formatBar.style.setProperty('--format-bar-measured-height', `${height}px`);
+    if (height > 0) formatTools.style.setProperty('--format-bar-measured-height', `${height}px`);
   };
   const formatBarSize = new ResizeObserver(rememberFormatBarHeight);
   if (!sourceMode) formatBarSize.observe(formatBar);
   const formatBarAnchor = document.createElement('div');
   formatBarAnchor.className = 'format-bar-anchor';
-  formatBarAnchor.append(formatBar);
   body.innerHTML = '';
   if (spoken !== null) body.append(spoken);
   if (sourceMode) body.append(editor);
@@ -8361,8 +8362,10 @@ function startEditing(
     editor.focus({ preventScroll: true });
   });
   if (!sourceMode && row !== null) {
-    // Fuera del esquema: la viñeta sigue abriendo el menú propio del bloque.
-    row.prepend(formatTrigger);
+    // La herramienta remata su propia barra; la viñeta conserva el menú y el
+    // carril izquierdo queda libre para la operación estructural móvil.
+    formatTools.append(formatBar, formatTrigger);
+    formatBarAnchor.append(formatTools);
   }
 
   /**
@@ -8699,39 +8702,19 @@ function startEditing(
     const touchRadius = 22;
 
     /*
-     * La herramienta de formato nació antes que el carril móvil y todavía
-     * colgaba con un margen negativo fijo. En el primer nivel de un teléfono
-     * estrecho eso deja media circunferencia fuera de la pantalla: el control
-     * se ve, pero el gesto deja de pertenecer enteramente a la superficie.
-     *
-     * El desplazamiento es sólo visual —no cambia el ancho del bloque— y se
-     * calcula contra el viewport realmente visible, incluido el desplazamiento
-     * de VisualViewport cuando el teclado virtual está abierto. El botón de
-     * partir toma después este centro ya corregido, de modo que ambos controles
-     * comparten un único carril alcanzable.
+     * La llave vive ahora arriba a la derecha, junto a su barra. El carril
+     * exterior izquierdo pertenece sólo a la acción estructural, que puede
+     * guardar un blanco táctil completo sin negociar el sitio con otra acción.
      *
      * @invariant MobileEditorActionsStayInsideTheViewport.
      */
-    formatTrigger.style.removeProperty('--format-tools-shift');
-    const naturalToolsBox = formatTrigger.getBoundingClientRect();
     const viewportLeft = window.visualViewport?.offsetLeft ?? 0;
     const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-    const naturalToolsCenter = naturalToolsBox.left + naturalToolsBox.width / 2;
-    const toolsCenter = Math.min(
+    const preferredScreenX = editorBox.left - touchRadius - 6;
+    const screenX = Math.min(
       viewportLeft + viewportWidth - touchRadius,
-      Math.max(viewportLeft + touchRadius, naturalToolsCenter),
+      Math.max(viewportLeft + touchRadius, preferredScreenX),
     );
-    formatTrigger.style.setProperty(
-      '--format-tools-shift',
-      `${toolsCenter - naturalToolsCenter}px`,
-    );
-    const toolsBox = formatTrigger.getBoundingClientRect();
-    const preferredScreenX = toolsBox.left + toolsBox.width / 2;
-    // El carril de formato cuelga fuera del esquema y, en el primer nivel de un
-    // teléfono estrecho, puede quedar parcialmente fuera del viewport. La
-    // acción estructural sí tiene que ser alcanzable: se conserva en ese mismo
-    // lado, pero se limita por el blanco táctil completo de 44 px.
-    const screenX = Math.max(touchRadius, preferredScreenX);
     const x = screenX - rowBox.left;
     let screenY = editorBox.top + caretTopIn(editor, endpoint) + line / 2;
 
@@ -8741,7 +8724,7 @@ function startEditing(
      * sus áreas táctiles se cruzarían: superponer dos áreas de 44 px hace que
      * sólo la que está arriba en la pila sea realmente pulsable.
      */
-    const obstacles = [formatTrigger, row.querySelector<HTMLElement>('.fold'),
+    const obstacles = [row.querySelector<HTMLElement>('.fold'),
       row.querySelector<HTMLElement>('.bullet')];
     for (const obstacle of obstacles) {
       if (obstacle === null) continue;

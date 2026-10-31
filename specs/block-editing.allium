@@ -126,11 +126,11 @@ contract FluidBlockEditing {
         -- nor replaces the bullet, folding control or formatting tools.
 
     @invariant MobileEditorActionsStayInsideTheViewport
-        -- On a touch editor, the formatting tool and the structural split
-        -- action share an exterior rail whose complete 44-pixel touch targets
-        -- remain inside the visible viewport, including while the virtual
-        -- keyboard changes it. They may separate vertically to preserve both
-        -- gestures, but neither is expelled beyond the screen edge.
+        -- On a touch editor, the formatting tool remains at the upper-right end
+        -- of its toolbar while the structural split action alone occupies the
+        -- exterior rail beside the caret. Their complete touch targets remain
+        -- inside the visible viewport, including while the virtual keyboard
+        -- changes it; neither covers the source or is expelled beyond the edge.
 }
 
 contract OutlineManipulation {

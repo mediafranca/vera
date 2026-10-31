@@ -288,9 +288,9 @@ describe('barra de formato', () => {
     assert.doesNotMatch(source, /body\.append\(splitControl\)/);
     assert.match(source, /caretTopIn\(editor, endpoint\)/);
     assert.match(source, /const viewportLeft = window\.visualViewport\?\.offsetLeft \?\? 0/);
-    assert.match(source, /formatTrigger\.style\.setProperty\(\s*'--format-tools-shift'/);
-    assert.match(source, /const screenX = Math\.max\(touchRadius, preferredScreenX\)/);
-    assert.match(source, /screenY = box\.bottom \+ touchRadius \+ 2/);
+    assert.match(source, /const preferredScreenX = editorBox\.left - touchRadius - 6/);
+    assert.match(source, /Math\.max\(viewportLeft \+ touchRadius, preferredScreenX\)/);
+    assert.doesNotMatch(source, /--format-tools-shift/);
     assert.match(styles, /@media \(hover: none\), \(pointer: coarse\)[\s\S]*?\.block > \.split-block-action \{[\s\S]*?position: absolute;[\s\S]*?left: var\(--split-action-x[\s\S]*?top: var\(--split-action-y/);
     assert.match(styles, /\.format-tools-trigger::after \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
     assert.match(styles, /\.block > \.split-block-action::after \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
@@ -305,8 +305,11 @@ describe('barra de formato', () => {
 
   it('cede dentro de la columna sin crear desplazamiento horizontal del documento', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-    assert.match(styles, /\.format-bar \{[\s\S]*?flex-wrap: wrap;[\s\S]*?width: min\(calc\(100% - 1rem\), 27\.2rem\);/);
+    assert.match(styles, /\.format-bar \{[\s\S]*?flex-wrap: wrap;[\s\S]*?flex: 0 1 27\.2rem;[\s\S]*?width: min\(calc\(100% - 2\.6rem\), 27\.2rem\);/);
+    assert.match(styles, /\.format-tools-row \{[\s\S]*?width: 100%;[\s\S]*?pointer-events: none;/);
     assert.match(styles, /\.format-action \{[\s\S]*?flex: 1 1 2\.35rem;[\s\S]*?min-width: 1\.7rem;/);
+    assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.format-bar \{[\s\S]*?flex-wrap: nowrap;[\s\S]*?overflow-x: auto;[\s\S]*?touch-action: pan-x;/);
+    assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.format-action \{ flex: 0 0 2\.35rem; \}/);
   });
 
   it('usa una sola familia Lucide y deja sus trazos por encima del texto', () => {
@@ -340,7 +343,8 @@ describe('barra de formato', () => {
     assert.match(source, /formatTrigger\.innerHTML = icon\('wrench'\)/);
     assert.match(source, /formatBarAnchor\.className = 'format-bar-anchor'/);
     assert.match(source, /body\.append\(formatBarAnchor, editor\)/);
-    assert.match(source, /row\.prepend\(formatTrigger\)/);
+    assert.match(source, /formatTools\.append\(formatBar, formatTrigger\)/);
+    assert.match(source, /formatBarAnchor\.append\(formatTools\)/);
     assert.match(source, /formatBar\.hidden = !formatBar\.hidden/);
     assert.match(source, /formatTrigger\.addEventListener\('mousedown', \(event\) => event\.preventDefault\(\)\)/);
     assert.doesNotMatch(source, /bullet\.classList\.add\('editing-tools'\)/);
@@ -348,9 +352,10 @@ describe('barra de formato', () => {
     assert.match(styles, /\.format-bar\[hidden\] \{\s*display: none;/);
     assert.match(source, /new ResizeObserver\(rememberFormatBarHeight\)/);
     assert.match(source, /if \(!formatBar\.hidden\) requestAnimationFrame\(rememberFormatBarHeight\)/);
-    assert.match(styles, /\.format-bar \{[\s\S]*?position: sticky;[\s\S]*?top: calc\(0\.65rem \+ var\(--format-bar-measured-height\) \+ var\(--format-bar-gap\)\);[\s\S]*?margin: 0;[\s\S]*?transform: translateY\(calc\(0px - var\(--format-bar-measured-height\) - var\(--format-bar-gap\)\)\);/);
+    assert.match(styles, /\.format-tools-row \{[\s\S]*?position: sticky;[\s\S]*?top: calc\(0\.65rem \+ var\(--format-bar-measured-height\) \+ var\(--format-bar-gap\)\);[\s\S]*?transform: translateY\(calc\(0px - var\(--format-bar-measured-height\) - var\(--format-bar-gap\)\)\);/);
     assert.match(styles, /\.format-bar-anchor \{\s*position: absolute;\s*inset: 0;[\s\S]*?pointer-events: none;/);
-    assert.match(styles, /\.format-tools-trigger \{\s*position: sticky;\s*top: 0\.65rem;[\s\S]*?display: grid;[\s\S]*?place-items: center;[\s\S]*?align-self: flex-start;[\s\S]*?width: 1\.65rem;[\s\S]*?height: 1\.65rem;[\s\S]*?margin-top: calc\(var\(--thread-y\) - 0\.825rem\);[\s\S]*?margin-left: -2\.5rem;[\s\S]*?margin-right: 0\.55rem;[\s\S]*?border-radius: 50%;[\s\S]*?color: var\(--bg\);[\s\S]*?background: var\(--accent\);/);
+    assert.match(styles, /\.format-tools-trigger \{[\s\S]*?width: var\(--format-bar-height\);[\s\S]*?height: var\(--format-bar-height\);[\s\S]*?margin: 0;[\s\S]*?border-radius: 5px;[\s\S]*?color: var\(--bg\);[\s\S]*?background: var\(--accent\);/);
+    assert.match(styles, /@keyframes format-tools-slide-in[\s\S]*?translateX\(\.65rem\)[\s\S]*?translateX\(0\)/);
   });
 });
 
