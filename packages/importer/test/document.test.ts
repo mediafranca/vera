@@ -120,6 +120,37 @@ function docx(bodyXml: string): Buffer {
   return Buffer.concat([local, name, packed, entry, name, end]);
 }
 
+/** Un PDF mínimo, con texto seleccionable y metadatos de título. */
+function pdf(text: string, title: string): Buffer {
+  const escaped = text.replace(/([\\()])/g, '\\$1');
+  const stream = `BT /F1 12 Tf 72 720 Td (${escaped}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+    `<< /Title (${title.replace(/([\\()])/g, '\\$1')}) >>`,
+  ];
+  const parts = [Buffer.from('%PDF-1.4\n', 'ascii')];
+  const offsets = [0];
+  let at = parts[0]!.byteLength;
+  objects.forEach((object, index) => {
+    offsets.push(at);
+    const encoded = Buffer.from(`${index + 1} 0 obj\n${object}\nendobj\n`, 'ascii');
+    parts.push(encoded);
+    at += encoded.byteLength;
+  });
+  const xref = at;
+  const rows = offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  parts.push(Buffer.from(
+    `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${rows}` +
+    `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xref}\n%%EOF\n`,
+    'ascii',
+  ));
+  return Buffer.concat(parts);
+}
+
 const p = (style: string | null, text: string, ilvl: number | null = null): string =>
   `<w:p>${style === null ? '' : `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`}` +
   `${ilvl === null ? '' : `<w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/></w:numPr></w:pPr>`}` +
@@ -164,26 +195,51 @@ describe('parseDocx', () => {
 });
 
 describe('parseDocument', () => {
-  it('elige el lector por la extensión', () => {
-    const md = parseDocument(Buffer.from('# Hola\n\nqué tal\n'), 'notas.md', 'text/markdown');
+  it('elige el lector por la extensión', async () => {
+    const md = await parseDocument(Buffer.from('# Hola\n\nqué tal\n'), 'notas.md', 'text/markdown');
     assert.equal('error' in md ? null : md.format, 'markdown');
   });
 
-  it('reconoce un docx aunque el tipo declarado no lo diga', () => {
-    const out = parseDocument(docx(p('Heading1', 'T') + p(null, 'x')), 'sin-tipo', '');
+  it('reconoce un docx aunque el tipo declarado no lo diga', async () => {
+    const out = await parseDocument(docx(p('Heading1', 'T') + p(null, 'x')), 'sin-tipo', '');
     assert.equal('error' in out ? null : out.format, 'docx');
   });
 
-  it('se niega entero ante un formato que no sabe leer', () => {
+  it('se niega entero ante un PDF ilegible', async () => {
     // @invariant NoPageSurvivesARefusal: negarse es no crear nada, y para eso
     // hay que negarse antes de escribir, no a mitad.
-    const out = parseDocument(Buffer.from('%PDF-1.4'), 'tesis.pdf', 'application/pdf');
+    const out = await parseDocument(Buffer.from('%PDF-1.4'), 'tesis.pdf', 'application/pdf');
     assert.ok('error' in out);
   });
 
-  it('un archivo sin texto no llega a ser una página', () => {
+  it('extrae el texto y el título de un PDF real', async () => {
+    const out = await parseDocument(pdf('Texto seleccionable', 'Acta de prueba'), 'acta.pdf', 'application/pdf');
+    assert.ok(!('error' in out), 'error' in out ? out.error : '');
+    if (!('error' in out)) {
+      assert.equal(out.format, 'pdf');
+      assert.equal(out.title, 'Acta de prueba');
+      assert.match(out.pieces.map((piece) => piece.content).join(' '), /Texto seleccionable/);
+    }
+  });
+
+  it('lee texto RTF y declara las imágenes que no pudo traer', async () => {
+    const out = await parseDocument(
+      Buffer.from('{\\rtf1\\ansi Primer párrafo\\par Segundo \\u225?\\par {\\pict 00ff}}', 'latin1'),
+      'nota.rtf',
+      'application/rtf',
+    );
+    assert.ok(!('error' in out));
+    if (!('error' in out)) {
+      assert.equal(out.format, 'rtf');
+      assert.match(out.pieces.map((piece) => piece.content).join(' '), /Primer párrafo/);
+      assert.match(out.pieces.map((piece) => piece.content).join(' '), /á/);
+      assert.match(out.losses.join(' '), /imagen/);
+    }
+  });
+
+  it('un archivo sin texto no llega a ser una página', async () => {
     // @invariant AnEmptyDocumentIsNotAPage
-    const out = parseDocument(Buffer.from('\n\n   \n'), 'vacio.md', 'text/markdown');
+    const out = await parseDocument(Buffer.from('\n\n   \n'), 'vacio.md', 'text/markdown');
     assert.ok('error' in out);
   });
 });

@@ -1,11 +1,12 @@
 -- allium: 3
 -- document-import.allium
 
--- Scope: Traer un documento terminado de fuera y convertirlo en una página de
---   bloques, conservando la jerarquía que el propio documento ya declara
+-- Scope: Preparar uno o más documentos terminados y convertir cada uno en una
+--   página de bloques, conservando la jerarquía que el documento ya declara,
+--   su archivo original, su procedencia y el ámbito desde el que se importa
 -- Includes: Qué formatos entran, de dónde sale la jerarquía, de dónde sale el
---   título, qué se hace con lo que no se sabe representar, y qué queda escrito
---   sobre la procedencia del archivo
+--   título, qué se hace con lo que no se sabe representar, cómo se completan
+--   metadatos en lote y qué queda escrito sobre la procedencia y el ámbito
 -- Excludes:
 --   - La importación del grafo de Logseq, que trae un corpus entero y no un
 --     documento (ver logseq-block-identity-reference.allium)
@@ -62,9 +63,12 @@ contract StructureIsRead {
 -- Enumerations
 ------------------------------------------------------------
 
--- Los formatos que entran. Markdown porque es lo que Vera escribe, y docx
--- porque es lo que llega de fuera: una tesis, un informe, un artículo de otro.
-enum DocumentFormat { markdown | docx }
+-- Los formatos que entran. Markdown y texto porque son portables; docx y RTF
+-- porque son documentos de trabajo corrientes; PDF porque suele ser la forma
+-- terminada en que llega un informe, una tesis o un artículo.
+enum DocumentFormat { markdown | docx | pdf | rtf }
+
+enum DocumentProvenance { own | external }
 
 ------------------------------------------------------------
 -- Entities
@@ -123,6 +127,10 @@ entity ImportOrigin {
     byte_size: Integer
     imported_by: core/Participant
     imported_at: Timestamp
+    provenance: DocumentProvenance
+    -- El original permanece custodiado y enlazado desde la página. El texto
+    -- extraído no sustituye la fuente que permite comprobarlo.
+    original_file: String
 }
 
 ------------------------------------------------------------
@@ -135,7 +143,7 @@ entity ImportOrigin {
 -- de fuera se publicara por venir de fuera sería exactamente al revés de lo que
 -- uno espera.
 rule ParticipantImportsADocument {
-    when: ImportDocument(participant, graph, filename, bytes, media_type)
+    when: ImportDocument(participant, graph, filename, bytes, media_type, provenance, author, date, tags)
 
     let membership = core/Membership{graph: graph, participant: participant}
     let parsed = StructureIsRead.parse(bytes, media_type)
@@ -162,7 +170,9 @@ rule ParticipantImportsADocument {
             format: parsed.format,
             byte_size: bytes.size,
             imported_by: participant,
-            imported_at: now
+            imported_at: now,
+            provenance: provenance,
+            original_file: filename
         )
 
     @invariant EverythingArrivesAsImport
@@ -170,6 +180,10 @@ rule ParticipantImportsADocument {
         -- lo escribió esa persona y no lo escribió la máquina: lo trajo. Es la
         -- misma distinción que separa una transcripción de un texto tecleado, y
         -- se pierde si todo entra como si lo hubiera escrito quien pulsó el botón.
+
+    @invariant TheOriginalTravelsWithThePage
+        -- La página enlaza el archivo exacto del que salió. Cambiar después los
+        -- bloques no reescribe el original ni borra su función de evidencia.
 
     @guidance
         -- `parent_at_depth` es caja negra porque la aritmética de reconstruir un
@@ -185,7 +199,7 @@ rule ParticipantImportsADocument {
 -- medias es lo peor de las dos opciones: no está el documento y sí está el
 -- desorden, y nadie sabe qué falta porque lo que falta no dejó hueco.
 rule AnUnreadableDocumentIsRefusedWhole {
-    when: ImportDocument(participant, graph, filename, bytes, media_type)
+    when: ImportDocument(participant, graph, filename, bytes, media_type, provenance, author, date, tags)
 
     requires: not can_parse(bytes, media_type)
 
@@ -204,7 +218,7 @@ rule AnUnreadableDocumentIsRefusedWhole {
 
 -- Un documento vacío tampoco.
 rule AnEmptyDocumentCreatesNothing {
-    when: ImportDocument(participant, graph, filename, bytes, media_type)
+    when: ImportDocument(participant, graph, filename, bytes, media_type, provenance, author, date, tags)
 
     let parsed = StructureIsRead.parse(bytes, media_type)
 
@@ -289,7 +303,8 @@ surface DocumentImport {
         DocumentFormats
 
     provides:
-        ImportDocument(participant, graph, filename, bytes, media_type)
+        PreviewDocuments(participant, graph, files)
+        ImportDocument(participant, graph, filename, bytes, media_type, provenance, author, date, tags)
 
     contracts:
         fulfils StructureIsRead
@@ -297,6 +312,22 @@ surface DocumentImport {
     @guarantee TheImportedPageOpensAtOnce
         -- Al terminar se va a la página nueva. Importar y después tener que ir a
         -- buscar dónde quedó lo importado son dos actos donde debería haber uno.
+
+    @guarantee AFolderIsABatchNotAGuess
+        -- Elegir una carpeta prepara una fila por archivo compatible. Antes de
+        -- escribir, la persona puede revisar título, autoría, fecha y etiquetas
+        -- comunes o particulares y ve cuántas páginas y adjuntos se crearán.
+
+    @guarantee TheSurfaceTravelsWithEveryImportedPage
+        -- Si la importación se inicia dentro de una superficie compartida donde
+        -- la persona es editora, cada página creada queda incluida explícitamente
+        -- en esa misma superficie. La autoría sigue siendo de quien importó; el
+        -- ámbito decide quién puede verla y continuarla.
+
+    @guarantee AnExternalAuthorIsNeverInvented
+        -- En «documentos propios» Vera propone como autor a quien importa. En
+        -- «fuentes de otras personas» exige un nombre o conserva el que el
+        -- documento declara; nunca atribuye una fuente ajena a quien pulsó.
 
     @guarantee WhatWasLostIsSaidOnArrival
         -- Si algo del documento no se supo traer, se dice al llegar y en
@@ -317,4 +348,3 @@ open question "¿Las imágenes incrustadas en un docx entran al almacén de obje
 open question "¿Una tabla de Word se convierte en tabla de Markdown, o se conserva como texto con las celdas separadas para no inventar una equivalencia que no existe?"
 open question "¿Volver a importar el mismo archivo actualiza la página que salió de él, o crea otra? Y si actualiza, ¿qué pasa con lo que alguien editó encima?"
 open question "¿Los enlaces de un documento se resuelven contra las páginas del grafo cuando el texto del enlace coincide con un título, o eso es adivinar una intención que el autor no tuvo?"
-open question "¿Se pueden importar varios archivos a la vez, y en ese caso son varias páginas sueltas o una con hijos?"

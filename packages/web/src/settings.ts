@@ -59,6 +59,8 @@ export interface SettingsHandlers {
   onClose(): void;
   onSectionChange(section: Section): void;
   onOpenPage(title: string): void;
+  onImportDocuments(): void;
+  sharedSpace(): { slug: string; name: string } | null;
   onOpenFiles(): void;
   onOpenPeople(): void;
   onOpenAgents(): void;
@@ -1352,7 +1354,7 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'media-preview-button';
-    button.textContent = 'Previsualizar PDF';
+    button.textContent = file.mediaType === 'application/pdf' ? 'Previsualizar PDF' : 'Abrir archivo';
     button.addEventListener('click', () => openMediaDetails(file));
     preview.append(button);
   }
@@ -1490,10 +1492,20 @@ function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
   heading(host, 'Biblioteca', 'Los materiales que forman el cuaderno.');
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
-  actions.append(
-    destination('Archivos', 'Encontrar, describir y cuidar imágenes, audios y documentos', handlers.onOpenFiles),
-    destination('Importar una biblioteca', 'Incorporar páginas y archivos desde un respaldo .vera', () => drawPortability(host)),
-  );
+  const shared = handlers.sharedSpace();
+  actions.append(destination(
+    'Importar documentos',
+    shared === null
+      ? 'Preparar varios archivos o una carpeta y convertirlos en páginas'
+      : `Crear páginas dentro de «${shared.name}» y conservar sus archivos originales`,
+    handlers.onImportDocuments,
+  ));
+  if (shared === null) {
+    actions.append(
+      destination('Archivos', 'Encontrar, describir y cuidar imágenes, audios y documentos', handlers.onOpenFiles),
+      destination('Importar una biblioteca', 'Incorporar páginas y archivos desde un respaldo .vera', () => drawPortability(host)),
+    );
+  }
   host.append(actions);
 }
 

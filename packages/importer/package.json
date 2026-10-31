@@ -11,6 +11,7 @@
     "./document": "./src/document.ts"
   },
   "dependencies": {
-    "@vera/core": "*"
+    "@vera/core": "*",
+    "pdf-parse": "^2.4.5"
   }
 }

@@ -31,4 +31,9 @@ describe('gestión de archivos desde su incrustación y su catálogo', () => {
     assert.match(settings, /También desaparecerá de/);
     assert.match(settings, /Vera mantiene juntas sus referencias en las páginas/);
   });
+
+  it('administra los documentos originales sin llamarlos PDF', () => {
+    assert.match(settings, /file\.mediaType === 'application\/pdf' \? 'Previsualizar PDF' : 'Abrir archivo'/);
+    assert.match(dialog, /asset\.mediaType\.split\(';'\)\[0\]/);
+  });
 });
