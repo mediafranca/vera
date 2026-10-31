@@ -44,7 +44,7 @@ import {
 import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
 import { isDay, today } from './autocomplete.ts';
-import { GOVERNING_KINDS } from './governing-table.ts';
+import { GOVERNING_KINDS, governingKind } from './governing-table.ts';
 import { renderCollectiveAdministration, renderFilesAdministration, renderSettings,
   renderSharingAdministration, type Section } from './settings.ts';
 import { parseRoute, routeTo, searchRoute } from './router.ts';
@@ -114,6 +114,7 @@ import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts'
 import { wirePullToRefresh } from './pull-to-refresh.ts';
 import { participantProfileTitle, renderParticipantProfile } from './participant-profile.ts';
 import { renderParticipantAdministration } from './participant-administration.ts';
+import { renderAgentAdministration } from './agent-administration.ts';
 
 const PHONE = 640;
 
@@ -616,7 +617,7 @@ async function openToday(): Promise<void> {
  * nada antes de ponerse a escribir.
  */
 function drawUnstartedDay(date: string): void {
-  $('#vera-root').classList.remove('special-surface');
+  $('#vera-root').classList.remove('special-surface', 'ontology-government-open');
   workspace.activePage = null;
   // Todavía no hay página, pero sí hay sitio: el día que se está mirando. Dejar
   // sólo «Vera» aquí haría que la ventana perdiera el nombre justo al abrirla,
@@ -990,7 +991,7 @@ async function openPage(
   pageDelivery?.abort();
   const delivery = new AbortController();
   pageDelivery = delivery;
-  $('#vera-root').classList.remove('special-surface');
+  $('#vera-root').classList.remove('special-surface', 'ontology-government-open');
   let page: PageView | undefined;
   /*
    * Si el corpus tarda, se dice qué se está abriendo.
@@ -1831,6 +1832,10 @@ async function applyRoute(): Promise<void> {
     await openParticipantsAdministration();
     return;
   }
+  if (window.location.pathname === '/agentes') {
+    await openAgentAdministration();
+    return;
+  }
   if (window.location.pathname === '/personas') {
     await openCollectiveAdministration();
     return;
@@ -1920,6 +1925,16 @@ async function openParticipantsAdministration(push = false): Promise<void> {
   $('#vera-root').classList.add('special-surface');
   closeSettings();
   await renderParticipantAdministration($('#text'));
+}
+
+async function openAgentAdministration(push = false): Promise<void> {
+  workspace.activePage = null;
+  workspace.focusRoot = null;
+  nameWindow('Bibliotecarios y agentes');
+  if (push && window.location.pathname !== '/agentes') window.history.pushState({}, '', '/agentes');
+  $('#vera-root').classList.add('special-surface');
+  closeSettings();
+  await renderAgentAdministration($('#text'));
 }
 
 async function openSharingAdministration(push = false): Promise<void> {
@@ -2654,6 +2669,47 @@ async function drawGraph(reach = 1): Promise<void> {
   graphDelivery?.abort();
   const delivery = new AbortController();
   graphDelivery = delivery;
+
+  /*
+   * Las páginas rectoras no necesitan el vecindario del corpus para gobernar:
+   * necesitan ver la estructura que declaran. El panel sigue siendo el segundo
+   * lado de Vera —texto a la izquierda, figura a la derecha—, pero su contenido
+   * se deriva del mismo `/ontology` que alimenta las tablas.
+   */
+  const governing = governingKind(openView?.properties ?? []);
+  if (governing !== null) {
+    $('#vera-root').classList.add('ontology-government-open');
+    try {
+      const [ontology, diagram] = await Promise.all([
+        api.ontology(),
+        import('./ontology-governance-map.ts'),
+      ]);
+      if (turn !== graphTurn || governingKind(openView?.properties ?? []) !== governing) return;
+      await diagram.renderOntologyGovernanceMap(
+        container,
+        ontology,
+        governing,
+        async (change) => {
+          const result = await api.submitCanonical(change, 'drawn');
+          if (result.status === 'rejected') {
+            notice(`No se pudo cambiar la ontología: ${result.reason}`);
+            return false;
+          }
+          if (workspace.activePage !== null) await openPage(workspace.activePage);
+          return true;
+        },
+      );
+    } catch {
+      if (turn !== graphTurn) return;
+      container.classList.add('map-stale');
+      container.innerHTML = '<p class="map-unavailable">el esquema necesita la ontología · sin conexión</p>';
+    }
+    return;
+  }
+  $('#vera-root').classList.remove('ontology-government-open');
+  container.classList.remove('ontology-government-map');
+  container.querySelector<HTMLElement>('#map-controls')?.removeAttribute('hidden');
+  container.querySelector<HTMLElement>('#map-trail')?.removeAttribute('hidden');
   if (
     workspace.mapScope === 'published' &&
     openView?.publication?.publishedAt == null
@@ -3784,6 +3840,7 @@ function wireTheme(): void {
       onClose: closeSettings,
       onOpenFiles: () => void openFilesAdministration(true),
       onOpenPeople: () => void openParticipantsAdministration(true),
+      onOpenAgents: () => void openAgentAdministration(true),
       onOpenSharing: () => void openSharingAdministration(true),
       onOpenActivity: () => void openActivityAdministration(),
     });
@@ -4100,6 +4157,16 @@ async function start(): Promise<void> {
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-layout]')) {
     button.addEventListener('click', () => setLayout(button.dataset['layout'] as WorkspaceLayout));
   }
+  /*
+   * En el gobierno ontológico el teléfono no rompe el espejo: lo vuelve
+   * secuencial. Ambos lados emiten el mismo gesto para pasar de la declaración
+   * al esquema y regresar, y `setLayout` conserva la preferencia por el mismo
+   * camino que usa la barra general.
+   */
+  document.addEventListener('vera:ontology-layout', (event) => {
+    const layout = (event as CustomEvent<{ layout?: WorkspaceLayout }>).detail?.layout;
+    if (layout === 'text_only' || layout === 'graph_only') setLayout(layout);
+  });
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
     button.addEventListener('click', () => {
       setGraphView(button.dataset['view'] as GraphViewMode);

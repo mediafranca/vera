@@ -170,6 +170,28 @@ export const TOOLS: readonly VeraTool[] = [
   },
 
   {
+    name: 'vera_mi_constitucion',
+    title: 'Leer mi constitución activa',
+    description:
+      'Lee el manifiesto constitutivo activo del agente que porta esta credencial: ' +
+      'identidad, principal humano, propósito, práctica, memoria y gobierno derivados ' +
+      'de páginas versionadas de Vera. Úsala después de vera_quien_soy al despertar. ' +
+      'Nunca acepta otra identidad ni permite leer la constitución de otro agente.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    async run(_args, ask) {
+      const manifest = await ask<Record<string, unknown>>('/agent-manifest');
+      if (failed(manifest)) return trouble(manifest);
+      const summary = manifest['summary'] as Record<string, unknown> | undefined;
+      const document = manifest['document'] as Record<string, unknown> | undefined;
+      if (summary === undefined || document === undefined) return 'Vera no entregó una constitución legible.';
+      return cut(
+        `Constitución activa v${String(summary['version'] ?? '?')} · ` +
+        `${String(summary['digest'] ?? 'sin digest')}\n\n${JSON.stringify(document, null, 2)}`,
+      );
+    },
+  },
+
+  {
     name: 'vera_buscar',
     title: 'Buscar en la memoria',
     description:

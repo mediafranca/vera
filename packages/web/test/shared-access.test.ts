@@ -47,4 +47,11 @@ describe('entrada por invitación', () => {
     const shown = invitation.indexOf('dialog.showModal()');
     assert.ok(mounted >= 0 && mounted < shown);
   });
+
+  it('un enlace identificado exige la passkey nombrada antes del canje', () => {
+    assert.match(invitation, /authenticateNamedParticipant/);
+    assert.match(invitation, /preview\.proofMode === 'identified'/);
+    assert.match(invitation, /Abrir con mi passkey/);
+    assert.match(invitation, /reenviar esta URL no concede acceso/i);
+  });
 });

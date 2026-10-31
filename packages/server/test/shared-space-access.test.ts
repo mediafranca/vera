@@ -2,6 +2,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { listen } from '../src/server.ts';
 import { digestOf } from '../src/credentials.ts';
+import { issueSession } from '../src/human-auth.ts';
 
 const PORT = 4288;
 const OWNER = 'participant:herbert';
@@ -120,6 +121,55 @@ describe('primer corte vertical de espacios compartidos', () => {
       enrollment: redeemed.json['enrollment'], secret: redeemed.json['enrollmentSecret'],
     });
     assert.equal(passkey.status, 200, JSON.stringify(passkey.json));
+  });
+
+  it('liga un enlace de página privada a la passkey de una identidad, no a quien porte la URL', async () => {
+    const page = await write({ kind: 'create_page', title: 'Página que no debe filtrarse', visibility: 'private' });
+    await write({ kind: 'create_block', page, parent: null, position: 0, content: 'Contenido reservado' });
+    const target = await call('/participants', 'POST', { name: 'Destinataria', kind: 'human' });
+    const targetId = target.json['participant'].id as string;
+    running.vera.store.db.prepare(`INSERT INTO human_authenticators
+      (credential_id,participant_id,public_key,counter,transports,device_type,backed_up,label,registered_at,status)
+      VALUES (?,?,?,0,'internal','singleDevice',0,'prueba',?,'active')`)
+      .run('passkey:destinataria', targetId, Buffer.from('clave pública de prueba'), Date.now());
+
+    const made = await call(`/pages/${encodeURIComponent(page)}/private-invitations`, 'POST', {
+      participant: targetId, lifetimeMs: 604_800_000,
+    });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    assert.equal(made.json['proofMode'], 'identified');
+    assert.doesNotMatch(String(made.json['url']), /P[aá]gina que no debe filtrarse/i);
+    const invitation = made.json['id'] as string;
+    const proof = made.json['secret'] as string;
+    const preview = await callPublic(`/invitations/${encodeURIComponent(invitation)}?secret=${encodeURIComponent(proof)}`);
+    assert.equal(preview.json['space'], 'Página privada');
+    assert.equal(preview.json['proofMode'], 'identified');
+    assert.equal(preview.json['participant'], targetId);
+
+    const unauthenticated = await callPublic(`/invitations/${encodeURIComponent(invitation)}/redeem`, 'POST', { secret: proof });
+    assert.equal(unauthenticated.status, 401, JSON.stringify(unauthenticated.json));
+
+    const intruder = await call('/participants', 'POST', { name: 'Otra persona', kind: 'human' });
+    const wrongSession = issueSession(running.vera.store, intruder.json['participant'].id as string);
+    const wrong = await fetch(`${publicBase}/invitations/${encodeURIComponent(invitation)}/redeem`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: `vera_session=${wrongSession.secret}` },
+      body: JSON.stringify({ secret: proof }),
+    });
+    assert.equal(wrong.status, 403, await wrong.text());
+
+    const targetSession = issueSession(running.vera.store, targetId);
+    const accepted = await fetch(`${publicBase}/invitations/${encodeURIComponent(invitation)}/redeem`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: `vera_session=${targetSession.secret}` },
+      body: JSON.stringify({ secret: proof }),
+    });
+    const redeemed = await accepted.json() as any;
+    assert.equal(accepted.status, 201, JSON.stringify(redeemed));
+    assert.equal(redeemed.enrollment, null);
+    assert.equal(accepted.headers.get('set-cookie'), null, 'el enlace no suplanta ni reemplaza la sesión identificada');
+    const pages = await fetch(`${publicBase}/s/${encodeURIComponent(redeemed.spaceSlug)}/api/pages`, {
+      headers: { cookie: `vera_session=${targetSession.secret}` },
+    }).then((response) => response.json()) as { pages: Array<{ id: string }> };
+    assert.deepEqual(pages.pages.map((one) => one.id), [page]);
   });
 
   it('una sesión añade otro dispositivo a la misma persona sin repetir la invitación', async () => {

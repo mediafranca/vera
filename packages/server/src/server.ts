@@ -6,7 +6,7 @@
 // pasar por ahí.
 
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
@@ -54,6 +54,7 @@ import type {
 import {
   createRecording,
   foldedOnPage,
+  presentationFoldsOnPage,
   loadGraph,
   discardAudio,
   describeMedia,
@@ -75,6 +76,7 @@ import {
   saveSite,
   saveWorkspace,
   setFold,
+  setPresentationFold,
   setTranscript,
   setSpokenOrigin,
   searchPageSummaries,
@@ -146,6 +148,15 @@ import {
   renameParticipant,
   suspendParticipant,
 } from './participant-identities.ts';
+import {
+  activeManifest,
+  activateManifest,
+  agentAdministration,
+  buildManifest,
+  chooseConstitutionSources,
+  establishAgentPrincipal,
+  type ConstitutionRole,
+} from './agent-manifests.ts';
 import {
   ask,
   readPage,
@@ -226,6 +237,7 @@ import {
   sharedProposal,
   sharedSpaces,
   updateSharedSpace,
+  type InvitationProofMode,
   type SharedPermission,
 } from './shared-spaces.ts';
 import {
@@ -3517,9 +3529,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           ? body['permissions'].filter((one): one is SharedPermission => ['read', 'contribute', 'edit'].includes(String(one))) : [];
         try {
           const participant = typeof body['participant'] === 'string' ? body['participant'] : '';
+          const proofMode: InvitationProofMode = body['proofMode'] === 'identified' ? 'identified' : 'bearer';
           const invitation = inviteToSpace(store, graph.owner!, space, participant, permissions,
             typeof body['intendedContact'] === 'string' ? body['intendedContact'] : undefined,
-            typeof body['lifetimeMs'] === 'number' ? body['lifetimeMs'] : DEFAULT_INVITATION_LIFETIME);
+            typeof body['lifetimeMs'] === 'number' ? body['lifetimeMs'] : DEFAULT_INVITATION_LIFETIME,
+            proofMode);
           const invitationPath = `/invite/${encodeURIComponent(invitation.id)}?secret=${encodeURIComponent(invitation.secret)}`;
           const canonicalDomain = publicSite()?.canonicalDomain ?? options.publicSite?.canonicalDomain;
           const invitationUrl = canonicalDomain === undefined
@@ -3528,6 +3542,57 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 201, { ...invitation, space: space.name, url: invitationUrl });
         } catch (error) { send(response, 400, { error: error instanceof Error ? error.message : String(error) }); }
       });
+      return;
+    }
+
+    /** Un enlace privado es una invitación identificada a un espacio restringido
+     * de una sola página. La URL porta localización, no identidad: el canje exige
+     * la passkey ya registrada de la persona nombrada. */
+    if (request.method === 'POST' && /^\/pages\/[^/]+\/private-invitations$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const page = decodeURIComponent(path.split('/')[2] ?? '');
+      if (graph.page(page) === undefined) { send(response, 404, { error: 'la página no existe' }); return; }
+      try {
+        const body = await readSmallJson();
+        const participant = typeof body['participant'] === 'string' ? body['participant'] : '';
+        const lifetime = typeof body['lifetimeMs'] === 'number'
+          ? body['lifetimeMs'] : DEFAULT_INVITATION_LIFETIME;
+        const identified = store.db.prepare(`SELECT 1 FROM participants p
+          JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+          JOIN human_authenticators a ON a.participant_id=p.id AND a.status='active'
+          LEFT JOIN participant_reconciliations r ON r.duplicate_id=p.id
+          WHERE p.id=? AND p.kind='human' AND p.status='active' AND r.duplicate_id IS NULL LIMIT 1`)
+          .get(store.graphId, participant);
+        if (identified === undefined) {
+          send(response, 400, { error: 'elige una persona activa que ya tenga una passkey' }); return;
+        }
+        const suffix = createHash('sha256').update(`${store.graphId}\0${page}`).digest('hex').slice(0, 20);
+        const slug = `privada-${suffix}`;
+        let space = sharedSpaceBySlug(store, slug);
+        if (space === null) {
+          space = createSharedSpace(store, graph.owner!, {
+            name: 'Página privada', slug, audience: 'restricted',
+          });
+          includeManualPage(store, graph.owner!, space, page);
+          space = updateSharedSpace(store, { ...space, manualPages: [page] }, {
+            name: 'Página privada', slug, criterionCombination: 'any',
+            audience: 'restricted', entryPoint: page,
+          });
+        } else if (space.entryPoint !== page || !space.manualPages.includes(page)) {
+          send(response, 409, { error: 'el límite privado de esta página no es coherente' }); return;
+        }
+        const invitation = inviteToSpace(store, graph.owner!, space, participant, ['read'],
+          typeof body['intendedContact'] === 'string' ? body['intendedContact'] : undefined,
+          lifetime, 'identified');
+        const invitationPath = `/invite/${encodeURIComponent(invitation.id)}?secret=${encodeURIComponent(invitation.secret)}`;
+        const canonicalDomain = publicSite()?.canonicalDomain ?? options.publicSite?.canonicalDomain;
+        const invitationUrl = canonicalDomain === undefined
+          ? invitationPath : new URL(invitationPath, `${canonicalDomain.replace(/\/$/, '')}/`).toString();
+        send(response, 201, { ...invitation, url: invitationUrl, participant, page });
+      } catch (error) {
+        send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 
@@ -3569,11 +3634,80 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const name = typeof body['name'] === 'string' ? body['name'] : '';
         const kind = body['kind'] === 'agent' ? 'agent' : 'human';
         const participant = declareParticipant(store, who.participant, name, kind);
+        if (kind === 'agent') {
+          const principal = typeof body['principal'] === 'string' ? body['principal'] : who.participant;
+          establishAgentPrincipal(store, participant.id, principal, who.participant);
+        }
         graph.addParticipant({ id: participant.id, name: participant.name, kind: participant.kind });
         graph.admit(participant.id);
         send(response, 201, { participant });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/agent-administration') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      send(response, 200, { agents: agentAdministration(store, graph) });
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/agents\/[^/]+\/principal$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const agent = decodeURIComponent(path.split('/')[2] ?? '');
+        const body = await readSmallJson();
+        const human = typeof body['human'] === 'string' ? body['human'] : '';
+        establishAgentPrincipal(store, agent, human, who.participant);
+        send(response, 200, { agent, human });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'PUT' && /^\/agents\/[^/]+\/constitution$/.test(path)) {
+      try {
+        const agent = decodeURIComponent(path.split('/')[2] ?? '');
+        const body = await readSmallJson();
+        const raw = Array.isArray(body['sources']) ? body['sources'] : [];
+        const roles = new Set<ConstitutionRole>(['identity', 'purpose', 'practice', 'memory', 'governance']);
+        const sources = raw.map((one) => {
+          const said = one as Record<string, unknown>;
+          const page = typeof said['page'] === 'string' ? said['page'] : '';
+          const role = typeof said['role'] === 'string' && roles.has(said['role'] as ConstitutionRole)
+            ? said['role'] as ConstitutionRole : 'practice';
+          return { page, role };
+        });
+        chooseConstitutionSources(store, graph, who.participant, agent, sources);
+        send(response, 200, { agent, sources });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/agents\/[^/]+\/manifests$/.test(path)) {
+      try {
+        const agent = decodeURIComponent(path.split('/')[2] ?? '');
+        send(response, 201, { manifest: buildManifest(store, graph, who.participant, agent) });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/agents\/[^/]+\/manifests\/[^/]+\/activate$/.test(path)) {
+      try {
+        const parts = path.split('/');
+        const agent = decodeURIComponent(parts[2] ?? '');
+        const manifest = decodeURIComponent(parts[4] ?? '');
+        send(response, 200, { manifest: activateManifest(store, who.participant, agent, manifest) });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
       }
       return;
     }
@@ -3784,10 +3918,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const proof = typeof body['secret'] === 'string' ? body['secret'] : '';
         if (proof === '') { send(response, 400, { error: 'el canje necesita secret' }); return; }
         try {
-          const redeemed = redeemInvitation(store, invitation, proof);
-          const session = issueSession(store, redeemed.participant);
-          setHumanSession(session.secret, session.expiresAt);
-          send(response, 201, { ...redeemed, sessionExpiresAt: session.expiresAt });
+          const authenticated = participantForSession(store, cookie('vera_session'));
+          const preview = inspectInvitation(store, invitation, proof);
+          if (preview === null) { send(response, 404, { error: 'la invitación no existe o el secreto no coincide' }); return; }
+          if (preview.proofMode === 'identified' && authenticated === null) {
+            send(response, 401, { error: 'este enlace exige entrar con la passkey de la persona destinataria' }); return;
+          }
+          if (preview.proofMode === 'identified' && authenticated !== preview.participant) {
+            send(response, 403, { error: 'la sesión activa no corresponde a la persona destinataria' }); return;
+          }
+          const redeemed = redeemInvitation(store, invitation, proof, authenticated);
+          if (redeemed.proofMode === 'bearer') {
+            const session = issueSession(store, redeemed.participant);
+            setHumanSession(session.secret, session.expiresAt);
+            send(response, 201, { ...redeemed, sessionExpiresAt: session.expiresAt });
+          } else {
+            send(response, 201, { ...redeemed });
+          }
         } catch (error) { send(response, 409, { error: error instanceof Error ? error.message : String(error) }); }
       });
       return;
@@ -3911,6 +4058,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    /** Constitución efectiva para el runtime que porta la credencial. */
+    if (request.method === 'GET' && path === '/agent-manifest') {
+      if (who.credential === null || graph.participant(who.participant)?.kind !== 'agent') {
+        send(response, 403, { error: 'esta puerta exige la credencial de un agente' });
+        return;
+      }
+      const manifest = activeManifest(store, who.participant);
+      if (manifest === null) { send(response, 404, { error: 'el agente no tiene manifiesto activo' }); return; }
+      send(response, 200, manifest);
+      return;
+    }
+
     /** Admitir un agente en el grafo. rule OwnerInvitesParticipant. */
     if (request.method === 'POST' && path === '/agents') {
       const blocked = ownerOnly();
@@ -3921,7 +4080,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
-        let body: { id?: unknown; name?: unknown };
+        let body: { id?: unknown; name?: unknown; principal?: unknown };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
         } catch {
@@ -3940,6 +4099,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         try {
           saveParticipant(store, { id, name, kind: 'agent' });
+          const principal = typeof body.principal === 'string' ? body.principal : who.participant;
+          establishAgentPrincipal(store, id, principal, who.participant);
           graph.addParticipant({ id, name, kind: 'agent' });
           graph.admit(id);
         } catch (error) {
@@ -4049,6 +4210,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           : `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
         if (deal !== 'capturar' && graph.participant(participant) === undefined) {
           saveParticipant(store, { id: participant, name, kind: 'agent' });
+          establishAgentPrincipal(store, participant, owner, owner);
           graph.addParticipant({ id: participant, name, kind: 'agent' });
           graph.admit(participant);
         }
@@ -6122,7 +6284,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * tiene por qué llevar dentro un participante que no escribió nada.
          */
         if (graph.participant(LOCAL_MODEL) === undefined) {
+          const human = graph.owner;
+          if (human === null) { send(response, 500, { error: 'this graph has no owner' }); return; }
           saveParticipant(store, { id: LOCAL_MODEL, name: LOCAL_MODEL_NAME, kind: 'agent' });
+          establishAgentPrincipal(store, LOCAL_MODEL, human, human);
           graph.addParticipant({ id: LOCAL_MODEL, name: LOCAL_MODEL_NAME, kind: 'agent' });
           graph.admit(LOCAL_MODEL);
         }
@@ -6562,7 +6727,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
-        let body: { participant?: unknown; block?: unknown; folded?: unknown };
+        let body: { block?: unknown; folded?: unknown };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
         } catch {
@@ -6581,8 +6746,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
 
-        const who = typeof body.participant === 'string' ? body.participant : owner.id;
-        setFold(store, who, block, body.folded === true);
+        const participant = who.participant;
+        setFold(store, participant, block, body.folded === true);
+        if (participant === owner.id) {
+          setPresentationFold(store, owner.id, block, body.folded === true);
+        }
         send(response, 200, { block, folded: body.folded === true });
       });
       return;
@@ -7228,7 +7396,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               }
               return found;
             })(),
-            folded: publicAccess ? [] : foldedOnPage(store, participant, page.id),
+            folded: publicAccess
+              ? presentationFoldsOnPage(store, page.id)
+              : foldedOnPage(store, participant, page.id),
+            foldPersistence: publicAccess ? 'local' : 'participant',
             pendingLinks: [],
             spokenOrigins: spokenOriginsOnPage(store, page.id),
             recordings: recordingsInPage(store, page.id),
@@ -7509,7 +7680,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           ),
           // @invariant FoldingIsNotAChange: qué tiene plegado ESTE participante.
           // No sale del registro de operaciones porque nunca entró en él.
-          folded: publicAccess ? [] : foldedOnPage(store, participant, page.id),
+          folded: publicAccess
+            ? presentationFoldsOnPage(store, page.id)
+            : foldedOnPage(store, participant, page.id),
+          foldPersistence: publicAccess ? 'local' : 'participant',
           // @invariant ReferenceResolvesToItsBlock. Las referencias que esta
           // página nombra viajan resueltas: quién es el bloque, en qué página
           // vive y qué dice. Sin esto el cliente tendría que pedir una por una

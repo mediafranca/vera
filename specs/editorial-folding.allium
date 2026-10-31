@@ -1,0 +1,106 @@
+-- allium: 3
+-- editorial-folding.allium
+
+-- Scope: The initial folding chosen by the sovereign owner for every projection
+--   of a page, while preserving each reader's freedom to open or close branches.
+-- Includes: Owner-authored presentation folds, public initial state and the
+--   distinction between a shared default and a participant's reading state.
+-- Excludes:
+--   - Moving, editing or deleting blocks (see block-editing.allium)
+--   - Persisting an anonymous reader's later overrides
+--   - Treating presentation state as graph content or revision history
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract EditorialFolding {
+    set_initial_fold: (owner: core/Participant, block: core/Block, folded: Boolean) -> PresentationFold?
+    initial_folds: (page: core/Page) -> Set<core/Block>
+
+    @invariant OneDefaultManyReadings
+        -- The owner chooses one initial presentation for a branch. Every reader
+        -- begins there, but opening or closing it afterwards changes only that
+        -- reader's current view and never rewrites the owner's default.
+
+    @invariant PresentationIsNotContent
+        -- An initial fold creates no Operation, Revision or PropertyAssignment.
+        -- It changes how the same blocks first appear, never what the page says.
+}
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+-- Absence means initially expanded. A row exists only for an initially folded
+-- branch, so expanding it removes presentation state instead of storing false.
+entity PresentationFold {
+    block: core/Block
+    set_by: core/Participant
+    set_at: Timestamp
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule OwnerSetsInitialFold {
+    when: SetInitialFold(owner, block, folded)
+
+    requires: owner = block.page.graph.owner
+    requires: block.children.count > 0
+
+    ensures:
+        if folded:
+            PresentationFold.created(block: block, set_by: owner, set_at: now)
+        else:
+            not exists PresentationFold{block: block}
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OnlyTheGraphOwnerSetsPresentationFolds {
+    for fold in PresentationFolds:
+        fold.set_by = fold.block.page.graph.owner
+}
+
+invariant OnlyBranchesHavePresentationFolds {
+    for fold in PresentationFolds:
+        fold.block.children.count > 0
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor GraphOwner {
+    identified_by: core/Participant
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface EditorialFoldControl {
+    facing owner: GraphOwner
+    context page: core/Page where graph.owner = owner
+
+    exposes:
+        for fold in PresentationFolds:
+            fold.block when fold.block.page = page
+
+    provides:
+        SetInitialFold(owner, block, folded) when block.page = page
+
+    contracts:
+        fulfils EditorialFolding
+
+    @guarantee TheSameGestureSetsTheOwnersReadingAndTheInitialPresentation
+        -- In the sovereign owner's workspace, folding a branch updates both the
+        -- owner's own reading state and the initial presentation. Vera does not
+        -- make the owner operate a second hidden publication control.
+}
