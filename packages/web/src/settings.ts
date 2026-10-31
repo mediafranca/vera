@@ -127,9 +127,9 @@ const LABELS: Record<string, string> = {
   '--text-dim': 'texto atenuado',
   '--rule': 'líneas y bordes',
   '--accent': 'acento',
-  '--node-central': 'nodo central del grafo',
-  '--node-fill': 'nodos del grafo',
-  '--link-stroke': 'aristas del grafo',
+  '--node-central': 'texto de la página central',
+  '--node-fill': 'nodos del modo circular',
+  '--link-stroke': 'aristas del mapa',
   '--warm': 'énfasis cálido',
   '--line-height': 'interlínea',
   '--text-size': 'tamaño del texto',
@@ -1962,7 +1962,7 @@ function drawAppearance(
   const commonNote = document.createElement('p');
   commonNote.className = 'settings-note';
   commonNote.textContent = 'Tipografías y medidas rigen toda Vera. Se conservan al cambiar de tema o de esquema.';
-  host.append(commonHeading, commonNote, appearancePreview());
+  host.append(commonHeading, commonNote);
 
   const library = handlers.designs();
   // @guarantee NamedDesignsAreOperable: todas las operaciones tienen una
@@ -2218,7 +2218,11 @@ function drawAppearance(
     (kind === 'color' ? advancedList : list).append(row);
   }
 
-  host.append(list, designs, chooser, intro, advanced);
+  // La muestra pertenece al umbral entre elegir el tema y editar sus colores:
+  // primero se fijan las medidas generales y el tema; después se mira el
+  // resultado; recién entonces se abre la paleta. Ponerla al comienzo hacía
+  // parecer que era una explicación previa, no una consecuencia viva.
+  host.append(list, designs, chooser, intro, appearancePreview(), advanced);
   drawTokenPortability(host, tokens, handlers);
 
   const reset = document.createElement('button');
@@ -2237,9 +2241,9 @@ function appearancePreview(): HTMLElement {
   const reading = document.createElement('article');
   reading.className = 'appearance-preview-text';
   const readingLabel = document.createElement('strong'); readingLabel.textContent = 'Texto';
-  const heading = document.createElement('h4'); heading.textContent = 'Una biblioteca que piensa contigo';
+  const heading = document.createElement('h4'); heading.textContent = 'Biblioteca viva';
   const paragraph = document.createElement('p');
-  paragraph.textContent = 'La medida, la tipografía y la interlínea se aplican a toda Vera.';
+  paragraph.textContent = 'La medida rige toda Vera.';
   const code = document.createElement('code'); code.textContent = 'tipo:: documento';
   reading.append(readingLabel, heading, paragraph, code);
 
@@ -2247,18 +2251,15 @@ function appearancePreview(): HTMLElement {
   map.className = 'appearance-preview-map';
   const mapLabel = document.createElement('strong'); mapLabel.textContent = 'Mapa';
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 240 130'); svg.setAttribute('role', 'img');
+  svg.setAttribute('viewBox', '0 0 280 86'); svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', 'Tres páginas relacionadas');
   svg.innerHTML = `
-    <line x1="52" y1="66" x2="120" y2="34"></line>
-    <line x1="52" y1="66" x2="184" y2="88"></line>
-    <line x1="120" y1="34" x2="184" y2="88"></line>
-    <circle class="central" cx="52" cy="66" r="16"></circle>
-    <circle cx="120" cy="34" r="12"></circle>
-    <circle cx="184" cy="88" r="12"></circle>
-    <text x="52" y="99" text-anchor="middle">Vera</text>
-    <text x="120" y="15" text-anchor="middle">Fuente</text>
-    <text x="184" y="116" text-anchor="middle">Idea</text>`;
+    <line x1="54" y1="43" x2="142" y2="22"></line>
+    <line x1="54" y1="43" x2="226" y2="62"></line>
+    <line x1="142" y1="22" x2="226" y2="62"></line>
+    <text class="central" x="54" y="47" text-anchor="middle">Vera</text>
+    <text x="142" y="26" text-anchor="middle">Fuente</text>
+    <text x="226" y="66" text-anchor="middle">Idea</text>`;
   map.append(mapLabel, svg);
   preview.append(reading, map);
   return preview;
