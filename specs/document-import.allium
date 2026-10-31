@@ -175,11 +175,12 @@ rule ParticipantImportsADocument {
             original_file: filename
         )
 
-    @invariant EverythingArrivesAsImport
-        -- Cada bloque nace por el canal `import` y firmado por quien importó. No
-        -- lo escribió esa persona y no lo escribió la máquina: lo trajo. Es la
-        -- misma distinción que separa una transcripción de un texto tecleado, y
-        -- se pierde si todo entra como si lo hubiera escrito quien pulsó el botón.
+    @invariant ImportKeepsOperationalAuthorship
+        -- La procedencia documental queda en ImportOrigin aunque cambie quién
+        -- ejecuta la operación. Una persona importa por el canal `import`; un
+        -- agente autenticado conserva `agent_generation`. En ambos casos firma
+        -- el participante que realmente actuó y la página declara que su texto
+        -- vino de un archivo, en vez de fingir escritura humana o autoría del agente.
 
     @invariant TheOriginalTravelsWithThePage
         -- La página enlaza el archivo exacto del que salió. Cambiar después los

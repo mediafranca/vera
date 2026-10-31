@@ -567,6 +567,42 @@ describe('primer corte vertical de espacios compartidos', () => {
     assert.equal((await call('/shared-spaces/archivo-compartido', 'DELETE')).status, 200);
   });
 
+  it('un agente importa con procedencia documental sin perder su autoría operativa', async () => {
+    const agent = 'participant:importador';
+    assert.equal((await call('/agents', 'POST', {
+      id: agent, name: 'Importador documental',
+    })).status, 201);
+    const issued = await call('/agents/credentials', 'POST', {
+      participant: agent, scopes: ['read', 'write'], label: 'ingesta de prueba',
+    });
+    assert.equal(issued.status, 201, JSON.stringify(issued.json));
+    const secret = issued.json['secret'] as string;
+    const source = '# Informe externo\n\nContenido de una fuente conservada.';
+    const headers = {
+      authorization: `Bearer ${secret}`,
+      'content-type': 'text/markdown',
+      'x-filename': encodeURIComponent('Informe externo.md'),
+      'x-import-title': encodeURIComponent('Informe importado por agente'),
+      'x-import-provenance': 'external',
+      'x-import-author': encodeURIComponent('Autora externa'),
+    };
+
+    const imported = await fetch(`${base}/import`, { method: 'POST', headers, body: source });
+    const result = await imported.json() as any;
+    assert.equal(imported.status, 201, JSON.stringify(result));
+    const operations = running.vera.graph.operations().filter((operation) =>
+      operation.subjectId === result.page || operation.submission.change.kind === 'create_block' &&
+        operation.submission.change.page === result.page);
+    assert.ok(operations.length >= 4);
+    assert.ok(operations.every((operation) =>
+      operation.submission.submittedBy === agent &&
+      operation.submission.channel === 'agent_generation'));
+    const properties = running.vera.graph.propertiesOf(result.page);
+    assert.ok(properties.some((one) =>
+      one.key === 'procedencia' && one.value === 'fuente externa'));
+    assert.ok(properties.some((one) => one.key === 'autor' && one.value === 'Autora externa'));
+  });
+
   it('una participante conversa privadamente con el bibliotecario dentro del espacio', async () => {
     assert.equal((await call('/agents', 'POST', {
       id: 'participant:cotito', name: 'Cotito',

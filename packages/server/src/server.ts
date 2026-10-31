@@ -5160,8 +5160,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const outcome = trial.submitOperation({
             originId: `${batch}:${at}`,
             participant: submitter.participant,
-            // @invariant EverythingArrivesAsImport.
-            channel: 'import',
+            // @invariant ImportKeepsOperationalAuthorship: `import` nombra el
+            // gesto humano; un agente conserva su canal derivado de identidad.
+            channel: submitter.channel ?? 'import',
             change,
           });
           if (outcome.status !== 'applied') {
