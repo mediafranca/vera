@@ -5824,9 +5824,9 @@ body.settings-open #text {
 
 .appearance-preview > article {
   min-width: 0;
-  min-height: 10rem;
+  min-height: 6rem;
   box-sizing: border-box;
-  padding: .85rem;
+  padding: .65rem .75rem;
   overflow: hidden;
   border: 1px solid var(--rule);
   border-radius: .65rem;
@@ -5835,7 +5835,7 @@ body.settings-open #text {
 
 .appearance-preview > article > strong {
   display: block;
-  margin-bottom: .65rem;
+  margin-bottom: .4rem;
   color: var(--text-dim);
   font: 650 .7rem/1 var(--font-ui);
   letter-spacing: .06em;
@@ -5850,14 +5850,19 @@ body.settings-open #text {
 .appearance-preview-text h4 { margin: 0 0 .35em; font: 600 1.15em/1.25 var(--font-body); }
 .appearance-preview-text p { margin: 0 0 .55em; }
 .appearance-preview-text code { color: var(--accent); font: .76em var(--font-mono); }
-.appearance-preview-map svg { display: block; width: 100%; height: 8rem; overflow: visible; }
+.appearance-preview-map svg { display: block; width: 100%; height: 4rem; overflow: visible; }
 .appearance-preview-map line { stroke: var(--link-stroke); stroke-width: 2; }
-.appearance-preview-map circle { fill: var(--node-fill); stroke: var(--rule); stroke-width: 2; }
-.appearance-preview-map circle.central { fill: var(--node-central); }
 .appearance-preview-map text { fill: var(--text); font: 12px var(--font-ui); }
+.appearance-preview-map text.central {
+  fill: var(--node-central);
+  font-size: 15px;
+  font-weight: 700;
+}
 
 @media (max-width: 640px) {
-  .appearance-preview { grid-template-columns: 1fr; }
+  .appearance-preview { gap: .5rem; }
+  .appearance-preview > article { padding: .55rem .6rem; }
+  .appearance-preview-text h4 { font-size: 1.05em; }
 }
 .settings-field {
   display: grid;
