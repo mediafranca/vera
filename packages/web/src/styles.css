@@ -250,6 +250,36 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--text);
 }
+.librarian-conversation-sessions {
+  display: flex;
+  min-width: 0;
+  margin-left: auto;
+  gap: .35rem;
+}
+.librarian-conversation-sessions select {
+  min-width: 7rem;
+  max-width: 15rem;
+  padding: .35rem .45rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  background: var(--bg);
+  color: var(--text);
+  font: .72rem/1.2 var(--font-ui);
+}
+.librarian-conversation-sessions button,
+.librarian-conversation-microphone {
+  padding: .35rem .55rem;
+  border: 1px solid var(--rule);
+  border-radius: .35rem;
+  background: transparent;
+  color: var(--text);
+  font: .72rem/1.2 var(--font-ui);
+  cursor: pointer;
+}
+.librarian-conversation-microphone.recording {
+  border-color: #b33;
+  color: #b33;
+}
 
 .librarian-conversation-stream {
   display: flex;
@@ -308,6 +338,12 @@
   margin: 0;
   font: .95rem/1.48 var(--font-body);
   white-space: pre-wrap;
+}
+.librarian-conversation-turn audio {
+  display: block;
+  width: min(100%, 22rem);
+  height: 2.25rem;
+  margin-top: .5rem;
 }
 .librarian-conversation-copy {
   display: block;
@@ -375,6 +411,8 @@
     border-radius: 0;
   }
   .librarian-conversation-turn { max-width: 94%; }
+  .librarian-conversation-identity span { display: none; }
+  .librarian-conversation-sessions select { max-width: 9rem; }
 }
 
 @keyframes librarian-mark-pulse {

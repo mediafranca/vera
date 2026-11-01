@@ -257,6 +257,13 @@ export const voice = {
       { method: 'POST' },
     ),
 
+  /** Transcribe una grabación conversacional sin escribir un bloque. */
+  transcript: (id: string) =>
+    ask<{ recording: Recording; text: string }>(
+      `/recordings/${encodeURIComponent(id)}/transcript`,
+      { method: 'POST' },
+    ),
+
   /**
    * Borra el audio. En cualquier momento, transcrito o no: la grabación es de
    * quien la hizo. Lo escrito sigue escrito y sigue nombrando de dónde vino.

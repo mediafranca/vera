@@ -1078,6 +1078,37 @@ const addAgentManifests: Migration = {
   },
 };
 
+/** 29 — sesiones conversacionales, voz conservada y progreso durable. */
+const addConversationalSessions: Migration = {
+  version: 29,
+  name: 'sesiones, voz y progreso conversacional',
+  apply(db) {
+    const requests = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='agent_requests'",
+    ).get();
+    // Algunos fósiles parciales usados para comprobar migraciones anteriores no
+    // contienen todavía el subsistema conversacional. schema.sql les dará la
+    // forma de destino al abrir; aquí no hay filas que transformar.
+    if (requests === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(agent_requests)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'recording_id')) {
+      db.exec('ALTER TABLE agent_requests ADD COLUMN recording_id TEXT REFERENCES recordings(id) ON DELETE SET NULL');
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_request_events (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL REFERENCES agent_requests (id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('stage', 'tool', 'pending')),
+        text TEXT NOT NULL,
+        created_by TEXT NOT NULL REFERENCES participants (id),
+        created_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS agent_request_events_by_request
+        ON agent_request_events (request_id, created_at);
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1107,6 +1138,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addEditorialFolds,
   addIdentifiedInvitations,
   addAgentManifests,
+  addConversationalSessions,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

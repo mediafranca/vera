@@ -253,6 +253,45 @@ describe('solicitudes al bibliotecario', () => {
     assert.equal((await call(`/librarian/requests/${encodeURIComponent(requestId)}`)).status, 404);
   });
 
+  it('guarda varias sesiones, las reactiva y conserva hitos públicos de progreso', async () => {
+    const before = await call('/librarian/conversations');
+    assert.equal(before.status, 200);
+    const previous = (before.json as unknown as Record<string, unknown>[])[0]?.['id'] as string;
+    const created = await call('/librarian/conversations', {
+      method: 'POST', body: { title: 'Segundo hilo' },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const conversationId = created.json['id'] as string;
+    assert.notEqual(conversationId, previous);
+
+    const asked = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, conversationId, text: 'Haz visible el trabajo' },
+    });
+    const id = asked.json['id'] as string;
+    assert.equal(asked.json['conversationId'], conversationId);
+    assert.equal((await call(`/librarian/requests/${encodeURIComponent(id)}/claim`, {
+      method: 'POST', secret,
+    })).status, 200);
+    const progress = await call(`/librarian/requests/${encodeURIComponent(id)}/progress`, {
+      method: 'POST', secret, body: { kind: 'tool', text: 'Contrastando el corpus' },
+    });
+    assert.equal(progress.status, 201, JSON.stringify(progress.json));
+    const events = progress.json['events'] as Record<string, unknown>[];
+    assert.equal(events[0]?.['text'], 'Contrastando el corpus');
+    assert.equal(events[0]?.['kind'], 'tool');
+    assert.equal((await call(`/librarian/requests/${encodeURIComponent(id)}/reply`, {
+      method: 'POST', secret, body: { text: 'Trabajo visible.', changes: [] },
+    })).status, 201);
+
+    const reopened = await call(`/librarian/conversations/${encodeURIComponent(previous)}/activate`, { method: 'POST' });
+    assert.equal(reopened.status, 200, JSON.stringify(reopened.json));
+    assert.equal(reopened.json['status'], 'active');
+    const selected = await call(`/librarian/conversation?id=${encodeURIComponent(conversationId)}`);
+    assert.equal(selected.status, 200);
+    assert.equal((selected.json['conversation'] as Record<string, unknown>)['status'], 'closed');
+    assert.equal(((selected.json['turns'] as Record<string, unknown>[])[0]?.['events'] as Record<string, unknown>[])[0]?.['text'], 'Contrastando el corpus');
+  });
+
   it('escribe una respuesta sobre la página como bloque ordinario, editable y atribuido', async () => {
     const created = await call('/librarian/requests', {
       method: 'POST', body: { pageId: page, text: 'Investiga y deja la respuesta en la página' },

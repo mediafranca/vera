@@ -38,6 +38,7 @@ import {
   type Change,
   type CrossingRow,
   type LibrarianConversationView,
+  type LibrarianConversationSummary,
   type LibrarianRequestView,
   type PageSummary,
   type PageView,
@@ -102,7 +103,7 @@ import {
   renderRecorder,
   type AudioBlockHandlers,
 } from './audio-block.ts';
-import { audioUrl, voice, type Recording } from './voice.ts';
+import { audioUrl, startRecording, voice, type Recording } from './voice.ts';
 import { type NavigationGesture } from './trace.ts';
 import { openMediaDetails } from './media-dialog.ts';
 import { holdViewport, restoreViewportThroughComposition } from './viewport.ts';
@@ -854,7 +855,12 @@ export async function openLibrarianConversation(
   }
 
   let view: LibrarianConversationView;
-  try { view = await api.librarianConversation(); }
+  let conversations: LibrarianConversationSummary[];
+  try {
+    [view, conversations] = await Promise.all([
+      api.librarianConversation(), api.librarianConversations(),
+    ]);
+  }
   catch {
     toast('no se pudo abrir la conversación');
     return;
@@ -877,13 +883,22 @@ export async function openLibrarianConversation(
   scope.textContent = `conversación en Vera · contexto actual: ${page.title}`;
   words.append(name, scope);
   identity.append(mark, words);
+  const sessionControls = document.createElement('div');
+  sessionControls.className = 'librarian-conversation-sessions';
+  const sessionSelect = document.createElement('select');
+  sessionSelect.setAttribute('aria-label', 'Conversación guardada');
+  const newSession = document.createElement('button');
+  newSession.type = 'button';
+  newSession.textContent = 'Nueva';
+  newSession.title = 'Iniciar otra conversación';
+  sessionControls.append(sessionSelect, newSession);
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'librarian-conversation-close';
   close.innerHTML = icon('x');
   close.title = 'Cerrar conversación';
   close.setAttribute('aria-label', close.title);
-  header.append(identity, close);
+  header.append(identity, sessionControls, close);
 
   const stream = document.createElement('section');
   stream.className = 'librarian-conversation-stream';
@@ -895,6 +910,7 @@ export async function openLibrarianConversation(
     who: string,
     text: string,
     meta: string,
+    recording: Recording | null = null,
   ): HTMLElement => {
     const article = document.createElement('article');
     article.className = `librarian-conversation-turn ${hand}`;
@@ -907,6 +923,15 @@ export async function openLibrarianConversation(
     const said = document.createElement('p');
     said.textContent = text;
     article.append(heading, said);
+    const source = recording === null ? null : audioUrl(recording);
+    if (source !== null) {
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = source;
+      audio.setAttribute('aria-label', 'Grabación original');
+      article.append(audio);
+    }
     if (hand !== 'status') {
       const copy = document.createElement('button');
       copy.type = 'button';
@@ -929,7 +954,10 @@ export async function openLibrarianConversation(
     }
     for (const request of next.turns) {
       const where = request.sourcePageTitle === null ? 'sin página de origen' : `desde ${request.sourcePageTitle}`;
-      stream.append(turn('human', next.human.name, request.text, `${where} · ${when(request.createdAt)}`));
+      stream.append(turn('human', next.human.name, request.text, `${where} · ${when(request.createdAt)}`, request.recording));
+      for (const event of request.events) {
+        stream.append(turn('status', next.agent.name, event.text, `${event.kind} · ${when(event.createdAt)}`));
+      }
       if (request.reply !== null) {
         stream.append(turn('agent', next.agent.name, request.reply.text, when(request.reply.createdAt)));
       } else {
@@ -957,21 +985,64 @@ export async function openLibrarianConversation(
   send.type = 'submit';
   send.className = 'librarian-dialog-primary';
   send.textContent = 'Enviar';
-  formBar.append(context, send);
+  const microphone = document.createElement('button');
+  microphone.type = 'button';
+  microphone.className = 'librarian-conversation-microphone';
+  microphone.textContent = 'Audio';
+  microphone.title = 'Grabar un mensaje de voz';
+  formBar.append(context, microphone, send);
   form.append(composer, formBar);
+
+  const renderSessions = (): void => {
+    sessionSelect.replaceChildren(...conversations.map((conversation) => {
+      const option = document.createElement('option');
+      option.value = conversation.id;
+      option.textContent = conversation.title;
+      option.selected = conversation.id === view.conversation?.id;
+      return option;
+    }));
+    if (view.conversation === null) sessionSelect.selectedIndex = -1;
+  };
 
   const refresh = async (follow = false): Promise<void> => {
     try {
-      view = await api.librarianConversation();
+      view = await api.librarianConversation(view.conversation?.id);
+      conversations = await api.librarianConversations();
       name.textContent = view.agent.name;
       stream.setAttribute('aria-label', `Conversación con ${view.agent.name}`);
       renderTurns(view, follow);
+      renderSessions();
     } catch {
       // El historial ya visible permanece legible; el próximo pulso reintenta.
     }
   };
 
   close.addEventListener('click', () => dialog.close());
+  sessionSelect.addEventListener('change', () => {
+    const id = sessionSelect.value;
+    if (id === '') return;
+    sessionSelect.disabled = true;
+    void api.activateLibrarianConversation(id).then(async () => {
+      view = await api.librarianConversation(id);
+      conversations = await api.librarianConversations();
+      renderTurns(view, true);
+      renderSessions();
+    }).catch(() => toast('no se pudo abrir la conversación')).finally(() => {
+      sessionSelect.disabled = false;
+    });
+  });
+  newSession.addEventListener('click', () => {
+    newSession.disabled = true;
+    void api.createLibrarianConversation().then(async (created) => {
+      view = await api.librarianConversation(created.id);
+      conversations = await api.librarianConversations();
+      renderTurns(view, true);
+      renderSessions();
+      composer.focus();
+    }).catch(() => toast('no se pudo iniciar la conversación')).finally(() => {
+      newSession.disabled = false;
+    });
+  });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = composer.value.trim();
@@ -981,7 +1052,10 @@ export async function openLibrarianConversation(
     }
     composer.disabled = true;
     send.disabled = true;
-    void api.askLibrarian({ pageId: page.id, text }).then(async () => {
+    void api.askLibrarian({
+      pageId: page.id, text,
+      ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),
+    }).then(async () => {
       composer.value = '';
       await refresh(true);
       callbacks.onReload(null);
@@ -997,6 +1071,47 @@ export async function openLibrarianConversation(
     form.requestSubmit();
   });
 
+  let activeRecording: Exclude<Awaited<ReturnType<typeof startRecording>>, { error: string }> | null = null;
+  microphone.addEventListener('click', () => {
+    if (activeRecording === null) {
+      microphone.disabled = true;
+      void startRecording().then((started) => {
+        if ('error' in started) {
+          toast(started.error);
+          return;
+        }
+        activeRecording = started;
+        microphone.textContent = 'Detener';
+        microphone.classList.add('recording');
+      }).finally(() => { microphone.disabled = false; });
+      return;
+    }
+    const recording = activeRecording;
+    activeRecording = null;
+    microphone.disabled = true;
+    microphone.textContent = 'Transcribiendo…';
+    void recording.stop().then(async ({ audio, durationMs }) => {
+      const captured = await voice.capture(audio, durationMs);
+      if ('error' in captured) throw new Error(captured.error);
+      const transcribed = await voice.transcript(captured.id);
+      if ('error' in transcribed) throw new Error(transcribed.error);
+      await api.askLibrarian({
+        pageId: page.id,
+        text: transcribed.text,
+        recordingId: captured.id,
+        ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),
+      });
+      await refresh(true);
+      callbacks.onReload(null);
+    }).catch((error: unknown) => {
+      toast(error instanceof Error ? error.message : 'no se pudo enviar el audio');
+    }).finally(() => {
+      microphone.disabled = false;
+      microphone.textContent = 'Audio';
+      microphone.classList.remove('recording');
+    });
+  });
+
   dialog.append(header, stream, form);
   document.body.append(dialog);
   renderTurns(view, true);
@@ -1004,10 +1119,12 @@ export async function openLibrarianConversation(
     if (dialog.open) void refresh();
   }, 3_000);
   dialog.addEventListener('close', () => {
+    activeRecording?.cancel();
     window.clearInterval(clock);
     dialog.remove();
   }, { once: true });
   dialog.showModal();
+  renderSessions();
   window.requestAnimationFrame(() => { stream.scrollTop = stream.scrollHeight; });
   composer.focus();
 }

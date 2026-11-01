@@ -202,16 +202,25 @@ export interface LibrarianRequestView {
   id: string;
   conversationId: string;
   askedBy: string;
-  modality: 'block' | 'page';
+  modality: 'audio' | 'block' | 'page';
   text: string;
   sourcePageId: string | null;
   sourcePageTitle: string | null;
   sourceBlockId: string | null;
+  recordingId: string | null;
+  recording: Recording | null;
   status: 'queued' | 'working' | 'answered' | 'failed' | 'cancelled';
   dispatchStatus: 'pending' | 'delivered' | 'failed';
   dispatchAttempts: number;
   createdAt: number;
   failureReason: string | null;
+  events: Array<{
+    id: string;
+    kind: 'stage' | 'tool' | 'pending';
+    text: string;
+    createdBy: string;
+    createdAt: number;
+  }>;
   reply: null | {
     id: string;
     answeredBy: string;
@@ -238,6 +247,8 @@ export interface LibrarianConversationView {
   agent: { id: string; name: string };
   turns: LibrarianRequestView[];
 }
+
+export type LibrarianConversationSummary = NonNullable<LibrarianConversationView['conversation']>;
 
 export type PageEnrichment = Pick<
   PageView,
@@ -964,7 +975,7 @@ export const api = {
     return response.blob();
   },
 
-  askLibrarian: (said: { pageId: string; blockId?: string; text: string }) =>
+  askLibrarian: (said: { pageId: string; blockId?: string; text: string; conversationId?: string; recordingId?: string }) =>
     json<LibrarianRequestView>('/librarian/requests', {
       method: 'POST',
       body: JSON.stringify(said),
@@ -977,7 +988,19 @@ export const api = {
   },
 
   /** La conversación durable completa; el contexto de cada turno sigue visible. */
-  librarianConversation: () => json<LibrarianConversationView>('/librarian/conversation'),
+  librarianConversation: (id?: string) => json<LibrarianConversationView>(
+    id === undefined ? '/librarian/conversation' : `/librarian/conversation?id=${encodeURIComponent(id)}`,
+  ),
+
+  librarianConversations: () => json<LibrarianConversationSummary[]>('/librarian/conversations'),
+
+  createLibrarianConversation: (title?: string) => json<LibrarianConversationSummary>('/librarian/conversations', {
+    method: 'POST', body: JSON.stringify(title === undefined ? {} : { title }),
+  }),
+
+  activateLibrarianConversation: (id: string) => json<LibrarianConversationSummary>(
+    `/librarian/conversations/${encodeURIComponent(id)}/activate`, { method: 'POST' },
+  ),
 
   /*
    * Las conexiones con servicios de fuera.
