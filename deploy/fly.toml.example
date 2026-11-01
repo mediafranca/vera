@@ -32,6 +32,8 @@ kill_timeout = 120
   destination = "/data"
 
 [[vm]]
-  memory = "2gb"
+  # 2 GiB basta para el perfil base. La síntesis local con Kokoro alcanzó
+  # 2,49 GiB de pico en Alexei; esta plantilla reserva margen para voz activa.
+  memory = "4gb"
   cpu_kind = "shared"
   cpus = 1

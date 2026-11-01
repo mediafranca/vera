@@ -36,8 +36,12 @@ descarga modelos grandes y requiere autoridad del host. Los modelos viven bajo
 `/data/models`; desplegar una imagen nueva no los borra.
 
 No se descargan silenciosamente al arrancar: cambian tamaño, tiempo y costo del
-servicio. El piloto de Vera + Lucienne debe medir RAM, latencia y concurrencia
-antes de fijar un perfil comercial.
+servicio. En la prueba del 1 de noviembre de 2026, una primera síntesis local en
+Alexei llevó el cgroup de Vera + Kokoro a 2,49 GiB de pico y luego quedó cerca de
+1,86 GiB. Por eso 2 GiB queda como perfil base sin TTS local y la plantilla
+reserva 4 GiB cuando la voz está activa. El piloto de Vera + Lucienne todavía
+debe medir latencia, concurrencia y audios largos antes de fijar un perfil
+comercial.
 
 ## Límites deliberados
 
