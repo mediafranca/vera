@@ -134,6 +134,12 @@ contract SharedSpaceAccess {
         -- access beyond that browser session but is never a condition for the
         -- first entry or for receiving the invitation's permissions.
 
+    @invariant TheClientDoesNotChangeTheSpace
+        -- Browser participation and participation from another Vera resolve to
+        -- the same SharedSpace, Participant and AccessGrant. Installing Vera may
+        -- add durable identity and synchronisation, but never changes the pages,
+        -- permissions or authority granted by the invitation.
+
     @invariant AccessNeverCreatesIdentity
         -- The owner declares the person first. Issuing or redeeming an
         -- invitation, replacing a passkey, renewing a grant or opening another
@@ -250,6 +256,12 @@ contract FederatedHumanIdentity {
         -- The binding remains until revoked; every assertion and session remains
         -- short-lived. Federation creates durable recognition, not an immortal
         -- login token.
+
+    @invariant IdentityFederationDoesNotFederateContent
+        -- Proving that a participant controls an identity in another Vera opens
+        -- only the bounded session and grants already established here. It does
+        -- not copy either graph, reveal the participant's private library or
+        -- make their home Vera authoritative for records governed by this one.
 }
 
 ------------------------------------------------------------

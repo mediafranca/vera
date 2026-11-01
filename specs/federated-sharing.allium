@@ -1,10 +1,10 @@
 -- allium: 3
 -- federated-sharing.allium
 
--- Scope: Sharing selected pages from a sovereign personal Vera library
+-- Scope: Sharing and following selected pages from a sovereign Vera library
 -- Includes: Delimited selections, individual and shared destinations,
---   synchronised replicas, local editing, origin review, provenance and
---   withdrawal limits
+--   read-only subscriptions, synchronised replicas, local editing, origin
+--   review, provenance and withdrawal limits
 -- Excludes:
 --   - Authentication and grant mechanics (identity-access.allium)
 --   - Conflict resolution between divergent copies
@@ -167,6 +167,43 @@ contract SovereignSharing {
         -- can be observed or copied beyond Vera's control.
 }
 
+contract SovereignSubscription {
+    follow: (selection: SharedSelection, subscriber: SharingDestination) -> SurfaceSubscription
+    refresh: (subscription: SurfaceSubscription, observed_revision: String) -> SurfaceSubscription
+    stop: (subscription: SurfaceSubscription) -> SurfaceSubscription
+
+    @invariant FollowingIsReadOnlyAtTheSource
+        -- Following a surface receives revisions and provenance without granting
+        -- authority to change the source. A later contribution or collaboration
+        -- requires its own explicit sharing relationship and grant.
+
+    @invariant TheSourceRemainsCanonical
+        -- A subscribed copy always names the source graph and source pages as
+        -- canonical. Caching, indexing or annotating the copy never promotes the
+        -- subscriber into an origin or a second source of truth.
+
+    @invariant LocalAnnotationsRemainLocal
+        -- Notes, links and classifications made around a subscribed copy belong
+        -- to the subscriber's Vera. They do not travel back to the source or to
+        -- other subscribers unless deliberately contributed through another
+        -- governed relationship.
+
+    @invariant FreshnessIsVisible
+        -- A reader can tell which source revision was last observed and when the
+        -- subscription last checked. An unavailable source produces visible
+        -- staleness rather than presenting a cached copy as current.
+
+    @invariant SubscriptionDoesNotDelegateRedistribution
+        -- Receiving a surface does not grant authority to offer that surface to
+        -- third parties. Republishing requires a separate permission or an
+        -- explicit continuation whose derivation and new custody remain visible.
+
+    @invariant StoppingFollowDoesNotEraseLocalWork
+        -- Stopping a subscription ends future refreshes. It does not silently
+        -- delete local annotations; retaining the source content itself requires
+        -- an allowed cache, an explicit import or a declared continuation fork.
+}
+
 ------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
@@ -177,6 +214,7 @@ enum ContributionStatus { local | awaiting_review | partially_reviewed | accepte
 enum ReviewDecision { accept | reject }
 enum ReviewBoundary { whole_contribution | dependent_group | whole_block }
 enum WithdrawalDisposition { purged | continued_independently | unable_to_confirm }
+enum SubscriptionStatus { active | stopped }
 
 ------------------------------------------------------------
 -- Entities and Values
@@ -209,6 +247,14 @@ entity Distribution {
     edits: SharedEdit with distribution = this
     contributions: Contribution with distribution = this
     continuations: ContinuationFork with withdrawn_distribution = this
+}
+
+entity SurfaceSubscription {
+    selection: SharedSelection
+    subscriber: SharingDestination
+    status: SubscriptionStatus
+    observed_revision: String?
+    last_checked_at: Timestamp?
 }
 
 entity Withdrawal {
@@ -318,6 +364,11 @@ invariant EverySharedSpaceHasAFallbackOwner {
             implies destination.original_owner != null
 }
 
+invariant EverySubscriptionFollowsOneSovereignSelection {
+    for subscription in SurfaceSubscriptions:
+        subscription.selection.pages.all(page => page in subscription.selection.source.pages)
+}
+
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
@@ -336,6 +387,11 @@ open question "What bounded purge period applies to an acknowledged federated ca
 open question "Which authority decides whether a recipient's declared independent basis permits retention after a personal-data erasure request?"
 open question "Can a public destination synchronise canonical page identity, or does it receive only a publication projection?"
 open question "Does a Distribution to a federated peer travel as one peer-networking SharedScope per shared selection, and how does the selection's explicit page list correspond to SharedScope's opaque scope_id?"
+open question "What signed and versioned manifest lets a subscriber verify membership, revisions, attachments, provenance and retractions without learning anything outside the selected surface?"
+open question "May a subscriber pin an older source revision after a newer one appears, and how does the interface distinguish intentional pinning from accidental staleness?"
+open question "When local annotations cite a page that later leaves the source selection, what minimal tombstone may remain without leaking withdrawn content?"
+open question "Which institutional records may accept direct remote edits, which accept only attributed proposals, and which fields remain authoritative in a participant's personal Vera?"
+open question "For a medical surface, how do consent withdrawal, clinical correction, emergency access and legally required retention coexist without pretending that either the patient or the clinician owns the entire record?"
 -- Answered: recipients may continue as an editable fork with new identity and
 -- canonical custody, permanently derived from the immutable historical origin.
 -- Answered: a shared graph or site normally continues as one common fork under
