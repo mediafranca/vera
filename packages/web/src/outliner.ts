@@ -904,6 +904,7 @@ export async function openLibrarianConversation(
   stream.className = 'librarian-conversation-stream';
   stream.setAttribute('aria-live', 'polite');
   stream.setAttribute('aria-label', `Conversación con ${view.agent.name}`);
+  const markdownOptions = renderOptionsFor(page);
 
   const turn = (
     hand: 'human' | 'agent' | 'status',
@@ -920,8 +921,31 @@ export async function openLibrarianConversation(
     const context = document.createElement('span');
     context.textContent = meta;
     heading.append(author, context);
-    const said = document.createElement('p');
-    said.textContent = text;
+    const said = document.createElement('div');
+    said.className = 'librarian-conversation-markdown';
+    said.innerHTML = renderMarkdown(text, markdownOptions);
+    decorateCodeBlocks(said);
+    said.addEventListener('click', (event) => {
+      const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a');
+      if (link === null) return;
+      if (link.classList.contains('wiki')) {
+        event.preventDefault();
+        dialog.close();
+        callbacks.onOpen(link.dataset['page'] ?? '', 'followed_reference');
+        return;
+      }
+      if (!link.classList.contains('block-ref')) return;
+      event.preventDefault();
+      const id = link.dataset['block'] ?? '';
+      const ref = page.blockRefs.find((candidate) => candidate.id === id);
+      if (ref === undefined) {
+        toast('esa referencia no nombra ningún bloque de este grafo');
+        return;
+      }
+      dialog.close();
+      if (callbacks.onOpenBlock === undefined) callbacks.onOpen(ref.page, 'followed_reference');
+      else callbacks.onOpenBlock(ref.page, ref.id);
+    });
     article.append(heading, said);
     const source = recording === null ? null : audioUrl(recording);
     if (source !== null) {
@@ -933,12 +957,26 @@ export async function openLibrarianConversation(
       article.append(audio);
     }
     if (hand !== 'status') {
+      const actions = document.createElement('footer');
+      actions.className = 'librarian-conversation-turn-actions';
       const copy = document.createElement('button');
       copy.type = 'button';
       copy.className = 'librarian-conversation-copy';
       copy.textContent = 'Copiar';
       copy.addEventListener('click', () => void copyText(text, toast));
-      article.append(copy);
+      actions.append(copy);
+      if (hand === 'agent') {
+        const read = document.createElement('button');
+        read.type = 'button';
+        read.className = 'librarian-conversation-read';
+        wireReadingButton(
+          read,
+          () => speechParts(`conversation:${meta}`, speechText(text, markdownOptions)),
+          toast,
+        );
+        actions.append(read);
+      }
+      article.append(actions);
     }
     return article;
   };
@@ -978,7 +1016,10 @@ export async function openLibrarianConversation(
   composer.placeholder = `Escribe a ${view.agent.name} sobre «${page.title}»…`;
   composer.autocomplete = 'off';
   composer.setAttribute('aria-label', `Mensaje para ${view.agent.name}`);
+  const composerShell = document.createElement('div');
+  composerShell.className = 'librarian-conversation-composer-shell';
   const formBar = document.createElement('div');
+  formBar.className = 'librarian-conversation-form-bar';
   const context = document.createElement('span');
   context.textContent = `Contexto: ${page.title}`;
   const send = document.createElement('button');
@@ -988,10 +1029,12 @@ export async function openLibrarianConversation(
   const microphone = document.createElement('button');
   microphone.type = 'button';
   microphone.className = 'librarian-conversation-microphone';
-  microphone.textContent = 'Audio';
+  microphone.innerHTML = icon('mic');
   microphone.title = 'Grabar un mensaje de voz';
-  formBar.append(context, microphone, send);
-  form.append(composer, formBar);
+  microphone.setAttribute('aria-label', microphone.title);
+  composerShell.append(composer, microphone);
+  formBar.append(context, send);
+  form.append(composerShell, formBar);
 
   const renderSessions = (): void => {
     sessionSelect.replaceChildren(...conversations.map((conversation) => {
@@ -1081,7 +1124,8 @@ export async function openLibrarianConversation(
           return;
         }
         activeRecording = started;
-        microphone.textContent = 'Detener';
+        microphone.innerHTML = icon('player-pause');
+        microphone.setAttribute('aria-label', 'Detener y enviar el mensaje de voz');
         microphone.classList.add('recording');
       }).finally(() => { microphone.disabled = false; });
       return;
@@ -1089,7 +1133,9 @@ export async function openLibrarianConversation(
     const recording = activeRecording;
     activeRecording = null;
     microphone.disabled = true;
-    microphone.textContent = 'Transcribiendo…';
+    microphone.innerHTML = icon('mic');
+    microphone.setAttribute('aria-label', 'Transcribiendo mensaje de voz');
+    microphone.classList.add('transcribing');
     void recording.stop().then(async ({ audio, durationMs }) => {
       const captured = await voice.capture(audio, durationMs);
       if ('error' in captured) throw new Error(captured.error);
@@ -1107,8 +1153,10 @@ export async function openLibrarianConversation(
       toast(error instanceof Error ? error.message : 'no se pudo enviar el audio');
     }).finally(() => {
       microphone.disabled = false;
-      microphone.textContent = 'Audio';
+      microphone.innerHTML = icon('mic');
+      microphone.setAttribute('aria-label', microphone.title);
       microphone.classList.remove('recording');
+      microphone.classList.remove('transcribing');
     });
   });
 
