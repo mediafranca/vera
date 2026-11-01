@@ -59,8 +59,10 @@ maestro no sustituye la instalación: `npm run voice:setup` prepara STT y TTS,
 imprime las rutas que Vera debe usar y deja que el Centro compruebe cada pieza.
 Escuchar y hablar pueden activarse por separado.
 La primera síntesis local medida en Alexei alcanzó 2,49 GiB de memoria para el
-cgroup de Vera + Kokoro y se estabilizó cerca de 1,86 GiB; una cápsula de nube
-con TTS local parte por ello en 4 GiB, mientras 2 GiB queda para el perfil base.
+cgroup de Vera + Kokoro; bajó a 1,86 GiB a los pocos segundos y a 1,21 GiB varios
+minutos después. Una cápsula de nube con TTS local parte por ello en 4 GiB,
+mientras 2 GiB queda para el perfil base; un smoke test no fija todavía el
+consumo estable.
 
 ---
 

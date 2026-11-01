@@ -38,10 +38,11 @@ descarga modelos grandes y requiere autoridad del host. Los modelos viven bajo
 No se descargan silenciosamente al arrancar: cambian tamaño, tiempo y costo del
 servicio. En la prueba del 1 de noviembre de 2026, una primera síntesis local en
 Alexei llevó el cgroup de Vera + Kokoro a 2,49 GiB de pico y luego quedó cerca de
-1,86 GiB. Por eso 2 GiB queda como perfil base sin TTS local y la plantilla
-reserva 4 GiB cuando la voz está activa. El piloto de Vera + Lucienne todavía
-debe medir latencia, concurrencia y audios largos antes de fijar un perfil
-comercial.
+1,86 GiB a los pocos segundos y 1,21 GiB varios minutos después. Por eso 2 GiB
+queda como perfil base sin TTS local y la plantilla reserva 4 GiB cuando la voz
+está activa. Un único smoke test no determina consumo estable: el piloto de Vera
++ Lucienne todavía debe medir latencia, concurrencia y audios largos antes de
+fijar un perfil comercial.
 
 ## Límites deliberados
 
