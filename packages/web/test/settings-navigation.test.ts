@@ -24,7 +24,7 @@ describe('arquitectura de configuración', () => {
     assert.match(shell, /id="theme"/);
     assert.match(shell, /id="librarian"/);
     assert.match(shell, /id="settings" aria-label="Centro de Vera"/);
-    assert.match(main, /askLibrarian\(openView, null, callbacksFor\(openView\)\)/);
+    assert.match(main, /openLibrarianConversation\(openView, callbacksFor\(openView\)\)/);
     assert.match(main, /workspace\.scheme === 'dark' \? 'light' : 'dark'/);
   });
 

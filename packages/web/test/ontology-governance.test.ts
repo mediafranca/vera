@@ -44,7 +44,7 @@ describe('gobierno ontológico facetado', () => {
     assert.match(governing, /callbacks\.onOpen|openFacet/);
     assert.match(governing, /`governing-facet facet-\$\{facet\.kind\} selected`/);
     assert.doesNotMatch(governing, /`governing-facet \$\{facet\.kind\}/);
-    assert.match(styles, /governing-facet\.selected[\s\S]*?background: var\(--accent\)/);
+    assert.match(styles, /governing-facet\.selected[\s\S]*?color-mix\(in srgb, var\(--ontology-kind\)/);
     assert.match(readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8'),
       /header\.after\(facets\)/);
   });
@@ -101,7 +101,9 @@ describe('gobierno ontológico facetado', () => {
 
   it('explica las aristas una vez y distingue el rango por forma de línea', () => {
     assert.match(map, /ontology-government-legend/);
-    assert.match(map, /kindNames: Record<GoverningKind, string>/);
+    assert.doesNotMatch(map, /kindNames: Record<GoverningKind, string>/);
+    assert.match(map, /heading\.dataset\['facet'\] = facet/);
+    assert.match(map, /facet === 'objects' \? 'Objetos'/);
     assert.match(map, /path\.classList\.add\(`edge-\$\{source\.label\}`\)/);
     assert.doesNotMatch(map, /createElementNS\(svg\.namespaceURI, 'text'\)/);
     assert.match(styles, /path\.edge-rango[\s\S]*?stroke-dasharray/);
@@ -110,6 +112,7 @@ describe('gobierno ontológico facetado', () => {
   it('distingue objetos, propiedades y relaciones con nombre y color', () => {
     for (const kind of ['objects', 'properties', 'relations']) {
       assert.match(styles, new RegExp(`legend-kind\\.${kind},[\\s\\S]*?node\\.${kind}`));
+      assert.match(styles, new RegExp(`governing-facet\\.facet-${kind}`));
     }
     assert.match(styles, /border-inline-start: \.28rem solid var\(--ontology-kind\)/);
     assert.match(styles, /color-mix\(in srgb, var\(--ontology-kind\) 7%/);

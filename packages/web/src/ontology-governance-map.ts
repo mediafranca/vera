@@ -285,31 +285,16 @@ export async function renderOntologyGovernanceMap(
 
   const heading = document.createElement('header');
   heading.className = 'ontology-government-map-header';
+  heading.dataset['facet'] = facet;
   const title = document.createElement('strong');
-  title.textContent = facet === 'objects' ? 'Estructura de objetos' : facet === 'properties' ? 'Uso de propiedades' : 'Esquema de relaciones';
-  const note = document.createElement('span');
-  note.textContent = 'proyección de la página rectora · seleccionar revela su declaración';
-  heading.append(title, note);
+  title.textContent = facet === 'objects' ? 'Objetos' : facet === 'properties' ? 'Propiedades' : 'Relaciones';
+  heading.append(title);
 
-  const nodeKinds = [...new Set(diagram.nodes.map((node) => node.kind))];
   const edgeKinds = [...new Set(diagram.edges.map((edge) => edge.label))];
-  if (nodeKinds.length > 0 || edgeKinds.length > 0) {
+  if (edgeKinds.length > 0) {
     const legend = document.createElement('div');
     legend.className = 'ontology-government-legend';
-    legend.setAttribute('aria-label', 'convenciones del esquema');
-    const kindNames: Record<GoverningKind, string> = {
-      objects: 'objeto',
-      properties: 'propiedad',
-      relations: 'relación',
-    };
-    for (const nodeKind of nodeKinds) {
-      const item = document.createElement('span');
-      const swatch = document.createElement('i');
-      swatch.className = `ontology-government-legend-kind ${nodeKind}`;
-      swatch.setAttribute('aria-hidden', 'true');
-      item.append(swatch, kindNames[nodeKind]);
-      legend.append(item);
-    }
+    legend.setAttribute('aria-label', 'tipos de vínculo');
     for (const edgeKind of edgeKinds) {
       const item = document.createElement('span');
       const swatch = document.createElement('i');

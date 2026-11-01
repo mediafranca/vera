@@ -35,6 +35,15 @@ export interface LibrarianRequest {
   };
 }
 
+export interface LibrarianConversation {
+  id: string;
+  human: ParticipantId;
+  agent: ParticipantId;
+  title: string;
+  status: 'active' | 'closed';
+  createdAt: number;
+}
+
 interface RequestRow {
   id: string;
   conversation_id: string;
@@ -107,6 +116,38 @@ const SELECT_REQUEST = `SELECT r.*,
   LEFT JOIN agent_replies a ON a.request_id=r.id
   LEFT JOIN agent_operation_proposals p ON p.reply_id=a.id`;
 
+interface ConversationRow {
+  id: string;
+  human_id: ParticipantId;
+  agent_id: ParticipantId;
+  title: string;
+  status: 'active' | 'closed';
+  created_at: number;
+}
+
+const fromConversationRow = (row: ConversationRow): LibrarianConversation => ({
+  id: row.id,
+  human: row.human_id,
+  agent: row.agent_id,
+  title: row.title,
+  status: row.status,
+  createdAt: row.created_at,
+});
+
+/** La conversación activa entre una persona y su agente, sin crearla al leer. */
+export function activeLibrarianConversation(
+  store: Store,
+  human: ParticipantId,
+  agent: ParticipantId,
+): LibrarianConversation | undefined {
+  const row = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
+    FROM agent_conversations
+    WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).get(
+    store.graphId, human, agent,
+  ) as ConversationRow | undefined;
+  return row === undefined ? undefined : fromConversationRow(row);
+}
+
 function fromRow(row: RequestRow): LibrarianRequest {
   return {
     id: row.id,
@@ -159,6 +200,22 @@ export function librarianRequestsFor(
   if (askedBy !== undefined) parameters.push(askedBy);
   const rows = store.db.prepare(
     `${SELECT_REQUEST} WHERE r.graph_id=? AND r.source_page_id=?${blockClause}${askerClause} ORDER BY r.created_at DESC`,
+  ).all(...parameters) as unknown as RequestRow[];
+  return rows.map(fromRow);
+}
+
+/** Todos los turnos de una conversación, en orden de lectura. */
+export function librarianRequestsInConversation(
+  store: Store,
+  conversationId: string,
+  askedBy?: ParticipantId,
+): LibrarianRequest[] {
+  const askerClause = askedBy === undefined ? '' : ' AND r.asked_by=?';
+  const parameters: string[] = [store.graphId, conversationId];
+  if (askedBy !== undefined) parameters.push(askedBy);
+  const rows = store.db.prepare(
+    `${SELECT_REQUEST} WHERE r.graph_id=? AND r.conversation_id=?${askerClause}
+      ORDER BY r.created_at ASC, r.rowid ASC`,
   ).all(...parameters) as unknown as RequestRow[];
   return rows.map(fromRow);
 }

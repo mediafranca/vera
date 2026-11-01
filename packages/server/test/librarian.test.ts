@@ -228,6 +228,21 @@ describe('solicitudes al bibliotecario', () => {
     assert.equal(requests[0]?.['sourceBlockId'], block);
   });
 
+  it('lee la conversación durable completa en orden cronológico', async () => {
+    const result = await call('/librarian/conversation');
+    assert.equal(result.status, 200, JSON.stringify(result.json));
+    assert.equal((result.json['human'] as Record<string, unknown>)['name'], 'Herbert');
+    assert.equal((result.json['agent'] as Record<string, unknown>)['name'], 'Cotito');
+    const turns = result.json['turns'] as Record<string, unknown>[];
+    assert.ok(turns.length >= 2);
+    assert.ok(turns.every((turn) => turn['conversationId'] === (result.json['conversation'] as Record<string, unknown>)['id']));
+    assert.ok(turns.some((turn) => turn['sourcePageTitle'] === 'Página para preguntar'));
+    for (let index = 1; index < turns.length; index += 1) {
+      assert.ok(Number(turns[index - 1]?.['createdAt']) <= Number(turns[index]?.['createdAt']));
+    }
+    assert.equal((await call('/librarian/conversation', { secret })).status, 403);
+  });
+
   it('quien hizo el pedido puede eliminar la conversación auxiliar', async () => {
     assert.equal((await call(`/librarian/requests/${encodeURIComponent(requestId)}`, {
       method: 'DELETE', secret,

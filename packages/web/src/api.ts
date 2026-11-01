@@ -205,6 +205,7 @@ export interface LibrarianRequestView {
   modality: 'block' | 'page';
   text: string;
   sourcePageId: string | null;
+  sourcePageTitle: string | null;
   sourceBlockId: string | null;
   status: 'queued' | 'working' | 'answered' | 'failed' | 'cancelled';
   dispatchStatus: 'pending' | 'delivered' | 'failed';
@@ -222,6 +223,20 @@ export interface LibrarianRequestView {
       status: 'proposed' | 'accepted' | 'rejected';
     };
   };
+}
+
+export interface LibrarianConversationView {
+  conversation: null | {
+    id: string;
+    human: string;
+    agent: string;
+    title: string;
+    status: 'active' | 'closed';
+    createdAt: number;
+  };
+  human: { id: string; name: string };
+  agent: { id: string; name: string };
+  turns: LibrarianRequestView[];
 }
 
 export type PageEnrichment = Pick<
@@ -960,6 +975,9 @@ export const api = {
     if (blockId !== undefined) query.set('block', blockId ?? '');
     return json<LibrarianRequestView[]>(`/librarian/requests?${query.toString()}`);
   },
+
+  /** La conversación durable completa; el contexto de cada turno sigue visible. */
+  librarianConversation: () => json<LibrarianConversationView>('/librarian/conversation'),
 
   /*
    * Las conexiones con servicios de fuera.
