@@ -44,7 +44,11 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.match(outliner, /startRecording\(\)/);
     assert.match(outliner, /voice\.transcript\(captured\.id\)/);
     assert.match(outliner, /request\.events/);
+    assert.match(outliner, /said\.innerHTML = renderMarkdown\(text, markdownOptions\)/);
+    assert.match(outliner, /wireReadingButton\([\s\S]*?speechText\(text, markdownOptions\)/);
+    assert.match(outliner, /composerShell\.append\(composer, microphone\)/);
     assert.match(styles, /\.librarian-conversation-composer/);
+    assert.match(styles, /\.librarian-conversation-composer-shell \.librarian-conversation-microphone/);
   });
 
   it('deja las respuestas terminadas como bloques editables y no monta una copia auxiliar', () => {
