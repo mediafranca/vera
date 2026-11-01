@@ -26,11 +26,16 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /Construir borrador/);
     assert.match(administration, /Volver a esta versión/);
     assert.match(administration, /el modelo y el runtime pueden cambiar/);
+    assert.match(administration, /Runtime efectivo/);
+    assert.match(administration, /Sin recibo del runtime/);
+    assert.match(administration, /divergente/);
+    assert.match(administration, /Vera no confunde activación con ejecución/);
   });
 
   it('mantiene blancos táctiles y una composición legible en móvil', () => {
     assert.match(styles, /\.agent-administration :is\(button, select, input\)[\s\S]*?min-height: 2\.75rem/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-source-row/);
+    assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-runtime-list li/);
   });
 
   it('no multiplica todo el corpus por cada agente', () => {

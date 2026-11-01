@@ -648,6 +648,14 @@ export interface AgentAdministrationView {
     status: 'draft' | 'active' | 'superseded' | 'failed';
     createdAt: number; activatedAt: number | null;
   }[];
+  runtimes: {
+    runtime: { id: string; label: string };
+    manifest: { id: string; version: number; digest: string };
+    status: 'ready' | 'degraded' | 'failed';
+    detail: string | null;
+    reportedAt: number;
+    alignment: 'current' | 'divergent';
+  }[];
 }
 
 /** Por qué columna se está mirando una tabla, y en qué sentido. */

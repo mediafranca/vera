@@ -165,6 +165,8 @@ import {
   buildManifest,
   chooseConstitutionSources,
   establishAgentPrincipal,
+  reportRuntimeReceipt,
+  type AgentRuntimeStatus,
   type ConstitutionRole,
 } from './agent-manifests.ts';
 import {
@@ -4221,6 +4223,40 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const manifest = activeManifest(store, who.participant);
       if (manifest === null) { send(response, 404, { error: 'el agente no tiene manifiesto activo' }); return; }
       send(response, 200, manifest);
+      return;
+    }
+
+    /** Recibo verificable de la constitución que el runtime cargó efectivamente. */
+    if (request.method === 'POST' && path === '/agent-runtime/receipt') {
+      if (who.credential === null || graph.participant(who.participant)?.kind !== 'agent') {
+        send(response, 403, { error: 'esta puerta exige la credencial de un agente' });
+        return;
+      }
+      try {
+        const runtimeCredential = credentialById(store, who.credential);
+        if (runtimeCredential === null) {
+          send(response, 401, { error: 'la credencial del runtime ya no existe' });
+          return;
+        }
+        const body = await readSmallJson();
+        const manifest = typeof body['manifest'] === 'string' ? body['manifest'].trim() : '';
+        const digest = typeof body['digest'] === 'string' ? body['digest'].trim() : '';
+        const status = typeof body['status'] === 'string' ? body['status'] : '';
+        const detail = typeof body['detail'] === 'string' && body['detail'].trim() !== ''
+          ? body['detail'].trim().slice(0, 500) : null;
+        if (manifest === '' || !/^[a-f0-9]{64}$/.test(digest) ||
+          !['ready', 'degraded', 'failed'].includes(status)) {
+          send(response, 400, { error: 'el recibo necesita manifest, digest y un estado válido' });
+          return;
+        }
+        const receipt = reportRuntimeReceipt(store, who.participant, {
+          id: runtimeCredential.id,
+          label: runtimeCredential.label,
+        }, manifest, digest, status as AgentRuntimeStatus, detail);
+        send(response, 201, { receipt });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 

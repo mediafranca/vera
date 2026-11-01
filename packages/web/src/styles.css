@@ -5903,6 +5903,14 @@ body.settings-open #text {
 .agent-administration-card { padding: 1.2rem; border: 1px solid var(--rule); border-radius: .5rem; background: var(--bg-raised); }
 .agent-administration-card h2 { margin: 0; font: 500 1.3rem var(--font-body); }
 .agent-principal { margin: .3rem 0 1rem; color: var(--accent); }
+.agent-runtime-list { display: grid; gap: .65rem; padding: 0; list-style: none; }
+.agent-runtime-list li { display: grid; grid-template-columns: minmax(8rem, 1fr) auto auto; align-items: center; gap: .65rem; }
+.agent-runtime-list time { color: var(--text-dim); font-size: .82rem; }
+.agent-runtime-list p { grid-column: 1 / -1; margin: 0; color: var(--text-dim); }
+.agent-runtime-badge, .agent-runtime-empty { display: inline-flex; width: fit-content; border-radius: 999px; padding: .2rem .55rem; background: var(--bg-raised); color: var(--text-dim); }
+.agent-runtime-badge.is-current.is-ready { background: color-mix(in srgb, var(--success, #24845d) 16%, transparent); color: var(--success, #24845d); }
+.agent-runtime-badge.is-divergent, .agent-runtime-badge.is-failed { background: color-mix(in srgb, var(--danger, #b54a45) 14%, transparent); color: var(--danger, #b54a45); }
+.agent-runtime-badge.is-degraded { background: color-mix(in srgb, var(--warning, #a66b16) 14%, transparent); color: var(--warning, #8a5912); }
 .agent-administration-card h3 { margin: 1.2rem 0 .4rem; font: 500 1rem var(--font-body); }
 .agent-administration-card > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; min-height: 2.75rem; cursor: pointer; }
 .agent-administration-card > summary .agent-principal { margin: 0; color: var(--text-dim); }
@@ -5933,6 +5941,8 @@ body.settings-open #text {
 @media (max-width: 640px) {
   .agent-source-row { grid-template-columns: minmax(0, 1fr) auto; }
   .agent-source-row select { grid-column: 1; width: 100%; }
+  .agent-runtime-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .agent-runtime-list time { grid-column: 1 / -1; }
 }
 
 .settings-head {
