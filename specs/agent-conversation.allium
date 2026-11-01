@@ -102,6 +102,22 @@ contract ConversationWithAgent {
         -- conversant, but the request list, individual turns and replies visible
         -- there belong only to that participant. Sharing a page does not merge
         -- the private conversations held over it.
+
+    @invariant ConversationReadsAsAThread
+        -- Vera presents every durable request and reply in chronological order,
+        -- with older turns above and the composer anchored below. Opening the
+        -- conversation does not reduce it to the latest queued request or hide
+        -- answered turns merely because their text also entered the graph.
+
+    @invariant EveryVisibleTurnCanBeCopied
+        -- A human can copy the exact visible text of any request or reply without
+        -- editing the turn, changing its provenance or creating a graph operation.
+
+    @invariant ProgressIsStatusNotPrivateReasoning
+        -- The conversation may report durable stages, tools used, elapsed time
+        -- and pending work while the agent proceeds. It never exposes hidden
+        -- chain-of-thought or presents an invented stream of internal reasoning
+        -- as evidence of progress.
 }
 
 ------------------------------------------------------------

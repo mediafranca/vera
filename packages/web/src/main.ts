@@ -29,10 +29,10 @@ import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
 import { editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
-  askLibrarian,
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
+  openLibrarianConversation,
   presentOutlinerPage,
   renderOutliner,
   speakInto,
@@ -3654,7 +3654,7 @@ function wireTheme(): void {
       notice('El bibliotecario estará disponible cuando esta Vera tenga uno conectado.');
       return;
     }
-    void askLibrarian(openView, null, callbacksFor(openView));
+    void openLibrarianConversation(openView, callbacksFor(openView));
   });
 
   // Atrás y adelante son los del navegador, no un rastro propio: cada documento

@@ -23,13 +23,23 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.doesNotMatch(asking, /window\.prompt/);
     assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
     assert.match(outliner, /activity\.className = 'librarian-activity'/);
-    assert.match(outliner, /activity\.onclick = \(\) => openLibrarianProgress\(requests\)/);
+    assert.match(outliner, /activity\.onclick = openConversation \?\? \(\(\) => openLibrarianProgress\(requests\)\)/);
     assert.match(outliner, /Tiempo transcurrido:/);
     assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
     assert.match(styles, /\.librarian-activity \.icon/);
     assert.match(styles, /\.librarian-activity \.icon[\s\S]*?animation: librarian-mark-pulse/);
     assert.match(styles, /@keyframes librarian-mark-pulse/);
     assert.match(styles, /prefers-reduced-motion[\s\S]*?\.librarian-activity \.icon \{ animation: none; \}/);
+  });
+
+  it('presenta la conversación durable como un hilo acumulado y copiable', () => {
+    assert.match(outliner, /export async function openLibrarianConversation/);
+    assert.match(outliner, /api\.librarianConversation\(\)/);
+    assert.match(outliner, /className = 'librarian-conversation-stream'/);
+    assert.match(outliner, /stream\.scrollTop = stream\.scrollHeight/);
+    assert.match(outliner, /copyText\(text, toast\)/);
+    assert.match(outliner, /event\.key === 'Enter' && !event\.shiftKey/);
+    assert.match(styles, /\.librarian-conversation-composer/);
   });
 
   it('deja las respuestas terminadas como bloques editables y no monta una copia auxiliar', () => {

@@ -37,6 +37,7 @@ import {
   type CatalogAsset,
   type Change,
   type CrossingRow,
+  type LibrarianConversationView,
   type LibrarianRequestView,
   type PageSummary,
   type PageView,
@@ -832,6 +833,185 @@ export async function askLibrarian(
   }
 }
 
+/**
+ * La conversación durable con el agente, no una tarjeta de solicitud.
+ *
+ * Los turnos más antiguos quedan arriba y el compositor permanece abajo. Cada
+ * turno conserva el contexto desde el que nació, aunque la conversación cruce
+ * varias páginas. El nombre visible viene del participante efectivo: esta
+ * superficie podrá decir Lucienne cuando exista Lucienne, sin rebautizar a
+ * Cotito desde el cliente.
+ */
+export async function openLibrarianConversation(
+  page: PageView,
+  callbacks: OutlinerCallbacks,
+): Promise<void> {
+  const already = document.querySelector<HTMLDialogElement>('.librarian-conversation-dialog');
+  if (already !== null) {
+    if (!already.open) already.showModal();
+    already.querySelector<HTMLTextAreaElement>('.librarian-conversation-composer')?.focus();
+    return;
+  }
+
+  let view: LibrarianConversationView;
+  try { view = await api.librarianConversation(); }
+  catch {
+    toast('no se pudo abrir la conversación');
+    return;
+  }
+
+  const dialog = document.createElement('dialog');
+  dialog.className = 'librarian-dialog librarian-conversation-dialog';
+
+  const header = document.createElement('header');
+  header.className = 'librarian-conversation-header';
+  const identity = document.createElement('div');
+  identity.className = 'librarian-conversation-identity';
+  const mark = document.createElement('span');
+  mark.className = 'librarian-dialog-mark';
+  mark.innerHTML = icon('vera');
+  const words = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = view.agent.name;
+  const scope = document.createElement('span');
+  scope.textContent = `conversación en Vera · contexto actual: ${page.title}`;
+  words.append(name, scope);
+  identity.append(mark, words);
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'librarian-conversation-close';
+  close.innerHTML = icon('x');
+  close.title = 'Cerrar conversación';
+  close.setAttribute('aria-label', close.title);
+  header.append(identity, close);
+
+  const stream = document.createElement('section');
+  stream.className = 'librarian-conversation-stream';
+  stream.setAttribute('aria-live', 'polite');
+  stream.setAttribute('aria-label', `Conversación con ${view.agent.name}`);
+
+  const turn = (
+    hand: 'human' | 'agent' | 'status',
+    who: string,
+    text: string,
+    meta: string,
+  ): HTMLElement => {
+    const article = document.createElement('article');
+    article.className = `librarian-conversation-turn ${hand}`;
+    const heading = document.createElement('header');
+    const author = document.createElement('strong');
+    author.textContent = who;
+    const context = document.createElement('span');
+    context.textContent = meta;
+    heading.append(author, context);
+    const said = document.createElement('p');
+    said.textContent = text;
+    article.append(heading, said);
+    if (hand !== 'status') {
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'librarian-conversation-copy';
+      copy.textContent = 'Copiar';
+      copy.addEventListener('click', () => void copyText(text, toast));
+      article.append(copy);
+    }
+    return article;
+  };
+
+  const renderTurns = (next: LibrarianConversationView, follow = false): void => {
+    const nearEnd = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 80;
+    stream.replaceChildren();
+    if (next.turns.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'librarian-conversation-empty';
+      empty.textContent = 'Esta conversación todavía no tiene turnos.';
+      stream.append(empty);
+    }
+    for (const request of next.turns) {
+      const where = request.sourcePageTitle === null ? 'sin página de origen' : `desde ${request.sourcePageTitle}`;
+      stream.append(turn('human', next.human.name, request.text, `${where} · ${when(request.createdAt)}`));
+      if (request.reply !== null) {
+        stream.append(turn('agent', next.agent.name, request.reply.text, when(request.reply.createdAt)));
+      } else {
+        const reason = request.status === 'failed' && request.failureReason !== null
+          ? `${librarianRequestState(request)} · ${request.failureReason}`
+          : librarianRequestState(request);
+        stream.append(turn('status', next.agent.name, reason, saySeconds(Math.max(0, Date.now() - request.createdAt))));
+      }
+    }
+    if (follow || nearEnd) stream.scrollTop = stream.scrollHeight;
+  };
+
+  const form = document.createElement('form');
+  form.className = 'librarian-conversation-form';
+  const composer = document.createElement('textarea');
+  composer.className = 'librarian-conversation-composer';
+  composer.rows = 3;
+  composer.placeholder = `Escribe a ${view.agent.name} sobre «${page.title}»…`;
+  composer.autocomplete = 'off';
+  composer.setAttribute('aria-label', `Mensaje para ${view.agent.name}`);
+  const formBar = document.createElement('div');
+  const context = document.createElement('span');
+  context.textContent = `Contexto: ${page.title}`;
+  const send = document.createElement('button');
+  send.type = 'submit';
+  send.className = 'librarian-dialog-primary';
+  send.textContent = 'Enviar';
+  formBar.append(context, send);
+  form.append(composer, formBar);
+
+  const refresh = async (follow = false): Promise<void> => {
+    try {
+      view = await api.librarianConversation();
+      name.textContent = view.agent.name;
+      stream.setAttribute('aria-label', `Conversación con ${view.agent.name}`);
+      renderTurns(view, follow);
+    } catch {
+      // El historial ya visible permanece legible; el próximo pulso reintenta.
+    }
+  };
+
+  close.addEventListener('click', () => dialog.close());
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const text = composer.value.trim();
+    if (text === '') {
+      composer.focus();
+      return;
+    }
+    composer.disabled = true;
+    send.disabled = true;
+    void api.askLibrarian({ pageId: page.id, text }).then(async () => {
+      composer.value = '';
+      await refresh(true);
+      callbacks.onReload(null);
+    }).catch(() => toast('no se pudo guardar el mensaje')).finally(() => {
+      composer.disabled = false;
+      send.disabled = false;
+      composer.focus();
+    });
+  });
+  composer.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    form.requestSubmit();
+  });
+
+  dialog.append(header, stream, form);
+  document.body.append(dialog);
+  renderTurns(view, true);
+  const clock = window.setInterval(() => {
+    if (dialog.open) void refresh();
+  }, 3_000);
+  dialog.addEventListener('close', () => {
+    window.clearInterval(clock);
+    dialog.remove();
+  }, { once: true });
+  dialog.showModal();
+  window.requestAnimationFrame(() => { stream.scrollTop = stream.scrollHeight; });
+  composer.focus();
+}
+
 /** Pide una instrucción dentro de Vera, con espacio suficiente para pensarla. */
 function librarianInstruction(page: PageView, block: BlockView | null): Promise<string | null> {
   return new Promise((resolve) => {
@@ -990,7 +1170,10 @@ function openLibrarianProgress(requests: LibrarianRequestView[]): void {
  * Vive como una sola marca periférica; el detalle vuelve al centro sólo cuando
  * se lo pide. Las respuestas terminadas sí vuelven a su lugar de origen.
  */
-function showLibrarianActivity(requests: LibrarianRequestView[]): void {
+function showLibrarianActivity(
+  requests: LibrarianRequestView[],
+  openConversation?: () => void,
+): void {
   activeLibrarianRequests = requests;
   const current = document.querySelector<HTMLButtonElement>('.librarian-activity');
   if (requests.length === 0) {
@@ -1009,7 +1192,7 @@ function showLibrarianActivity(requests: LibrarianRequestView[]): void {
   activity.dataset['state'] = latest.dispatchStatus === 'failed' ? 'waiting' : latest.status;
   activity.title = `${librarianRequestState(latest)} · abrir detalle`;
   activity.setAttribute('aria-label', activity.title);
-  activity.onclick = () => openLibrarianProgress(requests);
+  activity.onclick = openConversation ?? (() => openLibrarianProgress(requests));
   if (current === null) document.body.append(activity);
   const dialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
   if (dialog !== null) updateLibrarianProgress(dialog, requests);
@@ -1030,7 +1213,7 @@ async function showLibrarianTurns(
   // debe convertir una repetición de transporte en dos avisos iguales.
   const unique = [...new Map(requests.map((request) => [request.id, request])).values()];
   const active = unique.filter((request) => request.status === 'queued' || request.status === 'working');
-  showLibrarianActivity(active);
+  showLibrarianActivity(active, () => void openLibrarianConversation(page, callbacks));
   // Las respuestas terminadas son contenido del grafo: sobre un bloque lo
   // reemplazan y sobre una página nacen como un bloque ordinario. La solicitud
   // auxiliar permanece en el registro, pero no vuelve a montarse como una copia

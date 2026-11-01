@@ -107,14 +107,17 @@ import {
   type Scope,
 } from './credentials.ts';
 import {
+  activeLibrarianConversation,
   answerLibrarianRequest,
   claimLibrarianRequest,
   createLibrarianRequest,
   librarianRequest,
+  librarianRequestsInConversation,
   librarianRequestsFor,
   markLibrarianDispatched,
   pendingLibrarianDispatches,
   removeLibrarianRequest,
+  type LibrarianRequest,
 } from './librarian.ts';
 import type { Reading } from './model.ts';
 import {
@@ -2003,6 +2006,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     };
 
     const librarianAgent = 'participant:cotito' as ParticipantId;
+    const librarianRequestView = (turn: LibrarianRequest) => ({
+        ...turn,
+        sourcePageTitle: turn.sourcePageId === null
+          ? null
+          : graph.page(turn.sourcePageId)?.title ?? null,
+      });
     const canAnswerAsLibrarian = (): boolean => {
       if (who.participant !== librarianAgent || who.credential === null) return false;
       return credentialById(store, who.credential)?.scopes.includes('write') ?? false;
@@ -2165,6 +2174,35 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'GET' && path === '/librarian/conversation') {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
+        send(response, 403, { error: 'sólo una persona puede leer su conversación con el bibliotecario' });
+        return;
+      }
+      const conversation = activeLibrarianConversation(store, conversationalHuman, librarianAgent);
+      const turns = conversation === undefined
+        ? []
+        : librarianRequestsInConversation(store, conversation.id, conversationalHuman)
+            .map(librarianRequestView);
+      deliver({
+        conversation: conversation ?? null,
+        human: {
+          id: conversationalHuman,
+          name: graph.participant(conversationalHuman)?.name ?? conversationalHuman,
+        },
+        agent: {
+          id: librarianAgent,
+          name: graph.participant(librarianAgent)?.name ?? 'Bibliotecario',
+        },
+        turns,
+      }, {
+        surface: 'GET /librarian/conversation',
+        subject: conversation?.id ?? `${conversationalHuman}:${librarianAgent}`,
+        delivered: turns.map((turn) => turn.id),
+      });
+      return;
+    }
+
     if (request.method === 'POST' && path === '/librarian/requests') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: 'sólo una persona puede solicitar al bibliotecario' });
@@ -2207,7 +2245,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         contextSnapshot: snapshot,
       });
       await dispatchNextLibrarianRequest();
-      send(response, 201, librarianRequest(store, created.id));
+      const stored = librarianRequest(store, created.id);
+      send(response, 201, stored === undefined ? stored : librarianRequestView(stored));
       return;
     }
 
@@ -2222,12 +2261,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'falta una página válida' });
         return;
       }
-      deliver(librarianRequestsFor(
+      const turns = librarianRequestsFor(
         store,
         pageId,
         block,
         publicAccess ? (conversationalHuman ?? undefined) : undefined,
-      ), {
+      ).map(librarianRequestView);
+      deliver(turns, {
         surface: 'GET /librarian/requests', subject: pageId, delivered: [pageId, ...(block ? [block] : [])],
       });
       return;

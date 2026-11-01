@@ -183,6 +183,200 @@
   font: 1rem/1.55 var(--font-body);
 }
 
+/*
+ * La conversación es una superficie primaria, no el formulario ampliado de una
+ * solicitud. La cabecera ocupa una sola línea, el historial crece hacia arriba
+ * y el compositor permanece abajo, como en una conversación ordinaria.
+ */
+.librarian-conversation-dialog {
+  display: none;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(48rem, calc(100vw - 1rem));
+  height: min(48rem, calc(100dvh - 1rem));
+  max-height: calc(100dvh - 1rem);
+  padding: 0;
+  overflow: hidden;
+}
+.librarian-conversation-dialog[open] { display: grid; }
+
+.librarian-conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-height: 3.25rem;
+  padding: .45rem .65rem;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--bg-raised) 90%, var(--accent) 10%);
+}
+.librarian-conversation-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: .55rem;
+}
+.librarian-conversation-identity .librarian-dialog-mark {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+}
+.librarian-conversation-identity > div:last-child {
+  display: grid;
+  min-width: 0;
+  gap: .05rem;
+}
+.librarian-conversation-identity strong { font: 600 .9rem/1.2 var(--font-ui); }
+.librarian-conversation-identity span {
+  overflow: hidden;
+  color: var(--text-dim);
+  font: .72rem/1.2 var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.librarian-conversation-close {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.librarian-conversation-close:is(:hover, :focus-visible) {
+  outline: 0;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+.librarian-conversation-stream {
+  display: flex;
+  flex-direction: column;
+  gap: .8rem;
+  min-height: 0;
+  padding: 1rem clamp(.75rem, 3vw, 1.5rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.librarian-conversation-empty {
+  margin: auto;
+  color: var(--text-dim);
+  font: .9rem/1.5 var(--font-ui);
+}
+.librarian-conversation-turn {
+  position: relative;
+  box-sizing: border-box;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(88%, 36rem);
+  padding: .65rem .75rem;
+  border: 1px solid var(--rule);
+  border-radius: .75rem;
+  background: var(--bg);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.librarian-conversation-turn.human {
+  align-self: flex-end;
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--rule));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised));
+}
+.librarian-conversation-turn.agent { align-self: flex-start; }
+.librarian-conversation-turn.status {
+  align-self: flex-start;
+  padding-block: .45rem;
+  border-style: dashed;
+  color: var(--text-dim);
+  background: transparent;
+}
+.librarian-conversation-turn > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .55rem;
+  align-items: baseline;
+  margin-bottom: .25rem;
+}
+.librarian-conversation-turn > header strong { font: 600 .72rem/1.2 var(--font-ui); }
+.librarian-conversation-turn > header span {
+  color: var(--text-dim);
+  font: .65rem/1.2 var(--font-ui);
+}
+.librarian-conversation-turn p {
+  margin: 0;
+  font: .95rem/1.48 var(--font-body);
+  white-space: pre-wrap;
+}
+.librarian-conversation-copy {
+  display: block;
+  margin: .45rem 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: .68rem/1.2 var(--font-ui);
+  cursor: pointer;
+}
+.librarian-conversation-copy:is(:hover, :focus-visible) { color: var(--accent); outline: 0; }
+
+.librarian-conversation-form {
+  padding: .65rem;
+  border-top: 1px solid var(--rule);
+  background: var(--bg-raised);
+}
+.librarian-conversation-composer {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-height: 11rem;
+  padding: .7rem .75rem;
+  border: 1px solid var(--rule);
+  border-radius: .55rem;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  font: .95rem/1.45 var(--font-body);
+}
+.librarian-conversation-composer:focus { border-color: var(--accent); outline: 0; }
+.librarian-conversation-form > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-top: .5rem;
+}
+.librarian-conversation-form > div > span {
+  overflow: hidden;
+  color: var(--text-dim);
+  font: .7rem/1.2 var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.librarian-conversation-form .librarian-dialog-primary {
+  min-height: 2.2rem;
+  padding: .35rem .8rem;
+  border: 1px solid var(--accent);
+  border-radius: .35rem;
+  background: var(--accent);
+  color: var(--bg);
+  font: 600 .8rem/1 var(--font-ui);
+  cursor: pointer;
+}
+.librarian-conversation-form .librarian-dialog-primary:disabled { opacity: .55; cursor: wait; }
+
+@media (max-width: 640px) {
+  .librarian-conversation-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .librarian-conversation-turn { max-width: 94%; }
+}
+
 @keyframes librarian-mark-pulse {
   0%, 100% {
     opacity: 0.78;
@@ -5165,38 +5359,47 @@ body.settings-open #text {
 
 .governing-facets {
   display: flex;
-  gap: .55rem;
+  gap: .45rem;
   align-items: center;
   width: 100%;
-  margin: .2rem 0 1.2rem;
-  padding: .45rem 0 1rem;
+  margin: 0 0 .75rem;
+  padding: .25rem 0 .65rem;
   border-bottom: 1px solid var(--rule);
   overflow-x: auto;
 }
 
 .governing-facet {
-  min-height: 2.65rem;
-  padding: .48rem 1rem;
+  --ontology-kind: var(--accent);
+  min-height: 2.25rem;
+  padding: .38rem .75rem;
   border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: var(--bg-raised);
-  color: var(--text-dim);
+  border-inline-start: .28rem solid var(--ontology-kind);
+  border-radius: .42rem;
+  background: color-mix(in srgb, var(--ontology-kind) 7%, var(--bg-raised));
+  color: var(--text);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
 
+.governing-facet.facet-objects { --ontology-kind: var(--link-in); }
+.governing-facet.facet-properties { --ontology-kind: var(--warm); }
+.governing-facet.facet-relations { --ontology-kind: var(--accent); }
+
 .governing-facet:hover,
 .governing-facet:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--ontology-kind);
+  color: var(--text);
+  outline: 2px solid color-mix(in srgb, var(--ontology-kind) 26%, transparent);
+  outline-offset: 1px;
 }
 
 .governing-facet.selected {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--bg);
+  border-color: var(--ontology-kind);
+  background: color-mix(in srgb, var(--ontology-kind) 18%, var(--bg-raised));
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ontology-kind) 28%, transparent);
   cursor: default;
 }
 
@@ -5234,16 +5437,25 @@ body.settings-open #text {
 }
 
 .ontology-government-map-header {
-  display: grid;
-  gap: .2rem;
-  padding: .85rem 1rem .75rem;
+  --ontology-kind: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-height: 2.3rem;
+  padding: .3rem .55rem;
   border-bottom: 1px solid var(--rule);
   background: color-mix(in srgb, var(--bg-raised) 72%, transparent);
 }
 
+.ontology-government-map-header[data-facet='objects'] { --ontology-kind: var(--link-in); }
+.ontology-government-map-header[data-facet='properties'] { --ontology-kind: var(--warm); }
+.ontology-government-map-header[data-facet='relations'] { --ontology-kind: var(--accent); }
+
 .ontology-government-map-header strong {
+  padding-inline-start: .45rem;
+  border-inline-start: .28rem solid var(--ontology-kind);
   color: var(--text);
-  font-size: .92rem;
+  font-size: .8rem;
 }
 
 .ontology-government-map-header span {
@@ -5251,11 +5463,23 @@ body.settings-open #text {
   font-size: .75rem;
 }
 
+.ontology-government-map-header .ontology-mobile-switch {
+  width: auto;
+  margin: 0 0 0 auto;
+  padding: .1rem;
+  border-radius: .3rem;
+}
+.ontology-government-map-header .ontology-mobile-switch button {
+  min-height: 1.8rem;
+  padding: .15rem .45rem;
+  font-size: .7rem;
+}
+
 .ontology-government-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: .35rem 1rem;
-  margin-top: .25rem;
+  gap: .25rem .7rem;
+  margin: 0 0 0 auto;
 }
 
 .ontology-government-legend span {
