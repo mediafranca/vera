@@ -1,0 +1,316 @@
+-- allium: 3
+-- agent-tools.allium
+
+-- Scope: configuración gobernada de las capacidades externas que un agente de
+--   Vera puede descubrir y usar.
+-- Includes: catálogo por conexión, concesión humana, alcance, aprobación,
+--   proyección al runtime, retiro y procedencia.
+-- Excludes:
+--   - Custodia del secreto y prueba de la conexión, gobernadas por
+--     service-connections.allium.
+--   - Ejecución del modelo y transporte del runtime.
+--   - Semántica propia de cada proveedor: Zotero, mercados y noticias viven
+--     detrás de adaptadores o servidores MCP reemplazables.
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity ToolProvider {
+    connection_page: core/Page
+    protocol: ConnectionProtocol
+}
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+value CapabilityDescription {
+    external_id: String
+    name: String
+    kind: CapabilityKind
+    schema_digest: String
+    read_only: Boolean
+    destructive: Boolean
+    idempotent: Boolean
+    open_world: Boolean
+}
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract CapabilityDiscovery {
+    list_capabilities: () -> List<CapabilityDescription>
+
+    @invariant DiscoveryDoesNotGrantAuthority
+        -- Describir herramientas, recursos o prompts no concede su uso a ningún
+        -- agente. El catálogo observado y la autorización humana son actos
+        -- distintos.
+
+    @invariant SchemasAreVersionedByDigest
+        -- Si el contrato de entrada o salida cambia, cambia el digest y Vera lo
+        -- trata como una revisión nueva de la capacidad.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum ConnectionProtocol { mcp | http_api | feed | local_adapter }
+enum CapabilityKind { tool | resource | prompt }
+enum ApprovalPolicy { automatic | confirm_each_call }
+enum CapabilityStatus { active | withdrawn }
+enum GrantStatus { active | revoked }
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity ToolCapability {
+    connection_page: core/Page
+    protocol: ConnectionProtocol
+    external_id: String
+    name: String
+    kind: CapabilityKind
+    schema_digest: String
+    read_only: Boolean
+    destructive: Boolean
+    idempotent: Boolean
+    open_world: Boolean
+    discovered_at: Timestamp
+    status: CapabilityStatus
+
+    transitions status {
+        active -> withdrawn
+        terminal: withdrawn
+    }
+}
+
+entity AgentToolGrant {
+    agent: core/Participant
+    capability: ToolCapability
+    approval: ApprovalPolicy
+    data_scope: String
+    granted_by: core/Participant
+    granted_at: Timestamp
+    valid_until: Timestamp?
+    status: GrantStatus
+    revoked_at: Timestamp? when status = revoked
+
+    transitions status {
+        active -> revoked
+        terminal: revoked
+    }
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule ProviderCapabilitiesAreReconciled {
+    when: CapabilitiesObserved(provider, descriptions)
+    ensures:
+        for old in ToolCapability where connection_page = provider.connection_page and status = active:
+            if not descriptions.any(d => d.external_id = old.external_id and d.schema_digest = old.schema_digest):
+                old.status = withdrawn
+    ensures:
+        for description in descriptions:
+            if not exists ToolCapability{
+                connection_page: provider.connection_page,
+                external_id: description.external_id,
+                schema_digest: description.schema_digest,
+                status: active
+            }:
+                ToolCapability.created(
+                    connection_page: provider.connection_page,
+                    protocol: provider.protocol,
+                    external_id: description.external_id,
+                    name: description.name,
+                    kind: description.kind,
+                    schema_digest: description.schema_digest,
+                    read_only: description.read_only,
+                    destructive: description.destructive,
+                    idempotent: description.idempotent,
+                    open_world: description.open_world,
+                    discovered_at: now,
+                    status: active
+                )
+}
+
+rule HumanGrantsCapabilityToAgent {
+    when: GrantCapability(human, agent, capability, approval, data_scope, valid_until)
+    requires: human.kind = human
+    requires: human.status = active
+    requires: agent.kind = agent
+    requires: agent.status = active
+    requires: capability.status = active
+    requires: not exists AgentToolGrant{agent: agent, capability: capability, status: active}
+    ensures: AgentToolGrant.created(
+        agent: agent,
+        capability: capability,
+        approval: approval,
+        data_scope: data_scope,
+        granted_by: human,
+        granted_at: now,
+        valid_until: valid_until,
+        status: active,
+        revoked_at: null
+    )
+}
+
+rule HumanRevokesAgentCapability {
+    when: RevokeCapability(human, grant)
+    requires: human.kind = human
+    requires: human.status = active
+    requires: grant.status = active
+    ensures:
+        grant.status = revoked
+        grant.revoked_at = now
+}
+
+rule WithdrawnCapabilityRevokesItsGrants {
+    when: capability: ToolCapability.status transitions_to withdrawn
+    ensures:
+        for grant in AgentToolGrant where capability = capability and status = active:
+            grant.status = revoked
+            grant.revoked_at = now
+}
+
+rule ExpiredGrantIsRevoked {
+    when: grant: AgentToolGrant.valid_until <= now
+    requires: grant.status = active
+    requires: grant.valid_until != null
+    ensures:
+        grant.status = revoked
+        grant.revoked_at = now
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OnlyAgentsReceiveToolGrants {
+    for grant in AgentToolGrant:
+        grant.agent.kind = agent
+}
+
+invariant ActiveGrantsReferToActiveCapabilities {
+    for grant in AgentToolGrant where status = active:
+        grant.capability.status = active
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor ToolAdministrator {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+actor ConfiguredAgent {
+    identified_by: core/Participant where this.kind = agent and this.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface ToolConnectionAdministration {
+    facing administrator: ToolAdministrator
+    context connection_page: core/Page
+
+    exposes:
+        for capability in ToolCapability where connection_page = connection_page:
+            capability.external_id
+            capability.name
+            capability.kind
+            capability.schema_digest
+            capability.read_only
+            capability.destructive
+            capability.idempotent
+            capability.open_world
+            capability.discovered_at
+            capability.status
+        for grant in AgentToolGrant where capability.connection_page = connection_page:
+            grant.agent
+            grant.capability
+            grant.approval
+            grant.data_scope
+            grant.granted_by
+            grant.granted_at
+            grant.valid_until
+            grant.status
+
+    provides:
+        GrantCapability(administrator, agent, capability, approval, data_scope, valid_until)
+        RevokeCapability(administrator, grant)
+
+    @guarantee ProtocolMetadataIsNotAuthority
+        -- Las anotaciones de una herramienta ayudan a describirla, pero no
+        -- conceden permisos. La concesión humana y su alcance son la autoridad.
+
+    @guarantee SecretValuesStayOutsideTheCorpus
+        -- La página conserva método, referencia y alcance; nunca el valor de una
+        -- clave, token o contraseña.
+}
+
+surface CapabilityDiscoveryDoor {
+    facing provider: ToolProvider
+
+    contracts:
+        demands CapabilityDiscovery
+
+    provides:
+        CapabilitiesObserved(provider, descriptions)
+
+    @guarantee NativeAndAdaptedProvidersUseTheSameBoundary
+        -- Un servidor MCP habla directamente. Una API HTTP, un feed o un
+        -- proceso local entra mediante un adaptador que cumple el mismo contrato.
+}
+
+surface AgentToolProjection {
+    facing agent: ConfiguredAgent
+
+    exposes:
+        for grant in AgentToolGrant where agent = agent and status = active:
+            grant.capability
+            grant.approval
+            grant.data_scope
+            grant.valid_until
+
+    @guarantee AnAgentSeesOnlyGrantedCapabilities
+        -- Descubrir una capacidad en una conexión no la vuelve utilizable por
+        -- todos los agentes; el runtime recibe únicamente concesiones vigentes.
+
+    @guarantee TheAdapterIsReplaceable
+        -- El agente consume la capacidad gobernada. Zotero, una API bursátil,
+        -- RSS, WebSub o un proceso local pueden cambiar de adaptador sin cambiar
+        -- la identidad de la concesión humana.
+
+    @guarantee ControlStaysWithTheRightParty
+        -- Una herramienta la invoca el modelo; un recurso lo incorpora la
+        -- aplicación; un prompt lo elige la persona. La proyección conserva esa
+        -- diferencia del protocolo MCP.
+}
+
+------------------------------------------------------------
+-- Deferred Specifications
+------------------------------------------------------------
+
+-- La ejecución, sus aprobaciones puntuales, presupuestos, reintentos y recibos
+-- de efecto requieren un contrato separado; una concesión no demuestra que una
+-- llamada ocurrió ni que produjo su efecto.
+deferred ToolInvocationReceipts.record -- see: agent-tool-invocations.allium (future)
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "¿Debe una capacidad de sólo lectura poder concederse automáticamente al conectar un servicio, o toda capacidad —también leer— exige una decisión humana explícita?"
+
+open question "¿Cómo se separan el presupuesto de una herramienta, la frecuencia de una suscripción y la programación de una automatización sin convertir la concesión en un cajón de parámetros?"
+
+open question "¿Qué parte de una concesión puede viajar entre Veras soberanas y cuál debe volver a aprobarse en cada instancia?"
