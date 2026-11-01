@@ -114,6 +114,7 @@ const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'personas', label: 'Bibliotecarios y agentes', note: 'Principal humano, constitución y estado', open: (h) => h.onOpenAgents() },
   { section: 'personas', label: 'Espacios compartidos', note: 'Superficies, invitaciones y permisos', open: (h) => h.onOpenSharing() },
   { section: 'conexiones', label: 'Puerta de conexiones', note: 'Entradas, salidas, canales y credenciales', terms: 'mcp extensión web telegram zotero', open: (h) => h.onOpenPage('VERA: Conexiones') },
+  { section: 'conexiones', label: 'Voz', note: 'Escuchar con STT y hablar con TTS local', terms: 'audio whisper kokoro micrófono transcripción' },
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
   { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
@@ -1639,8 +1640,130 @@ async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): P
     destination('Canales', 'Chat interno, Telegram y futuras puertas', () => handlers.onOpenPage('VERA: Conexiones')),
   );
   host.append(actions);
+  await drawVoiceConfiguration(host);
   heading(host, 'Vera hacia afuera', 'Aplicaciones que abren o procesan los materiales.');
   await drawExternalEditors(host);
+}
+
+async function drawVoiceConfiguration(host: HTMLElement): Promise<void> {
+  heading(
+    host,
+    'Voz',
+    'Una capacidad opcional de esta instalación. Escuchar y hablar se activan por separado y sólo funcionan cuando su motor y modelo pasan la comprobación.',
+  );
+  const panel = document.createElement('section');
+  panel.className = 'voice-configuration';
+  const loading = document.createElement('p');
+  loading.className = 'settings-note';
+  loading.textContent = 'Comprobando hardware y motores locales…';
+  panel.append(loading);
+  host.append(panel);
+
+  try {
+    let state = await api.voiceConfiguration();
+    const draw = (): void => {
+      panel.innerHTML = '';
+      const machine = document.createElement('p');
+      machine.className = 'settings-note';
+      machine.textContent = `${state.hardware.logicalCpus} CPU lógicas · ${state.hardware.memoryGiB} GiB RAM · ${state.hardware.architecture}. El tamaño del modelo y la concurrencia deben probarse en esta máquina.`;
+      panel.append(machine);
+
+      const switches = document.createElement('div');
+      switches.className = 'voice-switches';
+      const switchRow = (
+        label: string,
+        note: string,
+        checked: boolean,
+        disabled: boolean,
+        change: (checked: boolean) => Promise<void>,
+      ): HTMLElement => {
+        const row = document.createElement('label');
+        row.className = 'voice-switch';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = checked;
+        input.disabled = disabled;
+        const text = document.createElement('span');
+        const name = document.createElement('strong');
+        name.textContent = label;
+        const detail = document.createElement('small');
+        detail.textContent = note;
+        text.append(name, detail);
+        input.addEventListener('change', () => {
+          input.disabled = true;
+          void change(input.checked).catch((error: unknown) => {
+            input.checked = !input.checked;
+            window.alert(error instanceof Error ? error.message : 'No se pudo cambiar la voz.');
+          }).finally(() => { input.disabled = false; });
+        });
+        row.append(input, text);
+        return row;
+      };
+      const save = async (next: Partial<typeof state.switches>): Promise<void> => {
+        state = await api.configureVoice(next);
+        draw();
+      };
+      switches.append(
+        switchRow('Activar voz', 'Interruptor maestro de esta Vera.', state.switches.enabled, false, (value) => save({ enabled: value })),
+        switchRow(
+          'Escuchar · speech-to-text',
+          `${state.speechToText.engine} · ${state.speechToText.effective ? 'lista' : state.speechToText.ready ? 'instalada, desactivada' : `falta ${state.speechToText.missing.join(', ')}`}`,
+          state.switches.speechToText,
+          !state.switches.enabled,
+          (value) => save({ speechToText: value }),
+        ),
+        switchRow(
+          'Hablar · text-to-speech',
+          `${state.textToSpeech.engine} · voz ${state.textToSpeech.voice} · ${state.textToSpeech.effective ? 'lista' : state.textToSpeech.ready ? 'instalada, desactivada' : `falta ${state.textToSpeech.missing.join(', ')}`}`,
+          state.switches.textToSpeech,
+          !state.switches.enabled,
+          (value) => save({ textToSpeech: value }),
+        ),
+      );
+      panel.append(switches);
+
+      const paths = document.createElement('dl');
+      paths.className = 'voice-paths';
+      const connectedPaths: Array<[string, string]> = [
+        ['STT', Object.values(state.speechToText.paths).filter(Boolean).join(' · ') || 'sin conectar'],
+        ['TTS', Object.values(state.textToSpeech.paths).filter(Boolean).join(' · ') || 'sin conectar'],
+      ];
+      for (const [label, value] of connectedPaths) {
+        const term = document.createElement('dt'); term.textContent = label;
+        const detail = document.createElement('dd'); detail.textContent = value;
+        paths.append(term, detail);
+      }
+      panel.append(paths);
+
+      const install = document.createElement('div');
+      install.className = 'voice-installation';
+      const note = document.createElement('p');
+      note.className = 'settings-note';
+      note.textContent = state.installation.note;
+      install.append(note);
+      const installers: Array<[string, string]> = [
+        ['Este equipo', state.installation.host],
+        ['Docker / Fly', state.installation.container],
+      ];
+      for (const [label, command] of installers) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'settings-action';
+        button.textContent = `Copiar instalación · ${label}`;
+        button.addEventListener('click', () => {
+          void navigator.clipboard.writeText(command).then(() => {
+            button.textContent = 'Comando copiado';
+            window.setTimeout(() => { button.textContent = `Copiar instalación · ${label}`; }, 1200);
+          });
+        });
+        install.append(button);
+      }
+      panel.append(install);
+    };
+    draw();
+  } catch (error) {
+    loading.textContent = error instanceof Error ? error.message : 'No se pudo leer la configuración de voz.';
+  }
 }
 
 function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {

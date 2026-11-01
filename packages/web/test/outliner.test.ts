@@ -24,6 +24,7 @@ import {
   matchingMovePages,
   needsProgressiveComposition,
   nearestContinuityFocus,
+  nodeReadingOrder,
   nodeMarkdown,
   offeredPropertyOptions,
   pageReferenceRows,
@@ -544,6 +545,28 @@ describe('nodeMarkdown', () => {
   it('una hoja copia sólo su Markdown', () => {
     const tree = buildTree([block('hoja', null, 0, 'Texto **limpio**')]);
     assert.equal(nodeMarkdown(tree[0]!), 'Texto **limpio**');
+  });
+});
+
+describe('lectura en cascada', () => {
+  it('lee la raíz y todos sus descendientes en orden de outline, sin alcanzar al hermano', () => {
+    const tree = buildTree([
+      block('título', null, 0, '### Tema'),
+      block('primero', 'título', 0, 'Primer punto'),
+      block('detalle', 'primero', 0, 'Detalle'),
+      block('segundo', 'título', 1, 'Segundo punto'),
+      block('hermano', null, 1, 'Otro tema'),
+    ]);
+
+    assert.deepEqual(
+      nodeReadingOrder(tree[0]!).map((one) => one.stableId),
+      ['título', 'primero', 'detalle', 'segundo'],
+    );
+  });
+
+  it('una hoja sigue siendo una lectura individual', () => {
+    const tree = buildTree([block('hoja', null, 0, 'Sólo esto')]);
+    assert.deepEqual(nodeReadingOrder(tree[0]!).map((one) => one.stableId), ['hoja']);
   });
 });
 

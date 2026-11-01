@@ -3087,6 +3087,35 @@ html.presenting body {
 .block:has(> .body > .body-text > :first-child:is(h4)) { --thread-lead: var(--head-4); }
 .block:has(> .body > .body-text > :first-child:is(h5, h6)) { --thread-lead: var(--head-5); }
 
+/*
+ * El alcance de una lectura en cascada se ve antes de oírse.
+ *
+ * La línea ocupa el nivel del bloque que inicia la lectura, incluso cuando sus
+ * descendientes tengan más sangría. Cada fila aporta un tramo y las dos puntas
+ * recortan el primero y el último: el resultado es una sola guía discreta sobre
+ * exactamente el subárbol visible que el parlante anuncia.
+ */
+.block.read-scope-preview::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  left: var(--read-scope-left);
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.block.read-scope-preview-start::after {
+  top: var(--thread-y);
+  border-top-left-radius: 1px;
+}
+
+.block.read-scope-preview-end::after {
+  bottom: calc(100% - var(--thread-y));
+  border-bottom-left-radius: 1px;
+}
+
 /* La glosa acompaña el bloque sin entrar en su outline. En una lectura ancha
    vive en el margen; en vistas compactas se abre desde su marca. */
 .gloss-toggle {
@@ -6427,6 +6456,52 @@ body.settings-open #text {
   color: var(--text-dim);
   line-height: 1.5;
 }
+
+.voice-configuration {
+  display: grid;
+  gap: .8rem;
+  margin-bottom: 1.4rem;
+}
+
+.voice-switches {
+  display: grid;
+  gap: .45rem;
+}
+
+.voice-switch {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: .65rem;
+  padding: .7rem .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.voice-switch input { margin-top: .2rem; }
+.voice-switch span { display: grid; gap: .16rem; }
+.voice-switch small { color: var(--text-dim); line-height: 1.35; }
+.voice-switch:has(input:disabled) { cursor: default; opacity: .58; }
+
+.voice-paths {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .3rem .7rem;
+  margin: 0;
+  font-size: .78rem;
+}
+
+.voice-paths dt { color: var(--text-dim); font-weight: 600; }
+.voice-paths dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
+.voice-installation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+
+.voice-installation .settings-note { flex-basis: 100%; margin: 0; }
 
 .external-editor-settings {
   display: grid;

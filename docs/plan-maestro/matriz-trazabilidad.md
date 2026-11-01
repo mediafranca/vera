@@ -74,7 +74,7 @@ congela en este documento: `npm run spec`, `npm test`, `npm run typecheck` y
 | `tasks` | limpio | `core/src/task.ts` | `core/test/task.test.ts` | VERIFICADO |
 | `trail` | limpio | `core/src/trail.ts`, `relations.ts`, `web/src/graph/spine.ts`, `promote.ts` | `core/test/trail.test.ts`, `relations.test.ts`, `web/test/spine.test.ts`, `promote.test.ts` | VERIFICADO en núcleo; capa de presentación (`web/src/trail-page.ts`) sin test dedicado |
 | `undo` | warning (2) | `core/src/undo.ts` | `core/test/undo.test.ts` | VERIFICADO |
-| `voice-capture` | limpio | `web/src/voice.ts:7` (`@invariant TheMachineNeverPassesForAHand`), `server/src/transcribe.ts` | `server/test/transcribe.test.ts` — sin test de cliente (`voice.ts`/`audio-block.ts`) | PARCIAL — más el hallazgo de invariante inexistente citado, ver E-2 |
+| `voice-capture` | limpio | `web/src/voice.ts`, `web/src/settings.ts`, `server/src/transcribe.ts`, `server/src/speech.ts`, `server/src/voice-configuration.ts` | `server/test/transcribe.test.ts`, `server/test/speech.test.ts`, `server/test/voice-configuration.test.ts`, `web/test/settings-navigation.test.ts` — sin test de captura real del micrófono | PARCIAL — activación, diagnóstico e instalación asistida de STT/TTS verificadas; falta benchmark por perfil de hardware y voz administrada en Desktop |
 | `waiting` | limpio | `web/src/waiting.ts` | `web/test/waiting.test.ts` (18/18) | VERIFICADO |
 | `workspace-interface` | warning (1) | `web/src/trace.ts`, `outliner.ts`, `store/src/store.ts` | cobertura difusa, decenas de tests indirectos en `web/test/*` | VERIFICADO por dominio — spec "paraguas" |
 

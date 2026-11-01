@@ -8,7 +8,7 @@
 --   afterwards
 -- Excludes:
 --   - Capture, encoding and playback mechanics
---   - The transcription engine, its language and its accuracy
+--   - The accuracy and internal implementation of a particular speech model
 --   - Speaker authentication, which does not exist yet (see identity-access.allium)
 --   - How blocks are edited once they exist (see block-editing.allium)
 --   - Storage of the recording itself (see content-media.allium)
@@ -18,6 +18,43 @@
 
 use "./core.allium" as core
 use "./block-editing.allium" as block
+
+enum VoiceCapabilityState { disabled | incomplete | ready }
+
+entity VoiceRuntimeConfiguration {
+    owner: core/Participant
+    enabled: Boolean
+    speech_to_text_enabled: Boolean
+    text_to_speech_enabled: Boolean
+    speech_to_text_state: VoiceCapabilityState
+    text_to_speech_state: VoiceCapabilityState
+}
+
+contract GovernedVoiceRuntime {
+    configure: (owner: core/Participant, configuration: VoiceRuntimeConfiguration) -> VoiceRuntimeConfiguration
+
+    @invariant VoiceIsOptional
+        -- Vera remains usable when voice is disabled or no model is installed.
+        -- Recording controls never imply that transcription or synthesis exists.
+
+    @invariant ListeningAndSpeakingAreSeparateCapabilities
+        -- Speech-to-text and text-to-speech have distinct switches, engines,
+        -- models and diagnoses. Installing one never claims the other is ready.
+
+    @invariant RequestedIsNotReady
+        -- A switch records intent. A capability becomes ready only after its
+        -- executable, model and supporting runtime are present and checked.
+        -- Missing pieces stay visible as incomplete rather than a green state.
+
+    @invariant InstallationRequiresTheOwner
+        -- The browser never downloads or executes a model by itself. Vera may
+        -- provide a pinned installation recipe, but an owner runs it with the
+        -- authority of the host and grants the resulting paths to this runtime.
+
+    @invariant ModelsLiveWithDurableInstanceData
+        -- In a container, voice models and mutable caches live on the durable
+        -- volume. Replacing the application image does not silently erase them.
+}
 
 ------------------------------------------------------------
 -- Contracts

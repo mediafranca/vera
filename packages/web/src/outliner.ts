@@ -3428,6 +3428,11 @@ export interface Node {
   children: Node[];
 }
 
+/** El orden de lectura de un bloque es el mismo orden en que su outline se despliega. */
+export function nodeReadingOrder(node: Node): BlockView[] {
+  return [node.block, ...node.children.flatMap(nodeReadingOrder)];
+}
+
 /** El orden auditable en que desaparece un subárbol: hojas antes que padres. */
 export function blockRemovalOrder(node: Node): string[] {
   return [...node.children.flatMap(blockRemovalOrder), node.block.stableId];
@@ -6849,11 +6854,49 @@ export function renderOutliner(
     readBlock.type = 'button';
     readBlock.className = 'read-block';
     readBlock.hidden = readOnly;
+    const readingBlocks = nodeReadingOrder(node);
+    const descendantCount = readingBlocks.length - 1;
+    readBlock.dataset['speechLabel'] = descendantCount === 0
+      ? 'Leer bloque'
+      : `Leer bloque y ${descendantCount} ${descendantCount === 1 ? 'descendiente' : 'descendientes'}`;
     wireReadingButton(
       readBlock,
-      () => speechParts(`block:${node.block.stableId}`, speechText(node.block.content, options)),
+      () => readingBlocks.flatMap((block) =>
+        speechParts(`block:${block.stableId}`, speechText(block.content, options)),
+      ),
       toast,
     );
+    if (descendantCount > 0) {
+      const showReadingScope = (): void => {
+        const visible = readingBlocks
+          .map((block) => rows.get(block.stableId))
+          .filter((candidate): candidate is HTMLDivElement => candidate !== undefined);
+        visible.forEach((candidate, index) => {
+          candidate.classList.add('read-scope-preview');
+          candidate.classList.toggle('read-scope-preview-start', index === 0);
+          candidate.classList.toggle('read-scope-preview-end', index === visible.length - 1);
+          candidate.style.setProperty(
+            '--read-scope-left',
+            `calc(var(--indent, 1.25rem) * var(--indent-scale, 1) * ${depth} + var(--rail) / 2)`,
+          );
+        });
+      };
+      const hideReadingScope = (): void => {
+        for (const block of readingBlocks) {
+          const candidate = rows.get(block.stableId);
+          candidate?.classList.remove(
+            'read-scope-preview',
+            'read-scope-preview-start',
+            'read-scope-preview-end',
+          );
+          candidate?.style.removeProperty('--read-scope-left');
+        }
+      };
+      readBlock.addEventListener('mouseenter', showReadingScope);
+      readBlock.addEventListener('mouseleave', hideReadingScope);
+      readBlock.addEventListener('focus', showReadingScope);
+      readBlock.addEventListener('blur', hideReadingScope);
+    }
     // Dos carriles distintos, y no una fila accidental de controles.
     //
     // El chevron —o su hueco— ya es el primer hijo. La viñeta y el cuerpo se
