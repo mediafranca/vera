@@ -1,0 +1,39 @@
+name: Container
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - deploy/**
+      - scripts/container-entrypoint.sh
+      - package.json
+      - package-lock.json
+      - packages/**
+      - .github/workflows/container.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Vera image
+        run: docker build --tag vera:test .
+      - name: Verify clean first boot
+        run: |
+          docker volume create vera-test-data
+          docker run --rm \
+            -e VERA_OWNER=participant:container-test \
+            -e VERA_OWNER_NAME='Container Test' \
+            -v vera-test-data:/data \
+            vera:test /usr/bin/true
+          docker run --rm \
+            -e VERA_OWNER=participant:container-test \
+            -e VERA_OWNER_NAME='Container Test' \
+            -v vera-test-data:/data \
+            vera:test node -e \
+              "const {DatabaseSync}=require('node:sqlite'); const db=new DatabaseSync('/data/vera.sqlite'); if(!db.prepare('select 1').get()) process.exit(1)"
