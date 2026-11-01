@@ -39,6 +39,11 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.match(outliner, /stream\.scrollTop = stream\.scrollHeight/);
     assert.match(outliner, /copyText\(text, toast\)/);
     assert.match(outliner, /event\.key === 'Enter' && !event\.shiftKey/);
+    assert.match(outliner, /api\.librarianConversations\(\)/);
+    assert.match(outliner, /api\.createLibrarianConversation\(\)/);
+    assert.match(outliner, /startRecording\(\)/);
+    assert.match(outliner, /voice\.transcript\(captured\.id\)/);
+    assert.match(outliner, /request\.events/);
     assert.match(styles, /\.librarian-conversation-composer/);
   });
 

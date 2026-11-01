@@ -727,6 +727,7 @@ surface LibrarianConversationPage {
         conversation.agent
         conversation.requests
         ConversationRequest.modality
+        ConversationRequest.recording
         ConversationRequest.text
         ConversationRequest.context_pages
         ConversationRequest.context_blocks
@@ -735,6 +736,7 @@ surface LibrarianConversationPage {
         ConversationRequest.interpretation
         ConversationRequest.status
         ConversationRequest.failure_reason
+        ConversationRequest.progress_events
         AgentReply.text
         AgentReply.written_block
         OperationProposal.changes
@@ -763,6 +765,14 @@ surface LibrarianConversationPage {
     @guarantee WaitingIsCountedWhereTheReplyWillAppear
         -- While the librarian works, the request names the work and counts elapsed time.
         -- A spinner or typing theatre is not evidence that work continues.
+
+    @guarantee VoiceRemainsAudibleBesideItsTranscript
+        -- An audio request keeps the original recording playable. Its transcript
+        -- is the request text, not a replacement that discards the speaker's voice.
+
+    @guarantee ProgressIsDurableButPrivateReasoningIsNotPublished
+        -- Public stages, tools, elapsed time and pending dependencies may remain
+        -- in the thread. Hidden reasoning and chain-of-thought never become events.
 }
 
 surface LibrarianConversationWorker {

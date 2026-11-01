@@ -107,10 +107,15 @@ import {
   type Scope,
 } from './credentials.ts';
 import {
+  activateLibrarianConversation,
+  addLibrarianProgress,
   activeLibrarianConversation,
   answerLibrarianRequest,
   claimLibrarianRequest,
+  createLibrarianConversation,
   createLibrarianRequest,
+  librarianConversation,
+  librarianConversations,
   librarianRequest,
   librarianRequestsInConversation,
   librarianRequestsFor,
@@ -2008,6 +2013,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const librarianAgent = 'participant:cotito' as ParticipantId;
     const librarianRequestView = (turn: LibrarianRequest) => ({
         ...turn,
+        recording: turn.recordingId === null ? null : recordingById(store, turn.recordingId),
         sourcePageTitle: turn.sourcePageId === null
           ? null
           : graph.page(turn.sourcePageId)?.title ?? null,
@@ -2174,12 +2180,63 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'GET' && path === '/librarian/conversations') {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
+        send(response, 403, { error: 'sólo una persona puede leer sus conversaciones' });
+        return;
+      }
+      send(response, 200, librarianConversations(store, conversationalHuman, librarianAgent));
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/librarian/conversations') {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
+        send(response, 403, { error: 'sólo una persona puede iniciar una conversación' });
+        return;
+      }
+      let body: Record<string, unknown> = {};
+      try { body = await readSmallJson(); } catch { /* el título es opcional */ }
+      const declared = typeof body.title === 'string' ? body.title.trim() : '';
+      const title = declared || `Conversación · ${new Intl.DateTimeFormat('es-CL', {
+        dateStyle: 'medium', timeStyle: 'short',
+      }).format(new Date())}`;
+      send(response, 201, createLibrarianConversation(store, {
+        human: conversationalHuman, agent: librarianAgent, title,
+      }));
+      return;
+    }
+
+    const activateConversation = path.match(/^\/librarian\/conversations\/([^/]+)\/activate$/);
+    if (request.method === 'POST' && activateConversation !== null) {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
+        send(response, 403, { error: 'sólo una persona puede reabrir su conversación' });
+        return;
+      }
+      const selected = activateLibrarianConversation(store, {
+        id: decodeURIComponent(activateConversation[1]!), human: conversationalHuman, agent: librarianAgent,
+      });
+      send(response, selected === undefined ? 404 : 200, selected ?? { error: 'la conversación no existe' });
+      return;
+    }
+
     if (request.method === 'GET' && path === '/librarian/conversation') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: 'sólo una persona puede leer su conversación con el bibliotecario' });
         return;
       }
-      const conversation = activeLibrarianConversation(store, conversationalHuman, librarianAgent);
+      const requestedConversation = url.searchParams.get('id');
+      const conversation = requestedConversation === null
+        ? activeLibrarianConversation(store, conversationalHuman, librarianAgent)
+        : librarianConversation(store, requestedConversation);
+      if (requestedConversation !== null && conversation === undefined) {
+        send(response, 404, { error: 'la conversación no existe' });
+        return;
+      }
+      if (conversation !== undefined &&
+        (conversation.human !== conversationalHuman || conversation.agent !== librarianAgent)) {
+        send(response, 404, { error: 'la conversación no existe' });
+        return;
+      }
       const turns = conversation === undefined
         ? []
         : librarianRequestsInConversation(store, conversation.id, conversationalHuman)
@@ -2214,9 +2271,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       const pageId = typeof body.pageId === 'string' ? body.pageId : '';
       const blockId = typeof body.blockId === 'string' ? body.blockId : null;
+      const conversationId = typeof body.conversationId === 'string' ? body.conversationId : undefined;
+      const recordingId = typeof body.recordingId === 'string' ? body.recordingId : null;
       const page = graph.page(pageId);
       const block = blockId === null ? undefined : graph.block(blockId);
       if (text === '') { send(response, 400, { error: 'el pedido no puede estar vacío' }); return; }
+      if (conversationId !== undefined) {
+        const selected = librarianConversation(store, conversationId);
+        if (selected === undefined || selected.status !== 'active' ||
+          selected.human !== conversationalHuman || selected.agent !== librarianAgent) {
+          send(response, 409, { error: 'la conversación ya no está activa' }); return;
+        }
+      }
+      if (recordingId !== null && recordingById(store, recordingId) === null) {
+        send(response, 404, { error: 'la grabación no existe' }); return;
+      }
       if (page === undefined || (blockId !== null && (block === undefined || block.page !== page.id))) {
         send(response, 404, { error: 'la página o el bloque ya no existe' });
         return;
@@ -2238,10 +2307,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const created = createLibrarianRequest(store, {
         askedBy: conversationalHuman,
         agent: librarianAgent,
-        modality: block === undefined ? 'page' : 'block',
+        modality: recordingId !== null ? 'audio' : (block === undefined ? 'page' : 'block'),
         text,
         sourcePageId: page.id,
         sourceBlockId: block?.stableId ?? null,
+        recordingId,
+        ...(conversationId === undefined ? {} : { conversationId }),
         contextSnapshot: snapshot,
       });
       await dispatchNextLibrarianRequest();
@@ -2273,7 +2344,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
-    const librarianMatch = /^\/librarian\/requests\/([^/]+)(?:\/(claim|reply))?$/.exec(path);
+    const librarianMatch = /^\/librarian\/requests\/([^/]+)(?:\/(claim|progress|reply))?$/.exec(path);
     if (librarianMatch !== null) {
       const id = decodeURIComponent(librarianMatch[1] ?? '');
       const action = librarianMatch[2] ?? null;
@@ -2306,7 +2377,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
         const claimed = claimLibrarianRequest(store, id);
         if (claimed?.status !== 'working') { send(response, 409, { error: 'la solicitud ya no está en cola' }); return; }
-        send(response, 200, claimed);
+        send(response, 200, librarianRequestView(claimed));
+        return;
+      }
+      if (request.method === 'POST' && action === 'progress') {
+        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
+        let body: Record<string, unknown>;
+        try { body = await readSmallJson(); }
+        catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
+        const text = typeof body.text === 'string' ? body.text.trim() : '';
+        const kind = body.kind === 'tool' || body.kind === 'pending' ? body.kind : 'stage';
+        if (text === '') { send(response, 400, { error: 'el progreso no puede estar vacío' }); return; }
+        const progressed = addLibrarianProgress(store, {
+          requestId: id, kind, text, createdBy: who.participant,
+        });
+        if (progressed === undefined) { send(response, 409, { error: 'la solicitud no está en trabajo' }); return; }
+        send(response, 201, librarianRequestView(progressed));
         return;
       }
       if (request.method === 'POST' && action === 'reply') {
@@ -5258,6 +5344,28 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       })().catch((error: unknown) => {
         send(response, 500, { error: error instanceof Error ? error.message : String(error) });
       }));
+      return;
+    }
+
+    /*
+     * Transcripción autónoma para una conversación. Conserva el audio y el
+     * texto juntos, pero no inventa un bloque documental donde nadie habló.
+     */
+    if (request.method === 'POST' && /^\/recordings\/[^/]+\/transcript$/.test(path)) {
+      const id = decodeURIComponent(path.split('/')[2] ?? '');
+      const held = recordingById(store, id);
+      if (held === null) { send(response, 404, { error: 'no such recording' }); return; }
+      if (held.audioHash === null || objectsRoot === null) {
+        send(response, 422, { error: 'esta grabación ya no tiene audio que transcribir' }); return;
+      }
+      const audio = readFileSync(objectPath(objectsRoot, held.audioHash));
+      void transcribeAudio(audio).then((outcome) => {
+        if ('error' in outcome) { send(response, 502, outcome); return; }
+        const kept = setTranscript(store, id, outcome.text);
+        send(response, 200, { recording: kept, text: outcome.text });
+      }).catch((error: unknown) => {
+        send(response, 500, { error: error instanceof Error ? error.message : String(error) });
+      });
       return;
     }
 

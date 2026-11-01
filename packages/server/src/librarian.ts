@@ -9,10 +9,11 @@ export interface LibrarianRequest {
   id: string;
   conversationId: string;
   askedBy: ParticipantId;
-  modality: 'block' | 'page';
+  modality: 'audio' | 'block' | 'page';
   text: string;
   sourcePageId: string | null;
   sourceBlockId: string | null;
+  recordingId: string | null;
   contextSnapshot: string;
   status: LibrarianRequestStatus;
   dispatchStatus: 'pending' | 'delivered' | 'failed';
@@ -22,6 +23,13 @@ export interface LibrarianRequest {
   finishedAt: number | null;
   lastDispatchAt: number | null;
   failureReason: string | null;
+  events: Array<{
+    id: string;
+    kind: 'stage' | 'tool' | 'pending';
+    text: string;
+    createdBy: ParticipantId;
+    createdAt: number;
+  }>;
   reply: null | {
     id: string;
     answeredBy: ParticipantId;
@@ -48,10 +56,11 @@ interface RequestRow {
   id: string;
   conversation_id: string;
   asked_by: ParticipantId;
-  modality: 'block' | 'page';
+  modality: 'audio' | 'block' | 'page';
   text: string;
   source_page_id: string | null;
   source_block_id: string | null;
+  recording_id: string | null;
   context_snapshot: string;
   status: LibrarianRequestStatus;
   dispatch_status: 'pending' | 'delivered' | 'failed';
@@ -85,26 +94,102 @@ function conversation(store: Store, human: ParticipantId, agent: ParticipantId, 
   return id;
 }
 
+export function createLibrarianConversation(store: Store, input: {
+  human: ParticipantId;
+  agent: ParticipantId;
+  title: string;
+  now?: number;
+}): LibrarianConversation {
+  const now = input.now ?? Date.now();
+  const id = `conversation:${randomUUID()}`;
+  store.db.exec('BEGIN');
+  try {
+    store.db.prepare(`UPDATE agent_conversations SET status='closed'
+      WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).run(
+      store.graphId, input.human, input.agent,
+    );
+    store.db.prepare(`INSERT INTO agent_conversations
+      (id, graph_id, human_id, agent_id, title, status, created_at)
+      VALUES (?, ?, ?, ?, ?, 'active', ?)`).run(
+      id, store.graphId, input.human, input.agent, input.title, now,
+    );
+    store.db.exec('COMMIT');
+  } catch (error) {
+    store.db.exec('ROLLBACK');
+    throw error;
+  }
+  return librarianConversation(store, id)!;
+}
+
+export function librarianConversation(store: Store, id: string): LibrarianConversation | undefined {
+  const row = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
+    FROM agent_conversations WHERE graph_id=? AND id=?`).get(store.graphId, id) as ConversationRow | undefined;
+  return row === undefined ? undefined : fromConversationRow(row);
+}
+
+export function librarianConversations(
+  store: Store,
+  human: ParticipantId,
+  agent: ParticipantId,
+): LibrarianConversation[] {
+  const rows = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
+    FROM agent_conversations WHERE graph_id=? AND human_id=? AND agent_id=?
+    ORDER BY status='active' DESC, created_at DESC`).all(
+    store.graphId, human, agent,
+  ) as unknown as ConversationRow[];
+  return rows.map(fromConversationRow);
+}
+
+export function activateLibrarianConversation(store: Store, input: {
+  id: string;
+  human: ParticipantId;
+  agent: ParticipantId;
+}): LibrarianConversation | undefined {
+  const selected = librarianConversation(store, input.id);
+  if (selected === undefined || selected.human !== input.human || selected.agent !== input.agent) return undefined;
+  store.db.exec('BEGIN');
+  try {
+    store.db.prepare(`UPDATE agent_conversations SET status='closed'
+      WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).run(
+      store.graphId, input.human, input.agent,
+    );
+    store.db.prepare(`UPDATE agent_conversations SET status='active' WHERE graph_id=? AND id=?`).run(
+      store.graphId, input.id,
+    );
+    store.db.exec('COMMIT');
+  } catch (error) {
+    store.db.exec('ROLLBACK');
+    throw error;
+  }
+  return librarianConversation(store, input.id);
+}
+
 export function createLibrarianRequest(store: Store, input: {
   askedBy: ParticipantId;
   agent: ParticipantId;
-  modality: 'block' | 'page';
+  modality: 'audio' | 'block' | 'page';
   text: string;
   sourcePageId: string;
   sourceBlockId?: string | null;
+  recordingId?: string | null;
+  conversationId?: string;
   contextSnapshot: string;
   now?: number;
 }): LibrarianRequest {
   const now = input.now ?? Date.now();
   const id = `agent-request:${randomUUID()}`;
-  const conversationId = conversation(store, input.askedBy, input.agent, now);
+  const selected = input.conversationId === undefined ? undefined : librarianConversation(store, input.conversationId);
+  const conversationId = selected !== undefined && selected.status === 'active' &&
+    selected.human === input.askedBy && selected.agent === input.agent
+    ? selected.id
+    : conversation(store, input.askedBy, input.agent, now);
   store.db.prepare(`INSERT INTO agent_requests (
     id, conversation_id, graph_id, asked_by, modality, text, source_page_id,
-    source_block_id, context_snapshot, retry_of, status, dispatch_status,
+    source_block_id, recording_id, context_snapshot, retry_of, status, dispatch_status,
     dispatch_attempts, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'queued', 'pending', 0, ?)`).run(
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'queued', 'pending', 0, ?)`).run(
     id, conversationId, store.graphId, input.askedBy, input.modality, input.text,
-    input.sourcePageId, input.sourceBlockId ?? null, input.contextSnapshot, now,
+    input.sourcePageId, input.sourceBlockId ?? null, input.recordingId ?? null, input.contextSnapshot, now,
   );
   return librarianRequest(store, id)!;
 }
@@ -148,7 +233,11 @@ export function activeLibrarianConversation(
   return row === undefined ? undefined : fromConversationRow(row);
 }
 
-function fromRow(row: RequestRow): LibrarianRequest {
+function fromRow(store: Store, row: RequestRow): LibrarianRequest {
+  const eventRows = store.db.prepare(`SELECT id, kind, text, created_by, created_at
+    FROM agent_request_events WHERE request_id=? ORDER BY created_at ASC, rowid ASC`).all(row.id) as unknown as Array<{
+      id: string; kind: 'stage' | 'tool' | 'pending'; text: string; created_by: ParticipantId; created_at: number;
+    }>;
   return {
     id: row.id,
     conversationId: row.conversation_id,
@@ -157,6 +246,7 @@ function fromRow(row: RequestRow): LibrarianRequest {
     text: row.text,
     sourcePageId: row.source_page_id,
     sourceBlockId: row.source_block_id,
+    recordingId: row.recording_id,
     contextSnapshot: row.context_snapshot,
     status: row.status,
     dispatchStatus: row.dispatch_status,
@@ -166,6 +256,10 @@ function fromRow(row: RequestRow): LibrarianRequest {
     finishedAt: row.finished_at,
     lastDispatchAt: row.last_dispatch_at,
     failureReason: row.failure_reason,
+    events: eventRows.map((event) => ({
+      id: event.id, kind: event.kind, text: event.text,
+      createdBy: event.created_by, createdAt: event.created_at,
+    })),
     reply: row.reply_id === null ? null : {
       id: row.reply_id,
       answeredBy: row.answered_by!,
@@ -184,7 +278,7 @@ export function librarianRequest(store: Store, id: string): LibrarianRequest | u
   const row = store.db.prepare(`${SELECT_REQUEST} WHERE r.graph_id=? AND r.id=?`).get(
     store.graphId, id,
   ) as RequestRow | undefined;
-  return row === undefined ? undefined : fromRow(row);
+  return row === undefined ? undefined : fromRow(store, row);
 }
 
 export function librarianRequestsFor(
@@ -201,7 +295,7 @@ export function librarianRequestsFor(
   const rows = store.db.prepare(
     `${SELECT_REQUEST} WHERE r.graph_id=? AND r.source_page_id=?${blockClause}${askerClause} ORDER BY r.created_at DESC`,
   ).all(...parameters) as unknown as RequestRow[];
-  return rows.map(fromRow);
+  return rows.map((row) => fromRow(store, row));
 }
 
 /** Todos los turnos de una conversación, en orden de lectura. */
@@ -217,7 +311,25 @@ export function librarianRequestsInConversation(
     `${SELECT_REQUEST} WHERE r.graph_id=? AND r.conversation_id=?${askerClause}
       ORDER BY r.created_at ASC, r.rowid ASC`,
   ).all(...parameters) as unknown as RequestRow[];
-  return rows.map(fromRow);
+  return rows.map((row) => fromRow(store, row));
+}
+
+/** Un hito durable y público del trabajo, nunca razonamiento privado. */
+export function addLibrarianProgress(store: Store, input: {
+  requestId: string;
+  kind: 'stage' | 'tool' | 'pending';
+  text: string;
+  createdBy: ParticipantId;
+  now?: number;
+}): LibrarianRequest | undefined {
+  const request = librarianRequest(store, input.requestId);
+  if (request === undefined || request.status !== 'working') return undefined;
+  store.db.prepare(`INSERT INTO agent_request_events
+    (id, request_id, kind, text, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(
+    `agent-request-event:${randomUUID()}`, input.requestId, input.kind, input.text,
+    input.createdBy, input.now ?? Date.now(),
+  );
+  return librarianRequest(store, input.requestId);
 }
 
 export function markLibrarianDispatched(store: Store, id: string, delivered: boolean, reason?: string): void {

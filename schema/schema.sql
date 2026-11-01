@@ -965,6 +965,7 @@ CREATE TABLE IF NOT EXISTS agent_requests (
     text                TEXT NOT NULL,
     source_page_id      TEXT REFERENCES pages (id) ON DELETE SET NULL,
     source_block_id     TEXT REFERENCES blocks (id) ON DELETE SET NULL,
+    recording_id        TEXT REFERENCES recordings (id) ON DELETE SET NULL,
     context_snapshot    TEXT NOT NULL,
     retry_of            TEXT REFERENCES agent_requests (id),
     status              TEXT NOT NULL CHECK (status IN ('queued', 'working', 'answered', 'failed', 'cancelled')),
@@ -981,6 +982,18 @@ CREATE INDEX IF NOT EXISTS agent_requests_by_source
     ON agent_requests (source_page_id, source_block_id, created_at);
 CREATE INDEX IF NOT EXISTS agent_requests_pending
     ON agent_requests (status, dispatch_status, created_at);
+
+CREATE TABLE IF NOT EXISTS agent_request_events (
+    id              TEXT PRIMARY KEY,
+    request_id      TEXT NOT NULL REFERENCES agent_requests (id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL CHECK (kind IN ('stage', 'tool', 'pending')),
+    text            TEXT NOT NULL,
+    created_by      TEXT NOT NULL REFERENCES participants (id),
+    created_at      INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS agent_request_events_by_request
+    ON agent_request_events (request_id, created_at);
 
 CREATE TABLE IF NOT EXISTS agent_replies (
     id              TEXT PRIMARY KEY,
