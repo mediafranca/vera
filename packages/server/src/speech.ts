@@ -23,6 +23,44 @@ export interface LocalSpeechOptions {
   maxCacheAgeMs?: number;
 }
 
+export interface SpeechDiagnosis {
+  ready: boolean;
+  python: string | null;
+  worker: string | null;
+  modelRoot: string | null;
+  voice: string;
+  missing: string[];
+}
+
+/**
+ * Comprueba la instalación sin arrancar el modelo.
+ *
+ * Un directorio vacío no es una voz instalada. Kokoro necesita el intérprete,
+ * el worker versionado, el modelo base y la voz elegida; el Centro de Vera
+ * enumera exactamente cuál de esas piezas falta antes de activar el switch.
+ */
+export function speechDiagnosis(options: LocalSpeechOptions): SpeechDiagnosis {
+  const voice = options.voice ?? 'em_alex';
+  const files = {
+    python: options.python,
+    worker: options.worker,
+    config: join(options.modelRoot, 'config.json'),
+    model: join(options.modelRoot, 'kokoro-v1_0.pth'),
+    voice: join(options.modelRoot, 'voices', `${voice}.pt`),
+  };
+  const missing = Object.entries(files)
+    .filter(([, path]) => !existsSync(path))
+    .map(([part]) => part);
+  return {
+    ready: missing.length === 0,
+    python: existsSync(files.python) ? files.python : null,
+    worker: existsSync(files.worker) ? files.worker : null,
+    modelRoot: existsSync(files.config) && existsSync(files.model) ? options.modelRoot : null,
+    voice,
+    missing,
+  };
+}
+
 interface Job {
   id: string;
   path: string;

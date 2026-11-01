@@ -314,10 +314,18 @@ contract SpokenReading {
         -- blocks in their outline order. Long blocks may be prepared in smaller
         -- fragments, but those fragments never change or reorder their words.
 
-    @invariant EveryBlockCanBeHeardOnItsOwn
+    @invariant ABlockReadsItsWholeSubtree
         -- Every non-empty block offers the same voice independently of page
-        -- reading. Starting another block or the whole page stops the current
+        -- reading. A leaf reads only itself; a parent reads itself followed by
+        -- every descendant in outline order and never reaches a following
+        -- sibling. Starting another block or the whole page stops the current
         -- reading; its one control can pause and continue the audio it began.
+
+    @invariant TheCascadeIsVisibleBeforeItSpeaks
+        -- Hovering or focusing a parent block's reading control draws a discreet
+        -- continuous guide from that block through the last visible descendant,
+        -- so the scope is legible before activation. Folding changes which rows
+        -- can carry the guide, not which authored descendants the reading uses.
 
     @invariant SpeechIsAProjectionNotAContribution
         -- Listening creates no block, revision, asset or operation. The words

@@ -48,6 +48,14 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /Usar la del sistema/);
   });
 
+  it('gobierna escuchar y hablar como capacidades locales separadas', () => {
+    assert.match(settings, /'Activar voz'/);
+    assert.match(settings, /'Escuchar · speech-to-text'/);
+    assert.match(settings, /'Hablar · text-to-speech'/);
+    assert.match(settings, /api\.configureVoice/);
+    assert.match(settings, /Copiar instalación ·/);
+  });
+
   it('presenta páginas del sistema sin exponer el espacio de nombres ni la taxonomía técnica', () => {
     assert.match(main, /replace\(\/\^VERA\\s\*:\\s\*\/i, ''\)/);
     assert.match(main, /known === undefined[\s\S]*known\.what/);

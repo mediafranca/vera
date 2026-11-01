@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url';
 
 import { listen } from './server.ts';
 import { modelPresence } from './model.ts';
-import { transcriberDiagnosis } from './transcribe.ts';
-import { createLocalSpeech } from './speech.ts';
+import { transcribeAudio, transcriberDiagnosis } from './transcribe.ts';
+import { createLocalSpeech, speechDiagnosis } from './speech.ts';
+import { VoiceConfiguration } from './voice-configuration.ts';
 
 /**
  * La configuración de esta instancia, si la hay.
@@ -42,7 +43,7 @@ const host = process.argv[4] ?? setting('VERA_HOST') ?? '127.0.0.1';
 // Configurable para que una instancia de pruebas no escriba en el almacén real.
 const objectsRoot = process.argv[5] ?? setting('VERA_OBJECTS') ?? 'objects';
 const speechRuntime = setting('VERA_TTS_RUNTIME') ?? join(homedir(), '.local/share/vera/kokoro');
-const speech = createLocalSpeech({
+const speechOptions = {
   cacheRoot: setting('VERA_TTS_CACHE') ?? join(speechRuntime, 'cache'),
   python: setting('VERA_TTS_PYTHON') ?? join(speechRuntime, 'venv/bin/python'),
   worker: setting('VERA_TTS_WORKER') ?? join(ROOT, 'scripts/tts-worker.py'),
@@ -50,6 +51,44 @@ const speech = createLocalSpeech({
   voice: setting('VERA_TTS_VOICE') ?? 'em_alex',
   maxCacheBytes: Number(setting('VERA_TTS_CACHE_MAX_BYTES') ?? 256 * 1024 * 1024),
   maxCacheAgeMs: Number(setting('VERA_TTS_CACHE_MAX_AGE_DAYS') ?? 30) * 24 * 60 * 60 * 1000,
+};
+const speech = createLocalSpeech(speechOptions);
+const enabledByDefault = (name: string): boolean => setting(name) !== 'false';
+const voiceConfiguration = new VoiceConfiguration({
+  path: setting('VERA_VOICE_CONFIGURATION') ?? join(dirname(resolve(databasePath)), 'voice.json'),
+  defaults: {
+    enabled: enabledByDefault('VERA_VOICE_ENABLED'),
+    speechToText: enabledByDefault('VERA_STT_ENABLED'),
+    textToSpeech: enabledByDefault('VERA_TTS_ENABLED'),
+  },
+  diagnoseSpeechToText: async () => {
+    const found = await transcriberDiagnosis();
+    const missing = [
+      ...(found.ffmpeg === null ? ['ffmpeg'] : []),
+      ...(found.whisper === null ? ['whisper.cpp'] : []),
+      ...(found.model === null ? ['modelo'] : []),
+    ];
+    return {
+      ready: found.ready,
+      engine: 'whisper.cpp',
+      language: setting('VERA_WHISPER_LANGUAGE') ?? 'es',
+      paths: { ffmpeg: found.ffmpeg, engine: found.whisper, model: found.model },
+      missing,
+    };
+  },
+  diagnoseTextToSpeech: () => {
+    const found = speechDiagnosis(speechOptions);
+    return {
+      ready: found.ready,
+      engine: 'Kokoro',
+      voice: found.voice,
+      paths: { python: found.python, worker: found.worker, model: found.modelRoot },
+      missing: found.missing,
+    };
+  },
+  transcribe: (audio) => transcribeAudio(audio),
+  speak: (text, signal) => speech.speak(text, signal),
+  close: () => speech.close(),
 });
 const webRoot = setting('VERA_WEB_ROOT') ?? 'packages/web/dist';
 
@@ -131,7 +170,7 @@ const { vera } = listen({
   host,
   webRoot,
   objectsRoot,
-  speech,
+  voiceConfiguration,
   ...(reachableAt === undefined ? {} : { reachableAt }),
   ...(remoteMcpCredential === undefined ? {} : { remoteMcpCredential }),
   ...(publicDomain === undefined
@@ -222,15 +261,10 @@ if ((profile?.profile ?? 'personal') === 'personal' &&
 }
 
 // La voz depende de dos binarios ajenos: mejor saberlo ahora que al grabar.
-const voz = await transcriberDiagnosis();
-if (voz.ready) {
-  console.log(`  voz:      ${voz.whisper}`);
-} else {
-  console.log('  voz:      no disponible');
-  if (voz.ffmpeg === null) console.log('    falta ffmpeg (o apunta VERA_FFMPEG al binario)');
-  if (voz.whisper === null) console.log('    falta whisper.cpp (o apunta VERA_WHISPER al binario)');
-  if (voz.model === null) console.log('    falta el modelo (o apunta VERA_WHISPER_MODEL a uno)');
-}
+const voz = await voiceConfiguration.view();
+console.log(`  voz:      ${voz.switches.enabled ? 'activada' : 'desactivada'}`);
+console.log(`    escucha:${voz.speechToText.effective ? ' lista' : ` no disponible (${voz.speechToText.missing.join(', ') || 'desactivada'})`}`);
+console.log(`    habla:  ${voz.textToSpeech.effective ? ' lista' : ` no disponible (${voz.textToSpeech.missing.join(', ') || 'desactivada'})`}`);
 
 // El modelo con que se leen las páginas. Que falte no impide nada: procesar hace
 // la parte de los enlaces igual y dice cuál no pudo hacer.

@@ -20,12 +20,24 @@ porque su Machine temporal no monta el volumen persistente.
 
 ## Voz local
 
-La imagen base instala `ffmpeg`, pero no descarga modelos durante el build. La
-transcripción necesita `whisper.cpp` y un modelo GGML; la síntesis necesita el
-runtime Kokoro. Ambos son opcionales en Vera y deben vivir bajo `/data/models`
-o en una futura imagen de voz versionada. No se deben descargar silenciosamente
-al arrancar: cambian tamaño, tiempo y costo del servicio. El piloto de
-Vera + Lucienne debe medirlos antes de fijar esa imagen.
+La imagen base instala `ffmpeg` y el runtime Python necesario para una instalación
+explícita, pero no descarga modelos durante el build. En **Centro de Vera →
+Conexiones → Voz** el dueño activa por separado escuchar (STT) y hablar (TTS),
+y ve qué binario o modelo falta. Para instalar ambos sobre el volumen durable:
+
+```sh
+fly ssh console -C "npm run voice:setup -- /data/models"
+```
+
+El comando prepara `whisper.cpp` y Kokoro y al terminar imprime las variables
+`VERA_WHISPER`, `VERA_WHISPER_MODEL` y `VERA_TTS_RUNTIME` que deben declararse
+en la aplicación. El navegador no ejecuta esta instalación: compila código,
+descarga modelos grandes y requiere autoridad del host. Los modelos viven bajo
+`/data/models`; desplegar una imagen nueva no los borra.
+
+No se descargan silenciosamente al arrancar: cambian tamaño, tiempo y costo del
+servicio. El piloto de Vera + Lucienne debe medir RAM, latencia y concurrencia
+antes de fijar un perfil comercial.
 
 ## Límites deliberados
 

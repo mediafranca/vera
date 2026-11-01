@@ -54,6 +54,11 @@ git fetch upstream && git merge upstream/dev
 Vera arranca sin voz y sin modelo: lo dice al iniciar y sigue funcionando. Lo que
 no puede faltar es Node y —si vas a tocar las specs, que es el método— allium.
 
+La voz se gobierna en **Centro de Vera → Conexiones → Voz**. El interruptor
+maestro no sustituye la instalación: `npm run voice:setup` prepara STT y TTS,
+imprime las rutas que Vera debe usar y deja que el Centro compruebe cada pieza.
+Escuchar y hablar pueden activarse por separado.
+
 ---
 
 ## 2. Instala Allium

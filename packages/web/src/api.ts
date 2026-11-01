@@ -1031,6 +1031,13 @@ export const api = {
   /** Estado comprobado de las puertas; no basta que el puerto exista. */
   serviceStatus: () => json<ObservedServiceStatus[]>('/service-status'),
 
+  voiceConfiguration: () => json<VoiceConfigurationView>('/voice/configuration'),
+
+  configureVoice: (switches: Partial<VoiceSwitches>) => json<VoiceConfigurationView>('/voice/configuration', {
+    method: 'PUT',
+    body: JSON.stringify(switches),
+  }),
+
   applyDiscards: (decisions: readonly DiscardDecision[]) =>
     json<{ applied: DiscardDecision[] }>('/mcp/discards', {
       method: 'POST',
@@ -1991,6 +1998,28 @@ export interface ObservedServiceStatus {
   detail: string;
   checkedAt: number;
   latencyMs: number | null;
+}
+
+export interface VoiceSwitches {
+  enabled: boolean;
+  speechToText: boolean;
+  textToSpeech: boolean;
+}
+
+export interface VoiceEngineView {
+  ready: boolean;
+  effective: boolean;
+  engine: string;
+  paths: Record<string, string | null>;
+  missing: string[];
+}
+
+export interface VoiceConfigurationView {
+  switches: VoiceSwitches;
+  speechToText: VoiceEngineView & { language: string };
+  textToSpeech: VoiceEngineView & { voice: string };
+  hardware: { architecture: string; logicalCpus: number; memoryGiB: number };
+  installation: { host: string; container: string; note: string };
 }
 
 export interface OperationReviewProposal {

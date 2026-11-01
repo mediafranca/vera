@@ -43,7 +43,8 @@
     "dev": "trap 'kill 0' INT TERM EXIT; npm run watch --workspace @vera/web & npm run serve",
     "deploy": "./scripts/deploy.sh",
     "restart": "./scripts/serve.sh restart",
-    "stop": "./scripts/serve.sh stop"
+    "stop": "./scripts/serve.sh stop",
+    "voice:setup": "bash scripts/setup-local-voice.sh"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

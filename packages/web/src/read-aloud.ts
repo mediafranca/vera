@@ -28,7 +28,8 @@ function label(button: HTMLButtonElement, state: 'play' | 'waiting' | 'pause' | 
   const said = state === 'waiting' ? 'Detener preparación'
     : state === 'pause' ? 'Pausar lectura'
     : state === 'resume' ? 'Continuar lectura'
-    : page ? 'Leer página' : conversation ? 'Leer respuesta' : 'Leer bloque';
+    : button.dataset['speechLabel']
+      ?? (page ? 'Leer página' : conversation ? 'Leer respuesta' : 'Leer bloque');
   button.innerHTML = icon(state === 'pause' ? 'player-pause' : state === 'resume' ? 'player-play' : state === 'waiting' ? 'x' : 'volume');
   button.setAttribute('aria-label', said);
   button.title = said;

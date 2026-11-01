@@ -17,7 +17,7 @@ RUN npm ci \
 FROM node:24-bookworm-slim AS runtime
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg gosu tini \
+  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg gosu tini python3 python3-pip python3-venv libsndfile1 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

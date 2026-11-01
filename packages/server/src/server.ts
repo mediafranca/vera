@@ -217,6 +217,7 @@ import { describeStructure, readingPasses, readStructure } from './structure.ts'
 import { describePlan, planTabularity } from './tabularity.ts';
 import { transcribeAudio } from './transcribe.ts';
 import type { SpeechSynthesizer } from './speech.ts';
+import type { VoiceConfiguration } from './voice-configuration.ts';
 import { renderPage } from '@vera/store/projection';
 import {
   p5FrameDocument,
@@ -335,6 +336,8 @@ export interface ServerOptions {
   objectsRoot?: string;
   /** Voz local derivada: no escribe en el grafo ni abandona la máquina. */
   speech?: SpeechSynthesizer;
+  /** Activación, diagnóstico y ejecución gobernada de STT/TTS. */
+  voiceConfiguration?: VoiceConfiguration;
   owner?: { id: ParticipantId; name: string };
   /** Perfil de una instancia nueva. Un corpus existente nunca cambia por configuración. */
   instanceProfile?: InstanceProfile;
@@ -2041,12 +2044,40 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * un archivo del corpus. La puerta es privada y estrecha: un fragmento por
      * vez, para poder detener una página entre bloques.
      */
+    if (request.method === 'GET' && path === '/voice/configuration') {
+      if (publicAccess || options.voiceConfiguration === undefined) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      send(response, 200, await options.voiceConfiguration.view());
+      return;
+    }
+
+    if (request.method === 'PUT' && path === '/voice/configuration') {
+      if (publicAccess || options.voiceConfiguration === undefined) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      if (who.participant !== owner.id) {
+        send(response, 403, { error: 'sólo el dueño puede configurar la voz de esta Vera' });
+        return;
+      }
+      const body = await readSmallJson();
+      const switches = Object.fromEntries(
+        ['enabled', 'speechToText', 'textToSpeech']
+          .filter((key) => typeof body[key] === 'boolean')
+          .map((key) => [key, body[key]]),
+      );
+      send(response, 200, await options.voiceConfiguration.update(switches));
+      return;
+    }
+
     if (request.method === 'POST' && path === '/speech') {
       if (publicAccess) {
         send(response, 404, { error: 'not found' });
         return;
       }
-      if (options.speech === undefined) {
+      if (options.voiceConfiguration === undefined && options.speech === undefined) {
         send(response, 503, { error: 'la voz local no está configurada' });
         return;
       }
@@ -2062,7 +2093,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       response.once('close', stop);
       let spoken: Awaited<ReturnType<SpeechSynthesizer['speak']>>;
       try {
-        spoken = await options.speech.speak(text, controller.signal);
+        spoken = options.voiceConfiguration === undefined
+          ? await options.speech!.speak(text, controller.signal)
+          : await options.voiceConfiguration.speak(text, controller.signal);
       } catch (problem) {
         if (controller.signal.aborted || (problem instanceof Error && problem.name === 'AbortError')) return;
         throw problem;
@@ -5395,7 +5428,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 422, { error: 'esta grabación ya no tiene audio que transcribir' }); return;
       }
       const audio = readFileSync(objectPath(objectsRoot, held.audioHash));
-      void transcribeAudio(audio).then((outcome) => {
+      void (options.voiceConfiguration?.transcribe(audio) ?? transcribeAudio(audio)).then((outcome) => {
         if ('error' in outcome) { send(response, 502, outcome); return; }
         const kept = setTranscript(store, id, outcome.text);
         send(response, 200, { recording: kept, text: outcome.text });
@@ -5434,7 +5467,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const block = held.placedInBlock;
 
       const audio = readFileSync(objectPath(objectsRoot, held.audioHash));
-      void transcribeAudio(audio).then((outcome) => {
+      void (options.voiceConfiguration?.transcribe(audio) ?? transcribeAudio(audio)).then((outcome) => {
         if ('error' in outcome) {
           send(response, 502, outcome);
           return;
@@ -8635,7 +8668,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     store,
     close: () => {
       clearInterval(retryLibrarianDispatches);
-      options.speech?.close();
+      if (options.voiceConfiguration !== undefined) options.voiceConfiguration.close();
+      else options.speech?.close();
       store.close();
     },
   };
