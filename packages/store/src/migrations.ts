@@ -1109,6 +1109,33 @@ const addConversationalSessions: Migration = {
   },
 };
 
+/** 30 — el runtime declara qué constitución cargó y con qué salud opera. */
+const addAgentRuntimeReceipts: Migration = {
+  version: 30,
+  name: 'recibos de constitución efectiva del runtime',
+  apply(db) {
+    const manifests = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='agent_manifests'",
+    ).get();
+    if (manifests === undefined) return;
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_runtime_receipts (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES participants (id),
+        runtime_id TEXT NOT NULL,
+        runtime_label TEXT NOT NULL,
+        manifest_id TEXT NOT NULL REFERENCES agent_manifests (id),
+        manifest_digest TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('ready','degraded','failed')),
+        detail TEXT,
+        reported_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS agent_runtime_receipts_by_agent
+        ON agent_runtime_receipts (agent_id, reported_at DESC);
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1139,6 +1166,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addIdentifiedInvitations,
   addAgentManifests,
   addConversationalSessions,
+  addAgentRuntimeReceipts,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

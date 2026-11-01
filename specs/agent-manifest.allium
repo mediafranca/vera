@@ -3,11 +3,13 @@
 
 -- Scope: constitución portable y administración humana de agentes embebidos en Vera.
 -- Includes: principal humano, páginas constitutivas, manifiestos versionados,
---           activación, lectura por el runtime y rollback.
+--           activación, lectura por el runtime, recibo efectivo y rollback.
 -- Excludes: ejecución del modelo, transporte de canales, almacenamiento de
 --           secretos y reemplazo del Gateway; son adaptadores externos.
 
 use "./core.allium" as core
+
+enum RuntimeHealth { ready | degraded | failed }
 
 entity AgentPrincipal {
     agent: core/Participant
@@ -40,6 +42,14 @@ entity AgentManifest {
     activated_at: Timestamp?
     supersedes: AgentManifest?
     failure_reason: String?
+}
+
+entity RuntimeReceipt {
+    runtime: RuntimeInstance
+    manifest: AgentManifest
+    status: RuntimeHealth
+    detail: String?
+    reported_at: Timestamp
 }
 
 external entity RuntimeInstance {
@@ -139,6 +149,23 @@ rule RuntimeReadsOnlyItsActiveManifest {
     ensures: ActiveManifestReturned(runtime, manifest)
 }
 
+rule RuntimeReportsLoadedManifest {
+    when: ReportRuntimeState(runtime, manifest, status, detail)
+    requires: runtime.agent = manifest.agent
+    ensures: RuntimeReceipt.created(
+        runtime: runtime,
+        manifest: manifest,
+        status: status,
+        detail: detail,
+        reported_at: now
+    )
+}
+
+invariant RuntimeCannotAcknowledgeAnotherAgent {
+    for receipt in RuntimeReceipt:
+        receipt.runtime.agent = receipt.manifest.agent
+}
+
 surface AgentAdministration {
     facing human: HumanPrincipal
     context binding: AgentPrincipal where human = binding.human and status = active
@@ -157,6 +184,12 @@ surface AgentAdministration {
             manifest.status
             manifest.created_at
             manifest.activated_at
+        for receipt in RuntimeReceipt where runtime.agent = binding.agent:
+            receipt.runtime
+            receipt.manifest
+            receipt.status
+            receipt.detail
+            receipt.reported_at
 
     provides:
         ChooseConstitutionSources(human, binding.agent, sources)
@@ -186,9 +219,19 @@ surface ActiveManifestDoor {
         manifest.digest
         manifest.content
 
+    provides:
+        RuntimeRequestsManifest(runtime)
+        ReportRuntimeState(runtime, loaded_manifest, status, detail)
+
     @guarantee ACredentialCannotReadAnotherAgentsConstitution
         -- La identidad de la credencial determina el único manifiesto legible.
 
     @guarantee LastKnownGoodRemainsAddressable
         -- Activar o revertir nunca borra manifiestos anteriores ni su digest.
+
+    @guarantee ActivationIsNotExecution
+        -- Vera sólo considera efectiva una revisión cuando el runtime declara
+        -- qué manifiesto cargó. Una activación sin recibo permanece visible como tal.
 }
+
+open question "¿Qué cadencia de latido permite distinguir un runtime apagado de uno sano que no ha tenido trabajo, sin convertir el recibo de carga en telemetría invasiva?"

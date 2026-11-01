@@ -114,6 +114,23 @@ CREATE TABLE IF NOT EXISTS agent_manifests (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_agent_manifest
     ON agent_manifests(agent_id) WHERE status = 'active';
 
+-- Activar una constitución expresa intención. Este recibo deja visible qué
+-- revisión cargó realmente cada runtime sin meter su secreto en el corpus.
+CREATE TABLE IF NOT EXISTS agent_runtime_receipts (
+    id              TEXT PRIMARY KEY,
+    agent_id        TEXT NOT NULL REFERENCES participants (id),
+    runtime_id      TEXT NOT NULL,
+    runtime_label   TEXT NOT NULL,
+    manifest_id     TEXT NOT NULL REFERENCES agent_manifests (id),
+    manifest_digest TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('ready','degraded','failed')),
+    detail          TEXT,
+    reported_at     INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS agent_runtime_receipts_by_agent
+    ON agent_runtime_receipts(agent_id, reported_at DESC);
+
 CREATE TABLE IF NOT EXISTS graphs (
     id    TEXT PRIMARY KEY,
     name  TEXT NOT NULL

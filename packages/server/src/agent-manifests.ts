@@ -35,11 +35,23 @@ export interface AgentManifestSummary {
   activatedAt: number | null;
 }
 
+export type AgentRuntimeStatus = 'ready' | 'degraded' | 'failed';
+
+export interface AgentRuntimeReceipt {
+  runtime: { id: string; label: string };
+  manifest: { id: string; version: number; digest: string };
+  status: AgentRuntimeStatus;
+  detail: string | null;
+  reportedAt: number;
+  alignment: 'current' | 'divergent';
+}
+
 export interface AgentAdministrationRow {
   agent: { id: string; name: string; status: string };
   human: { id: string; name: string; status: string } | null;
   sources: Array<{ page: string; title: string; role: ConstitutionRole; position: number }>;
   manifests: AgentManifestSummary[];
+  runtimes: AgentRuntimeReceipt[];
 }
 
 const participant = (store: Store, id: string): { id: string; name: string; kind: string; status: string } | undefined =>
@@ -213,6 +225,45 @@ export function activeManifest(store: Store, agent: string): { summary: AgentMan
   };
 }
 
+export function reportRuntimeReceipt(store: Store, agent: string, runtime: { id: string; label: string },
+  manifest: string, digest: string, status: AgentRuntimeStatus, detail: string | null): AgentRuntimeReceipt {
+  const known = store.db.prepare(`SELECT id,version,digest FROM agent_manifests WHERE id=? AND agent_id=?`)
+    .get(manifest, agent) as { id: string; version: number; digest: string } | undefined;
+  if (known === undefined || known.digest !== digest) throw new Error('el manifiesto declarado no pertenece al agente o su digest no coincide');
+  const reportedAt = Date.now();
+  store.db.prepare(`INSERT INTO agent_runtime_receipts
+    (id,agent_id,runtime_id,runtime_label,manifest_id,manifest_digest,status,detail,reported_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(`runtime-receipt:${randomUUID()}`, agent, runtime.id, runtime.label, known.id, known.digest, status, detail, reportedAt);
+  const active = activeManifest(store, agent)?.summary.id ?? null;
+  return {
+    runtime, manifest: known, status, detail, reportedAt,
+    alignment: active === known.id ? 'current' : 'divergent',
+  };
+}
+
+function runtimeReceipts(store: Store, agent: string): AgentRuntimeReceipt[] {
+  const active = activeManifest(store, agent)?.summary.id ?? null;
+  const rows = store.db.prepare(`SELECT r.runtime_id,r.runtime_label,r.manifest_id,r.manifest_digest,
+      r.status,r.detail,r.reported_at,m.version
+    FROM agent_runtime_receipts r JOIN agent_manifests m ON m.id=r.manifest_id
+    WHERE r.agent_id=? AND NOT EXISTS (
+      SELECT 1 FROM agent_runtime_receipts newer
+      WHERE newer.agent_id=r.agent_id AND newer.runtime_id=r.runtime_id
+        AND (newer.reported_at>r.reported_at OR
+          (newer.reported_at=r.reported_at AND newer.id>r.id))
+    ) ORDER BY r.reported_at DESC,r.runtime_id`).all(agent) as Array<{
+      runtime_id: string; runtime_label: string; manifest_id: string; manifest_digest: string;
+      status: AgentRuntimeStatus; detail: string | null; reported_at: number; version: number;
+    }>;
+  return rows.map((row) => ({
+    runtime: { id: row.runtime_id, label: row.runtime_label },
+    manifest: { id: row.manifest_id, version: row.version, digest: row.manifest_digest },
+    status: row.status, detail: row.detail, reportedAt: row.reported_at,
+    alignment: row.manifest_id === active ? 'current' : 'divergent',
+  }));
+}
+
 export function agentAdministration(store: Store, graph: VeraGraph): AgentAdministrationRow[] {
   const agents = store.db.prepare("SELECT id,name,status FROM participants WHERE kind='agent' ORDER BY lower(name),id")
     .all() as Array<{ id: string; name: string; status: string }>;
@@ -234,6 +285,7 @@ export function agentAdministration(store: Store, graph: VeraGraph): AgentAdmini
         role: source.role, position: source.position })),
       manifests: manifests.map((one) => ({ id: one.id, version: one.version, digest: one.digest,
         status: one.status, createdAt: one.created_at, activatedAt: one.activated_at })),
+      runtimes: runtimeReceipts(store, agent.id),
     };
   });
 }

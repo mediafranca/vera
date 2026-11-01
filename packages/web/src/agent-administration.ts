@@ -102,6 +102,36 @@ function manifestHistory(agent: AgentAdministrationView, refresh: () => Promise<
   section.append(heading, actions, list); return section;
 }
 
+function runtimeState(agent: AgentAdministrationView): HTMLElement {
+  const section = document.createElement('section'); section.className = 'agent-runtime-state';
+  const heading = document.createElement('h3'); heading.textContent = 'Runtime efectivo';
+  const explanation = document.createElement('p'); explanation.className = 'settings-note';
+  explanation.textContent = 'El recibo declara qué revisión cargó realmente cada runtime. Vera no confunde activación con ejecución.';
+  section.append(heading, explanation);
+  if (agent.runtimes.length === 0) {
+    const empty = document.createElement('p'); empty.className = 'agent-runtime-empty';
+    empty.textContent = 'Sin recibo del runtime'; section.append(empty); return section;
+  }
+  const list = document.createElement('ul'); list.className = 'agent-runtime-list';
+  for (const receipt of agent.runtimes) {
+    const item = document.createElement('li');
+    const identity = document.createElement('strong'); identity.textContent = receipt.runtime.label;
+    const state = document.createElement('span');
+    state.className = `agent-runtime-badge is-${receipt.alignment} is-${receipt.status}`;
+    state.textContent = receipt.alignment === 'divergent'
+      ? `divergente · v${receipt.manifest.version}`
+      : receipt.status === 'ready' ? `al día · v${receipt.manifest.version}` : `${receipt.status} · v${receipt.manifest.version}`;
+    const when = document.createElement('time'); when.dateTime = new Date(receipt.reportedAt).toISOString();
+    when.textContent = new Date(receipt.reportedAt).toLocaleString('es-CL');
+    item.append(identity, state, when);
+    if (receipt.detail !== null) {
+      const detail = document.createElement('p'); detail.textContent = receipt.detail; item.append(detail);
+    }
+    list.append(item);
+  }
+  section.append(list); return section;
+}
+
 export async function renderAgentAdministration(host: HTMLElement): Promise<void> {
   host.replaceChildren();
   const root = document.createElement('article'); root.className = 'agent-administration';
@@ -144,7 +174,7 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
           const waiting = document.createElement('p'); waiting.className = 'settings-note';
           waiting.textContent = 'Leyendo páginas constitutivas…'; card.append(waiting);
           void pages().then((available) => {
-            waiting.replaceWith(sourceEditor(agent, available, refresh), manifestHistory(agent, refresh));
+            waiting.replaceWith(sourceEditor(agent, available, refresh), manifestHistory(agent, refresh), runtimeState(agent));
           }).catch((error) => {
             waiting.textContent = error instanceof Error ? error.message : 'No se pudieron leer las páginas.';
           });

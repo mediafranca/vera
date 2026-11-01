@@ -46,6 +46,7 @@ describe('constitución portable del agente', () => {
   let practice: string;
   let secret: string;
   let first: string;
+  let firstDigest: string;
 
   it('admitir un agente lo vincula a la persona soberana, no a su credencial', async () => {
     const agent = await call('/agents', { method: 'POST', body: { id: COTITO, name: 'Cotito' } });
@@ -70,6 +71,7 @@ describe('constitución portable del agente', () => {
     assert.equal(manifest['status'], 'draft');
     assert.match(String(manifest['digest']), /^[a-f0-9]{64}$/);
     first = manifest['id'] as string;
+    firstDigest = manifest['digest'] as string;
   });
 
   it('el runtime sólo lee la revisión activa de su propia identidad', async () => {
@@ -87,6 +89,20 @@ describe('constitución portable del agente', () => {
     assert.equal((document['guarantees'] as Record<string, unknown>)['secrets'], 'references-only');
   });
 
+  it('el runtime acusa la revisión cargada y Vera muestra su estado efectivo', async () => {
+    const received = await call('/agent-runtime/receipt', { method: 'POST', secret, body: {
+      manifest: first, digest: firstDigest, status: 'ready', detail: 'Constitución cargada.',
+    } });
+    assert.equal(received.status, 201, JSON.stringify(received.json));
+    assert.equal((received.json['receipt'] as Record<string, unknown>)['alignment'], 'current');
+    const administration = await call('/agent-administration');
+    const row = (administration.json['agents'] as Array<Record<string, unknown>>)
+      .find((one) => (one['agent'] as Record<string, unknown>)['id'] === COTITO);
+    const runtime = (row?.['runtimes'] as Array<Record<string, unknown>>)[0];
+    assert.equal(runtime?.['status'], 'ready');
+    assert.equal(runtime?.['alignment'], 'current');
+  });
+
   it('conserva revisiones anteriores y permite volver a una', async () => {
     const revised = await submit({ kind: 'edit_block', block: (await call(`/pages/${encodeURIComponent(practice)}`)).json['blocks'] instanceof Array
       ? ((await call(`/pages/${encodeURIComponent(practice)}`)).json['blocks'] as Array<Record<string, unknown>>)[0]?.['stableId']
@@ -95,9 +111,21 @@ describe('constitución portable del agente', () => {
     const built = await call(`/agents/${encodeURIComponent(COTITO)}/manifests`, { method: 'POST' });
     const second = (built.json['manifest'] as Record<string, unknown>)['id'] as string;
     await call(`/agents/${encodeURIComponent(COTITO)}/manifests/${encodeURIComponent(second)}/activate`, { method: 'POST' });
+    const drifted = await call('/agent-administration');
+    const row = (drifted.json['agents'] as Array<Record<string, unknown>>)
+      .find((one) => (one['agent'] as Record<string, unknown>)['id'] === COTITO);
+    assert.equal(((row?.['runtimes'] as Array<Record<string, unknown>>)[0])?.['alignment'], 'divergent');
     const rolled = await call(`/agents/${encodeURIComponent(COTITO)}/manifests/${encodeURIComponent(first)}/activate`, { method: 'POST' });
     assert.equal(rolled.status, 200, JSON.stringify(rolled.json));
     assert.equal(((await call('/agent-manifest', { secret })).json['summary'] as Record<string, unknown>)['version'], 1);
+  });
+
+  it('rechaza recibos falsos o ajenos a la historia del agente', async () => {
+    const reported = await call('/agent-runtime/receipt', { method: 'POST', secret, body: {
+      manifest: first, digest: '0'.repeat(64), status: 'ready',
+    } });
+    assert.equal(reported.status, 409);
+    assert.match(String(reported.json['error']), /digest/);
   });
 
   it('rechaza una página que parece contener un secreto', async () => {
