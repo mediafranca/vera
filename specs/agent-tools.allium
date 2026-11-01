@@ -9,6 +9,10 @@
 --   - Custodia del secreto y prueba de la conexión, gobernadas por
 --     service-connections.allium.
 --   - Ejecución del modelo y transporte del runtime.
+--   - La relación horizontal entre dos Veras, gobernada por
+--     peer-networking.allium, shared-space-access.allium y
+--     federated-sharing.allium. Una Vera remota sólo es además un proveedor de
+--     herramientas cuando ofrece deliberadamente capacidades por esta frontera.
 --   - Semántica propia de cada proveedor: Zotero, mercados y noticias viven
 --     detrás de adaptadores o servidores MCP reemplazables.
 
@@ -269,6 +273,12 @@ surface CapabilityDiscoveryDoor {
     @guarantee NativeAndAdaptedProvidersUseTheSameBoundary
         -- Un servidor MCP habla directamente. Una API HTTP, un feed o un
         -- proceso local entra mediante un adaptador que cumple el mismo contrato.
+
+    @guarantee APeerRelationshipIsNotAToolAuthority
+        -- Conocer la identidad de otra Vera, alcanzarla o compartir una
+        -- superficie con ella no concede a ningún agente sus herramientas. Si
+        -- la Vera remota ofrece además capacidades MCP, éstas se descubren y se
+        -- conceden localmente como cualquier otro proveedor.
 }
 
 surface AgentToolProjection {
