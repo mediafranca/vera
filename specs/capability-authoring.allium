@@ -1,0 +1,321 @@
+-- allium: 3
+-- capability-authoring.allium
+
+-- Scope: permitir que una persona describa una capacidad externa que Vera no
+--   anticipó y que un agente ayude a convertirla en una conexión comprobable.
+-- Includes: recetas declarativas, flujos compuestos, adaptadores confinados,
+--   pruebas, revisión humana, activación, retiro y referencias a secretos.
+-- Excludes:
+--   - Custodia y revelación de secretos (service-connections.allium).
+--   - Concesión de capacidades activas a agentes (agent-tools.allium).
+--   - Ejecución y recibos de cada invocación.
+--   - Relaciones entre Veras soberanas (peer-networking.allium).
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract ConfinedCapabilityPackage {
+    inspect: (revision: CapabilityPackageRevision) -> InspectionReport
+    test: (revision: CapabilityPackageRevision) -> TestReport
+
+    @invariant DescriptionIsNotAuthority
+        -- Describir un endpoint, importar OpenAPI o generar un adaptador no
+        -- concede al paquete secretos, red, escritura ni uso por un agente.
+
+    @invariant SecretsAreNamedNotContained
+        -- Una revisión declara qué referencias de secreto necesita. Nunca
+        -- contiene sus valores en manifiesto, código, prueba, log o recibo.
+
+    @invariant EgressIsDeclaredBeforeExecution
+        -- Toda dirección de red alcanzable durante una prueba o invocación
+        -- aparece en la lista revisable de destinos. Un adaptador no descubre
+        -- nuevos destinos a partir de datos remotos y luego los contacta.
+
+    @invariant CompositionCannotWidenAuthority
+        -- Un flujo compuesto sólo combina capacidades ya concedidas y conserva
+        -- sus aprobaciones, alcances y límites. La composición no fabrica una
+        -- autoridad mayor que sus partes.
+
+    @invariant ExecutableAdaptersRunConfined
+        -- El código generado o aportado corre con tiempo, memoria, filesystem y
+        -- red acotados. No alcanza el corpus, el almacén de secretos ni el host
+        -- salvo por las puertas declaradas del runtime.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum PackageKind { declarative_source | composed_workflow | sandboxed_adapter }
+enum PackageStatus { active | retired }
+enum RevisionStatus { draft | testing | passed | active | rejected | superseded }
+enum TestOutcome { passed | failed }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity CapabilityPackage {
+    governing_page: core/Page
+    name: String
+    owner: core/Participant
+    status: PackageStatus
+    revisions: CapabilityPackageRevision with package = this
+
+    transitions status {
+        active -> retired
+        terminal: retired
+    }
+}
+
+entity CapabilityPackageRevision {
+    package: CapabilityPackage
+    version: Integer
+    kind: PackageKind
+    manifest: String
+    digest: String
+    declared_egress: List<String>
+    secret_references: List<String>
+    authored_by: core/Participant
+    authored_at: Timestamp
+    status: RevisionStatus
+
+    transitions status {
+        draft -> testing
+        testing -> passed
+        testing -> rejected
+        passed -> active
+        active -> superseded
+        terminal: rejected, superseded
+    }
+}
+
+entity CapabilityPackageTest {
+    revision: CapabilityPackageRevision
+    outcome: TestOutcome
+    report: String
+    tested_at: Timestamp
+}
+
+value InspectionReport {
+    digest: String
+    declared_egress: List<String>
+    secret_references: List<String>
+    warnings: List<String>
+}
+
+value TestReport {
+    outcome: TestOutcome
+    report: String
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule HumanCreatesCapabilityDraft {
+    when: CreateCapabilityDraft(human, page, name, kind, manifest, declared_egress, secret_references)
+    requires: human.kind = human
+    requires: human.status = active
+    ensures: CapabilityPackage.created(
+        governing_page: page,
+        name: name,
+        owner: human,
+        status: active
+    )
+    ensures: CapabilityPackageRevision.created(
+        package: created CapabilityPackage,
+        version: 1,
+        kind: kind,
+        manifest: manifest,
+        digest: digest(manifest),
+        declared_egress: declared_egress,
+        secret_references: secret_references,
+        authored_by: human,
+        authored_at: now,
+        status: draft
+    )
+}
+
+rule AgentProposesCapabilityRevision {
+    when: ProposeCapabilityRevision(agent, package, kind, manifest, declared_egress, secret_references)
+    requires: agent.kind = agent
+    requires: agent.status = active
+    requires: package.status = active
+    ensures: CapabilityPackageRevision.created(
+        package: package,
+        version: next_version(package),
+        kind: kind,
+        manifest: manifest,
+        digest: digest(manifest),
+        declared_egress: declared_egress,
+        secret_references: secret_references,
+        authored_by: agent,
+        authored_at: now,
+        status: draft
+    )
+
+    @invariant ProposalDoesNotActivateItself
+        -- La reflexividad permite proponer y explicar una integración, no
+        -- aprobarla ni concederse la capacidad resultante.
+}
+
+rule HumanStartsConfinedTest {
+    when: TestCapabilityRevision(human, revision)
+    requires: human = revision.package.owner
+    requires: revision.status = draft
+    ensures: revision.status = testing
+}
+
+rule ConfinedTestPasses {
+    when: CapabilityTestCompleted(revision, report)
+    requires: revision.status = testing
+    requires: report.outcome = passed
+    ensures: CapabilityPackageTest.created(
+        revision: revision,
+        outcome: report.outcome,
+        report: report.report,
+        tested_at: now
+    )
+    ensures: revision.status = passed
+}
+
+rule ConfinedTestFails {
+    when: CapabilityTestCompleted(revision, report)
+    requires: revision.status = testing
+    requires: report.outcome = failed
+    ensures: CapabilityPackageTest.created(
+        revision: revision,
+        outcome: report.outcome,
+        report: report.report,
+        tested_at: now
+    )
+    ensures: revision.status = rejected
+}
+
+rule HumanActivatesTestedRevision {
+    when: ActivateCapabilityRevision(human, revision)
+    requires: human = revision.package.owner
+    requires: revision.status = passed
+    ensures:
+        for prior in CapabilityPackageRevision where package = revision.package and status = active:
+            prior.status = superseded
+    ensures: revision.status = active
+
+    @invariant ActivationStillDoesNotGrantUse
+        -- Activar publica capacidades observables en el catálogo. Su uso por un
+        -- agente sigue requiriendo una concesión de agent-tools.allium.
+}
+
+rule HumanRetiresCapabilityPackage {
+    when: RetireCapabilityPackage(human, package)
+    requires: human = package.owner
+    requires: package.status = active
+    ensures: package.status = retired
+    ensures:
+        for revision in CapabilityPackageRevision where package = package and status = active:
+            revision.status = superseded
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OneActiveRevisionPerPackage {
+    for package in CapabilityPackage:
+        (CapabilityPackageRevision where package = package and status = active).count <= 1
+}
+
+invariant RetiredPackagesHaveNoActiveRevision {
+    for package in CapabilityPackage where status = retired:
+        not exists CapabilityPackageRevision{package: package, status: active}
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor CapabilityOwner {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+actor CapabilityAuthorAgent {
+    identified_by: core/Participant where this.kind = agent and this.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface CapabilityWorkshop {
+    facing owner: CapabilityOwner
+    context package: CapabilityPackage where owner = package.owner
+
+    contracts:
+        fulfils ConfinedCapabilityPackage
+
+    exposes:
+        package.governing_page
+        package.name
+        package.status
+        for revision in CapabilityPackageRevision where package = package:
+            revision.version
+            revision.kind
+            revision.digest
+            revision.declared_egress
+            revision.secret_references
+            revision.authored_by
+            revision.authored_at
+            revision.status
+        for test in CapabilityPackageTest where revision.package = package:
+            test.revision
+            test.outcome
+            test.report
+            test.tested_at
+
+    provides:
+        CreateCapabilityDraft(owner, page, name, kind, manifest, declared_egress, secret_references)
+        TestCapabilityRevision(owner, revision)
+        ActivateCapabilityRevision(owner, revision)
+        RetireCapabilityPackage(owner, package)
+
+    @guarantee TheHumanSeesTheEffectiveBoundary
+        -- Antes de probar o activar se muestran destinos de red, nombres de
+        -- secretos, acciones, efectos y límites del recinto; no sólo una frase
+        -- tranquilizadora generada por el mismo agente que escribió el paquete.
+}
+
+surface ReflectiveAuthoringDoor {
+    facing agent: CapabilityAuthorAgent
+
+    provides:
+        ProposeCapabilityRevision(agent, package, kind, manifest, declared_egress, secret_references)
+
+    @guarantee TheAgentCannotSupplySecretValues
+        -- La propuesta puede nombrar referencias requeridas. La puerta rechaza
+        -- valores que parezcan credenciales y nunca abre el almacén de secretos.
+
+    @guarantee TheAgentCannotApproveItsOwnWork
+        -- El agente no prueba con credenciales reales, activa, concede, amplía
+        -- egress ni retira la revisión humana.
+}
+
+------------------------------------------------------------
+-- Deferred Specifications
+------------------------------------------------------------
+
+deferred ActivePackagePublishesCapabilities.observe -- see: agent-tools.allium
+deferred SandboxedAdapterRuntime.execute -- see: adapter-runtime.allium (future)
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "¿Qué manifest declarativo mínimo permite describir OpenAPI, RSS/Atom, WebSub y MCP sin inventar un formato paralelo para cada transporte?"
+
+open question "¿Qué aislamiento portable —WASI, contenedor o proceso restringido— ofrece el mismo límite en Vera local y en una cápsula Vera + Lucienne alojada?"
+
+open question "¿Qué pruebas sintéticas bastan para una fuente de lectura y qué evidencia adicional exige una capacidad costosa, destructiva o que actúa sobre terceros?"
