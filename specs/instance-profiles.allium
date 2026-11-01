@@ -61,6 +61,12 @@ contract CollectiveAuthority {
     @invariant RevocationPreservesHistory
         -- Revocation prevents future effects and leaves prior authorship,
         -- decisions and audit evidence attributed to their participants.
+
+    @invariant InstitutionalAuthorityIsBounded
+        -- A collective Vera is authoritative only for the records and surfaces
+        -- placed under its declared government. Becoming a student, employee,
+        -- patient or collaborator never gives the collective custody of that
+        -- person's whole identity, personal Vera or unrelated history.
 }
 
 contract ProfileAuthenticationBoundary {
