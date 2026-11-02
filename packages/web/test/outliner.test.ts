@@ -28,6 +28,7 @@ import {
   nodeMarkdown,
   offeredPropertyOptions,
   pageReferenceRows,
+  pageFindMatches,
   projectedReferenceText,
   referenceExcerptAddsContext,
   reloadAfterServerWriting,
@@ -167,6 +168,23 @@ describe('composición progresiva de páginas', () => {
       needsProgressiveComposition(Array.from({ length: 20 }, (_, index) => block(`b${index}`, null, index, 'prosa'))),
       false,
     );
+  });
+});
+
+describe('buscar dentro de una página', () => {
+  const blocks = [
+    block('raiz', null, 0, 'Introducción'),
+    block('hijo', 'raiz', 0, 'Ética y medida'),
+    block('nieto', 'hijo', 0, 'otra ética aplicada'),
+    block('hermano', null, 1, 'Conclusión'),
+  ];
+
+  it('encuentra descendientes plegables en orden de outline', () => {
+    assert.deepEqual(pageFindMatches(blocks, 'etica').map((one) => one.stableId), ['hijo', 'nieto']);
+  });
+
+  it('una consulta vacía no convierte toda la página en resultado', () => {
+    assert.deepEqual(pageFindMatches(blocks, '   '), []);
   });
 });
 

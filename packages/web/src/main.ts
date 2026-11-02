@@ -32,6 +32,7 @@ import {
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
+  openPageFind,
   openLibrarianConversation,
   presentOutlinerPage,
   renderOutliner,
@@ -3608,6 +3609,12 @@ function wireSearch(): void {
     // llegara a abrir la página.
     const target = event.target as Node;
     if (!wrap.contains(target) && !results.contains(target)) close();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (!is('find-page', event) || workspace.activePage === null) return;
+    if (!openPageFind(workspace.activePage)) return;
+    event.preventDefault();
   });
 }
 

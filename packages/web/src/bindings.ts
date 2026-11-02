@@ -35,6 +35,17 @@ export function isTextComposing(
 
 export const BINDINGS: Binding[] = [
   {
+    id: 'find-page',
+    keys: 'Ctrl/Cmd + F',
+    what: 'Busca dentro de todos los bloques de la página actual',
+    when: 'leyendo o editando una página',
+    group: 'navegación',
+    match: (event) =>
+      (event.key === 'f' || event.key === 'F') &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey,
+  },
+  {
     id: 'close',
     keys: 'Escape',
     what: 'Cierra lo que esté abierto encima: los ajustes o el panel del mapa',
