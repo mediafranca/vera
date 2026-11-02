@@ -107,6 +107,10 @@ const SHAPES = {
     '<path d="m4 19 8-8"/><path d="m12 19-8-8"/><path d="M20 12h-4c0-1.5.44-2 2.5-3.5S21 6 20.5 5s-1.5-1.5-2.5-1.5c-1.5 0-2.5 1-2.5 2.5"/>',
   subscript:
     '<path d="m4 5 8 8"/><path d="m12 5-8 8"/><path d="M20 19h-4c0-1.5.44-2 2.5-3.5S21 13 20.5 12s-1.5-1.5-2.5-1.5c-1.5 0-2.5 1-2.5 2.5"/>',
+  // Corchetes con una cifra: referencia y definición forman una sola nota.
+  footnote:
+    '<path d="M8 4H5v16h3"/><path d="M16 4h3v16h-3"/>' +
+    '<path d="M11 9l2-1v8"/><path d="M11 16h4"/>',
   quote:
     '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>' +
     '<path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',

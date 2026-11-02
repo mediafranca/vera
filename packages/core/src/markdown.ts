@@ -489,6 +489,77 @@ export function uniqueAnchors(headings: readonly string[]): string[] {
   });
 }
 
+export interface MarkdownHeading {
+  /** Nivel escrito en Markdown: `#` es 1 y `######` es 6. */
+  level: number;
+  /** Las palabras que se leen, sin las marcas de formato en línea. */
+  text: string;
+}
+
+/**
+ * Las palabras de una línea Markdown tal como quedan al leerla.
+ *
+ * El índice necesita nombrar y enlazar exactamente el mismo encabezado que
+ * dibuja el lector. Derivar el ancla desde la fuente cruda rompería títulos
+ * como `## **Una casa**`: el DOM dice «Una casa», no «**Una casa**».
+ *
+ * Se parte del renderizador común y se retiran sólo sus elementos. Como el
+ * renderizador escapa la fuente antes de emitir HTML, no hay marcado ajeno que
+ * pueda entrar por esta función.
+ */
+export function markdownInlineText(source: string, options: RenderOptions = {}): string {
+  const entities: Record<string, string> = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+  };
+  return inlineMarkdown(source, options)
+    .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&(amp|lt|gt|quot|#39);/g, (entity) => entities[entity] ?? entity);
+}
+
+/**
+ * Encabezados escritos de verdad en un bloque.
+ *
+ * Una almohadilla dentro de una valla es código, no estructura documental. La
+ * lectura sigue aquí la misma frontera que `renderMarkdown`, de modo que un
+ * `/indice` nunca promete una sección que la página no presenta como tal.
+ */
+export function markdownHeadings(
+  source: string,
+  options: RenderOptions = {},
+): MarkdownHeading[] {
+  const headings: MarkdownHeading[] = [];
+  const lines = source.split('\n');
+  let at = 0;
+  while (at < lines.length) {
+    const line = lines[at] ?? '';
+    const fence = FENCE.exec(line);
+    if (fence !== null) {
+      const marker = fence[1] ?? '```';
+      at += 1;
+      while (at < lines.length) {
+        const closing = FENCE.exec(lines[at] ?? '');
+        at += 1;
+        if (closing !== null && (closing[1] ?? '').startsWith(marker[0] ?? '`')) break;
+      }
+      continue;
+    }
+    const heading = HEADING.exec(line);
+    if (heading !== null) {
+      headings.push({
+        level: (heading[1] ?? '#').length,
+        text: markdownInlineText(heading[2] ?? '', options),
+      });
+    }
+    at += 1;
+  }
+  return headings;
+}
+
 /**
  * Marcas que no emiten atributos y por lo tanto pueden correr sobre cualquier
  * texto ya escapado sin poder romper nada.

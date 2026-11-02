@@ -64,6 +64,11 @@ import { renderMermaid, renderMermaidProgressively } from './mermaid.ts';
 import { decorateCodeBlocks } from './code-copy.ts';
 import { is, isTextComposing } from './bindings.ts';
 import { icon, type IconName } from './icons.ts';
+import {
+  insertFootnote,
+  insertMarkdownFragment,
+  pageTableOfContents,
+} from './editorial.ts';
 import { when } from './dates.ts';
 import { isConnectionsPage, renderConnections } from './mcp-page.ts';
 import { isActivityPage, participantProfilePath, renderActivityPage } from './activity-page.ts';
@@ -8813,6 +8818,7 @@ function startEditing(
     | { icon: IconName; title: string; marker: string }
     | { icon: IconName; title: string; prefix: '> ' }
     | { icon: IconName; title: string; link: 'internal' | 'external' }
+    | { icon: IconName; title: string; footnote: true }
   ) & { className?: string };
   const formatActions: FormatAction[] = [
     { icon: 'bold', title: 'negrita', marker: '**' },
@@ -8821,6 +8827,7 @@ function startEditing(
     { icon: 'underline', title: 'subrayado', marker: '++', className: 'format-underline' },
     { icon: 'superscript', title: 'superíndice', marker: '^', className: 'format-superscript' },
     { icon: 'subscript', title: 'subíndice', marker: '~', className: 'format-subscript' },
+    { icon: 'footnote', title: 'nota al pie', footnote: true },
     { icon: 'quote', title: 'cita', prefix: '> ' },
     { icon: 'code', title: 'código en línea', marker: '`' },
     { icon: 'link', title: 'enlace interno', link: 'internal' },
@@ -8843,10 +8850,20 @@ function startEditing(
     // Mantener la selección del textarea es parte del gesto de formato.
     button.addEventListener('mousedown', (event) => event.preventDefault());
     button.addEventListener('click', () => {
+      const sources = context.view.blocks.map((held) =>
+        held.stableId === block.stableId ? editor.value : held.content
+      );
       const formatted = 'marker' in action
         ? resolveFormat(action.marker, editor.value, editor.selectionStart, editor.selectionEnd)
         : 'prefix' in action
           ? resolveBlockFormat(action.prefix, editor.value)
+          : 'footnote' in action
+            ? insertFootnote(
+              editor.value,
+              editor.selectionStart,
+              editor.selectionEnd,
+              sources,
+            )
           : action.link === 'internal'
             ? resolveInternalLink(editor.value, editor.selectionStart, editor.selectionEnd)
             : resolveLink(editor.value, editor.selectionStart, editor.selectionEnd);
@@ -9273,6 +9290,30 @@ function startEditing(
         choosingTable = false;
         editor.focus();
       });
+      return;
+    }
+
+    if (acts === 'nota') {
+      const sources = context.view.blocks.map((held) =>
+        held.stableId === block.stableId ? applied.buffer : held.content
+      );
+      applyFormat(insertFootnote(applied.buffer, applied.cursor, applied.cursor, sources));
+      scheduleSave();
+      return;
+    }
+
+    if (acts === 'indice') {
+      const sources = context.view.blocks.map((held) =>
+        held.stableId === block.stableId ? applied.buffer : held.content
+      );
+      const index = pageTableOfContents(sources, options);
+      if (index === null) {
+        toast('esta página todavía no tiene encabezados para un índice');
+        editor.focus();
+        return;
+      }
+      applyFormat(insertMarkdownFragment(applied.buffer, applied.cursor, index));
+      scheduleSave();
       return;
     }
 

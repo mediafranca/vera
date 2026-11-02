@@ -221,7 +221,9 @@ export interface Command {
     | 'proceso'
     | 'formato'
     | 'tabla'
-    | 'iframe';
+    | 'iframe'
+    | 'nota'
+    | 'indice';
   /** Se oculta de la portada del menú, pero sigue disponible por su nombre. */
   group?: 'formato';
 }
@@ -272,7 +274,8 @@ export const COMMANDS: Command[] = [
   { name: 'linea', hint: 'línea horizontal', inserts: '---', caret: 3, group: 'formato' },
   { name: 'lista', hint: 'lista con viñetas', inserts: '- ', caret: 2, group: 'formato' },
   { name: 'numerada', hint: 'lista numerada', inserts: '1. ', caret: 3, group: 'formato' },
-  { name: 'nota', hint: 'referencia a nota al pie', inserts: '[^1]', caret: 3, group: 'formato' },
+  { name: 'nota', hint: 'nota al pie: referencia y definición', inserts: '', caret: 0, acts: 'nota', group: 'formato' },
+  { name: 'indice', hint: 'tabla de contenidos con enlaces a los encabezados', inserts: '', caret: 0, acts: 'indice' },
   { name: 'pagina', hint: 'enlace a otra página', inserts: '[[]]', caret: 2, group: 'formato' },
   /*
    * Preguntarle al grafo.

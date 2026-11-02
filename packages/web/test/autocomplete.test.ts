@@ -201,6 +201,14 @@ describe('completionFor', () => {
     assert.equal(actionOf('tabla'), 'tabla');
   });
 
+  it('/nota y /indice delegan el gesto completo al editor', () => {
+    const open: Open = { trigger: 'comando', queryStart: 1 };
+    assert.deepEqual(completionFor(open, 'nota', '/not', 4), { buffer: '', cursor: 0 });
+    assert.equal(actionOf('nota'), 'nota');
+    assert.deepEqual(completionFor(open, 'indice', '/ind', 4), { buffer: '', cursor: 0 });
+    assert.equal(actionOf('indice'), 'indice');
+  });
+
   it('/tarea tiene una sola definición y escribe la marca canónica', () => {
     const tasks = COMMANDS.filter((command) => command.name === 'tarea');
     assert.equal(tasks.length, 1);
