@@ -114,10 +114,15 @@ describe('proyección pública', () => {
     assert.match(frame, /new MutationObserver\(report\)\.observe\(document\.body/);
     assert.match(frame, /dataset\.presentation = event\.data\.presentation === true/);
     assert.match(frame, /html\[data-presentation="true"\] canvas\{width:100%!important;height:auto!important;max-width:none;max-height:100%/);
-    assert.match(
-      readFileSync(join(target, 'pagina-publica', 'index.html'), 'utf8'),
-      /src="\/p5-frame\.html#/,
-    );
+    const publishedPage = readFileSync(join(target, 'pagina-publica', 'index.html'), 'utf8');
+    assert.match(publishedPage, /src="\/p5-frame\.html#/);
+    for (const token of [
+      '--bg', '--bg-raised', '--text', '--text-dim', '--rule', '--accent',
+      '--node-central', '--node-text', '--link-stroke', '--link-in', '--link-out',
+      '--warm', '--voice', '--success', '--warning', '--danger', '--phone-scale',
+      '--text-size', '--line-height', '--content-width', '--indent',
+      '--font-body', '--font-ui', '--font-mono',
+    ]) assert.match(publishedPage, new RegExp(token));
   });
 
   it('no filtra título, contenido ni manifiesto de páginas privadas', () => {

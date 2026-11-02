@@ -36,6 +36,7 @@ import {
   planDesignTokenImport,
   saveTokenImportBackup,
   serialiseDesignTokenPackage,
+  TOKEN_LABELS,
   type ColourScheme,
   type DesignToken,
   type DesignTokenImportPlan,
@@ -214,28 +215,6 @@ function serviceStatusBar(): HTMLElement {
   void refresh();
   return bar;
 }
-
-/** Un nombre legible para un token, sin obligar a leer la variable CSS. */
-const LABELS: Record<string, string> = {
-  '--bg': 'fondo',
-  '--bg-raised': 'fondo elevado',
-  '--text': 'texto',
-  '--text-dim': 'texto atenuado',
-  '--rule': 'líneas y bordes',
-  '--accent': 'acento',
-  '--node-central': 'texto de la página central',
-  '--node-fill': 'nodos del modo circular',
-  '--link-stroke': 'aristas del mapa',
-  '--warm': 'énfasis cálido',
-  '--line-height': 'interlínea',
-  '--text-size': 'tamaño del texto',
-  '--indent': 'sangría por nivel',
-  '--phone-scale': 'tamaño en el teléfono',
-  '--content-width': 'ancho de la columna',
-  '--font-body': 'texto de lectura',
-  '--font-ui': 'interfaz',
-  '--font-mono': 'Markdown y código',
-};
 
 export function renderSettings(
   host: HTMLElement,
@@ -2307,7 +2286,7 @@ function drawAppearance(
 
     const name = document.createElement('span');
     name.className = 'token-name';
-    name.textContent = LABELS[token.name] ?? token.name;
+    name.textContent = TOKEN_LABELS[token.name] ?? token.name;
     const variable = document.createElement('code');
     variable.className = 'token-var';
     variable.textContent = token.name;
@@ -2374,7 +2353,7 @@ function drawAppearance(
       opacity.className = 'token-alpha';
       opacity.min = '0';
       opacity.max = '100';
-      opacity.setAttribute('aria-label', `opacidad de ${LABELS[token.name] ?? token.name}`);
+      opacity.setAttribute('aria-label', `opacidad de ${TOKEN_LABELS[token.name] ?? token.name}`);
 
       const pctOf = (hex: string): number =>
         hex === '' ? 100 : Math.round((parseInt(hex, 16) / 255) * 100);

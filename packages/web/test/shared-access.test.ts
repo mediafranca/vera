@@ -8,6 +8,8 @@ describe('entrada por invitación', () => {
   it('lleva consigo el estilo crítico aunque falle la hoja del armazón', () => {
     assert.match(invitation, /invitation-critical-style/);
     assert.match(invitation, /#vera-root\[data-layout='invitation'\]/);
+    assert.match(invitation, /danger: value\('--danger'\)/);
+    assert.match(invitation, /shared-notice\[data-bad='true'\].*p\.danger/s);
   });
 
   it('entra antes de ofrecer guardar el acceso con una passkey', () => {

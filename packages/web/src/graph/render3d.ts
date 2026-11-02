@@ -290,8 +290,8 @@ export function renderGraph3D(
     nodeCentral: cssVar("--node-central", dark ? "#4a9ade" : "#045591"),
     // Los nombres corrientes van atenuados, igual que en 2D: lo que se busca en
     // un mapa es lo excepcional, y si todo pesa igual no destaca nada.
-    textNormal: cssVar("--node-fill", dark ? "#6d7480" : "#9aa0ab"),
-    linkStroke: cssVar("--link-stroke", dark ? "#333842" : "#d5d7d2"),
+    textNormal: cssVar("--node-text", dark ? "#acc8af" : "#393a3c"),
+    linkStroke: cssVar("--link-stroke", dark ? "#7b767a" : "#767c7a"),
     accent: cssVar("--accent", dark ? "#4a9ade" : "#045591"),
     visited: cssVar("--warm", "#ef7a1c"),
     // Las dos direcciones, como en 2D y como en el pie de la página: el código

@@ -76,7 +76,7 @@ congela en este documento: `npm run spec`, `npm test`, `npm run typecheck` y
 | `undo` | warning (2) | `core/src/undo.ts` | `core/test/undo.test.ts` | VERIFICADO |
 | `voice-capture` | limpio | `web/src/voice.ts`, `web/src/settings.ts`, `server/src/transcribe.ts`, `server/src/speech.ts`, `server/src/voice-configuration.ts` | `server/test/transcribe.test.ts`, `server/test/speech.test.ts`, `server/test/voice-configuration.test.ts`, `web/test/settings-navigation.test.ts` — sin test de captura real del micrófono | PARCIAL — activación, diagnóstico e instalación asistida de STT/TTS verificadas; falta benchmark por perfil de hardware y voz administrada en Desktop |
 | `waiting` | limpio | `web/src/waiting.ts` | `web/test/waiting.test.ts` (18/18) | VERIFICADO |
-| `workspace-interface` | warning (1) | `web/src/trace.ts`, `outliner.ts`, `store/src/store.ts` | cobertura difusa, decenas de tests indirectos en `web/test/*` | VERIFICADO por dominio — spec "paraguas" |
+| `workspace-interface` | warning (1) | `web/src/trace.ts`, `outliner.ts`, `tokens.ts`, `graph/render*.ts`, `mermaid.ts`, `store/src/store.ts`, `public-projection.ts` | cobertura difusa más `tokens.test.ts`, `gui-priorities.test.ts`, `mermaid.test.ts`, `service-status.test.ts`, `public-projection.test.ts` | VERIFICADO por dominio — spec "paraguas"; vocabulario, tinta efectiva y propagación de tokens fijados |
 
 ## Por capacidad del roadmap (sección 1 — prioridad de esta auditoría)
 

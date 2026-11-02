@@ -5,8 +5,6 @@ import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 
-export type NodeStyle = "circular" | "title";
-
 /**
  * El hilo de un recorrido sobre el mapa.
  *
@@ -42,9 +40,7 @@ export interface RenderSettings {
   history?: string[];
   dark?: boolean;
   fontFamily?: string;
-  nodeStyle?: NodeStyle;
   showEdges?: boolean;
-  showNodes?: boolean;
   showTitles?: boolean;
   fontSize?: number;
   thread?: ThreadSettings | null;
@@ -187,8 +183,6 @@ function wrapText(text: string, maxChars: number): string[] {
 }
 
 // ── History ring config ──
-const RING_COLOR = "#ef7a1c";
-
 // Track listeners for cleanup on re-render
 let active2dListeners: { event: string; fn: EventListener }[] = [];
 
@@ -280,10 +274,6 @@ export function renderGraph(
       .translate(settings.camera.x, settings.camera.y)
       .scale(settings.camera.k);
   }
-  // El nodo es su nombre. Un círculo al lado no dice nada que el nombre no diga,
-  // y gasta el mismo sitio diciendo menos.
-  const style = settings.nodeStyle ?? "title";
-
   const svg = d3
     .select(container)
     .append("svg")
@@ -294,8 +284,6 @@ export function renderGraph(
     .attr("aria-label", "Visualización del grafo de conocimiento");
 
   const showEdges = settings.showEdges ?? true;
-  const showNodes = settings.showNodes ?? true;
-  const showTitles = settings.showTitles ?? true;
   const fontSize = settings.fontSize ?? 12;
 
   const g = svg.append("g");
@@ -332,13 +320,10 @@ export function renderGraph(
   // existe y nunca existió: la línea del tema es `--rule`.
   const colors = {
     nodeCentral: cssVar("--node-central", dark ? "#4a9ade" : "#045591"),
-    nodeFill: cssVar("--node-fill", dark ? "#777" : "#999"),
-    nodeBorder: cssVar("--rule", dark ? "#2b2f38" : "#e3e3de"),
-    textCentral: cssVar("--node-central", dark ? "#4a9ade" : "#045591"),
     // Los nombres corrientes van atenuados a propósito: lo que se busca en un
     // mapa es lo excepcional, y si todo pesa igual no destaca nada.
-    textNormal: cssVar("--node-fill", dark ? "#6d7480" : "#9aa0ab"),
-    linkStroke: cssVar("--link-stroke", dark ? "#333842" : "#d5d7d2"),
+    textNormal: cssVar("--node-text", dark ? "#acc8af" : "#393a3c"),
+    linkStroke: cssVar("--link-stroke", dark ? "#7b767a" : "#767c7a"),
     hoverAccent: cssVar("--accent", dark ? "#4a9ade" : "#045591"),
     visited: cssVar("--warm", "#ef7a1c"),
     // Las dos direcciones. Son los mismos tokens que pintan el filete de «La
@@ -359,7 +344,7 @@ export function renderGraph(
   // Links (conditional on showEdges)
   const linkGroup = g.append("g")
     .attr("stroke", colors.linkStroke)
-    .attr("stroke-opacity", 0.6);
+    .attr("stroke-opacity", 1);
   // El ternario original producía una unión de tipos que perdía .attr bajo
   // strict. Se elige el conjunto de datos en vez de la rama de la expresión.
   const link = linkGroup
@@ -427,11 +412,10 @@ export function renderGraph(
   /** El color que le toca a cada nombre por su historia, para poder restaurarlo. */
   const fills = new Map<string, string>();
 
-  if (style === "title") {
-    renderTitleNodes(node, data, dims, historyMap, colors, fontFamily, fontSize, fills);
-  } else {
-    renderCircularNodes(node, data, dims, historyMap, colors, showNodes, showTitles, fontSize);
-  }
+  // El nodo es su nombre. Un círculo al lado no decía nada que el nombre no
+  // dijera y gastaba el mismo sitio diciendo menos; no queda un modo alterno
+  // escondido ni un token de relleno para una figura que ya no existe.
+  renderTitleNodes(node, data, dims, historyMap, colors, fontFamily, fontSize, fills);
 
   // Accessibility: make nodes focusable
   node
@@ -681,7 +665,7 @@ export function renderGraph(
           const tgt = typeof l.target === "string" ? l.target : (l.target as any).id;
           return src === d.id || tgt === d.id;
         })
-        .attr("stroke-opacity", 0.9)
+        .attr("stroke-opacity", 1)
         .attr("stroke-width", 1.5)
         .attr("stroke", (l: any) => {
           const src = typeof l.source === "string" ? l.source : l.source.id;
@@ -696,7 +680,7 @@ export function renderGraph(
     })
     .on("mouseleave", function () {
       link
-        .attr("stroke-opacity", 0.6)
+        .attr("stroke-opacity", 1)
         .attr("stroke-width", 1)
         .attr("stroke", colors.linkStroke);
       node.attr("opacity", 1);
@@ -781,14 +765,11 @@ export function renderGraph(
     g.attr("transform", event.transform);
   });
 
-  // Simulation — title mode needs more space and stronger repulsion
-  const isTitle = style === "title";
-  const collisionForce = isTitle
-    ? rectCollide(dims, COLLISION_PAD)
-    : d3.forceCollide<GraphNode>().radius(20);
-
-  const linkDist = settings.linkDistance ?? (isTitle ? 120 : 80);
-  const charge = settings.chargeStrength ?? (isTitle ? -400 : -200);
+  // Los nodos son cajas tipográficas: la colisión abraza el nombre completo y
+  // la simulación reserva el aire que pide leerlos sin superposición.
+  const collisionForce = rectCollide(dims, COLLISION_PAD);
+  const linkDist = settings.linkDistance ?? 120;
+  const charge = settings.chargeStrength ?? -400;
 
   const sim = d3
     .forceSimulation<GraphNode>(data.nodes)
@@ -929,11 +910,9 @@ export function renderGraph(
   const needsCentre = selected !== null && selected !== centred;
 
   const settle = (): void => {
-    if (isTitle) {
-      remeasure();
-      untangle();
-      if (!allPlaced) compactDisconnectedComponents(data.nodes, data.links, dims);
-    }
+    remeasure();
+    untangle();
+    if (!allPlaced) compactDisconnectedComponents(data.nodes, data.links, dims);
     place();
     remember();
     if (!allPlaced && heldTransform === null) {
@@ -1063,14 +1042,12 @@ export function renderGraph(
   // Y otra vez cuando la tipografía haya llegado: las cajas se miden con la
   // letra que hay en pantalla, y `font-display: swap` enseña la de reserva
   // primero. `document.fonts.ready` resuelve de inmediato si ya estaba.
-  if (isTitle) {
-    void document.fonts.ready.then(() => {
-      // Entretanto pudo haberse redibujado el mapa; si estos nodos ya no están
-      // en el documento, no hay nada que reacomodar.
-      if (!container.isConnected || svg.node()?.isConnected !== true) return;
-      settle();
-    });
-  }
+  void document.fonts.ready.then(() => {
+    // Entretanto pudo haberse redibujado el mapa; si estos nodos ya no están
+    // en el documento, no hay nada que reacomodar.
+    if (!container.isConnected || svg.node()?.isConnected !== true) return;
+    settle();
+  });
 
   // El arrastre sí anima: mover un nodo a mano es la única vez que uno quiere
   // ver moverse el mapa, porque lo está moviendo.
@@ -1081,82 +1058,6 @@ export function renderGraph(
       relaxing += 1;
     }) as any,
   );
-}
-
-// ── Circular mode ──
-function renderCircularNodes(
-  node: d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown>,
-  _data: GraphData,
-  dims: Map<string, { w: number; h: number }>,
-  historyMap: Map<string, number>,
-  colors: Record<string, string>,
-  showNodes: boolean,
-  showTitles: boolean,
-  fontSize: number
-) {
-  const RING_LEVELS = [
-    { strokeWidth: 6, opacity: 1.0 },
-    { strokeWidth: 5, opacity: 0.8 },
-    { strokeWidth: 4, opacity: 0.6 },
-    { strokeWidth: 4, opacity: 0.4 },
-    { strokeWidth: 4, opacity: 0.2 },
-  ];
-
-  if (showNodes) {
-    node
-      .append("circle")
-      .attr("r", (d) => (d.central ? 12 : 4 + Math.min(d.degree * 1.5, 10)))
-      .attr("fill", (d) => (d.central ? colors.nodeCentral : colors.nodeFill) ?? "#999")
-      .attr("fill-opacity", 0.7)
-      .attr("stroke", "none")
-      .attr("stroke-width", 0);
-
-    // History rings
-    node
-      .filter((d) => historyMap.has(d.id.toLowerCase()))
-      .append("circle")
-      .attr("r", (d) => {
-        const baseR = d.central ? 12 : 4 + Math.min(d.degree * 1.5, 10);
-        const idx = historyMap.get(d.id.toLowerCase()) ?? 0;
-        const level = RING_LEVELS[idx] ?? RING_LEVELS[0];
-        return baseR + (level?.strokeWidth ?? 0) / 2 + 2;
-      })
-      .attr("fill", "none")
-      .attr("stroke", RING_COLOR)
-      .attr("stroke-width", (d) => RING_LEVELS[historyMap.get(d.id.toLowerCase()) ?? 0]?.strokeWidth ?? 1)
-      .attr("stroke-opacity", (d) => RING_LEVELS[historyMap.get(d.id.toLowerCase()) ?? 0]?.opacity ?? 1);
-  }
-
-  if (showTitles) {
-    // Multiline labels centered on the node
-    node.each(function (d) {
-      const g = d3.select(this);
-      const fs = d.central ? fontSize + 2 : fontSize;
-      const lines = wrapText(d.name, MAX_LABEL_CHARS);
-      const lineHeight = fs * 1.2;
-      const yOffset = -((lines.length - 1) * lineHeight) / 2;
-      const textEl = g.append("text")
-        .attr("text-anchor", "middle")
-        .attr("font-size", `${fs}px`)
-        .attr("font-weight", d.central ? "bold" : "normal")
-        .attr("fill", colors.textNormal ?? "#333");
-      lines.forEach((line, i) => {
-        textEl.append("tspan")
-          .attr("x", 0)
-          .attr("dy", i === 0 ? `${yOffset}px` : `${lineHeight}px`)
-          .text(line);
-      });
-    });
-  } else {
-    // Tooltip only (native SVG title element)
-    node.append("title").text((d) => d.name);
-  }
-
-  // Store dims for collision (approximate)
-  node.each((d) => {
-    const r = d.central ? 12 : 4 + Math.min(d.degree * 1.5, 10);
-    dims.set(d.id, { w: r * 2, h: r * 2 });
-  });
 }
 
 // ── Title mode ──
@@ -1170,7 +1071,6 @@ function renderTitleNodes(
   fontSize: number,
   fills: Map<string, string>
 ) {
-  void colors.nodeBorder;
   // History color: nodes in history get orange tint, fading with recency
   // Por dónde se ha pasado, desvaneciéndose con la distancia en el rastro. El
   // color es `--warm`, el mismo token que usa el resto de la interfaz para lo

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   DEFAULT_TOKENS,
+  TOKEN_LABELS,
   createDesign,
   importDesign,
   clearTokenImportBackup,
@@ -116,6 +117,15 @@ describe('rotación automática del mapa 3D', () => {
 });
 
 describe('superficies del sistema de diseño', () => {
+  it('cada token canónico explica su función con un nombre humano', () => {
+    assert.deepEqual(
+      Object.keys(TOKEN_LABELS).sort(),
+      DEFAULT_TOKENS.map((token) => token.name).sort(),
+    );
+    assert.equal(TOKEN_LABELS['--node-text'], 'páginas del mapa');
+    assert.equal(TOKEN_LABELS['--link-stroke'], 'aristas neutras del mapa');
+  });
+
   it('restablece la apariencia canónica vigente en claro y oscuro', () => {
     const defaults = new Map(DEFAULT_TOKENS.map((token) => [token.name, token]));
 
@@ -134,6 +144,27 @@ describe('superficies del sistema de diseño', () => {
     assert.deepEqual(defaults.get('--content-width'), {
       name: '--content-width', light: '45em', dark: '40em',
     });
+    assert.equal(defaults.has('--node-fill'), false);
+    assert.deepEqual(defaults.get('--node-text'), {
+      name: '--node-text', light: '#393a3c', dark: '#acc8af',
+    });
+  });
+
+  it('mantiene visibles las aristas canónicas contra ambos fondos', () => {
+    const defaults = new Map(DEFAULT_TOKENS.map((token) => [token.name, token]));
+    const luminance = (hex: string): number => {
+      const channels = hex.slice(1, 7).match(/../g)!.map((part) => Number.parseInt(part, 16) / 255)
+        .map((part) => part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+    };
+    const contrast = (a: string, b: string): number => {
+      const [bright, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+      return (bright! + 0.05) / (dark! + 0.05);
+    };
+    const edge = defaults.get('--link-stroke')!;
+    const background = defaults.get('--bg')!;
+    assert.ok(contrast(edge.light, background.light) >= 3);
+    assert.ok(contrast(edge.dark, background.dark) >= 3);
   });
 
   it('cada superficie elevada usa el token gobernado que Vera realmente define', () => {
@@ -223,6 +254,34 @@ describe('superficies del sistema de diseño', () => {
     assert.match(settings, /Fusionar con los colores del tema actual/);
     assert.match(settings, /Reemplazar los colores del tema actual/);
     assert.match(settings, /Deshacer la última importación/);
+  });
+
+  it('migra el texto de nodos y sólo reemplaza la reserva antigua de aristas', () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+    const legacy = DEFAULT_TOKENS
+      .filter((token) => !['--node-text', '--link-stroke'].includes(token.name))
+      .concat([
+        { name: '--node-fill', light: '#112233', dark: '#ddeeff' },
+        { name: '--link-stroke', light: '#c5c8c1', dark: '#54273c' },
+      ]);
+    storage.setItem('vera.tokens', JSON.stringify(legacy));
+
+    const migrated = new Map(loadTokens().map((token) => [token.name, token]));
+    assert.deepEqual(migrated.get('--node-text'), {
+      name: '--node-text', light: '#112233', dark: '#ddeeff',
+    });
+    assert.deepEqual(migrated.get('--link-stroke'), {
+      name: '--link-stroke', light: '#767c7a', dark: '#7b767a',
+    });
+    assert.equal(migrated.has('--node-fill'), false);
+
+    const imported = parseDesignTokenPackage(JSON.stringify({
+      format: 'vera.design-tokens', version: 1,
+      exportedAt: '2026-10-21T20:00:00.000Z',
+      tokens: [{ name: '--node-fill', light: '#112233', dark: '#ddeeff' }],
+    }));
+    assert.equal(imported.supported[0]!.name, '--node-text');
   });
 
   it('migra el juego único a una biblioteca y permite operar diseños con nombre', () => {

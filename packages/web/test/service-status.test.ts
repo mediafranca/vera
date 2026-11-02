@@ -28,7 +28,9 @@ describe('visor de estado de un servicio', () => {
   });
 
   it('reserva el check verde al estado disponible y conserva texto accesible', () => {
-    assert.match(styles, /service-status-indicator\[data-state='available'\][\s\S]*--service-status-colour:\s*#2f7d4f/);
+    assert.match(styles, /service-status-indicator\[data-state='available'\][^}]*--service-status-colour:\s*var\(--success\)/);
+    assert.match(styles, /service-status-indicator\[data-state='degraded'\][^}]*--service-status-colour:\s*var\(--warning\)/);
+    assert.doesNotMatch(styles, /service-status-indicator\[data-state='available'\][^}]*#[0-9a-f]{6}/i);
     assert.match(source, /role', 'status'/);
     assert.match(source, /aria-label', `\$\{status\.service\}: \$\{presentation\.label\}`/);
   });
