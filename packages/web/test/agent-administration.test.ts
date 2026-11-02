@@ -11,14 +11,15 @@ describe('administración del bibliotecario embebido', () => {
   it('vive como superficie de sistema y no como página duplicada', () => {
     assert.match(main, /window\.location\.pathname === '\/agentes'/);
     assert.match(main, /classList\.add\('special-surface'\)/);
-    assert.match(settings, /Bibliotecarios y agentes/);
+    assert.match(settings, /label: 'Bibliotecario'/);
   });
 
   it('compone una constitución desde páginas canónicas y no desde texto paralelo', () => {
     assert.match(administration, /api\.pages\(\)/);
     assert.match(administration, /setAgentConstitution/);
     assert.match(administration, /Páginas constitutivas/);
-    assert.match(administration, /conservan visibilidad, historia y lectura/);
+    assert.match(administration, /archivos constitutivos/);
+    assert.match(administration, /Abrir y editar/);
     assert.doesNotMatch(administration, /page\.visibility === 'private'/);
   });
 

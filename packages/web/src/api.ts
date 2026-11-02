@@ -1033,9 +1033,9 @@ export const api = {
 
   voiceConfiguration: () => json<VoiceConfigurationView>('/voice/configuration'),
 
-  configureVoice: (switches: Partial<VoiceSwitches>) => json<VoiceConfigurationView>('/voice/configuration', {
+  configureVoice: (configuration: Partial<VoiceSwitches> & { paths?: Partial<VoiceRuntimePaths> }) => json<VoiceConfigurationView>('/voice/configuration', {
     method: 'PUT',
-    body: JSON.stringify(switches),
+    body: JSON.stringify(configuration),
   }),
 
   applyDiscards: (decisions: readonly DiscardDecision[]) =>
@@ -2006,6 +2006,18 @@ export interface VoiceSwitches {
   textToSpeech: boolean;
 }
 
+export interface VoiceRuntimePaths {
+  ffmpeg: string;
+  speechToTextEngine: string;
+  speechToTextModel: string;
+  speechToTextLanguage: string;
+  textToSpeechPython: string;
+  textToSpeechWorker: string;
+  textToSpeechModelRoot: string;
+  textToSpeechVoice: string;
+  textToSpeechCacheRoot: string;
+}
+
 export interface VoiceEngineView {
   ready: boolean;
   effective: boolean;
@@ -2016,6 +2028,7 @@ export interface VoiceEngineView {
 
 export interface VoiceConfigurationView {
   switches: VoiceSwitches;
+  paths: VoiceRuntimePaths;
   speechToText: VoiceEngineView & { language: string };
   textToSpeech: VoiceEngineView & { voice: string };
   hardware: { architecture: string; logicalCpus: number; memoryGiB: number };

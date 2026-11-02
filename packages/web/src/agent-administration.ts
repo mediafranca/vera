@@ -25,7 +25,7 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
   const section = document.createElement('section'); section.className = 'agent-constitution-sources';
   const heading = document.createElement('h3'); heading.textContent = 'Páginas constitutivas';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = 'Son páginas canónicas de Vera: conservan visibilidad, historia y lectura fuera de esta administración.';
+  explanation.textContent = 'Son los archivos constitutivos del bibliotecario: páginas canónicas y editables de Vera que conservan enlaces, autoría, visibilidad e historia.';
   const rows = document.createElement('div'); rows.className = 'agent-source-rows';
   const selected = new Map(agent.sources.map((source) => [source.page, source.role]));
   const choices = [...pages].sort((a, b) => a.title.localeCompare(b.title, 'es'));
@@ -33,6 +33,8 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
     const row = document.createElement('label'); row.className = 'agent-source-row';
     row.dataset['page'] = page.id;
     const title = document.createElement('span'); title.textContent = page.title;
+    const open = document.createElement('a'); open.href = `/p/${encodeURIComponent(page.title)}`;
+    open.textContent = 'Abrir y editar'; open.className = 'agent-source-open';
     const role = document.createElement('select'); role.dataset['page'] = page.id;
     for (const [value, label] of Object.entries(ROLE_LABELS) as Array<[ConstitutionRole, string]>) {
       const option = document.createElement('option'); option.value = value; option.textContent = label;
@@ -40,7 +42,7 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
     }
     const remove = control('Quitar', () => { selected.delete(page.id); row.remove(); });
     remove.setAttribute('aria-label', `Quitar ${page.title} de la constitución`);
-    row.append(title, role, remove); rows.append(row);
+    row.append(title, open, role, remove); rows.append(row);
   };
   for (const source of agent.sources) {
     const page = choices.find((one) => one.id === source.page);
@@ -136,10 +138,10 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
   host.replaceChildren();
   const root = document.createElement('article'); root.className = 'agent-administration';
   const header = document.createElement('header'); header.className = 'special-page-header';
-  const title = document.createElement('h1'); title.textContent = 'Bibliotecarios y agentes';
+  const title = document.createElement('h1'); title.textContent = 'Bibliotecario';
   header.append(title, control('← Volver', () => window.history.back()));
   const intro = document.createElement('p'); intro.className = 'agent-administration-intro';
-  intro.textContent = 'Cada agente tiene un principal humano. Vera gobierna su constitución y conserva versiones; el modelo y el runtime pueden cambiar.';
+  intro.textContent = 'Cada bibliotecario tiene un principal humano. Su identidad y sus prácticas son páginas editables de Vera; el modelo y el runtime pueden cambiar sin reemplazarlo.';
   const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo agentes…';
   const body = document.createElement('div'); body.className = 'agent-administration-body';
   root.append(header, intro, status, body); host.append(root);

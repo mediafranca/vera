@@ -217,7 +217,7 @@ import { describeStructure, readingPasses, readStructure } from './structure.ts'
 import { describePlan, planTabularity } from './tabularity.ts';
 import { transcribeAudio } from './transcribe.ts';
 import type { SpeechSynthesizer } from './speech.ts';
-import type { VoiceConfiguration } from './voice-configuration.ts';
+import type { VoiceConfiguration, VoiceRuntimePaths } from './voice-configuration.ts';
 import { renderPage } from '@vera/store/projection';
 import {
   p5FrameDocument,
@@ -2108,7 +2108,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           .filter((key) => typeof body[key] === 'boolean')
           .map((key) => [key, body[key]]),
       );
-      send(response, 200, await options.voiceConfiguration.update(switches));
+      const rawPaths = body['paths'] !== null && typeof body['paths'] === 'object'
+        ? body['paths'] as Record<string, unknown> : {};
+      const allowedPaths = [
+        'ffmpeg', 'speechToTextEngine', 'speechToTextModel', 'speechToTextLanguage',
+        'textToSpeechPython', 'textToSpeechWorker', 'textToSpeechModelRoot',
+        'textToSpeechVoice', 'textToSpeechCacheRoot',
+      ] as const satisfies readonly (keyof VoiceRuntimePaths)[];
+      const paths = Object.fromEntries(allowedPaths
+        .filter((key) => typeof rawPaths[key] === 'string')
+        .map((key) => [key, String(rawPaths[key]).trim()]));
+      send(response, 200, await options.voiceConfiguration.update({ ...switches, paths }));
       return;
     }
 

@@ -30,3 +30,7 @@ contextBridge.exposeInMainWorld('veraExternalEditing', {
     ipcRenderer.on('vera-external-editing:changed', (_event, change) => listener(change));
   },
 });
+
+contextBridge.exposeInMainWorld('veraVoiceConfiguration', {
+  choosePath: (kind: string) => ipcRenderer.invoke('vera-voice:choose-path', kind),
+});

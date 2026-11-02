@@ -17,6 +17,7 @@ import {
   type ObservedServiceStatus,
   type PageSummary,
   type PublicationSiteView,
+  type VoiceRuntimePaths,
 } from './api.ts';
 import { icon } from './icons.ts';
 import { openMediaDetails } from './media-dialog.ts';
@@ -49,6 +50,7 @@ export type Section =
   | 'inicio'
   | 'biblioteca'
   | 'personas'
+  | 'bibliotecario'
   | 'conexiones'
   | 'gobierno'
   | 'apariencia'
@@ -93,6 +95,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'inicio', label: 'Inicio' },
   { id: 'biblioteca', label: 'Biblioteca' },
   { id: 'personas', label: 'Personas' },
+  { id: 'bibliotecario', label: 'Bibliotecario' },
   { id: 'conexiones', label: 'Conexiones' },
   { id: 'gobierno', label: 'Gobierno' },
   { id: 'apariencia', label: 'Apariencia' },
@@ -112,10 +115,11 @@ const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'inicio', label: 'Estado de Vera', note: 'Corpus, actividad y accesos frecuentes', terms: 'salud resumen' },
   { section: 'biblioteca', label: 'Archivos', note: 'Imágenes, audios, documentos y adjuntos', open: (h) => h.onOpenFiles() },
   { section: 'personas', label: 'Participantes', note: 'Presencia, passkeys, sesiones y roles', open: (h) => h.onOpenPeople() },
-  { section: 'personas', label: 'Bibliotecarios y agentes', note: 'Principal humano, constitución y estado', open: (h) => h.onOpenAgents() },
+  { section: 'bibliotecario', label: 'Bibliotecario', note: 'Constitución, capacidades, autoridad y evidencia' },
+  { section: 'bibliotecario', label: 'Constitución y versiones', note: 'Páginas editables, manifiesto y runtime', open: (h) => h.onOpenAgents() },
+  { section: 'bibliotecario', label: 'Voz', note: 'Escuchar con STT y hablar con TTS local', terms: 'audio whisper kokoro micrófono transcripción' },
   { section: 'personas', label: 'Espacios compartidos', note: 'Superficies, invitaciones y permisos', open: (h) => h.onOpenSharing() },
   { section: 'conexiones', label: 'Puerta de conexiones', note: 'Entradas, salidas, canales y credenciales', terms: 'mcp extensión web telegram zotero', open: (h) => h.onOpenPage('VERA: Conexiones') },
-  { section: 'conexiones', label: 'Voz', note: 'Escuchar con STT y hablar con TTS local', terms: 'audio whisper kokoro micrófono transcripción' },
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
   { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
@@ -311,6 +315,7 @@ export function renderSettings(
   if (active === 'inicio') drawStart(body, handlers, host, tokens);
   else if (active === 'biblioteca') drawLibrary(body, handlers);
   else if (active === 'personas') drawPeople(body, handlers);
+  else if (active === 'bibliotecario') void drawLibrarian(body, handlers);
   else if (active === 'conexiones') void drawConnections(body, handlers);
   else if (active === 'gobierno') drawGovernment(body, handlers);
   else if (active === 'apariencia') drawAppearance(body, tokens, handlers);
@@ -1550,6 +1555,10 @@ function drawStart(
       handlers.onSectionChange('personas');
       renderSettings(centre, tokens, 'personas', handlers);
     }),
+    destination('Bibliotecario', 'Constitución, capacidades, autoridad y actividad', () => {
+      handlers.onSectionChange('bibliotecario');
+      renderSettings(centre, tokens, 'bibliotecario', handlers);
+    }),
     destination('Respaldo', 'Descargar o trasladar una copia completa', () => {
       handlers.onSectionChange('sistema');
       renderSettings(centre, tokens, 'sistema', handlers);
@@ -1586,7 +1595,7 @@ function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
 }
 
 function drawPeople(host: HTMLElement, handlers: SettingsHandlers): void {
-  heading(host, 'Personas', 'Cada participante gobierna su presencia y sus agentes.');
+  heading(host, 'Personas', 'Identidades humanas, participación y espacios compartidos.');
   const administration = document.createElement('div');
   administration.className = 'settings-destinations';
   administration.append(
@@ -1596,17 +1605,60 @@ function drawPeople(host: HTMLElement, handlers: SettingsHandlers): void {
       handlers.onOpenPeople,
     ),
     destination(
-      'Bibliotecarios y agentes',
-      'Principal humano, constitución, versiones y estado efectivo',
-      handlers.onOpenAgents,
-    ),
-    destination(
       'Espacios compartidos',
       'Publicación, páginas, participantes e invitaciones',
       handlers.onOpenSharing,
     ),
   );
   host.append(administration);
+}
+
+function todayTitle(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const value = (kind: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === kind)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+async function drawLibrarian(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
+  heading(
+    host,
+    'Bibliotecario',
+    'El agente que cuida esta Vera. Su constitución vive en páginas editables; su runtime, permisos y secretos siguen siendo capas operativas distintas.',
+  );
+  const actions = document.createElement('div');
+  actions.className = 'settings-destinations';
+  actions.append(
+    destination('Constitución y versiones', 'Páginas rectoras, manifiestos, rollback y runtime efectivo', handlers.onOpenAgents),
+    destination('Herramientas y habilidades', 'Catálogo, concesiones y capacidades disponibles', () =>
+      handlers.onOpenPage('VERA — Configuración de agentes y herramientas')),
+    destination('Permisos y credenciales', 'Alcance, confinamiento, uso y revocación; nunca el secreto', () =>
+      handlers.onOpenPage('VERA: Conexiones')),
+    destination('Bitácora de hoy', 'Lo que el bibliotecario hizo y decidió dentro del corpus', () =>
+      handlers.onOpenPage(todayTitle())),
+    destination('Registro de actividad', 'Operaciones atribuidas, eliminaciones y restauraciones', handlers.onOpenActivity),
+  );
+  host.append(actions);
+
+  heading(host, 'Qué forma parte de él', 'La frontera entre contexto constitutivo y operación privada.');
+  const boundary = document.createElement('div');
+  boundary.className = 'librarian-boundary';
+  const contextual = document.createElement('section');
+  const contextualTitle = document.createElement('h3'); contextualTitle.textContent = 'Dentro de su contexto';
+  const contextualText = document.createElement('p');
+  contextualText.textContent = 'Identidad, propósito, prácticas, memoria y gobierno son páginas normales de Vera: se pueden abrir, editar, enlazar, versionar y reemplazar en el manifiesto activo.';
+  contextual.append(contextualTitle, contextualText);
+  const operational = document.createElement('section');
+  const operationalTitle = document.createElement('h3'); operationalTitle.textContent = 'Fuera de su contexto';
+  const operationalText = document.createElement('p');
+  operationalText.textContent = 'Los valores de secretos, caches, credenciales y trazas privadas del runtime no entran al grafo ni al manifiesto. Vera conserva referencias, estados, recibos y fechas para poder gobernarlos.';
+  operational.append(operationalTitle, operationalText);
+  boundary.append(contextual, operational);
+  host.append(boundary);
+
+  await drawVoiceConfiguration(host);
 }
 
 async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
@@ -1619,7 +1671,6 @@ async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): P
     destination('Canales', 'Chat interno, Telegram y futuras puertas', () => handlers.onOpenPage('VERA: Conexiones')),
   );
   host.append(actions);
-  await drawVoiceConfiguration(host);
   heading(host, 'Vera hacia afuera', 'Aplicaciones que abren o procesan los materiales.');
   await drawExternalEditors(host);
 }
@@ -1678,7 +1729,7 @@ async function drawVoiceConfiguration(host: HTMLElement): Promise<void> {
         row.append(input, text);
         return row;
       };
-      const save = async (next: Partial<typeof state.switches>): Promise<void> => {
+      const save = async (next: Partial<typeof state.switches> & { paths?: Partial<VoiceRuntimePaths> }): Promise<void> => {
         state = await api.configureVoice(next);
         draw();
       };
@@ -1701,18 +1752,80 @@ async function drawVoiceConfiguration(host: HTMLElement): Promise<void> {
       );
       panel.append(switches);
 
-      const paths = document.createElement('dl');
-      paths.className = 'voice-paths';
-      const connectedPaths: Array<[string, string]> = [
-        ['STT', Object.values(state.speechToText.paths).filter(Boolean).join(' · ') || 'sin conectar'],
-        ['TTS', Object.values(state.textToSpeech.paths).filter(Boolean).join(' · ') || 'sin conectar'],
-      ];
-      for (const [label, value] of connectedPaths) {
+      const picker = (window as unknown as {
+        veraVoiceConfiguration?: { choosePath(kind: keyof VoiceRuntimePaths): Promise<string | null> };
+      }).veraVoiceConfiguration ?? null;
+      const form = document.createElement('form');
+      form.className = 'voice-path-form';
+      const inputs = new Map<keyof VoiceRuntimePaths, HTMLInputElement>();
+      const pathField = (
+        key: keyof VoiceRuntimePaths,
+        label: string,
+        note: string,
+        canChoose = true,
+      ): HTMLElement => {
+        const field = document.createElement('label'); field.className = 'voice-path-field';
+        const name = document.createElement('span'); name.textContent = label;
+        const entry = document.createElement('span'); entry.className = 'voice-path-entry';
+        const input = document.createElement('input'); input.type = 'text'; input.value = state.paths[key];
+        input.autocomplete = 'off'; input.spellcheck = false; inputs.set(key, input); entry.append(input);
+        if (picker !== null && canChoose) {
+          const choose = document.createElement('button'); choose.type = 'button'; choose.textContent = 'Buscar…';
+          choose.addEventListener('click', () => void picker.choosePath(key).then((path) => {
+            if (path !== null) input.value = path;
+          }));
+          entry.append(choose);
+        }
+        const detail = document.createElement('small'); detail.textContent = note;
+        field.append(name, entry, detail); return field;
+      };
+      const group = (title: string, ...fields: HTMLElement[]): HTMLElement => {
+        const details = document.createElement('details'); details.className = 'voice-path-group';
+        const summary = document.createElement('summary'); summary.textContent = title;
+        details.append(summary, ...fields); return details;
+      };
+      const explanation = document.createElement('p'); explanation.className = 'settings-note';
+      explanation.textContent = picker === null
+        ? 'Estas rutas pertenecen a esta instalación. Puedes escribirlas a mano; Vera comprobará los ejecutables y modelos al guardar.'
+        : 'Estas rutas pertenecen a esta instalación. Puedes escribirlas o buscar archivos y carpetas en este equipo.';
+      form.append(
+        explanation,
+        group('Escuchar · rutas y modelo',
+          pathField('ffmpeg', 'Conversor de audio', 'Ruta a ffmpeg; déjala vacía para buscarlo en PATH.'),
+          pathField('speechToTextEngine', 'Motor STT', 'Ruta al ejecutable whisper-cli; vacía usa la detección automática.'),
+          pathField('speechToTextModel', 'Modelo STT', 'Archivo ggml del modelo de Whisper.'),
+          pathField('speechToTextLanguage', 'Idioma', 'Código de idioma que recibe Whisper.', false),
+        ),
+        group('Hablar · runtime y voz',
+          pathField('textToSpeechPython', 'Python de TTS', 'Intérprete del entorno donde está instalado Kokoro.'),
+          pathField('textToSpeechWorker', 'Worker de TTS', 'Programa versionado que conecta Vera con el motor.'),
+          pathField('textToSpeechModelRoot', 'Modelos de TTS', 'Carpeta que contiene modelo, configuración y voces.'),
+          pathField('textToSpeechVoice', 'Voz', 'Nombre de la voz instalada que usará el bibliotecario.', false),
+          pathField('textToSpeechCacheRoot', 'Caché de audio', 'Carpeta regenerable; en contenedores conviene ubicarla bajo /data.'),
+        ),
+      );
+      const savePaths = document.createElement('button'); savePaths.type = 'submit'; savePaths.className = 'settings-action';
+      savePaths.textContent = 'Guardar rutas y comprobar'; form.append(savePaths);
+      form.addEventListener('submit', (event) => {
+        event.preventDefault(); savePaths.disabled = true;
+        const paths = Object.fromEntries([...inputs].map(([key, input]) => [key, input.value.trim()])) as unknown as VoiceRuntimePaths;
+        void save({ paths }).catch((error: unknown) => {
+          window.alert(error instanceof Error ? error.message : 'No se pudo guardar la configuración de voz.');
+          savePaths.disabled = false;
+        });
+      });
+      panel.append(form);
+
+      const observed = document.createElement('dl'); observed.className = 'voice-paths';
+      for (const [label, value] of [
+        ['STT comprobado', Object.values(state.speechToText.paths).filter(Boolean).join(' · ') || 'sin conectar'],
+        ['TTS comprobado', Object.values(state.textToSpeech.paths).filter(Boolean).join(' · ') || 'sin conectar'],
+      ] as Array<[string, string]>) {
         const term = document.createElement('dt'); term.textContent = label;
         const detail = document.createElement('dd'); detail.textContent = value;
-        paths.append(term, detail);
+        observed.append(term, detail);
       }
-      panel.append(paths);
+      panel.append(observed);
 
       const install = document.createElement('div');
       install.className = 'voice-installation';

@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { listen } from './server.ts';
 import { modelPresence } from './model.ts';
 import { transcribeAudio, transcriberDiagnosis } from './transcribe.ts';
-import { createLocalSpeech, speechDiagnosis } from './speech.ts';
-import { VoiceConfiguration } from './voice-configuration.ts';
+import { createLocalSpeech, speechDiagnosis, type LocalSpeechOptions, type SpeechSynthesizer } from './speech.ts';
+import { VoiceConfiguration, type VoiceRuntimePaths } from './voice-configuration.ts';
 
 /**
  * La configuración de esta instancia, si la hay.
@@ -43,16 +43,38 @@ const host = process.argv[4] ?? setting('VERA_HOST') ?? '127.0.0.1';
 // Configurable para que una instancia de pruebas no escriba en el almacén real.
 const objectsRoot = process.argv[5] ?? setting('VERA_OBJECTS') ?? 'objects';
 const speechRuntime = setting('VERA_TTS_RUNTIME') ?? join(homedir(), '.local/share/vera/kokoro');
-const speechOptions = {
-  cacheRoot: setting('VERA_TTS_CACHE') ?? join(speechRuntime, 'cache'),
-  python: setting('VERA_TTS_PYTHON') ?? join(speechRuntime, 'venv/bin/python'),
-  worker: setting('VERA_TTS_WORKER') ?? join(ROOT, 'scripts/tts-worker.py'),
-  modelRoot: setting('VERA_TTS_MODEL_ROOT') ?? join(speechRuntime, 'model'),
-  voice: setting('VERA_TTS_VOICE') ?? 'em_alex',
+const voicePaths: VoiceRuntimePaths = {
+  ffmpeg: setting('VERA_FFMPEG') ?? '',
+  speechToTextEngine: setting('VERA_WHISPER') ?? '',
+  speechToTextModel: setting('VERA_WHISPER_MODEL') ?? join(homedir(), '.local/share/whisper/ggml-small.bin'),
+  speechToTextLanguage: setting('VERA_WHISPER_LANGUAGE') ?? 'es',
+  textToSpeechPython: setting('VERA_TTS_PYTHON') ?? join(speechRuntime, 'venv/bin/python'),
+  textToSpeechWorker: setting('VERA_TTS_WORKER') ?? join(ROOT, 'scripts/tts-worker.py'),
+  textToSpeechModelRoot: setting('VERA_TTS_MODEL_ROOT') ?? join(speechRuntime, 'model'),
+  textToSpeechVoice: setting('VERA_TTS_VOICE') ?? 'em_alex',
+  textToSpeechCacheRoot: setting('VERA_TTS_CACHE') ?? join(speechRuntime, 'cache'),
+};
+const speechOptions = (paths: VoiceRuntimePaths): LocalSpeechOptions => ({
+  cacheRoot: paths.textToSpeechCacheRoot,
+  python: paths.textToSpeechPython,
+  worker: paths.textToSpeechWorker,
+  modelRoot: paths.textToSpeechModelRoot,
+  voice: paths.textToSpeechVoice,
   maxCacheBytes: Number(setting('VERA_TTS_CACHE_MAX_BYTES') ?? 256 * 1024 * 1024),
   maxCacheAgeMs: Number(setting('VERA_TTS_CACHE_MAX_AGE_DAYS') ?? 30) * 24 * 60 * 60 * 1000,
+});
+let speech: SpeechSynthesizer | null = null;
+let speechIdentity = '';
+const speechFor = (paths: VoiceRuntimePaths): SpeechSynthesizer => {
+  const options = speechOptions(paths);
+  const identity = JSON.stringify(options);
+  if (speech === null || speechIdentity !== identity) {
+    speech?.close();
+    speech = createLocalSpeech(options);
+    speechIdentity = identity;
+  }
+  return speech;
 };
-const speech = createLocalSpeech(speechOptions);
 const enabledByDefault = (name: string): boolean => setting(name) !== 'false';
 const voiceConfiguration = new VoiceConfiguration({
   path: setting('VERA_VOICE_CONFIGURATION') ?? join(dirname(resolve(databasePath)), 'voice.json'),
@@ -61,8 +83,14 @@ const voiceConfiguration = new VoiceConfiguration({
     speechToText: enabledByDefault('VERA_STT_ENABLED'),
     textToSpeech: enabledByDefault('VERA_TTS_ENABLED'),
   },
-  diagnoseSpeechToText: async () => {
-    const found = await transcriberDiagnosis();
+  defaultPaths: voicePaths,
+  diagnoseSpeechToText: async (paths) => {
+    const found = await transcriberDiagnosis({
+      ...(paths.ffmpeg === '' ? {} : { ffmpeg: paths.ffmpeg }),
+      ...(paths.speechToTextEngine === '' ? {} : { command: paths.speechToTextEngine }),
+      model: paths.speechToTextModel,
+      language: paths.speechToTextLanguage,
+    });
     const missing = [
       ...(found.ffmpeg === null ? ['ffmpeg'] : []),
       ...(found.whisper === null ? ['whisper.cpp'] : []),
@@ -71,13 +99,13 @@ const voiceConfiguration = new VoiceConfiguration({
     return {
       ready: found.ready,
       engine: 'whisper.cpp',
-      language: setting('VERA_WHISPER_LANGUAGE') ?? 'es',
+      language: paths.speechToTextLanguage,
       paths: { ffmpeg: found.ffmpeg, engine: found.whisper, model: found.model },
       missing,
     };
   },
-  diagnoseTextToSpeech: () => {
-    const found = speechDiagnosis(speechOptions);
+  diagnoseTextToSpeech: (paths) => {
+    const found = speechDiagnosis(speechOptions(paths));
     return {
       ready: found.ready,
       engine: 'Kokoro',
@@ -86,9 +114,14 @@ const voiceConfiguration = new VoiceConfiguration({
       missing: found.missing,
     };
   },
-  transcribe: (audio) => transcribeAudio(audio),
-  speak: (text, signal) => speech.speak(text, signal),
-  close: () => speech.close(),
+  transcribe: (audio, paths) => transcribeAudio(audio, {
+    ...(paths.ffmpeg === '' ? {} : { ffmpeg: paths.ffmpeg }),
+    ...(paths.speechToTextEngine === '' ? {} : { command: paths.speechToTextEngine }),
+    model: paths.speechToTextModel,
+    language: paths.speechToTextLanguage,
+  }),
+  speak: (text, paths, signal) => speechFor(paths).speak(text, signal),
+  close: () => speech?.close(),
 });
 const webRoot = setting('VERA_WEB_ROOT') ?? 'packages/web/dist';
 

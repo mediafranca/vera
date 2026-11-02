@@ -153,3 +153,16 @@ describe('asociaciones locales de editores', () => {
     assert.match(mainSource, /editor === undefined[\s\S]*shell\.openPath\(path\)/);
   });
 });
+
+describe('selector local de componentes de voz', () => {
+  const mainSource = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const preloadSource = readFileSync(new URL('../src/preload.ts', import.meta.url), 'utf8');
+
+  it('expone sólo componentes conocidos y distingue archivos de carpetas', () => {
+    assert.match(preloadSource, /veraVoiceConfiguration/);
+    assert.match(preloadSource, /vera-voice:choose-path/);
+    assert.match(mainSource, /speechToTextEngine:[\s\S]*textToSpeechModelRoot/);
+    assert.match(mainSource, /choice\.directory \? 'openDirectory' : 'openFile'/);
+    assert.match(mainSource, /!\(kind in choices\)/);
+  });
+});

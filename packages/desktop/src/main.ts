@@ -361,6 +361,27 @@ ipcMain.handle('vera-external-editing:clear-editor', (_event, key: unknown) => {
   return editors;
 });
 
+ipcMain.handle('vera-voice:choose-path', async (_event, kind: unknown) => {
+  const choices = {
+    ffmpeg: { title: 'Elegir ffmpeg', directory: false },
+    speechToTextEngine: { title: 'Elegir whisper.cpp', directory: false },
+    speechToTextModel: { title: 'Elegir modelo de transcripción', directory: false },
+    textToSpeechPython: { title: 'Elegir intérprete de Python', directory: false },
+    textToSpeechWorker: { title: 'Elegir worker de síntesis', directory: false },
+    textToSpeechModelRoot: { title: 'Elegir carpeta del modelo de voz', directory: true },
+    textToSpeechCacheRoot: { title: 'Elegir carpeta de caché de voz', directory: true },
+  } as const;
+  if (typeof kind !== 'string' || !(kind in choices)) {
+    throw new Error('el componente de voz no es válido');
+  }
+  const choice = choices[kind as keyof typeof choices];
+  const chosen = await dialog.showOpenDialog({
+    title: choice.title,
+    properties: [choice.directory ? 'openDirectory' : 'openFile'],
+  });
+  return chosen.canceled ? null : chosen.filePaths[0] ?? null;
+});
+
 app.whenReady().then(() => {
   createWindow();
   void enableAutomaticUpdates();
