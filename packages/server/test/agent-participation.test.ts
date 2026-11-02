@@ -305,6 +305,92 @@ describe('el alcance se comprueba en cada cambio', () => {
   });
 });
 
+describe('la escritura agente conserva el árbol de bloques', () => {
+  let secret: string;
+  let page: string;
+
+  before(async () => {
+    secret = (
+      await call('/agents/credentials', {
+        method: 'POST',
+        body: { participant: COTITO, scopes: ['read', 'write'], label: 'estructura' },
+      })
+    ).json['secret'] as string;
+    page = await makePage('Gramática estructural');
+  });
+
+  it('rechaza un outline Markdown escondido dentro de un bloque generado', async () => {
+    const reply = await submit({
+      kind: 'create_block', page, parent: null, position: 0,
+      content: '# Sección\n- primera idea\n- segunda idea',
+    }, { secret });
+    assert.equal(reply.status, 422, JSON.stringify(reply.json));
+    assert.match(reply.json['reason'] as string, /outline Markdown|parent/);
+  });
+
+  it('acepta la misma estructura como bloques estables con padre y posición', async () => {
+    const root = await submit({
+      kind: 'create_block', page, parent: null, position: 0, content: '# Sección',
+    }, { secret });
+    assert.equal(root.status, 201, JSON.stringify(root.json));
+    const child = await submit({
+      kind: 'create_block', page, parent: root.json['subjectId'], position: 0, content: 'Primera idea',
+    }, { secret });
+    assert.equal(child.status, 201, JSON.stringify(child.json));
+  });
+
+  it('permite ejemplos estructurales dentro de código cercado', async () => {
+    const reply = await submit({
+      kind: 'create_block', page, parent: null, position: 1,
+      content: '```markdown\n# Ejemplo\n- no es estructura de Vera\n```',
+    }, { secret });
+    assert.equal(reply.status, 201, JSON.stringify(reply.json));
+  });
+
+  it('tampoco puede aplanar al corregir un bloque propio', async () => {
+    const created = await submit({
+      kind: 'create_block', page, parent: null, position: 2, content: 'Texto corregible',
+    }, { secret });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const block = created.json['subjectId'] as string;
+    const read = await call(`/pages/${encodeURIComponent(page)}?stage=readable`);
+    const revision = (read.json['blocks'] as { stableId: string; revision: string }[])
+      .find((one) => one.stableId === block)?.revision;
+    assert.ok(revision !== undefined, JSON.stringify(read.json));
+    const edited = await submit({
+      kind: 'edit_block', block, content: '## Uno\n- Dos',
+    }, { secret, ifRevision: revision });
+    assert.equal(edited.status, 422, JSON.stringify(edited.json));
+    assert.match(edited.json['reason'] as string, /outline Markdown|parent/);
+  });
+
+  it('rechaza el lote entero si uno de sus bloques aplana el outline', async () => {
+    const before = (await call(`/pages/${encodeURIComponent(page)}`)).json['blocks'] as Record<string, unknown>[];
+    const reply = await call('/operations/batch', {
+      method: 'POST', secret,
+      body: {
+        originId: 'agent-structure:atomic-refusal',
+        changes: [
+          { kind: 'create_block', page, parent: null, position: 2, content: 'No debe quedar' },
+          { kind: 'create_block', page, parent: null, position: 3, content: '## Uno\n## Dos' },
+        ],
+      },
+    });
+    assert.equal(reply.status, 422, JSON.stringify(reply.json));
+    const after = (await call(`/pages/${encodeURIComponent(page)}`)).json['blocks'] as Record<string, unknown>[];
+    assert.equal(after.length, before.length, 'ningún prefijo del lote rechazado debe aplicarse');
+    assert.ok(!after.some((block) => block['content'] === 'No debe quedar'));
+  });
+
+  it('no impone la gramática del operador a la escritura humana', async () => {
+    const reply = await submit({
+      kind: 'create_block', page, parent: null, position: 2,
+      content: '## Apunte literal\n- conservado tal como Herbert lo escribió',
+    });
+    assert.equal(reply.status, 201, JSON.stringify(reply.json));
+  });
+});
+
 describe('retirar una credencial', () => {
   it('la primera escritura posterior ya no pasa, y lo escrito antes sigue', async () => {
     const issued = await call('/agents/credentials', {

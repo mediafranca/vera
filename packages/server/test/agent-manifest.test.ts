@@ -87,6 +87,12 @@ describe('constitución portable del agente', () => {
     assert.equal((document['agent'] as Record<string, unknown>)['id'], COTITO);
     assert.equal((document['constitution'] as unknown[]).length, 2);
     assert.equal((document['guarantees'] as Record<string, unknown>)['secrets'], 'references-only');
+    assert.deepEqual((document['guarantees'] as Record<string, unknown>)['writing'], {
+      representation: 'ordered-stable-block-tree',
+      mutation: 'minimal-block-operations',
+      foreignWords: 'proposal',
+      flattening: 'rejected',
+    });
   });
 
   it('el runtime acusa la revisión cargada y Vera muestra su estado efectivo', async () => {

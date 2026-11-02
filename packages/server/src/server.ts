@@ -589,6 +589,46 @@ function agentMutationPrecondition(
   return null;
 }
 
+/**
+ * Detecta cuando una identidad agente intenta esconder varios nodos de outline
+ * dentro del texto de un solo bloque.
+ *
+ * Un bloque puede contener prosa multilínea, tablas o código. Lo que no puede
+ * contener es una cabecera o ítem Markdown acompañado de otra unidad
+ * estructural: eso debe viajar como bloques separados unidos por parent. Los
+ * fences se omiten para que un ejemplo de sintaxis siga siendo texto, no árbol.
+ */
+function flattenedAgentOutline(content: string): boolean {
+  let fenced = false;
+  const visible: string[] = [];
+  for (const line of content.split(/\r?\n/)) {
+    if (/^\s*```/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    if (!fenced && line.trim() !== '') visible.push(line);
+  }
+  const structural = visible.filter((line) =>
+    /^\s{0,3}#{1,6}\s+\S/.test(line) ||
+    /^\s*(?:[-+*]|\d+[.)])\s+\S/.test(line));
+  return structural.length >= 2 || (structural.length === 1 && visible.length >= 2);
+}
+
+function agentStructureRefusal(
+  graph: VeraGraph,
+  who: Submitter,
+  change: Change,
+): string | null {
+  if (
+    who.credential === null ||
+    graph.participant(who.participant)?.kind !== 'agent' ||
+    (change.kind !== 'create_block' && change.kind !== 'edit_block') ||
+    !flattenedAgentOutline(change.content)
+  ) return null;
+  return 'una identidad agente no puede guardar un outline Markdown dentro de un solo bloque. ' +
+    'Separa cada título, ítem y afirmación en create_block y expresa la jerarquía con parent y position.';
+}
+
 /** Una línea legible del bloque, sin arrastrar transcripciones enteras. */
 function excerpt(content: string): string {
   const flat = content.replace(/\s+/g, ' ').trim();
@@ -2648,6 +2688,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             return;
           }
           submitter ??= who;
+          const structuralRefusal = agentStructureRefusal(trial, who, input.change);
+          if (structuralRefusal !== null) {
+            send(response, 422, { status: 'rejected', reason: structuralRefusal });
+            return;
+          }
           const fence = who.credential === null ? null : confinementOf(store, who.credential.id);
           const precondition = agentMutationPrecondition(
             trial,
@@ -2754,6 +2799,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             );
         if ('error' in who) {
           send(response, who.status, { status: 'rejected', reason: who.error });
+          return;
+        }
+
+        const alreadyKnown = graph.operations().some((operation) => operation.originId === input.originId);
+        const structuralRefusal = alreadyKnown ? null : agentStructureRefusal(graph, who, input.change);
+        if (structuralRefusal !== null) {
+          send(response, 422, { status: 'rejected', reason: structuralRefusal });
           return;
         }
 

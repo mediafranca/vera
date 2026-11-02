@@ -23,6 +23,12 @@ export interface AgentManifestDocument {
     secrets: 'references-only';
     authority: 'human-principal';
     history: 'append-only-manifests';
+    writing: {
+      representation: 'ordered-stable-block-tree';
+      mutation: 'minimal-block-operations';
+      foreignWords: 'proposal';
+      flattening: 'rejected';
+    };
   };
 }
 
@@ -163,7 +169,17 @@ function manifestDocument(store: Store, graph: VeraGraph, agent: string): AgentM
     agent: { id: agentRow.id, name: agentRow.name, human: { id: human.id, name: human.name } },
     generatedAt: Date.now(),
     constitution,
-    guarantees: { secrets: 'references-only', authority: 'human-principal', history: 'append-only-manifests' },
+    guarantees: {
+      secrets: 'references-only',
+      authority: 'human-principal',
+      history: 'append-only-manifests',
+      writing: {
+        representation: 'ordered-stable-block-tree',
+        mutation: 'minimal-block-operations',
+        foreignWords: 'proposal',
+        flattening: 'rejected',
+      },
+    },
   };
 }
 

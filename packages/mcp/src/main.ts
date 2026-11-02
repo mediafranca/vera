@@ -79,6 +79,10 @@ Al escribir:
 - Un bloque es una unidad semántica. Un título, cada ítem y cada evidencia van en
   bloques distintos; la jerarquía se expresa con \`parent\`, no incrustando un
   outline Markdown entero dentro de un bloque.
+- Una página es un árbol ordenado de bloques estables, no un documento que se
+  reemplaza entero. Para extenderla, crea hijos o hermanos en el lugar leído y
+  conserva las identidades existentes. Una idea nueva no justifica reescribir un
+  bloque anterior: edita sólo cuando esas palabras mismas necesitan corrección.
 - Los enlaces \`[[Página]]\` conectan páginas. Para relaciones explicadas, usa las
   propiedades de bloque que la ontología vigente nombre para ese papel.
 - Esta superficie crea páginas y bloques y corrige propiedades. También puede
