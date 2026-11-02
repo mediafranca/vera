@@ -2,7 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  rememberViewportForReload,
   restoreViewportThroughComposition,
+  takeViewportAfterReload,
   viewportDelta,
   type HeldViewport,
 } from '../src/viewport.ts';
@@ -67,5 +69,30 @@ describe('conservar el lugar al redibujar', () => {
       if (oldWindow === undefined) Reflect.deleteProperty(globalThis, 'window');
       else Object.assign(globalThis, { window: oldWindow });
     }
+  });
+
+  it('lleva el bloque visible a través de una recarga de la misma página', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    } as unknown as Storage;
+
+    rememberViewportForReload(storage, 'page:timeo', '/p/timeo', held);
+    assert.deepEqual(takeViewportAfterReload(storage, 'page:timeo', '/p/timeo'), held);
+    assert.equal(takeViewportAfterReload(storage, 'page:timeo', '/p/timeo'), null);
+  });
+
+  it('no restaura en otra página el lugar recordado', () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    } as unknown as Storage;
+
+    rememberViewportForReload(storage, 'page:timeo', '/p/timeo', held);
+    assert.equal(takeViewportAfterReload(storage, 'page:critias', '/p/critias'), null);
   });
 });

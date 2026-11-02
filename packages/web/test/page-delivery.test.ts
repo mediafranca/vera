@@ -48,4 +48,13 @@ describe('entrega legible de una página', () => {
     assert.match(enrichment, /openTrail = threadSettings\(complete\.id, openView\.trail\);/);
     assert.match(enrichment, /hadThread \|\| openTrail !== null[\s\S]*?void drawGraph\(\);/);
   });
+
+  it('conserva un testigo semántico al recomponer y recargar la página', () => {
+    const opening = main.slice(main.indexOf('async function openPage('), main.indexOf('/** Abrir por título'));
+    assert.match(opening, /const keptViewport = staying[\s\S]*holdTextViewport\(text\)/);
+    assert.match(opening, /takeViewportAfterReload\(sessionStorage, page\.id, route\)/);
+    assert.match(opening, /restoreTextViewport\(text, keptViewport\)/);
+    assert.match(main, /window\.addEventListener\('pagehide', rememberReadingPlace\)/);
+    assert.match(main, /rememberReadingPlace\(\);\s*window\.location\.reload\(\);/);
+  });
 });

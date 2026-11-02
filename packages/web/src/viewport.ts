@@ -9,6 +9,14 @@ export interface HeldViewport {
   seats: ViewportSeat[];
 }
 
+interface RememberedViewport {
+  page: string;
+  route: string;
+  viewport: HeldViewport;
+}
+
+const RELOAD_VIEWPORT = 'vera-reading-viewport';
+
 /**
  * Guarda varios testigos, no uno solo: el gesto puede borrar justamente el
  * bloque que estaba más cerca del borde. El siguiente superviviente conserva
@@ -85,4 +93,61 @@ export function restoreViewportThroughComposition(
     }
   };
   restore();
+}
+
+/**
+ * Deja un testigo antes de que el documento entero desaparezca.
+ *
+ * `sessionStorage` limita el recuerdo a esta pestaña: otra ventana puede estar
+ * leyendo la misma página en otro lugar y no tiene por qué heredar éste.
+ */
+export function rememberViewportForReload(
+  storage: Storage,
+  page: string,
+  route: string,
+  viewport: HeldViewport,
+): void {
+  const remembered: RememberedViewport = { page, route, viewport };
+  try {
+    storage.setItem(RELOAD_VIEWPORT, JSON.stringify(remembered));
+  } catch {
+    // La lectura sigue funcionando aunque el navegador niegue almacenamiento.
+  }
+}
+
+/**
+ * Consume el testigo una sola vez y sólo en la misma página y dirección.
+ *
+ * Consumir también los recuerdos que no coinciden evita que una navegación
+ * posterior restaure por accidente un lugar perteneciente a una recarga vieja.
+ */
+export function takeViewportAfterReload(
+  storage: Storage,
+  page: string,
+  route: string,
+): HeldViewport | null {
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(RELOAD_VIEWPORT);
+    storage.removeItem(RELOAD_VIEWPORT);
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  try {
+    const remembered = JSON.parse(raw) as Partial<RememberedViewport>;
+    const viewport = remembered.viewport as Partial<HeldViewport> | undefined;
+    if (
+      remembered.page !== page || remembered.route !== route || viewport === undefined ||
+      typeof viewport.scrollTop !== 'number' || !Array.isArray(viewport.seats)
+    ) return null;
+    const seats = viewport.seats.filter((seat): seat is ViewportSeat =>
+      typeof seat === 'object' && seat !== null &&
+      typeof (seat as Partial<ViewportSeat>).block === 'string' &&
+      typeof (seat as Partial<ViewportSeat>).top === 'number',
+    );
+    return { scrollTop: viewport.scrollTop, seats };
+  } catch {
+    return null;
+  }
 }
