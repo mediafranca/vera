@@ -318,7 +318,7 @@ describe('barra de formato', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
     for (const name of [
       'bold', 'italic', 'strikethrough', 'underline', 'superscript', 'subscript',
-      'quote', 'code', 'link', 'external-link',
+      'footnote', 'quote', 'code', 'link', 'external-link',
     ]) {
       assert.match(source, new RegExp(`icon: '${name}'`));
     }

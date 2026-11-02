@@ -79,10 +79,13 @@ export {
   embeddedMapHeight,
   embeddedMapConfig,
   headingAnchor,
+  markdownHeadings,
+  markdownInlineText,
   inlineMarkdown,
   renderMarkdown,
   uniqueAnchors,
 } from './markdown.ts';
+export type { MarkdownHeading } from './markdown.ts';
 export type {
   EmbeddedMap3DCamera,
   EmbeddedMapCamera,

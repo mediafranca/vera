@@ -81,6 +81,11 @@ contract NativeMarkdownEditing {
         -- mark leads back to the precise reference occurrence from which the
         -- reader arrived, including when one note is cited more than once.
 
+    @invariant FootnoteInsertionCompletesThePair
+        -- The footnote control and `/nota` insert both a page-unique reference
+        -- at the writing position and its editable definition. Existing prose
+        -- remains in place and focus lands where the note itself is written.
+
     -- Un índice al principio de una página larga es Markdown corriente, y hasta
     -- ahora no llevaba a ninguna parte: el enlace se dibujaba, se pulsaba y no
     -- pasaba nada. Los encabezados de Vera son bloques, no elementos con nombre,
@@ -90,6 +95,13 @@ contract NativeMarkdownEditing {
         -- A link to an anchor within the page reaches the heading whose text
         -- produces that anchor, including when two headings produce the same one.
         -- An anchor that no heading produces is not presented as a link.
+
+    @invariant GeneratedIndexesRemainMarkdown
+        -- `/indice` writes an ordinary hierarchical Markdown list in document
+        -- order. Every item names the heading as read and links to the same
+        -- anchor Vera assigns to it, including duplicate headings. Later edits
+        -- do not silently rewrite the authored index; invoking the command is
+        -- the explicit act that takes a new snapshot of the page structure.
 
     @invariant RenderedPresentationIsFaithful
         -- Content not currently being edited is presented as rendered Markdown:
