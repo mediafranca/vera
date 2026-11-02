@@ -119,6 +119,19 @@ contract MCPIsADoorAndNotASecondMemory {
         -- con un outline Markdown adentro oculta a Vera la estructura que el
         -- texto aparenta tener.
 
+    @invariant AgentCannotFlattenTheOutlineAtTheWriteDoor
+        -- La puerta canónica rechaza la creación o edición generada que intenta
+        -- guardar varias cabeceras o ítems Markdown dentro de un solo bloque.
+        -- No depende de que el modelo recuerde una instrucción ni de que use MCP:
+        -- toda credencial agente encuentra la misma frontera. Prosa multilínea,
+        -- tablas y código cercado siguen siendo contenido legítimo de un bloque.
+
+    @invariant ExtendingPreservesExistingBlockIdentity
+        -- Añadir conocimiento crea hijos o hermanos en el árbol que se leyó y
+        -- conserva las identidades estables existentes. Reescribir un bloque es
+        -- una corrección de esas palabras, no el mecanismo para anexar una idea
+        -- ni para reemplazar la página completa.
+
     @invariant ConnectionsUseTheCorpusVocabulary
         -- Un enlace [[Página]] conecta páginas. Cuando la conexión además dice
         -- qué relación hay, se expresa con las propiedades de bloque cuyos

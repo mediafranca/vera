@@ -582,6 +582,8 @@ export const TOOLS: readonly VeraTool[] = [
           '- el frontmatter se escribe con set_property;\n' +
           '- cada unidad semántica ocupa un bloque;\n' +
           '- la jerarquía se expresa con parent;\n' +
+          '- una página se extiende con hijos o hermanos; no se reemplaza entera;\n' +
+          '- una idea nueva crea un bloque; sólo se edita el texto que necesita corrección;\n' +
           '- las conexiones se escriben como enlaces [[Página]].'
         : `# ${guide.title}\n\n${outline(guide.blocks)}`;
 
@@ -671,7 +673,9 @@ export const TOOLS: readonly VeraTool[] = [
       'Reescribe el texto de un bloque cuya autoría vigente pertenece a esta identidad agente. ' +
       'Exige la revisión exacta entregada por vera_leer_pagina; si el bloque cambió, devuelve ' +
       'conflicto y el estado actual sin aplicar nada. No permite editar palabras ajenas, mover ' +
-      'el bloque ni borrarlo. Cada corrección usa una clave de origen idempotente.',
+      'el bloque ni borrarlo. Se usa sólo cuando esas palabras necesitan corrección: para añadir ' +
+      'una idea se crea un hijo o hermano y se conserva este bloque. Cada corrección usa una clave ' +
+      'de origen idempotente.',
     inputSchema: {
       type: 'object',
       properties: {

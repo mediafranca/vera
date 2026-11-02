@@ -232,6 +232,14 @@ surface ActiveManifestDoor {
     @guarantee ActivationIsNotExecution
         -- Vera sólo considera efectiva una revisión cuando el runtime declara
         -- qué manifiesto cargó. Una activación sin recibo permanece visible como tal.
+
+    @guarantee EveryManifestCarriesTheWritingGrammar
+        -- Además de las páginas elegidas, el manifiesto declara una garantía
+        -- ejecutable común a todo operador: Vera es un árbol ordenado de bloques
+        -- estables; las mutaciones son mínimas; las palabras ajenas se proponen;
+        -- y aplanar varios nodos dentro de un bloque será rechazado. La gramática
+        -- no depende de que una página de práctica haya sido seleccionada ni de
+        -- que el modelo recuerde pedirla antes de escribir.
 }
 
 open question "¿Qué cadencia de latido permite distinguir un runtime apagado de uno sano que no ha tenido trabajo, sin convertir el recibo de carga en telemetría invasiva?"
