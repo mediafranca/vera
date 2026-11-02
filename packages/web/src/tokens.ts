@@ -15,6 +15,41 @@ export interface DesignToken {
   dark: string;
 }
 
+/**
+ * El nombre que una persona ve en Apariencia.
+ *
+ * Vive junto al catálogo para que añadir un token sin explicar su función sea
+ * un error comprobable, no una variable cruda que aparece meses después en la
+ * interfaz. Los nombres describen el uso vigente, no una implementación
+ * histórica.
+ */
+export const TOKEN_LABELS: Record<string, string> = {
+  '--bg': 'fondo',
+  '--bg-raised': 'fondo elevado',
+  '--text': 'texto',
+  '--text-dim': 'texto atenuado',
+  '--rule': 'líneas y bordes',
+  '--accent': 'acento',
+  '--node-central': 'página central del mapa',
+  '--node-text': 'páginas del mapa',
+  '--link-stroke': 'aristas neutras del mapa',
+  '--link-in': 'aristas entrantes al señalar',
+  '--link-out': 'aristas salientes al señalar',
+  '--warm': 'énfasis cálido',
+  '--voice': 'grabación activa',
+  '--success': 'éxito y disponibilidad',
+  '--warning': 'advertencia y degradación',
+  '--danger': 'fallo y acción destructiva',
+  '--line-height': 'interlínea',
+  '--text-size': 'tamaño del texto',
+  '--indent': 'sangría por nivel',
+  '--phone-scale': 'tamaño en el teléfono',
+  '--content-width': 'ancho de la columna',
+  '--font-body': 'texto de lectura',
+  '--font-ui': 'interfaz',
+  '--font-mono': 'Markdown y código',
+};
+
 export const DESIGN_LIBRARY_FORMAT = 'vera.designs';
 export const DESIGN_LIBRARY_VERSION = 2;
 export const DEFAULT_DESIGN_NAME = 'Vera';
@@ -117,8 +152,13 @@ export const DEFAULT_TOKENS: DesignToken[] = [
   { name: '--rule', light: '#454f6e21', dark: '#5220606e' },
   { name: '--accent', light: '#a84a0b', dark: '#ee895d' },
   { name: '--node-central', light: '#045591', dark: '#ec5f22' },
-  { name: '--node-fill', light: '#393a3c', dark: '#acc8af' },
-  { name: '--link-stroke', light: '#c5c8c1', dark: '#54273c' },
+  // El nodo es su nombre. El antiguo `--node-fill` pertenecía al modo de
+  // círculos retirado; conservar ese nombre hacía parecer que aún había una
+  // figura que rellenar cuando el token ya gobernaba el texto.
+  { name: '--node-text', light: '#393a3c', dark: '#acc8af' },
+  // La tinta final de la arista, sin otra opacidad escondida en el render. Los
+  // dos grises superan 3:1 contra los fondos canónicos: discretos, pero visibles.
+  { name: '--link-stroke', light: '#767c7a', dark: '#7b767a' },
   // Las dos direcciones de un enlace, con un color cada una.
   //
   // Una arista sin dirección dice que dos páginas se tocan y calla lo único que
@@ -138,6 +178,11 @@ export const DEFAULT_TOKENS: DesignToken[] = [
   // decir nada por costumbre, y entonces no queda color con que avisar el día
   // que hace falta saber de un vistazo si se está oyendo.
   { name: '--voice', light: '#c0392b', dark: '#e05545' },
+  // Estados que aparecen en conexiones, agentes y acciones destructivas. No
+  // sustituyen la palabra o el icono: los acompañan y siguen al tema elegido.
+  { name: '--success', light: '#2b7449', dark: '#73d69a' },
+  { name: '--warning', light: '#8a5912', dark: '#e0ae51' },
+  { name: '--danger', light: '#9f2525', dark: '#e06f67' },
   // Cuánto se agranda todo en una pantalla de teléfono.
   //
   // Un token y no un número en la hoja: la talla cómoda depende del aparato y de
@@ -261,13 +306,14 @@ export function parseDesignTokenPackage(source: string): ParsedDesignTokenPackag
     if (!isRecord(entry) || typeof entry['name'] !== 'string') {
       throw new Error('El respaldo contiene un token sin nombre.');
     }
-    const name = entry['name'];
+    const sourceName = entry['name'];
+    const name = sourceName === '--node-fill' ? '--node-text' : sourceName;
     if (seen.has(name)) throw new Error(`El token ${name} aparece más de una vez.`);
     seen.add(name);
 
     const known = defaults.get(name);
     if (known === undefined) {
-      unsupported.push(name);
+      unsupported.push(sourceName);
       continue;
     }
     if (!safeTokenValue(entry['light'], known) || !safeTokenValue(entry['dark'], known)) {
@@ -387,13 +433,26 @@ function normaliseTokens(value: unknown): DesignToken[] {
     if (!Array.isArray(saved)) return structuredClone(DEFAULT_TOKENS);
     const byName = new Map(saved.filter((t) => typeof t?.name === 'string').map((t) => [t.name, t]));
     return DEFAULT_TOKENS.map((token) => {
-      const mine = byName.get(token.name);
-      return mine === undefined
+      // `--node-fill` fue el nombre público del token antes de retirar el modo
+      // circular. Leerlo como `--node-text` conserva cada tema existente.
+      const mine = byName.get(token.name) ?? (
+        token.name === '--node-text' ? byName.get('--node-fill') : undefined
+      );
+      const migrated = token.name === '--link-stroke' && mine !== undefined
+        ? {
+            ...mine,
+            // Sólo cambia la reserva antigua exacta. Un gris elegido por la
+            // persona, aunque sea parecido, permanece suyo.
+            light: mine.light === '#c5c8c1' ? token.light : mine.light,
+            dark: mine.dark === '#54273c' ? token.dark : mine.dark,
+          }
+        : mine;
+      return migrated === undefined
         ? { ...token }
         : {
             name: token.name,
-            light: typeof mine.light === 'string' ? mine.light : token.light,
-            dark: typeof mine.dark === 'string' ? mine.dark : token.dark,
+            light: typeof migrated.light === 'string' ? migrated.light : token.light,
+            dark: typeof migrated.dark === 'string' ? migrated.dark : token.dark,
           };
     });
   } catch {

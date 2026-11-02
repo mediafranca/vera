@@ -20,7 +20,7 @@ interface CriticalPalette {
   textDim: string;
   rule: string;
   accent: string;
-  warm: string;
+  danger: string;
   fontUi: string;
 }
 
@@ -35,7 +35,7 @@ function criticalPalette(): CriticalPalette {
     textDim: value('--text-dim'),
     rule: value('--rule'),
     accent: value('--accent'),
-    warm: value('--warm'),
+    danger: value('--danger'),
     fontUi: value('--font-ui'),
   };
 }
@@ -70,7 +70,7 @@ const shell = (title: string, markText = 'Vera · invitación'): HTMLElement => 
       .invitation-access button{width:100%;padding:.85rem 1rem;border:0;border-radius:.55rem;background:${p.accent};color:${p.bg};font:inherit;font-weight:650;cursor:pointer}
       .invitation-access button:disabled{cursor:wait;opacity:.58}
       .shared-notice{margin:1rem 0 0;color:${p.textDim};line-height:1.45}
-      .shared-notice[data-bad='true']{color:${p.warm}}
+      .shared-notice[data-bad='true']{color:${p.danger}}
     `;
     document.head.append(style);
   }

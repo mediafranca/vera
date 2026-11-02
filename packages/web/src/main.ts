@@ -2854,11 +2854,8 @@ async function drawGraph(reach = 1): Promise<void> {
     showTitles: true,
     autoRotate: workspace.graphAutoRotate,
     preserveDirection: requestedDepth > 1,
-    // El nodo es su nombre. @guarantee GraphNodesAreTheirNames: un círculo al
-    // lado no dice nada que el nombre no diga, y gasta el mismo sitio diciendo
-    // menos. En 2D los nombres no se traslapan: dos nombres uno encima de otro
-    // no son ninguno de los dos.
-    nodeStyle: 'title' as const,
+    // @guarantee GraphNodesAreTheirNames. En 2D los nombres no se traslapan:
+    // dos nombres uno encima de otro no son ninguno de los dos.
     // Si lo abierto es un recorrido, su hilo. Ver ThreadSettings en render.ts.
     thread: openTrail,
     fontFamily:

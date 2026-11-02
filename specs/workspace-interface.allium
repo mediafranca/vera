@@ -44,6 +44,22 @@ contract EditablePresentation {
         -- Design tokens remain directly inspectable and editable. Governed CSS
         -- sources are pages and belong to governed-stylesheet.allium.
 
+    @invariant EveryDesignTokenNamesItsCurrentUse
+        -- Every canonical token has a human label and a live consumer. A token
+        -- is renamed or retired when the represented object disappears; the
+        -- settings surface never preserves an obsolete rendering mode as if it
+        -- were still part of Vera.
+
+    @invariant EffectiveInkIsInspectable
+        -- The value shown for a persistent colour is the ink rendered at rest.
+        -- A hidden base opacity may not turn it into another colour. Temporary
+        -- focus and hover attenuation remain interaction state, not design.
+
+    @invariant NativeSurfacesShareTheEffectiveDesign
+        -- Workspace, 2D and 3D maps, previews, Mermaid, executable frames and
+        -- public projection receive the same effective canonical tokens. A
+        -- native surface does not maintain a second private palette.
+
     @invariant DualColourScheme
         -- Every design provides both light and dark colour schemes.
 }

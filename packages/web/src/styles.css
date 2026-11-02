@@ -839,7 +839,7 @@ button { touch-action: manipulation; }
 }
 
 .search-page-status {
-  color: var(--muted);
+  color: var(--text-dim);
 }
 
 .search-page-results {
@@ -872,7 +872,7 @@ button { touch-action: manipulation; }
 }
 
 .search-page-excerpt {
-  color: var(--muted);
+  color: var(--text-dim);
 }
 
 .hit {
@@ -2004,7 +2004,7 @@ button { touch-action: manipulation; }
 
 #sync-state[data-state='offline'],
 #sync-state[data-state='rejected'] {
-  color: var(--danger, #c65b5b);
+  color: var(--danger);
 }
 
 /* Algo espera a ser traído, y por eso esto se pulsa.
@@ -2713,7 +2713,7 @@ html.presenting body {
   max-height: 38vh;
   overflow: auto;
   padding: 0.8rem 1rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rule);
   border-radius: 0.45rem;
   background: color-mix(in srgb, var(--bg) 96%, transparent);
   box-shadow: 0 0.6rem 2rem color-mix(in srgb, var(--text) 12%, transparent);
@@ -4657,7 +4657,7 @@ pre.copyable-code {
 
 .code-copy .icon { width: 100%; height: 100%; }
 .code-copy[data-state='copied'] { color: var(--accent); }
-.code-copy[data-state='failed'] { color: var(--danger, #9f2525); }
+.code-copy[data-state='failed'] { color: var(--danger); }
 
 .code-copy:hover,
 .code-copy:focus-visible {
@@ -5991,9 +5991,9 @@ body.settings-open #text {
 .agent-runtime-list time { color: var(--text-dim); font-size: .82rem; }
 .agent-runtime-list p { grid-column: 1 / -1; margin: 0; color: var(--text-dim); }
 .agent-runtime-badge, .agent-runtime-empty { display: inline-flex; width: fit-content; border-radius: 999px; padding: .2rem .55rem; background: var(--bg-raised); color: var(--text-dim); }
-.agent-runtime-badge.is-current.is-ready { background: color-mix(in srgb, var(--success, #24845d) 16%, transparent); color: var(--success, #24845d); }
-.agent-runtime-badge.is-divergent, .agent-runtime-badge.is-failed { background: color-mix(in srgb, var(--danger, #b54a45) 14%, transparent); color: var(--danger, #b54a45); }
-.agent-runtime-badge.is-degraded { background: color-mix(in srgb, var(--warning, #a66b16) 14%, transparent); color: var(--warning, #8a5912); }
+.agent-runtime-badge.is-current.is-ready { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+.agent-runtime-badge.is-divergent, .agent-runtime-badge.is-failed { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.agent-runtime-badge.is-degraded { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }
 .agent-administration-card h3 { margin: 1.2rem 0 .4rem; font: 500 1rem var(--font-body); }
 .agent-administration-card > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; min-height: 2.75rem; cursor: pointer; }
 .agent-administration-card > summary .agent-principal { margin: 0; color: var(--text-dim); }
@@ -6293,7 +6293,7 @@ body.settings-open #text {
 .appearance-preview-text code { color: var(--accent); font: .76em var(--font-mono); }
 .appearance-preview-map svg { display: block; width: 100%; height: 4rem; overflow: visible; }
 .appearance-preview-map line { stroke: var(--link-stroke); stroke-width: 2; }
-.appearance-preview-map text { fill: var(--text); font: 12px var(--font-ui); }
+.appearance-preview-map text { fill: var(--node-text); font: 12px var(--font-ui); }
 .appearance-preview-map text.central {
   fill: var(--node-central);
   font-size: 15px;
@@ -9355,9 +9355,9 @@ html[data-working-slow='true']::after {
 .process-proposal-preview .executable { margin-block: 0; }
 .process-proposal-actions { display: flex; gap: .5rem; }
 .connection-proposals { margin-block: 1.5rem; }
-.connection-proposal { border: 1px solid var(--line); border-radius: .5rem; padding: 1rem; margin-block: .75rem; }
+.connection-proposal { border: 1px solid var(--rule); border-radius: .5rem; padding: 1rem; margin-block: .75rem; }
 .connection-proposal h4 { margin: 0 0 .25rem; }
-.connection-proposal small { display: block; color: var(--muted); margin-block: .4rem .8rem; }
+.connection-proposal small { display: block; color: var(--text-dim); margin-block: .4rem .8rem; }
 .connection-proposal-diff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .connection-proposal-diff pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
 .connection-proposal-before { border-inline-start: .2rem solid var(--danger); }
@@ -9734,7 +9734,7 @@ html[data-working-slow='true']::after {
 }
 
 .service-result.bad {
-  color: var(--warn, var(--text));
+  color: var(--warning);
 }
 
 /*
@@ -9785,7 +9785,7 @@ html[data-working-slow='true']::after {
 }
 
 .zotero-item:hover {
-  background: var(--bg-hover, var(--rule));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-raised));
 }
 
 .zotero-title {
@@ -10197,7 +10197,7 @@ html[data-working-slow='true']::after {
    es una conexión entrando con una identidad que no es la suya, y tiene que
    verse recorriendo la tabla sin leer celda por celda. */
 .governing td.governing-warn {
-  color: var(--warn, var(--accent));
+  color: var(--warning);
 }
 
 .governing th,
@@ -11126,7 +11126,7 @@ html[data-working-slow='true']::after {
   max-width: calc(100% - 2rem);
   margin: 0.55rem auto;
   padding: 0.4rem 0.7rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--rule);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
   box-shadow: 0 0.2rem 0.8rem color-mix(in srgb, var(--text) 10%, transparent);
@@ -11472,7 +11472,7 @@ html[data-working-slow='true']::after {
   padding: 0.6rem 0.7rem;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 4%, transparent);
-  font-family: var(--font-text, inherit);
+  font-family: var(--font-body);
   font-size: 0.86rem;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -11492,7 +11492,7 @@ html[data-working-slow='true']::after {
 }
 
 .reconcile-theirs .reconcile-line.changed {
-  background: color-mix(in srgb, var(--danger, #c65b5b) 18%, transparent);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 .reconcile-choices {
@@ -11545,7 +11545,7 @@ html[data-working-slow='true']::after {
   border-radius: 4px;
   background: var(--bg-raised);
   color: var(--text);
-  font-family: var(--font-text, inherit);
+  font-family: var(--font-body);
   font-size: 0.86rem;
   line-height: 1.5;
   resize: vertical;
@@ -11729,7 +11729,7 @@ html[data-working-slow='true']::after {
 .activity-panel[hidden] { display: none; }
 
 .activity-deletions {
-  border-top: 1px solid var(--line, #d8d8d8);
+  border-top: 1px solid var(--rule);
 }
 
 .activity-deletion {
@@ -11738,7 +11738,7 @@ html[data-working-slow='true']::after {
   justify-content: space-between;
   gap: 1rem;
   padding: .8rem 0;
-  border-bottom: 1px solid var(--line, #d8d8d8);
+  border-bottom: 1px solid var(--rule);
 }
 
 .activity-deletion div,
@@ -11850,7 +11850,7 @@ html[data-working-slow='true']::after {
 .activity-list small,
 .activity-refusal,
 .activity-empty {
-  color: var(--muted, #6f6f6f);
+  color: var(--text-dim);
 }
 
 .activity-restore {
@@ -11866,11 +11866,11 @@ html[data-working-slow='true']::after {
 /* La aceptación de una invitación antecede a la aplicación y usa una superficie mínima. */
 #vera-root[data-layout='invitation'] { display: block; min-height: 100dvh; }
 .invitation-access { max-width: 48rem; margin: 0 auto; padding: max(2rem, env(safe-area-inset-top)) 1.25rem 4rem; }
-.invitation-mark { color: var(--muted, #666); font-size: .85rem; letter-spacing: .04em; }
+.invitation-mark { color: var(--text-dim); font-size: .85rem; letter-spacing: .04em; }
 .invitation-access h1 { margin: .35rem 0 1.5rem; }
 .invitation-access input { display: block; width: min(100%, 24rem); margin: 1rem 0; padding: .7rem; font: inherit; }
 .invitation-access button { padding: .65rem .9rem; font: inherit; cursor: pointer; }
-.shared-notice[data-bad='true'] { color: #a12424; }
+.shared-notice[data-bad='true'] { color: var(--danger); }
 
 .sharing-space { margin-top: .85rem; border: 1px solid var(--rule); border-radius: .65rem; background: var(--bg-raised); overflow: clip; }
 .sharing-space > summary { display: grid; grid-template-columns: minmax(10rem, 1fr) auto 1.25rem; align-items: center; gap: 1rem; min-height: 4.4rem; padding: .9rem 1rem; color: var(--text); cursor: pointer; list-style: none; transition: border-color .15s ease, background .15s ease; }
@@ -11924,10 +11924,10 @@ html[data-working-slow='true']::after {
 .sharing-list li button:disabled,
 .sharing-publish button:disabled,
 .sharing-issued-invitation button:disabled { opacity: .55; cursor: wait; }
-.sharing-list li button.danger { color: var(--danger, #9f2525); border-color: color-mix(in srgb, var(--danger, #9f2525) 55%, var(--rule)); }
-.sharing-list li button.danger:hover { background: color-mix(in srgb, var(--danger, #9f2525) 10%, var(--bg)); }
-.sharing-group > button.danger { color: var(--danger, #9f2525); border-color: color-mix(in srgb, var(--danger, #9f2525) 55%, var(--rule)); }
-.sharing-group > button.danger:hover { background: color-mix(in srgb, var(--danger, #9f2525) 10%, var(--bg)); }
+.sharing-list li button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--rule)); }
+.sharing-list li button.danger:hover { background: color-mix(in srgb, var(--danger) 10%, var(--bg)); }
+.sharing-group > button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--rule)); }
+.sharing-group > button.danger:hover { background: color-mix(in srgb, var(--danger) 10%, var(--bg)); }
 .sharing-danger-zone { padding-top: 1rem; border-top: 1px solid var(--rule); }
 .sharing-revoked-history { margin-top: .7rem; color: var(--text-dim); }
 .sharing-revoked-history > summary { cursor: pointer; }
@@ -11984,9 +11984,9 @@ html[data-working-slow='true']::after {
   line-height: 1.2;
 }
 
-.service-status-indicator[data-state='available'] { --service-status-colour: #2f7d4f; }
-.service-status-indicator[data-state='degraded'] { --service-status-colour: #9a6500; }
-.service-status-indicator[data-state='unavailable'] { --service-status-colour: var(--danger, #9f2525); }
+.service-status-indicator[data-state='available'] { --service-status-colour: var(--success); }
+.service-status-indicator[data-state='degraded'] { --service-status-colour: var(--warning); }
+.service-status-indicator[data-state='unavailable'] { --service-status-colour: var(--danger); }
 
 .service-status-mark {
   display: inline-grid;
@@ -12001,7 +12001,7 @@ html[data-working-slow='true']::after {
 
 .service-status-indicator[data-state='available'] .service-status-mark {
   background: var(--service-status-colour);
-  color: #fff;
+  color: var(--bg);
 }
 
 .service-status-mark .icon { width: .78rem; height: .78rem; }
@@ -12077,12 +12077,6 @@ html[data-working-slow='true']::after {
 .service-status-check:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .service-status-check:disabled { opacity: .55; cursor: wait; }
 .service-status-check .icon { width: 1rem; height: 1rem; }
-
-@media (prefers-color-scheme: dark) {
-  .service-status-indicator[data-state='available'] { --service-status-colour: #73d69a; }
-  .service-status-indicator[data-state='degraded'] { --service-status-colour: #e0ae51; }
-  .service-status-indicator[data-state='available'] .service-status-mark { color: #173421; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .format-bar:not([hidden]) { animation: none; }

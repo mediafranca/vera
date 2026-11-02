@@ -99,7 +99,13 @@ const publicExecutableFrames = `<script>
   const appearance = () => {
     const style = getComputedStyle(document.documentElement);
     const tokens = {};
-    for (const name of ['--bg','--text','--text-dim','--rule','--accent','--text-size','--line-height','--font-body','--font-ui','--font-mono']) tokens[name] = style.getPropertyValue(name).trim();
+    for (const name of [
+      '--bg','--bg-raised','--text','--text-dim','--rule','--accent',
+      '--node-central','--node-text','--link-stroke','--link-in','--link-out',
+      '--warm','--voice','--success','--warning','--danger','--phone-scale',
+      '--text-size','--line-height','--content-width','--indent',
+      '--font-body','--font-ui','--font-mono'
+    ]) tokens[name] = style.getPropertyValue(name).trim();
     return { scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', tokens };
   };
   const frames = () => [...document.querySelectorAll('iframe[data-executable-frame]')];

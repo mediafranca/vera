@@ -94,7 +94,6 @@ if (config === null || root === null || map === null || status === null) {
       dark,
       showEdges: true,
       showTitles: true,
-      nodeStyle: 'title' as const,
       autoRotate: config.view === '3d' && config.rotate,
       preserveDirection: reach > 1 || appearanceChange,
       thread,

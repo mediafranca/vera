@@ -65,10 +65,12 @@ describe('prioridades de interfaz posteriores al móvil', () => {
   it('sitúa una muestra compacta antes de los colores y representa el mapa con texto', () => {
     const list = settings.indexOf('host.append(list, designs, chooser, intro, appearancePreview(), advanced)');
     assert.ok(list >= 0, 'la muestra debe quedar inmediatamente antes de los colores avanzados');
-    assert.match(settings, /texto de la página central/);
-    assert.match(settings, /nodos del modo circular/);
+    assert.match(settings, /TOKEN_LABELS/);
     assert.match(settings, /<text class="central"/);
     assert.doesNotMatch(settings, /<circle class="central"/);
+    assert.doesNotMatch(graph, /renderCircularNodes|nodeStyle/);
+    assert.match(styles, /\.appearance-preview-map text\s*\{[^}]*fill:\s*var\(--node-text\)/s);
+    assert.match(styles, /\.appearance-preview-map line\s*\{[^}]*stroke:\s*var\(--link-stroke\)/s);
     assert.match(styles, /\.appearance-preview > article\s*\{[^}]*min-height:\s*6rem/s);
     assert.match(styles, /\.appearance-preview-map svg\s*\{[^}]*height:\s*4rem/s);
     assert.doesNotMatch(styles, /\.appearance-preview\s*\{\s*grid-template-columns:\s*1fr/);

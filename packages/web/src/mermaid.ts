@@ -15,6 +15,8 @@
 // La biblioteca pesa más que todo el resto de la aplicación junta, así que se
 // carga sólo cuando una página trae un diagrama, y una sola vez por sesión.
 
+import { DEFAULT_TOKENS } from './tokens.ts';
+
 type MermaidModule = typeof import('mermaid');
 
 let loading: Promise<MermaidModule['default']> | null = null;
@@ -26,13 +28,29 @@ let loading: Promise<MermaidModule['default']> | null = null;
  * sobre nodos grises. La paleta se declara completa para que texto, nodos,
  * grupos, notas y etiquetas de arista conserven contraste en ambos esquemas.
  */
-export function mermaidTheme(dark: boolean) {
-  const text = dark ? '#f4f1eb' : '#171513';
-  const muted = dark ? '#ddd7ce' : '#302c28';
-  const surface = dark ? '#292724' : '#fffdfa';
-  const raised = dark ? '#38342f' : '#f1ece4';
-  const accent = dark ? '#9fc7ff' : '#245b9e';
-  const rule = dark ? '#aaa096' : '#756b62';
+type MermaidPalette = Record<'bg' | 'bgRaised' | 'text' | 'textDim' | 'accent' | 'rule', string>;
+
+const tokenDefault = (name: string, dark: boolean): string => {
+  const token = DEFAULT_TOKENS.find((one) => one.name === name);
+  return token === undefined ? 'currentColor' : dark ? token.dark : token.light;
+};
+
+const effectiveMermaidPalette = (dark: boolean): MermaidPalette => {
+  const style = getComputedStyle(document.documentElement);
+  const value = (name: string): string => style.getPropertyValue(name).trim() || tokenDefault(name, dark);
+  return {
+    bg: value('--bg'), bgRaised: value('--bg-raised'), text: value('--text'),
+    textDim: value('--text-dim'), accent: value('--accent'), rule: value('--rule'),
+  };
+};
+
+export function mermaidTheme(dark: boolean, palette?: MermaidPalette) {
+  const colours = palette ?? {
+    bg: tokenDefault('--bg', dark), bgRaised: tokenDefault('--bg-raised', dark),
+    text: tokenDefault('--text', dark), textDim: tokenDefault('--text-dim', dark),
+    accent: tokenDefault('--accent', dark), rule: tokenDefault('--rule', dark),
+  };
+  const { bg: surface, bgRaised: raised, text, textDim: muted, accent, rule } = colours;
 
   return {
     theme: 'base' as const,
@@ -45,7 +63,7 @@ export function mermaidTheme(dark: boolean) {
       secondaryColor: raised,
       secondaryTextColor: text,
       secondaryBorderColor: rule,
-      tertiaryColor: dark ? '#202a35' : '#e8f1fb',
+      tertiaryColor: raised,
       tertiaryTextColor: text,
       tertiaryBorderColor: accent,
       textColor: text,
@@ -77,7 +95,7 @@ async function mermaidFor(dark: boolean): Promise<MermaidModule['default']> {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'sandbox',
-    ...mermaidTheme(dark),
+    ...mermaidTheme(dark, effectiveMermaidPalette(dark)),
     fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-ui') || 'sans-serif',
   });
   return mermaid;
