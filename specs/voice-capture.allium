@@ -28,6 +28,15 @@ entity VoiceRuntimeConfiguration {
     text_to_speech_enabled: Boolean
     speech_to_text_state: VoiceCapabilityState
     text_to_speech_state: VoiceCapabilityState
+    ffmpeg_path: String
+    speech_to_text_engine_path: String
+    speech_to_text_model_path: String
+    speech_to_text_language: String
+    text_to_speech_python_path: String
+    text_to_speech_worker_path: String
+    text_to_speech_model_root: String
+    text_to_speech_voice: String
+    text_to_speech_cache_root: String
 }
 
 contract GovernedVoiceRuntime {
@@ -54,6 +63,17 @@ contract GovernedVoiceRuntime {
     @invariant ModelsLiveWithDurableInstanceData
         -- In a container, voice models and mutable caches live on the durable
         -- volume. Replacing the application image does not silently erase them.
+
+    @invariant VoiceIsALibrarianCapability
+        -- Escuchar y hablar se gobiernan con la constitución, herramientas y
+        -- autoridad del bibliotecario. No se presentan como una conexión
+        -- genérica de Vera ni como una preferencia visual de la interfaz.
+
+    @invariant RuntimePathsAreInspectableAndEditable
+        -- The owner can type every executable, model, voice and cache path. A
+        -- native client may offer a file chooser, while an ordinary browser
+        -- keeps manual entry because it cannot inspect the host filesystem.
+        -- Saving immediately re-diagnoses the selected installation.
 }
 
 ------------------------------------------------------------

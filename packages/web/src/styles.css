@@ -6010,7 +6010,9 @@ body.settings-open #text {
 .agent-administration button { cursor: pointer; }
 .agent-administration button.primary { border-color: var(--accent); color: var(--accent); }
 .agent-source-rows { display: grid; gap: .35rem; max-height: 22rem; margin: .75rem 0; padding: .5rem; overflow: auto; border: 1px solid var(--rule); }
-.agent-source-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, auto) auto; gap: .65rem; align-items: center; padding: .3rem; }
+.agent-source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(8rem, auto) auto; gap: .65rem; align-items: center; padding: .3rem; }
+.agent-source-open { color: var(--accent); font-size: .78rem; text-decoration: none; }
+.agent-source-open:hover { text-decoration: underline; }
 .agent-source-row input { min-height: auto; }
 .agent-source-finder { position: relative; margin-block: .75rem; }
 .agent-source-finder > input { width: 100%; }
@@ -6024,6 +6026,7 @@ body.settings-open #text {
 @media (max-width: 640px) {
   .agent-source-row { grid-template-columns: minmax(0, 1fr) auto; }
   .agent-source-row select { grid-column: 1; width: 100%; }
+  .agent-source-open { grid-column: 1; }
   .agent-runtime-list li { grid-template-columns: minmax(0, 1fr) auto; }
   .agent-runtime-list time { grid-column: 1 / -1; }
 }
@@ -6503,6 +6506,33 @@ body.settings-open #text {
 .voice-switch small { color: var(--text-dim); line-height: 1.35; }
 .voice-switch:has(input:disabled) { cursor: default; opacity: .58; }
 
+.librarian-boundary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .7rem;
+  margin-bottom: 1.4rem;
+}
+
+.librarian-boundary section {
+  padding: .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.librarian-boundary h3 { margin: 0 0 .35rem; font-size: .9rem; }
+.librarian-boundary p { margin: 0; color: var(--text-dim); font-size: .8rem; line-height: 1.45; }
+
+.voice-path-form { display: grid; gap: .55rem; }
+.voice-path-group { padding: .55rem .7rem; border: 1px solid var(--rule); border-radius: 6px; }
+.voice-path-group > summary { cursor: pointer; font-weight: 600; }
+.voice-path-field { display: grid; gap: .2rem; margin-top: .65rem; }
+.voice-path-field > span:first-child { font-size: .78rem; font-weight: 600; }
+.voice-path-field small { color: var(--text-dim); font-size: .7rem; line-height: 1.35; }
+.voice-path-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem; }
+.voice-path-entry input { min-width: 0; font-family: var(--font-mono); font-size: .74rem; }
+.voice-path-entry button { white-space: nowrap; }
+
 .voice-paths {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -6521,6 +6551,11 @@ body.settings-open #text {
 }
 
 .voice-installation .settings-note { flex-basis: 100%; margin: 0; }
+
+@media (max-width: 640px) {
+  .librarian-boundary { grid-template-columns: 1fr; }
+  .voice-path-entry { grid-template-columns: 1fr; }
+}
 
 .external-editor-settings {
   display: grid;

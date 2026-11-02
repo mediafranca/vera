@@ -204,6 +204,18 @@ surface AgentAdministration {
         -- El manifiesto sólo contiene texto y referencias gobernadas; credenciales,
         -- tokens y secretos se expresan como referencias y nunca como valores.
 
+    @guarantee ConstitutionRemainsEditableCorpus
+        -- Identidad, propósito, prácticas, memoria y gobierno no se copian a
+        -- campos opacos de configuración. Siguen siendo páginas normales de
+        -- Vera: la persona puede abrirlas, enlazarlas, editarlas y recorrer su
+        -- historia. El manifiesto es una proyección versionada de esas fuentes,
+        -- no una segunda personalidad escondida en el panel.
+
+    @guarantee OperationalEvidenceIsVisibleWithoutEnteringContext
+        -- Permisos, referencias de secretos, salud, recibos y actividad se
+        -- muestran junto al agente para gobernarlo, pero sus valores privados,
+        -- caches y trazas internas no entran al manifiesto ni al grafo.
+
     @guarantee OnlyOneActiveManifestPerAgent
         -- Activar un manifiesto reemplaza al activo de ese agente; nunca quedan
         -- dos constituciones efectivas compitiendo.

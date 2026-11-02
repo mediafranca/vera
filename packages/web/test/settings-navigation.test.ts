@@ -10,7 +10,7 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Inicio', 'Biblioteca', 'Personas', 'Conexiones', 'Gobierno', 'Apariencia', 'Ayuda', 'Sistema']) {
+    for (const label of ['Inicio', 'Biblioteca', 'Personas', 'Bibliotecario', 'Conexiones', 'Gobierno', 'Apariencia', 'Ayuda', 'Sistema']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
     assert.match(settings, /'Participantes',[\s\S]*handlers\.onOpenPeople/);
@@ -49,11 +49,23 @@ describe('arquitectura de configuración', () => {
   });
 
   it('gobierna escuchar y hablar como capacidades locales separadas', () => {
+    assert.match(settings, /active === 'bibliotecario'\) void drawLibrarian/);
+    assert.match(settings, /function drawConnections[\s\S]*drawExternalEditors/);
+    assert.doesNotMatch(settings.match(/function drawConnections[\s\S]*?async function drawVoiceConfiguration/)?.[0] ?? '', /drawVoiceConfiguration\(host\)/);
     assert.match(settings, /'Activar voz'/);
     assert.match(settings, /'Escuchar · speech-to-text'/);
     assert.match(settings, /'Hablar · text-to-speech'/);
     assert.match(settings, /api\.configureVoice/);
     assert.match(settings, /Copiar instalación ·/);
+    assert.match(settings, /Guardar rutas y comprobar/);
+    assert.match(settings, /veraVoiceConfiguration/);
+  });
+
+  it('hace visible la frontera entre constitución y operación privada', () => {
+    assert.match(settings, /Dentro de su contexto/);
+    assert.match(settings, /Fuera de su contexto/);
+    assert.match(settings, /Bitácora de hoy/);
+    assert.match(settings, /Permisos y credenciales/);
   });
 
   it('presenta páginas del sistema sin exponer el espacio de nombres ni la taxonomía técnica', () => {
