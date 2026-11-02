@@ -1032,7 +1032,17 @@ export async function openLibrarianConversation(
   microphone.innerHTML = icon('mic');
   microphone.title = 'Grabar un mensaje de voz';
   microphone.setAttribute('aria-label', microphone.title);
-  composerShell.append(composer, microphone);
+  const audioMeter = document.createElement('span');
+  audioMeter.className = 'librarian-conversation-audio-meter';
+  audioMeter.setAttribute('role', 'meter');
+  audioMeter.setAttribute('aria-label', 'Nivel de entrada del micrófono');
+  audioMeter.setAttribute('aria-valuemin', '0');
+  audioMeter.setAttribute('aria-valuemax', '100');
+  audioMeter.setAttribute('aria-valuenow', '0');
+  const audioMeterFill = document.createElement('span');
+  audioMeterFill.className = 'librarian-conversation-audio-meter-fill';
+  audioMeter.append(audioMeterFill);
+  composerShell.append(composer, audioMeter, microphone);
   formBar.append(context, send);
   form.append(composerShell, formBar);
 
@@ -1115,11 +1125,20 @@ export async function openLibrarianConversation(
   });
 
   let activeRecording: Exclude<Awaited<ReturnType<typeof startRecording>>, { error: string }> | null = null;
+  let audioMeterTick: number | null = null;
+  const stopAudioMeter = (): void => {
+    if (audioMeterTick !== null) window.clearInterval(audioMeterTick);
+    audioMeterTick = null;
+    audioMeter.classList.remove('recording');
+    audioMeterFill.style.width = '0';
+    audioMeter.setAttribute('aria-valuenow', '0');
+  };
   microphone.addEventListener('click', () => {
     if (activeRecording === null) {
       microphone.disabled = true;
       void startRecording().then((started) => {
         if ('error' in started) {
+          stopAudioMeter();
           toast(started.error);
           return;
         }
@@ -1127,11 +1146,18 @@ export async function openLibrarianConversation(
         microphone.innerHTML = icon('player-pause');
         microphone.setAttribute('aria-label', 'Detener y enviar el mensaje de voz');
         microphone.classList.add('recording');
+        audioMeter.classList.add('recording');
+        audioMeterTick = window.setInterval(() => {
+          const level = Math.round(Math.min(1, Math.sqrt(started.level())) * 100);
+          audioMeterFill.style.width = `${level}%`;
+          audioMeter.setAttribute('aria-valuenow', String(level));
+        }, 100);
       }).finally(() => { microphone.disabled = false; });
       return;
     }
     const recording = activeRecording;
     activeRecording = null;
+    stopAudioMeter();
     microphone.disabled = true;
     microphone.innerHTML = icon('mic');
     microphone.setAttribute('aria-label', 'Transcribiendo mensaje de voz');
@@ -1167,6 +1193,7 @@ export async function openLibrarianConversation(
     if (dialog.open) void refresh();
   }, 3_000);
   dialog.addEventListener('close', () => {
+    stopAudioMeter();
     activeRecording?.cancel();
     window.clearInterval(clock);
     dialog.remove();
