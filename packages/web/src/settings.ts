@@ -47,7 +47,6 @@ import {
 } from './tokens.ts';
 
 export type Section =
-  | 'inicio'
   | 'biblioteca'
   | 'personas'
   | 'bibliotecario'
@@ -88,11 +87,9 @@ export interface SettingsHandlers {
    * costar una petición más.
    */
   drawMemory?(host: HTMLElement): void;
-  drawSummary?(host: HTMLElement): void;
 }
 
 const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'inicio', label: 'Inicio' },
   { id: 'biblioteca', label: 'Biblioteca' },
   { id: 'personas', label: 'Personas' },
   { id: 'bibliotecario', label: 'Bibliotecario' },
@@ -112,7 +109,6 @@ type CentreDestination = {
 };
 
 const CENTRE_DESTINATIONS: CentreDestination[] = [
-  { section: 'inicio', label: 'Estado de Vera', note: 'Corpus, actividad y accesos frecuentes', terms: 'salud resumen' },
   { section: 'biblioteca', label: 'Archivos', note: 'Imágenes, audios, documentos y adjuntos', open: (h) => h.onOpenFiles() },
   { section: 'personas', label: 'Participantes', note: 'Presencia, passkeys, sesiones y roles', open: (h) => h.onOpenPeople() },
   { section: 'bibliotecario', label: 'Bibliotecario', note: 'Constitución, capacidades, autoridad y evidencia' },
@@ -312,8 +308,7 @@ export function renderSettings(
   body.className = 'settings-body';
   host.append(body);
 
-  if (active === 'inicio') drawStart(body, handlers, host, tokens);
-  else if (active === 'biblioteca') drawLibrary(body, handlers);
+  if (active === 'biblioteca') drawLibrary(body, handlers);
   else if (active === 'personas') drawPeople(body, handlers);
   else if (active === 'bibliotecario') void drawLibrarian(body, handlers);
   else if (active === 'conexiones') void drawConnections(body, handlers);
@@ -1535,42 +1530,6 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
   actionCell.append(actions);
   row.append(fileCell, metadata, usageCell, actionCell);
   return row;
-}
-
-function drawStart(
-  host: HTMLElement,
-  handlers: SettingsHandlers,
-  centre: HTMLElement,
-  tokens: DesignToken[],
-): void {
-  heading(host, 'Tu Vera', 'Estado y tareas habituales.');
-  const actions = document.createElement('div');
-  actions.className = 'settings-destinations';
-  actions.append(
-    destination('Biblioteca', 'Archivos y materiales de tu cuaderno', () => {
-      handlers.onSectionChange('biblioteca');
-      renderSettings(centre, tokens, 'biblioteca', handlers);
-    }),
-    destination('Personas', 'Tu presencia, participantes y bibliotecarios', () => {
-      handlers.onSectionChange('personas');
-      renderSettings(centre, tokens, 'personas', handlers);
-    }),
-    destination('Bibliotecario', 'Constitución, capacidades, autoridad y actividad', () => {
-      handlers.onSectionChange('bibliotecario');
-      renderSettings(centre, tokens, 'bibliotecario', handlers);
-    }),
-    destination('Respaldo', 'Descargar o trasladar una copia completa', () => {
-      handlers.onSectionChange('sistema');
-      renderSettings(centre, tokens, 'sistema', handlers);
-    }),
-    destination('Registro de actividad', 'Cambios, eliminaciones y restauraciones', handlers.onOpenActivity),
-  );
-  host.append(actions);
-  heading(host, 'Estado');
-  const status = document.createElement('div');
-  status.className = 'settings-government';
-  handlers.drawSummary?.(status);
-  host.append(status);
 }
 
 function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
