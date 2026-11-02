@@ -483,7 +483,7 @@ function drawMemory(host: HTMLElement): void {
     const declared = found
       // Las instrucciones constituyen al agente y tienen su superficie propia:
       // volver a ofrecerlas en Gobierno convierte dos accesos en dos conceptos.
-      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication' && page.kind !== 'instructions')
+      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication' && page.kind !== 'instructions' && page.kind !== 'ontology')
       .filter((page) => !ontologyKinds.has(page.kind))
       .sort(
       (a, b) => rank(a.kind) - rank(b.kind) || a.title.localeCompare(b.title, 'es'),

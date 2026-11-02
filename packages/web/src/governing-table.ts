@@ -60,7 +60,6 @@ export const GOVERNING_KINDS: {
   mode: SpecialPageMode;
   what: string;
 }[] = [
-  { key: 'ontology', label: 'Ontología anterior', mode: 'documentación', what: 'compatibilidad temporal durante la migración' },
   { key: 'properties', label: 'Propiedades', mode: 'rectora', what: 'cada propiedad y qué clase de campo es' },
   { key: 'objects', label: 'Objetos', mode: 'rectora', what: 'cada clase de cosa y qué propiedades la constituyen' },
   { key: 'relations', label: 'Relaciones', mode: 'rectora', what: 'cada tipo de arista y cómo se lee desde ambos extremos' },

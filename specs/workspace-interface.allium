@@ -1772,6 +1772,8 @@ surface VeraWorkspace {
         -- Las instrucciones constitutivas del agente aparecen sólo bajo
         -- Bibliotecario: Gobierno no repite esa entrada como si fuera otro
         -- objeto administrativo.
+        -- Las superficies históricas que ya no gobiernan la instancia tampoco
+        -- ocupan un lugar en el menú; su historia permanece en el corpus.
 
     @guarantee HelpAndSettingsShareOneSearch
         -- Una búsqueda del Centro encuentra ajustes, destinos administrativos,
