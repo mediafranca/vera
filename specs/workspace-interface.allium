@@ -789,6 +789,14 @@ contract ProgressivePageReading {
         -- remains a single reversible gesture and is preserved while that
         -- workspace session redraws or changes pages.
 
+    @invariant FindingInsideAPageReadsTheWholeOutline
+        -- Ctrl/Cmd-F searches the blocks of the page being read rather than only
+        -- the text currently mounted in the viewport. Matches follow outline
+        -- order, including descendants hidden by a fold. Enter and Shift-Enter
+        -- move forward and backward with wraparound; reaching a hidden match
+        -- opens only its ancestor path and brings that block into view. Finding
+        -- changes no block, revision, operation or authored folding default.
+
     @invariant ExplainedRelationsRemainReferences
         -- The foot of a page has one References area, divided only by direction:
         -- pages that name this one and pages this one names. Explaining, typing

@@ -2987,6 +2987,69 @@ html.presenting body {
   margin-top: 1.4rem;
 }
 
+.page-find {
+  position: sticky;
+  top: 0.55rem;
+  z-index: 45;
+  width: min(28rem, calc(100% - 1rem));
+  margin: 0.7rem 0 0.2rem auto;
+  padding: 0.3rem;
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: 0.2rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  box-shadow: 0 5px 18px rgb(0 0 0 / 16%);
+}
+
+.page-find[hidden] { display: none; }
+
+.page-find input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.page-find-count {
+  min-width: 5.5em;
+  color: var(--text-dim);
+  font: 0.68rem var(--font-mono);
+  text-align: right;
+}
+
+.page-find button {
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0.35rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.page-find button:hover,
+.page-find button:focus-visible {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.page-find button:disabled { opacity: 0.3; }
+
+.block.page-find-match {
+  background: color-mix(in srgb, var(--warm) 9%, transparent);
+  border-radius: 4px;
+}
+
+.block.page-find-current {
+  background: color-mix(in srgb, var(--warm) 24%, transparent);
+  box-shadow: inset 3px 0 0 var(--warm);
+}
+
 /*
  * La fila no añade alto.
  *

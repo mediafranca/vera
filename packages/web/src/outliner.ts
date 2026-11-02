@@ -3465,6 +3465,21 @@ export function nodeReadingOrder(node: Node): BlockView[] {
   return [node.block, ...node.children.flatMap(nodeReadingOrder)];
 }
 
+/**
+ * Coincidencias de una página en el orden en que su outline se lee.
+ *
+ * La búsqueda es insensible a mayúsculas y diacríticos, pero devuelve bloques
+ * canónicos: ni el texto normalizado ni el plegado se convierten en contenido.
+ */
+export function pageFindMatches(blocks: BlockView[], query: string): BlockView[] {
+  // @invariant FindingInsideAPageReadsTheWholeOutline
+  const fold = (value: string): string =>
+    value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+  const needle = fold(query.trim());
+  if (needle === '') return [];
+  return buildTree(blocks).flatMap(nodeReadingOrder).filter((block) => fold(block.content).includes(needle));
+}
+
 /** El orden auditable en que desaparece un subárbol: hojas antes que padres. */
 export function blockRemovalOrder(node: Node): string[] {
   return [...node.children.flatMap(blockRemovalOrder), node.block.stableId];
@@ -3516,6 +3531,24 @@ let pickedTo: string | null = null;
 let pickedPage: string | null = null;
 /** Retira el oyente de teclado del dibujo anterior. */
 let dropPickedKeys: (() => void) | null = null;
+
+interface PageFindState {
+  query: string;
+  matches: string[];
+  at: number;
+  returnFocus: HTMLElement | null;
+}
+
+const pageFindStates = new Map<string, PageFindState>();
+const pageFindOpeners = new Map<string, () => void>();
+
+/** Abre el buscador del outliner que representa ahora esa página. */
+export function openPageFind(page: string): boolean {
+  const open = pageFindOpeners.get(page);
+  if (open === undefined) return false;
+  open();
+  return true;
+}
 
 interface ProcessUiState {
   open: boolean;
@@ -6943,6 +6976,7 @@ export function renderOutliner(
     // El orden de lectura, que es este y no el del arbol guardado.
     visible.push(node.block.stableId);
     rows.set(node.block.stableId, row);
+    paintFindRow(row, node.block.stableId);
     if (picked.has(node.block.stableId)) row.classList.add('picked');
     // Un subárbol plegado no se dibuja. Como la vecindad se calcula sobre el
     // árbol visible, las teclas que recorren bloques lo saltan sin saber nada
@@ -7014,6 +7048,176 @@ export function renderOutliner(
    */
   const visible: string[] = [];
   const rows = new Map<string, HTMLElement>();
+
+  let findState = pageFindStates.get(page.id) ?? null;
+  let findObserver: MutationObserver | null = null;
+  let findExpiry = 0;
+  const findBar = document.createElement('div');
+  findBar.className = 'page-find';
+  findBar.hidden = findState === null;
+  findBar.setAttribute('role', 'search');
+
+  const findInput = document.createElement('input');
+  findInput.type = 'search';
+  findInput.placeholder = 'Buscar en esta página';
+  findInput.setAttribute('aria-label', 'Buscar en esta página');
+  findInput.value = findState?.query ?? '';
+
+  const findCount = document.createElement('output');
+  findCount.className = 'page-find-count';
+  findCount.setAttribute('aria-live', 'polite');
+
+  const findPrevious = document.createElement('button');
+  findPrevious.type = 'button';
+  findPrevious.className = 'page-find-previous';
+  findPrevious.innerHTML = icon('arrow-up');
+  findPrevious.title = 'Coincidencia anterior';
+  findPrevious.setAttribute('aria-label', 'Coincidencia anterior');
+
+  const findNext = document.createElement('button');
+  findNext.type = 'button';
+  findNext.className = 'page-find-next';
+  findNext.innerHTML = icon('arrow-down');
+  findNext.title = 'Coincidencia siguiente';
+  findNext.setAttribute('aria-label', 'Coincidencia siguiente');
+
+  const findClose = document.createElement('button');
+  findClose.type = 'button';
+  findClose.className = 'page-find-close';
+  findClose.innerHTML = icon('x');
+  findClose.title = 'Cerrar búsqueda';
+  findClose.setAttribute('aria-label', 'Cerrar búsqueda');
+  findBar.append(findInput, findCount, findPrevious, findNext, findClose);
+  list.before(findBar);
+
+  const paintFindRow = (row: HTMLElement, id: string): void => {
+    const matching = findState?.matches.includes(id) === true;
+    const current = matching && findState?.matches[findState.at] === id;
+    row.classList.toggle('page-find-match', matching);
+    row.classList.toggle('page-find-current', current);
+  };
+
+  const updateFindCount = (): void => {
+    const count = findState?.matches.length ?? 0;
+    if (count === 0) {
+      findCount.value = findState?.query.trim() === '' ? '' : 'Sin coincidencias';
+    } else {
+      findCount.value = `${(findState?.at ?? 0) + 1} de ${count}`;
+    }
+    findPrevious.disabled = count === 0;
+    findNext.disabled = count === 0;
+  };
+
+  const paintFindRows = (): void => {
+    for (const [id, row] of rows) paintFindRow(row, id);
+    updateFindCount();
+  };
+
+  const landFind = (id: string): void => {
+    findObserver?.disconnect();
+    window.clearTimeout(findExpiry);
+    const selector = `.block[data-id="${CSS.escape(id)}"]`;
+    const land = (): boolean => {
+      const row = list.querySelector<HTMLElement>(selector);
+      if (row === null) return false;
+      paintFindRows();
+      row.scrollIntoView({ block: 'center' });
+      return true;
+    };
+    if (land()) return;
+    findObserver = new MutationObserver(() => {
+      if (land()) findObserver?.disconnect();
+    });
+    findObserver.observe(list, { childList: true, subtree: true });
+    findExpiry = window.setTimeout(() => findObserver?.disconnect(), 10_000);
+  };
+
+  const moveFind = (by: 1 | -1): void => {
+    if (findState === null || findState.matches.length === 0) return;
+    findState.at = (findState.at + by + findState.matches.length) % findState.matches.length;
+    const id = findState.matches[findState.at];
+    if (id === undefined) return;
+    // Buscar en la página completa prevalece sobre el recorte transitorio de
+    // un bloque enfocado. El estado del buscador sobrevive al repintado y llega
+    // después al bloque que ya puede existir en la vista completa.
+    if (focusRoot !== null) {
+      callbacks.onFocusBlock?.(null);
+      return;
+    }
+    const revealed = foldsWhileRevealing(page.blocks, page.folded, id);
+    if (revealed.length !== page.folded.length || revealed.some((one, at) => one !== page.folded[at])) {
+      page.folded = revealed;
+      renderOutliner(container, page, callbacks, focus, focusRoot, readOnly, transparentBlockTraceability);
+      return;
+    }
+    landFind(id);
+  };
+
+  const refreshFind = (): void => {
+    if (findState === null) return;
+    findState.query = findInput.value;
+    findState.matches = pageFindMatches(page.blocks, findState.query).map((block) => block.stableId);
+    findState.at = 0;
+    pageFindStates.set(page.id, findState);
+    paintFindRows();
+    const first = findState.matches[0];
+    if (first !== undefined) {
+      findState.at = -1;
+      moveFind(1);
+    }
+  };
+
+  const closeFind = (): void => {
+    const returning = findState?.returnFocus ?? null;
+    findObserver?.disconnect();
+    window.clearTimeout(findExpiry);
+    pageFindStates.delete(page.id);
+    findState = null;
+    findBar.hidden = true;
+    paintFindRows();
+    if (returning?.isConnected) returning.focus();
+    else container.querySelector<HTMLElement>('.page-title')?.focus();
+  };
+
+  pageFindOpeners.set(page.id, () => {
+    if (findState === null) {
+      findState = {
+        query: '',
+        matches: [],
+        at: 0,
+        returnFocus: document.activeElement as HTMLElement | null,
+      };
+      pageFindStates.set(page.id, findState);
+      findBar.hidden = false;
+      updateFindCount();
+    }
+    findInput.focus();
+    findInput.select();
+  });
+
+  findInput.addEventListener('input', refreshFind);
+  findInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFind();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      moveFind(event.shiftKey ? -1 : 1);
+    }
+  });
+  findPrevious.addEventListener('click', () => moveFind(-1));
+  findNext.addEventListener('click', () => moveFind(1));
+  findClose.addEventListener('click', closeFind);
+  if (findState !== null) {
+    updateFindCount();
+    window.queueMicrotask(() => {
+      const current = findState?.matches[findState.at];
+      if (current !== undefined) landFind(current);
+      findInput.focus();
+    });
+  }
 
   const paintPicked = (): void => {
     for (const [id, row] of rows) row.classList.toggle('picked', picked.has(id));
