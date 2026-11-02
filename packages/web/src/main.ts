@@ -41,7 +41,9 @@ import {
 } from './outliner.ts';
 import {
   holdViewport as holdTextViewport,
+  rememberViewportForReload,
   restoreViewportThroughComposition as restoreTextViewport,
+  takeViewportAfterReload,
 } from './viewport.ts';
 import { systemNotice } from './system-notice.ts';
 import { onRecording } from './audio-block.ts';
@@ -1190,7 +1192,11 @@ async function openPage(
    */
   const text = $('#text');
   const staying = from === page.id;
-  const keptScroll = staying ? text.scrollTop : 0;
+  const route = window.location.pathname + window.location.search + window.location.hash;
+  const keptViewport = staying
+    ? holdTextViewport(text)
+    : takeViewportAfterReload(sessionStorage, page.id, route);
+  const keptScroll = keptViewport?.scrollTop ?? 0;
 
   // La identidad manda a partir de aquí: la URL pudo nombrarla por su título.
   workspace.activePage = page.id;
@@ -1428,10 +1434,13 @@ async function openPage(
   stopJournalPull();
   if (isDay(page.title) && workspace.focusRoot === null) {
     continueBackwards(page.title, staying ? keptScroll : 0);
-  } else if (staying && focus === null) {
+  } else if (keptViewport !== null && focus === null) {
     // Con bloque enfocado no se toca: el propio outliner lo trae a la vista, y
-    // eso es más preciso que devolver un número de píxeles.
-    text.scrollTop = keptScroll;
+    // eso es más preciso que devolver un número de píxeles. Sin foco se conserva
+    // el bloque visible a través de toda la composición progresiva: restaurar el
+    // número una sola vez, cuando sólo hay doce bloques montados, lo recorta a
+    // la altura provisional y devuelve la lectura al comienzo.
+    restoreTextViewport(text, keptViewport);
   }
 
   /*
@@ -4486,9 +4495,31 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadWorker || renewing) return;
     renewing = true;
+    rememberReadingPlace();
     window.location.reload();
   });
 }
+
+/**
+ * Una recarga del documento no es una navegación: conserva el lugar de lectura.
+ *
+ * El bloque visible es el testigo principal y `scrollTop` queda como respaldo.
+ * Se recuerda al salir para cubrir también la recarga del navegador, no sólo la
+ * que Vera inicia al descubrir una compilación nueva.
+ */
+function rememberReadingPlace(): void {
+  const page = workspace.activePage;
+  const text = document.getElementById('text');
+  if (page === null || text === null || text.dataset['page'] !== page) return;
+  rememberViewportForReload(
+    sessionStorage,
+    page,
+    window.location.pathname + window.location.search + window.location.hash,
+    holdTextViewport(text),
+  );
+}
+
+window.addEventListener('pagehide', rememberReadingPlace);
 
 /*
  * Si el compilado que sirve el servidor ya no es el que esta ventana cargó,
@@ -4549,6 +4580,7 @@ if (running != null) {
       const cssStale = servedCss !== undefined && servedCss !== runningCss;
       if (!jsStale && !cssStale) return;
       stale = true;
+      rememberReadingPlace();
       window.location.reload();
     } catch {
       // Sin red no hay nada que comparar, y no saber si hay versión nueva no es

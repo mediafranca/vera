@@ -759,6 +759,14 @@ contract ProgressivePageReading {
         -- page does not disappear, return to its beginning or pretend to have
         -- been opened a second time.
 
+    @invariant RefreshPreservesTheReadingSeat
+        -- Re-composing the active page or reloading the application shell keeps
+        -- the nearest surviving visible block at the same viewport offset. This
+        -- remains true while a long page is composed progressively: a temporary
+        -- short document cannot clamp the remembered position to its beginning.
+        -- A deliberate navigation to another page begins at that page instead
+        -- of inheriting the previous page's reading position.
+
     @invariant PullingFromTheBeginningRequestsTheCanonicalPage
         -- On a touch reading surface, pulling downward from the beginning makes
         -- the refresh intention and its threshold visible. Releasing beyond the
