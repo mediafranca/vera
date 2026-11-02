@@ -116,6 +116,11 @@ describe('arquitectura de configuración', () => {
     assert.match(main, /kind\.key === 'instructions'/);
   });
 
+  it('conserva la ontología histórica fuera del Gobierno vigente', () => {
+    assert.doesNotMatch(settings, /Ontología anterior/);
+    assert.match(main, /page\.kind !== 'ontology'/);
+  });
+
   it('presenta cada comando una sola vez en Teclado', () => {
     const names = COMMANDS.map((command) => command.name);
     assert.equal(new Set(names).size, names.length);

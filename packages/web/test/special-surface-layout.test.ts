@@ -53,6 +53,7 @@ describe('superficies especiales', () => {
     assert.match(governing, /key: 'governance'.*mode: 'derivada'/);
     assert.match(governing, /key: 'presentation'.*mode: 'documentación'/);
     assert.match(governing, /key: 'instructions'.*mode: 'documentación'/);
+    assert.doesNotMatch(governing, /key: 'ontology'.*mode:/);
   });
 
   it('deriva el índice de gobierno desde todas las páginas especiales', () => {
