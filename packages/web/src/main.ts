@@ -481,7 +481,9 @@ function drawMemory(host: HTMLElement): void {
     }
 
     const declared = found
-      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication')
+      // Las instrucciones constituyen al agente y tienen su superficie propia:
+      // volver a ofrecerlas en Gobierno convierte dos accesos en dos conceptos.
+      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication' && page.kind !== 'instructions')
       .filter((page) => !ontologyKinds.has(page.kind))
       .sort(
       (a, b) => rank(a.kind) - rank(b.kind) || a.title.localeCompare(b.title, 'es'),
@@ -515,22 +517,13 @@ function drawMemory(host: HTMLElement): void {
      * escribirlo estaría pidiendo una decisión que nadie tomó.
      */
     for (const kind of KNOWN) {
-      if (kind.key === 'service' || kind.key === 'activity' || kind.key === 'publication') continue;
+      if (kind.key === 'service' || kind.key === 'activity' || kind.key === 'publication' || kind.key === 'instructions') continue;
       if (found.some((page) => page.kind === kind.key)) continue;
       const item = row(kind.label, `Sin definir · ${kind.what}`);
       item.title = `Todavía no hay una página del sistema para ${kind.label.toLowerCase()}.`;
       item.disabled = true;
     }
   });
-}
-
-function drawCorpusSummary(host: HTMLElement): void {
-  const status = document.createElement('p');
-  status.className = 'settings-corpus-summary';
-  status.textContent = corpus === null
-    ? 'Vera está preparando el corpus.'
-    : `${corpus.pages} páginas · ${corpus.blocks} bloques · secuencia ${corpus.lastSequence}`;
-  host.append(status);
 }
 
 const $ = <T extends HTMLElement>(selector: string): T =>
@@ -3839,7 +3832,7 @@ function wireTheme(): void {
   // La configuración vive en su propia superficie, no en un panel suelto: son
   // varias secciones y van a ser más.
   const panel = $('#tokens');
-  let section: Section = 'inicio';
+  let section: Section = 'biblioteca';
 
 
   const openSettings = (): void => {
@@ -3851,7 +3844,6 @@ function wireTheme(): void {
     if (isAnybody()) section = corpus?.canEdit === true ? 'biblioteca' : 'apariencia';
     renderSettings(panel, tokens, section, {
       drawMemory,
-      drawSummary: drawCorpusSummary,
       onSectionChange: (next) => { section = next; },
       onOpenPage: (title) => {
         closeSettings();

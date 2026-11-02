@@ -1763,11 +1763,15 @@ surface VeraWorkspace {
         -- contexto y comunica su disponibilidad efectiva.
 
     @guarantee TheCentreFollowsHumanPurposes
-        -- El Centro de Vera agrupa sus destinos bajo Inicio, Biblioteca,
-        -- Personas, Conexiones, Gobierno, Apariencia, Ayuda y Sistema. Cada
+        -- El Centro de Vera abre en Biblioteca y agrupa sus destinos bajo
+        -- Biblioteca, Personas, Bibliotecario, Conexiones, Gobierno, Apariencia,
+        -- Ayuda y Sistema. Cada
         -- pestaña presenta botones grandes con una consecuencia legible. Los
         -- controles frecuentes aparecen primero; la identidad y el perfil de la
         -- instancia cierran Sistema como decisiones estructurales infrecuentes.
+        -- Las instrucciones constitutivas del agente aparecen sólo bajo
+        -- Bibliotecario: Gobierno no repite esa entrada como si fuera otro
+        -- objeto administrativo.
 
     @guarantee HelpAndSettingsShareOneSearch
         -- Una búsqueda del Centro encuentra ajustes, destinos administrativos,

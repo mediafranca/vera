@@ -10,9 +10,11 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Inicio', 'Biblioteca', 'Personas', 'Bibliotecario', 'Conexiones', 'Gobierno', 'Apariencia', 'Ayuda', 'Sistema']) {
+    for (const label of ['Biblioteca', 'Personas', 'Bibliotecario', 'Conexiones', 'Gobierno', 'Apariencia', 'Ayuda', 'Sistema']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
+    assert.doesNotMatch(settings, /label: 'Inicio'/);
+    assert.doesNotMatch(settings, /function drawStart/);
     assert.match(settings, /'Participantes',[\s\S]*handlers\.onOpenPeople/);
     assert.match(settings, /'Espacios compartidos',[\s\S]*handlers\.onOpenSharing/);
     assert.match(settings, /'Archivos',[\s\S]*handlers\.onOpenFiles/);
@@ -107,6 +109,11 @@ describe('arquitectura de configuración', () => {
     assert.match(main, /page\.kind === 'objects'/);
     assert.match(main, /!ontologyKinds\.has\(page\.kind\)/);
     assert.doesNotMatch(main, /page\.kind !== 'governance'/);
+  });
+
+  it('reserva las instrucciones del agente para Bibliotecario', () => {
+    assert.match(main, /page\.kind !== 'instructions'/);
+    assert.match(main, /kind\.key === 'instructions'/);
   });
 
   it('presenta cada comando una sola vez en Teclado', () => {
