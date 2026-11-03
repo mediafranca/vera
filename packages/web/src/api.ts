@@ -59,6 +59,8 @@ export interface PublicationSiteView {
   site: string | null;
   title: string;
   canonicalDomain: string;
+  /** Dominio HTTPS y salida pública efectiva disponibles para compartir. */
+  publicReady: boolean;
   entryPoint: string | null;
   transparentBlockTraceability: boolean;
   previewUrl: string | null;

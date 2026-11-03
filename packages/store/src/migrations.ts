@@ -1136,6 +1136,29 @@ const addAgentRuntimeReceipts: Migration = {
   },
 };
 
+/** 31 — capacidades revocables de lectura para una sola página privada. */
+const addPrivatePageShares: Migration = {
+  version: 31,
+  name: 'enlaces privados de página',
+  apply(db) {
+    db.exec(`CREATE TABLE IF NOT EXISTS page_shares (
+      id TEXT PRIMARY KEY,
+      graph_id TEXT NOT NULL REFERENCES graphs (id),
+      page_id TEXT NOT NULL REFERENCES pages (id) ON DELETE CASCADE,
+      issued_by TEXT NOT NULL REFERENCES participants (id),
+      secret_digest TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL CHECK (status IN ('active', 'revoked', 'expired')),
+      issued_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      revoked_at INTEGER,
+      last_used_at INTEGER,
+      CHECK (status <> 'revoked' OR revoked_at IS NOT NULL)
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS page_shares_by_page
+      ON page_shares(graph_id,page_id,issued_at);`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1167,6 +1190,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addAgentManifests,
   addConversationalSessions,
   addAgentRuntimeReceipts,
+  addPrivatePageShares,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

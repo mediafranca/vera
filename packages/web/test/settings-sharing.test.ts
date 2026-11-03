@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
+const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
 
 describe('administración de invitaciones', () => {
   it('abre los espacios en el origen público y conserva el slug', () => {
@@ -49,5 +50,27 @@ describe('administración de invitaciones', () => {
     assert.match(settings, /private-invitations/);
     assert.match(settings, /persona elegida debe confirmar su propia passkey/);
     assert.match(settings, /Reenviar el enlace no concede acceso/);
+  });
+});
+
+describe('destinos de una página', () => {
+  it('reemplaza el interruptor binario por fichas y un signo más', () => {
+    assert.match(outliner, /destinationsKey\.textContent = 'compartida en'/);
+    assert.match(outliner, /add\.textContent = '\+'/);
+    assert.match(outliner, /drawPageDestinationBadges\(badges, page\.id\)/);
+    assert.doesNotMatch(outliner, /badge\.className = `visibility/);
+  });
+
+  it('ofrece varios espacios y reserva la ruta para el destino público', () => {
+    assert.match(settings, /for \(const space of spaces\)/);
+    assert.match(settings, /path\.placeholder = 'ruta-pública'/);
+    assert.match(settings, /publish\.disabled = !site\.publicReady/);
+  });
+
+  it('crea capacidades privadas, muestra el secreto una vez y permite revocarlas', () => {
+    assert.match(settings, /El secreto se muestra una sola vez/);
+    assert.match(settings, /`\/pages\/\$\{encodeURIComponent\(page\)\}\/shares`/);
+    assert.match(settings, /`\/page-shares\/\$\{encodeURIComponent\(share\.id\)\}`/);
+    assert.doesNotMatch(settings, /vera-page-share-url/);
   });
 });

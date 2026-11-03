@@ -1221,11 +1221,6 @@ button { touch-action: manipulation; }
   margin-top: 0.25rem;
 }
 
-/* El estado de publicación es un interruptor, así que se comporta como uno. */
-.visibility {
-  cursor: pointer;
-}
-
 /* El nodo señalado. Un clic lo señala; dos abren su página. */
 #graph .selected text {
   font-weight: 600;
@@ -2915,74 +2910,6 @@ html.presenting body {
   outline: none;
 }
 
-/*
- * El interruptor de visibilidad: una píldora de contorno, sin relleno.
- *
- * Sin relleno porque no es una etiqueta que informe sino un estado que se puede
- * cambiar, y lo que dice cuál es el estado es el color: atenuado mientras la
- * página es de uno, cálido cuando sale al mundo —el mismo cálido con que el mapa
- * marca por dónde se ha pasado, que es el token de lo que está encendido—. Al
- * pasar por encima se pone del color de lo que se sigue, que es lo que avisa de
- * que se puede pulsar.
- */
-.visibility {
-  font-family: var(--font-ui);
-  font-size: 0.7rem;
-  padding: 0.05rem 0.4rem;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  color: var(--text-dim);
-  background: transparent;
-}
-
-.visibility:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.visibility.public {
-  color: var(--warm);
-  border-color: var(--warm);
-}
-
-.publication-state {
-  display: inline-flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.6rem;
-}
-
-.publication-address {
-  color: var(--warm);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-}
-
-.publication-action,
-.publication-entry {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--accent);
-  font-family: var(--font-ui);
-  font-size: 0.7rem;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 0.16em;
-}
-
-.publication-action.published {
-  color: var(--text-dim);
-}
-
-.publication-action:hover,
-.publication-action:focus-visible,
-.publication-entry:hover,
-.publication-entry:focus-visible {
-  color: var(--warm);
-  outline: none;
-}
-
 .blocks {
   margin-top: 1.4rem;
 }
@@ -3659,7 +3586,7 @@ html.presenting body {
   background: transparent;
 }
 
-#text.read-only :is(.property-drop, .property-add, .publication-action, .publication-entry, .drawn-edit) {
+#text.read-only :is(.property-drop, .property-add, .drawn-edit) {
   display: none !important;
 }
 
@@ -12052,6 +11979,44 @@ html[data-working-slow='true']::after {
 .sharing-new-space { margin-top: .75rem; padding: .25rem 1rem 1rem; border: 1px solid var(--rule); border-radius: .65rem; background: var(--bg-raised); }
 .sharing-new-space h3 { margin: 1rem 0 .25rem; font-size: 1rem; }
 .sharing-publish { display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, .7fr) auto; gap: .5rem; margin-top: .8rem; }
+.page-destinations { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.page-destination-badges { display: contents; }
+.page-destination {
+  display: inline-flex;
+  max-width: 100%;
+  padding: .12rem .45rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: .7rem;
+  overflow-wrap: anywhere;
+}
+.page-destination.public { color: var(--warm); border-color: var(--warm); }
+.page-destination.private-link { color: var(--accent); border-color: var(--accent); }
+.page-destinations-empty { color: var(--text-dim); font-size: .72rem; }
+.page-destination-add {
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  color: var(--accent);
+  background: transparent;
+  font: 1rem/1 var(--font-ui);
+  cursor: pointer;
+}
+.page-destination-add:hover, .page-destination-add:focus-visible { border-color: var(--accent); outline: none; }
+.page-sharing { margin: .75rem 0 1rem; padding: .8rem 1rem 1rem; border: 1px solid var(--rule); border-radius: .65rem; background: var(--bg-raised); }
+.page-sharing .settings-body > h3 { margin: 1.25rem 0 .35rem; font-size: .9rem; }
+.page-sharing-public { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
+.page-sharing-public > a { color: var(--accent); overflow-wrap: anywhere; }
+.page-sharing-private { grid-template-columns: minmax(9rem, .7fr) auto minmax(10rem, 1fr); }
+.page-share-secret { width: min(42rem, calc(100vw - 2rem)); color: var(--text); background: var(--bg-raised); border: 1px solid var(--rule); border-radius: .65rem; }
+.page-share-secret::backdrop { background: rgb(0 0 0 / 35%); }
+.page-share-secret input { box-sizing: border-box; width: 100%; padding: .65rem; color: var(--text); background: var(--bg); border: 1px solid var(--rule); font: .8rem var(--font-mono); }
 @media (max-width: 640px) {
   .sharing-form { grid-template-columns: 1fr; }
   .sharing-issued-invitation { grid-template-columns: 1fr; }
@@ -12061,6 +12026,7 @@ html[data-working-slow='true']::after {
   .sharing-space-facts { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
   .sharing-space-affordance { grid-column: 2; grid-row: 1; }
   .sharing-publish { grid-template-columns: 1fr; }
+  .page-sharing-private { grid-template-columns: 1fr; }
 }
 
 /* --- Estado de servicios -------------------------------------------------
