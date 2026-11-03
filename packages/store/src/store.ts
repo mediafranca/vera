@@ -10,6 +10,7 @@
 // consultan la proyección Markdown y, más adelante, el cliente WASM.
 
 import { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -869,6 +870,15 @@ export function saveSite(store: Store, site: PersonalSite): void {
     )
     .run(site.id, site.graph, site.owner, site.title, site.canonicalDomain, site.entryPoint,
       site.transparentBlockTraceability ? 1 : 0);
+  const governed = store.db.prepare('SELECT id FROM instances WHERE graph_id=?').get(store.graphId) as
+    { id: string } | undefined;
+  if (governed !== undefined) {
+    store.db.prepare(`INSERT OR IGNORE INTO surface_stewards
+      (id,instance_id,surface_kind,surface_id,human_id,status,appointed_by,appointed_at)
+      VALUES (?,?, 'public', ?,?,'active',?,?)`).run(
+        `steward:${randomUUID()}`, governed.id, site.id, site.owner, site.owner, Date.now(),
+      );
+  }
 }
 
 export function savePublication(store: Store, publication: Publication): void {

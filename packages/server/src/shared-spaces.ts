@@ -61,6 +61,15 @@ export function createSharedSpace(store: Store, owner: string, input: {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`)
     .run(held.id, store.graphId, owner, held.name, held.slug, held.selectorKey,
       held.selectorValue, held.audience, held.createdAt);
+    const governed = store.db.prepare('SELECT id FROM instances WHERE graph_id=?').get(store.graphId) as
+      { id: string } | undefined;
+    if (governed !== undefined) {
+      store.db.prepare(`INSERT OR IGNORE INTO surface_stewards
+        (id,instance_id,surface_kind,surface_id,human_id,status,appointed_by,appointed_at)
+        VALUES (?,?,'shared',?,?, 'active',?,?)`).run(
+          id('steward'), governed.id, held.id, owner, owner, held.createdAt,
+        );
+    }
     if (held.selectorKey !== '' && held.selectorValue !== '') {
       store.db.prepare(`INSERT INTO shared_space_criteria
         (id,space_id,selector_key,selector_value,status,added_by,added_at)

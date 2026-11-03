@@ -11,6 +11,8 @@ import {
   type LibrarianRuntimePermission,
   type LibrarianRuntimeView,
   type PageSummary,
+  type TerritoryAdministrationView,
+  type TerritoryPermission,
 } from './api.ts';
 
 const ROLE_LABELS: Record<ConstitutionRole, string> = {
@@ -147,7 +149,7 @@ interface DesktopLibrarianSecretBridge {
   clear(): Promise<{ available: boolean }>;
 }
 
-function field(label: string, input: HTMLInputElement): HTMLLabelElement {
+function field(label: string, input: HTMLInputElement | HTMLSelectElement): HTMLLabelElement {
   const held = document.createElement('label');
   const name = document.createElement('span'); name.textContent = label;
   held.append(name, input); return held;
@@ -162,6 +164,25 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     degraded: 'Configuración incompleta', working: 'Trabajando',
   } as Record<LibrarianRuntimeView['status'], string>)[view.status];
   section.append(heading, status);
+
+  if (view.harness !== null) {
+    const catalogue = document.createElement('section'); catalogue.className = 'librarian-tool-catalogue';
+    const title = document.createElement('h3');
+    title.textContent = `Herramientas · ${view.harness.version.replace('vera-librarian-harness:', 'harness v')}`;
+    const note = document.createElement('p'); note.className = 'settings-note';
+    note.textContent = 'Las lecturas se ejecutan dentro del territorio. Una corrección se guarda como propuesta; aplicarla exige confirmación humana. Este harness no contiene herramientas destructivas.';
+    const list = document.createElement('ul');
+    for (const capability of view.harness.capabilities) {
+      const item = document.createElement('li');
+      const name = document.createElement('strong'); name.textContent = capability.title;
+      const mode = document.createElement('span');
+      mode.textContent = capability.approval === 'confirm_each_call'
+        ? 'confirmación en cada aplicación'
+        : capability.projectedToModel ? 'disponible durante la conversación' : 'parte del oficio del runtime';
+      item.append(name, mode); list.append(item);
+    }
+    catalogue.append(title, note, list); section.append(catalogue);
+  }
 
   if (view.librarian === null) {
     const explanation = document.createElement('p'); explanation.className = 'settings-note';
@@ -257,6 +278,89 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   return section;
 }
 
+const TERRITORY_PERMISSIONS: Array<[TerritoryPermission, string]> = [
+  ['read', 'leer'], ['contribute', 'contribuir'], ['edit', 'editar'],
+  ['publish', 'publicar'], ['administer', 'administrar'],
+];
+
+function territoryPanel(view: TerritoryAdministrationView, refresh: () => Promise<void>): HTMLElement {
+  const section = document.createElement('section'); section.className = 'territory-administration';
+  const heading = document.createElement('h2'); heading.textContent = 'Territorios y superficies';
+  const note = document.createElement('p'); note.className = 'settings-note';
+  note.textContent = 'El territorio se aplica por igual al sitio, la API y MCP. Una exclusión domina cualquier inclusión; la persona dueña conserva la custodia salvo que otra persona humana quede a cargo.';
+  section.append(heading, note);
+  for (const policy of view.policies) {
+    const card = document.createElement('details'); card.className = 'territory-policy';
+    card.id = `territorio-${policy.participant}`;
+    if (policy.participantKind === 'agent') card.open = true;
+    const summary = document.createElement('summary');
+    const title = document.createElement('strong'); title.textContent = policy.participantName;
+    const kind = document.createElement('span');
+    kind.textContent = `${policy.participantKind === 'agent' ? 'agente' : 'persona'} · ${policy.mode === 'all' ? 'toda la biblioteca' : 'selección'}`;
+    summary.append(title, kind); card.append(summary);
+    const form = document.createElement('div'); form.className = 'territory-form';
+    const mode = document.createElement('select');
+    for (const [value, label] of [['selected', 'Superficies seleccionadas'], ['all', 'Toda la biblioteca']] as const) {
+      const option = document.createElement('option'); option.value = value; option.textContent = label;
+      option.selected = policy.mode === value; mode.append(option);
+    }
+    const general = document.createElement('input'); general.type = 'checkbox'; general.checked = policy.includeGeneral;
+    const generalLabel = document.createElement('label');
+    generalLabel.append(general, document.createTextNode(' Incluir páginas de la biblioteca general'));
+    form.append(field('Alcance base', mode), generalLabel);
+
+    const rows = document.createElement('div'); rows.className = 'territory-surfaces';
+    for (const surface of view.surfaces) {
+      const existing = policy.rules.find((rule) => rule.kind === surface.kind && rule.surface === surface.id);
+      const row = document.createElement('div'); row.className = 'territory-surface';
+      row.dataset['kind'] = surface.kind; row.dataset['surface'] = surface.id;
+      const identity = document.createElement('div');
+      const name = document.createElement('strong'); name.textContent = surface.name;
+      const meta = document.createElement('span');
+      meta.textContent = `${surface.kind === 'shared' ? 'espacio compartido' : 'sitio público'} · ${surface.pages.length} páginas`;
+      identity.append(name, meta);
+      const disposition = document.createElement('select'); disposition.className = 'territory-disposition';
+      for (const [value, label] of [['inherit', 'Sin regla'], ['included', 'Incluida'], ['excluded', 'Excluida']] as const) {
+        const option = document.createElement('option'); option.value = value; option.textContent = label;
+        option.selected = (existing?.disposition ?? 'inherit') === value; disposition.append(option);
+      }
+      const permissions = document.createElement('fieldset');
+      for (const [permission, label] of TERRITORY_PERMISSIONS) {
+        const box = document.createElement('input'); box.type = 'checkbox'; box.value = permission;
+        box.checked = existing?.permissions.includes(permission) ?? (permission !== 'administer');
+        const held = document.createElement('label'); held.append(box, document.createTextNode(label));
+        permissions.append(held);
+      }
+      const sync = (): void => {
+        for (const box of permissions.querySelectorAll<HTMLInputElement>('input')) {
+          box.disabled = disposition.value !== 'included';
+        }
+      };
+      disposition.addEventListener('change', sync); sync();
+      row.append(identity, disposition, permissions); rows.append(row);
+    }
+    form.append(rows, control('Guardar territorio', async () => {
+      const rules = [...rows.querySelectorAll<HTMLElement>('.territory-surface')].flatMap((row) => {
+        const disposition = row.querySelector<HTMLSelectElement>('.territory-disposition')?.value ?? 'inherit';
+        if (disposition === 'inherit') return [];
+        return [{
+          kind: row.dataset['kind'] as 'shared' | 'public', surface: row.dataset['surface'] ?? '',
+          disposition: disposition as 'included' | 'excluded',
+          permissions: disposition === 'included'
+            ? [...row.querySelectorAll<HTMLInputElement>('fieldset input:checked')].map((box) => box.value as TerritoryPermission)
+            : [],
+        }];
+      });
+      await api.updateTerritory(policy.participant, {
+        mode: mode.value as 'selected' | 'all', includeGeneral: general.checked, rules,
+      });
+      await refresh();
+    }, 'primary'));
+    card.append(form); section.append(card);
+  }
+  return section;
+}
+
 export async function renderAgentAdministration(host: HTMLElement): Promise<void> {
   host.replaceChildren();
   const root = document.createElement('article'); root.className = 'agent-administration';
@@ -271,10 +375,10 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
 
   const refresh = async (): Promise<void> => renderAgentAdministration(host);
   try {
-    const [{ agents }, directory, runtime] = await Promise.all([
-      api.agentAdministration(), api.participants(), api.librarianRuntime(),
+    const [{ agents }, directory, runtime, territories] = await Promise.all([
+      api.agentAdministration(), api.participants(), api.librarianRuntime(), api.territories(),
     ]);
-    body.append(await runtimeConfigurationPanel(runtime, refresh));
+    body.append(await runtimeConfigurationPanel(runtime, refresh), territoryPanel(territories, refresh));
     let pagesPromise: Promise<PageSummary[]> | null = null;
     const pages = (): Promise<PageSummary[]> => pagesPromise ??= api.pages();
     const humans = directory.participants.filter((one) => one.kind === 'human' && one.status === 'active');

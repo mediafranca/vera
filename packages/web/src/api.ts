@@ -661,6 +661,25 @@ export interface AgentAdministrationView {
 }
 
 export type LibrarianRuntimePermission = 'read_request_context' | 'reply' | 'daily_round';
+export type TerritoryMode = 'selected' | 'all';
+export type TerritorySurfaceKind = 'shared' | 'public';
+export type TerritoryPermission = 'read' | 'contribute' | 'edit' | 'publish' | 'administer';
+export interface TerritoryRuleView {
+  id: string; kind: TerritorySurfaceKind; surface: string; disposition: 'included' | 'excluded';
+  permissions: TerritoryPermission[]; governedBy: string; createdAt: number;
+}
+export interface TerritoryPolicyView {
+  id: string; participant: string; participantName: string; participantKind: 'human' | 'agent';
+  mode: TerritoryMode; includeGeneral: boolean; rules: TerritoryRuleView[];
+  changedBy: string; changedAt: number;
+}
+export interface TerritoryAdministrationView {
+  surfaces: {
+    kind: TerritorySurfaceKind; id: string; name: string; pages: string[];
+    stewards: { participant: string; name: string }[];
+  }[];
+  policies: TerritoryPolicyView[];
+}
 
 export interface LibrarianRuntimeView {
   librarian: { id: string; agent: string; name: string; owner: string } | null;
@@ -678,6 +697,14 @@ export interface LibrarianRuntimeView {
     updatedBy: string;
     updatedAt: number;
   };
+  harness: null | {
+    id: string; version: string;
+    capabilities: {
+      name: string; title: string; revision: string; readOnly: boolean; mutatesCorpus: boolean;
+      destructive: boolean; approval: 'automatic' | 'confirm_each_call'; projectedToModel: boolean; input: string;
+    }[];
+  };
+  territory: TerritoryPolicyView | null;
   secret: { reference: string | null; available: boolean };
   runs: {
     id: string; kind: 'request' | 'routine'; request: string | null; model: string;
@@ -1575,6 +1602,16 @@ export const api = {
   agentAdministration: () => json<{ agents: AgentAdministrationView[] }>('/agent-administration'),
 
   librarianRuntime: () => json<LibrarianRuntimeView>('/librarian/runtime'),
+
+  territories: () => json<TerritoryAdministrationView>('/territories'),
+
+  updateTerritory: (participant: string, policy: {
+    mode: TerritoryMode; includeGeneral: boolean;
+    rules: Array<{ kind: TerritorySurfaceKind; surface: string; disposition: 'included' | 'excluded';
+      permissions: TerritoryPermission[] }>;
+  }) => json<TerritoryPolicyView>(`/territories/${encodeURIComponent(participant)}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(policy),
+  }),
 
   processingModels: () => json<{ models: {
     id: string; name: string; provider: 'local' | 'openai'; location: 'this_device' | 'external';

@@ -61,6 +61,11 @@ describe('runtime embebido de la bibliotecaria', () => {
       });
       assert.equal(configured.status, 200, JSON.stringify(configured.json));
       assert.equal(configured.json['status'], 'ready');
+      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:2');
+      assert.deepEqual((configured.json['harness'] as any).capabilities.map((one: any) => one.name), [
+        'search_memory', 'read_page', 'query_graph', 'inspect_relations', 'check_invariants',
+        'reply_to_request', 'propose_edit', 'apply_approved_edit',
+      ]);
 
       const made = await call('/operations', { method: 'POST', body: {
         originId: 'runtime-test:page', participant: owner.id,
@@ -101,6 +106,67 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.ok(runs.some((run) => run.kind === 'request' && run.status === 'completed'));
       assert.ok(runs.some((run) => run.kind === 'routine' && run.output === 'SIN_NOVEDAD'));
       assert.equal(inferenceCalls, 1, 'una ronda sin evidencia no consulta al modelo ni le permite inventarla');
+    } finally {
+      await running.close();
+      await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  });
+
+  it('usa una herramienta de lectura, observa su resultado y recién entonces responde', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-tools-'));
+    directories.push(directory);
+    const databasePath = join(directory, 'vera.sqlite');
+    const owner = { id: 'participant:tool-owner', name: 'Dueña' };
+    initializeStarterMemory({ databasePath, owner, ownerLibrarianName: 'Lucienne' });
+    const prompts: string[] = [];
+    const inference = createHttpServer(async (request, response) => {
+      let body = '';
+      for await (const chunk of request) body += chunk.toString();
+      prompts.push(body);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ output_text: prompts.length === 1
+        ? '{"tool":"search_memory","arguments":{"query":"aguja bibliográfica"}}'
+        : 'Encontré la aguja bibliográfica en la página consultada.' }));
+    });
+    await new Promise<void>((resolve) => inference.listen(4394, '127.0.0.1', resolve));
+    process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
+    const running = listen({ port: 4393, databasePath });
+    const call = async (path: string, options: { method?: string; body?: unknown } = {}) => {
+      const response = await fetch(`http://127.0.0.1:4393${path}`, {
+        method: options.method ?? 'GET', headers: { 'content-type': 'application/json' },
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      });
+      return { status: response.status, json: await response.json() as Record<string, any> };
+    };
+    try {
+      await call('/librarian/runtime/constitute', { method: 'POST', body: {} });
+      await call('/librarian/runtime', { method: 'PUT', body: {
+        enabled: true, model: 'openai:test', endpoint: 'http://127.0.0.1:4394/v1',
+        secretReference: 'VERA_TEST_LIBRARIAN_KEY', permissions: ['read_request_context', 'reply'],
+        routine: { enabled: false, hour: 9, timezone: 'local' },
+      } });
+      const made = await call('/operations', { method: 'POST', body: {
+        originId: 'tool-test:page', change: { kind: 'create_page', title: 'Aguja', visibility: 'private' },
+      } });
+      const page = made.json.subjectId as string;
+      await call('/operations', { method: 'POST', body: {
+        originId: 'tool-test:block', change: { kind: 'create_block', page, parent: null, position: 0,
+          content: 'Aquí está la aguja bibliográfica.' },
+      } });
+      const requested = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, text: 'Busca la aguja bibliográfica y dime si existe.',
+      } });
+      let answered: Record<string, any> | null = null;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const current = await call(`/librarian/requests/${encodeURIComponent(requested.json.id)}`);
+        if (current.json.status === 'answered') { answered = current.json; break; }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(answered, 'Lucienne no cerró el turno después de usar la herramienta');
+      assert.equal(prompts.length, 2);
+      assert.match(prompts[1] ?? '', /Observación:.*Aguja/s);
+      assert.ok(answered.events.some((one: any) => one.kind === 'tool' && /search_memory/.test(one.text)));
+      assert.match(answered.reply.text, /Encontré la aguja bibliográfica/);
     } finally {
       await running.close();
       await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));

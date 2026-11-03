@@ -128,6 +128,26 @@ import {
 } from './librarian.ts';
 import { activeOwnerLibrarian, ensureOwnerLibrarian } from './owner-librarian.ts';
 import {
+  clearanceForGeneral,
+  clearanceForPage,
+  ensureTerritoryPolicy,
+  pagesWithinClearance,
+  territoryAdministration,
+  territoryPolicy,
+  updateTerritoryPolicy,
+  type ClearanceAction,
+  type SurfaceDisposition,
+  type SurfaceKind,
+  type SurfacePermission,
+  type TerritoryMode,
+} from './library-clearance.ts';
+import {
+  LIBRARIAN_CAPABILITIES,
+  librarianToolInstructions,
+  readLibrarianToolCall,
+  runLibrarianTool,
+} from './librarian-tools.ts';
+import {
   LIBRARIAN_RUNTIME_ID,
   LIBRARIAN_RUNTIME_LABEL,
   beginLibrarianRuntimeRun,
@@ -756,6 +776,41 @@ export function pageTouchedBy(
   }
 }
 
+function clearanceRefusalForChange(store: Store, graph: VeraGraph, participant: string,
+  change: Change): string | null {
+  if (change.kind === 'create_page') {
+    const decision = clearanceForGeneral(store, participant, 'contribute');
+    return decision.outcome === 'granted' ? null : decision.explanation;
+  }
+  const action: ClearanceAction = change.kind === 'create_block' || change.kind === 'create_crossing'
+    ? 'contribute'
+    : change.kind === 'set_page_visibility' ? 'publish' : 'edit';
+  const pages = new Set<string>();
+  if (change.kind === 'create_crossing') {
+    pages.add(change.fromPage);
+    pages.add(change.toPage);
+  } else if (change.kind === 'edit_crossing') {
+    const crossing = graph.crossing(change.crossing);
+    if (crossing === undefined) return null;
+    pages.add(crossing.fromPage);
+    if (crossing.toPage !== null) pages.add(crossing.toPage);
+  } else if (change.kind === 'move_block') {
+    const held = graph.block(change.block);
+    if (held === undefined) return null;
+    pages.add(held.page);
+    pages.add(change.page);
+  } else {
+    const page = pageTouchedBy(change, null, (block) => graph.block(block)?.page);
+    if (page === null) return null;
+    pages.add(page);
+  }
+  for (const page of pages) {
+    const decision = clearanceForPage(store, graph, participant, page, action);
+    if (decision.outcome === 'refused') return decision.explanation;
+  }
+  return null;
+}
+
 function readOperation(body: SubmitBody): { error: string } | {
   originId: string;
   channel: ContributionChannel;
@@ -942,6 +997,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (turn.modality === 'block' || turn.sourcePageId === null) return null;
     const page = graph.page(turn.sourcePageId);
     if (page === undefined) return 'la página de la solicitud ya no existe';
+    const clearance = clearanceForPage(store, graph, agent, page.id, 'contribute');
+    if (clearance.outcome === 'refused') return clearance.explanation;
     const stableId = `block:librarian-reply:${turn.id.slice('agent-request:'.length)}`;
     const roots = graph.blocksOf(page.id).filter((block) => block.parent === null);
     const outcome = graph.submitOperation({
@@ -970,19 +1027,39 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       requestId: id, kind: 'stage', text: `${LIBRARIAN_RUNTIME_LABEL} leyó la solicitud`, createdBy: config.agent,
     });
     try {
-      const answered = await ask(librarianRequestPrompt(store, config, claimed), {
+      if (claimed.sourcePageId !== null) {
+        const clearance = clearanceForPage(store, graph, config.agent, claimed.sourcePageId, 'read');
+        if (clearance.outcome === 'refused') throw new Error(clearance.explanation);
+      }
+      const modelOptions = {
         model: config.model,
         ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
         ...(resolvedRuntimeSecret(config.secretReference) === undefined
           ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
         maxTokens: 1_200,
         timeoutMs: 300_000,
-      });
-      if ('error' in answered) throw new Error(answered.error);
-      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, answered.text);
+      };
+      const basePrompt = `${librarianRequestPrompt(store, config, claimed)}\n\n${librarianToolInstructions()}`;
+      let transcript = basePrompt;
+      let final = '';
+      for (let step = 0; step < 4; step += 1) {
+        const answered = await ask(transcript, modelOptions);
+        if ('error' in answered) throw new Error(answered.error);
+        const call = readLibrarianToolCall(answered.text);
+        if (call === null) { final = answered.text; break; }
+        addLibrarianProgress(store, {
+          requestId: id, kind: 'tool', text: `Lucienne usó ${call.name}`, createdBy: config.agent,
+        });
+        const observation = runLibrarianTool(store, graph, config.agent as ParticipantId, call);
+        transcript = `${transcript}\n\nSolicitud de herramienta: ${JSON.stringify(call)}\n` +
+          `Observación: ${observation.ok ? observation.result : `ERROR: ${observation.error}`}\n\n` +
+          'Responde a la solicitud original o pide otra herramienta con el mismo formato.';
+      }
+      if (final === '') throw new Error('el runtime agotó el límite de herramientas sin responder');
+      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, final);
       if (writeFailure !== null) throw new Error(writeFailure);
-      answerLibrarianRequest(store, { id, answeredBy: config.agent as ParticipantId, text: answered.text });
-      finishLibrarianRuntimeRun(store, run.id, { output: answered.text });
+      answerLibrarianRequest(store, { id, answeredBy: config.agent as ParticipantId, text: final });
+      finishLibrarianRuntimeRun(store, run.id, { output: final });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'el runtime no pudo responder';
       failLibrarianRequest(store, id, reason);
@@ -2126,6 +2203,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const conversationalHuman = publicAccess && publicSharedConversation
       ? scopedParticipant
       : who.participant;
+    let readablePageIdsCache: ReadonlySet<string> | null = null;
+    const readablePageIds = (): ReadonlySet<string> => {
+      readablePageIdsCache ??= publicAccess
+        ? scopedPageIds
+        : pagesWithinClearance(store, graph, who.participant, 'read');
+      return readablePageIdsCache;
+    };
+    const isReadablePage = (page: string): boolean => readablePageIds().has(page);
+    const pageActionRefusal = (page: string, action: ClearanceAction): string | null => {
+      if (publicAccess) return isPublicPage(page) ? null : 'la página no pertenece a esta superficie';
+      const decision = clearanceForPage(store, graph, who.participant, page, action);
+      return decision.outcome === 'granted' ? null : decision.explanation;
+    };
+    const generalActionRefusal = (action: ClearanceAction): string | null => {
+      const decision = clearanceForGeneral(store, who.participant, action);
+      return decision.outcome === 'granted' ? null : decision.explanation;
+    };
+    const recordingActionRefusal = (recording: { placedInPage: string | null },
+      action: ClearanceAction): string | null => recording.placedInPage === null
+        ? generalActionRefusal(action)
+        : pageActionRefusal(recording.placedInPage, action);
 
     // Una credencial de captura es una ranura, no una llave de lectura. Puede
     // depositar exactamente en /captures y no abre ninguna otra superficie.
@@ -2215,6 +2313,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const origin = `media-${gesture}:${randomUUID()}`;
       for (const [at, change] of changes.entries()) {
         const proposal: Change = { kind: 'edit_block', block: change.block, content: change.content };
+        const territorialRefusal = clearanceRefusalForChange(store, trial, who.participant, proposal);
+        if (territorialRefusal !== null) return { ok: false, status: 403, error: territorialRefusal };
         if (fence !== null) {
           const refusal = fenceRefusal(
             store,
@@ -2262,6 +2362,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // Cotito permanece sólo como compatibilidad para instalaciones anteriores,
     // nunca como identidad prestada a Lucienne.
     const librarianAgent = (activeOwnerLibrarian(store)?.agent ?? 'participant:cotito') as ParticipantId;
+    if (activeOwnerLibrarian(store) === null && graph.participant(librarianAgent) !== undefined) {
+      // Compatibilidad de la transición: el antiguo puente de Cotito atendía
+      // toda la biblioteca antes de que existieran territorios. No se le reduce
+      // retroactivamente al constituirse después de arrancar una instalación.
+      ensureTerritoryPolicy(store, librarianAgent, owner.id, { mode: 'all', includeGeneral: true });
+    }
     const librarianRequestView = (turn: LibrarianRequest) => ({
         ...turn,
         recording: turn.recordingId === null ? null : recordingById(store, turn.recordingId),
@@ -2285,6 +2391,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         },
         status: assessEmbeddedRuntime(),
         configuration: config,
+        harness: binding === null ? null : (() => {
+          const row = store.db.prepare('SELECT version FROM librarian_harnesses WHERE id=?')
+            .get(binding.harness) as { version: string } | undefined;
+          return { id: binding.harness, version: row?.version ?? 'desconocido', capabilities: LIBRARIAN_CAPABILITIES };
+        })(),
+        territory: binding === null ? null : territoryPolicy(store, binding.agent),
         runs: librarianRuntimeRuns(store),
         secret: config?.secretReference === null || config?.secretReference === undefined
           ? { reference: null, available: (process.env['OPENAI_API_KEY'] ?? '').trim() !== '' }
@@ -2575,6 +2687,56 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'GET' && path === '/territories') {
+      if (who.participant !== owner.id) {
+        send(response, 403, { error: 'sólo la persona dueña gobierna territorios' }); return;
+      }
+      send(response, 200, territoryAdministration(store, graph));
+      return;
+    }
+
+    const territoryMatch = /^\/territories\/([^/]+)$/.exec(path);
+    if (request.method === 'PUT' && territoryMatch !== null) {
+      if (who.participant !== owner.id) {
+        send(response, 403, { error: 'sólo la persona dueña gobierna territorios' }); return;
+      }
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(); }
+      catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
+      const mode = body['mode'];
+      if (mode !== 'selected' && mode !== 'all') { send(response, 400, { error: 'modo territorial inválido' }); return; }
+      const saidRules = Array.isArray(body['rules']) ? body['rules'] : [];
+      const rules: { kind: SurfaceKind; surface: string; disposition: SurfaceDisposition;
+        permissions: SurfacePermission[] }[] = [];
+      for (const value of saidRules) {
+        if (value === null || typeof value !== 'object') { send(response, 400, { error: 'regla territorial inválida' }); return; }
+        const rule = value as Record<string, unknown>;
+        if ((rule['kind'] !== 'shared' && rule['kind'] !== 'public') ||
+          typeof rule['surface'] !== 'string' ||
+          (rule['disposition'] !== 'included' && rule['disposition'] !== 'excluded')) {
+          send(response, 400, { error: 'regla territorial inválida' }); return;
+        }
+        const permissions = Array.isArray(rule['permissions'])
+          ? rule['permissions'].filter((one): one is SurfacePermission =>
+              typeof one === 'string' && ['read', 'contribute', 'edit', 'publish', 'administer'].includes(one))
+          : [];
+        rules.push({ kind: rule['kind'], surface: rule['surface'], disposition: rule['disposition'], permissions });
+      }
+      try {
+        const policy = updateTerritoryPolicy(store, {
+          administrator: owner.id,
+          participant: decodeURIComponent(territoryMatch[1] ?? ''),
+          mode,
+          includeGeneral: body['includeGeneral'] === true,
+          rules,
+        });
+        send(response, 200, policy);
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/librarian/conversations') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: 'sólo una persona puede leer sus conversaciones' });
@@ -2689,6 +2851,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'la página o el bloque ya no existe' });
         return;
       }
+      if (!publicAccess) {
+        const readerRefusal = pageActionRefusal(page.id, 'read');
+        if (readerRefusal !== null) { send(response, 403, { error: readerRefusal }); return; }
+        const librarianClearance = clearanceForPage(store, graph, librarianAgent, page.id, 'read');
+        if (librarianClearance.outcome === 'refused') {
+          send(response, 409, { error: `la bibliotecaria no puede leer este contexto: ${librarianClearance.explanation}` });
+          return;
+        }
+      }
       const blocks = graph.blocksOf(page.id);
       const snapshot = JSON.stringify({
         page: {
@@ -2792,6 +2963,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
       if (request.method === 'POST' && action === 'reply') {
         if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
+        if (current.sourcePageId !== null) {
+          const refusal = pageActionRefusal(current.sourcePageId, current.modality === 'block' ? 'edit' : 'contribute');
+          if (refusal !== null) { send(response, 403, { error: refusal }); return; }
+        }
         let body: Record<string, unknown>;
         // Una respuesta sobre bloque debe reenviar su contenido completo. Las
         // transcripciones y otros bloques documentales superan legítimamente
@@ -3008,6 +3183,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             return;
           }
           submitter ??= who;
+          const territorialRefusal = clearanceRefusalForChange(store, trial, who.participant, input.change);
+          if (territorialRefusal !== null) {
+            send(response, 403, { status: 'rejected', reason: territorialRefusal });
+            return;
+          }
           const structuralRefusal = agentStructureRefusal(trial, who, input.change);
           if (structuralRefusal !== null) {
             send(response, 422, { status: 'rejected', reason: structuralRefusal });
@@ -3120,6 +3300,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if ('error' in who) {
           send(response, who.status, { status: 'rejected', reason: who.error });
           return;
+        }
+
+        if (!publicSharedEdit) {
+          const territorialRefusal = clearanceRefusalForChange(store, graph, who.participant, input.change);
+          if (territorialRefusal !== null) {
+            send(response, 403, { status: 'rejected', reason: territorialRefusal });
+            return;
+          }
         }
 
         const alreadyKnown = graph.operations().some((operation) => operation.originId === input.originId);
@@ -5241,6 +5429,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * bytes, y por eso vuelve como un único archivo propio de Vera.
      */
     if (request.method === 'GET' && path === '/graph.vera') {
+      if (who.participant !== owner.id) {
+        send(response, 403, { error: 'el archivo portable completo sólo está disponible para la persona dueña' });
+        return;
+      }
       try {
         const body = Buffer.from(JSON.stringify(makeVeraFile(store, graph, objectsRoot)));
         const day = new Date().toISOString().slice(0, 10);
@@ -5268,6 +5460,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * archivo nunca reemplaza contenido existente por el mero hecho de abrirlo.
      */
     if (request.method === 'POST' && path === '/import/vera') {
+      if (who.participant !== owner.id) {
+        send(response, 403, { error: 'sólo la persona dueña puede incorporar un archivo Vera completo' });
+        return;
+      }
       const chunks: Buffer[] = [];
       let size = 0;
       let tooLarge = false;
@@ -5451,10 +5647,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'GET' && path === '/media') {
+      const visibleHashes = who.participant === owner.id ? null : publicMediaHashes(readablePageIds());
       send(
         response,
         200,
-        listedMedia(store).map((entry) => ({ ...entry, url: `/media/${entry.hash}` })),
+        listedMedia(store)
+          .filter((entry) => visibleHashes === null || visibleHashes.has(entry.hash))
+          .map((entry) => ({ ...entry, url: `/media/${entry.hash}` })),
       );
       return;
     }
@@ -5668,6 +5867,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // dentro de un documento. Va en una cabecera porque el cuerpo son los
         // bytes del audio y no cabe nada más.
         const inBlock = String(request.headers['x-in-block'] ?? '').trim();
+        const targetPage = inBlock === '' ? null : graph.block(inBlock)?.page ?? null;
+        const territorialRefusal = targetPage === null
+          ? generalActionRefusal('contribute') : pageActionRefusal(targetPage, 'contribute');
+        if (territorialRefusal !== null) {
+          send(response, 403, { error: territorialRefusal });
+          return;
+        }
 
         // El audio entra al mismo almacén direccionado por contenido que todo
         // lo demás: grabar dos veces lo mismo no lo guarda dos veces.
@@ -5761,6 +5967,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if ('error' in submitter) {
           send(response, submitter.status, { error: submitter.error });
           return;
+        }
+        if (!publicSharedImport) {
+          const clearance = clearanceForGeneral(store, submitter.participant, 'contribute');
+          if (clearance.outcome === 'refused') {
+            send(response, 403, { error: clearance.explanation });
+            return;
+          }
         }
 
         const header = (name: string): string => {
@@ -5932,6 +6145,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const id = decodeURIComponent(path.split('/')[2] ?? '');
       const held = recordingById(store, id);
       if (held === null) { send(response, 404, { error: 'no such recording' }); return; }
+      const territorialRefusal = recordingActionRefusal(held, 'edit');
+      if (territorialRefusal !== null) { send(response, 403, { error: territorialRefusal }); return; }
       if (held.audioHash === null || objectsRoot === null) {
         send(response, 422, { error: 'esta grabación ya no tiene audio que transcribir' }); return;
       }
@@ -5964,6 +6179,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'no such recording' });
         return;
       }
+      const territorialRefusal = recordingActionRefusal(held, 'edit');
+      if (territorialRefusal !== null) { send(response, 403, { error: territorialRefusal }); return; }
       if (held.audioHash === null || objectsRoot === null) {
         send(response, 422, { error: 'esta grabación ya no tiene audio que transcribir' });
         return;
@@ -6014,6 +6231,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // Vera dueña de una grabación que no es suya.
     if (request.method === 'DELETE' && /^\/recordings\/[^/]+\/audio$/.test(path)) {
       const id = decodeURIComponent(path.split('/')[2] ?? '');
+      const held = recordingById(store, id);
+      if (held === null) { send(response, 404, { error: 'no such recording' }); return; }
+      const refusal = recordingActionRefusal(held, 'edit');
+      if (refusal !== null) { send(response, 403, { error: refusal }); return; }
       const outcome = discardAudio(store, id);
       send(response, 'error' in outcome ? 422 : 200, outcome);
       return;
@@ -6021,6 +6242,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     if (request.method === 'POST' && /^\/recordings\/[^/]+\/audio\/restore$/.test(path)) {
       const id = decodeURIComponent(path.split('/')[2] ?? '');
+      const held = recordingById(store, id);
+      if (held === null) { send(response, 404, { error: 'no such recording' }); return; }
+      const refusal = recordingActionRefusal(held, 'edit');
+      if (refusal !== null) { send(response, 403, { error: refusal }); return; }
       const outcome = restoreAudio(store, id);
       if ('error' in outcome) return send(response, 422, outcome);
       if (objectsRoot === null || outcome.audioHash === null || !existsSync(objectPath(objectsRoot, outcome.audioHash))) {
@@ -6043,6 +6268,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      */
     if (request.method === 'DELETE' && /^\/recordings\/[^/]+$/.test(path)) {
       const id = decodeURIComponent(path.split('/')[2] ?? '');
+      const held = recordingById(store, id);
+      if (held === null) { send(response, 404, { error: 'no such recording' }); return; }
+      const refusal = recordingActionRefusal(held, 'edit');
+      if (refusal !== null) { send(response, 403, { error: refusal }); return; }
       const outcome = removeRecording(store, id);
       send(response, 'error' in outcome ? 404 : 200, outcome);
       return;
@@ -6052,6 +6281,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // no se haya asentado; después el lugar es el de su contenido.
     if (request.method === 'POST' && /^\/recordings\/[^/]+\/place$/.test(path)) {
       const id = decodeURIComponent(path.split('/')[2] ?? '');
+      const held = recordingById(store, id);
+      if (held === null) { send(response, 404, { error: 'no such recording' }); return; }
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
@@ -6063,6 +6294,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
         const block = typeof body.block === 'string' && body.block !== '' ? body.block : null;
+        const sourceRefusal = recordingActionRefusal(held, 'edit');
+        const target = block === null ? null : (graph.block(block) ?? null);
+        const targetRefusal = target === null ? generalActionRefusal('edit') : pageActionRefusal(target.page, 'edit');
+        const refusal = sourceRefusal ?? targetRefusal;
+        if (refusal !== null) { send(response, 403, { error: refusal }); return; }
         const outcome = placeRecording(store, id, block);
         send(response, 'error' in outcome ? 422 : 200, outcome);
       });
@@ -6269,6 +6505,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'no such page' });
         return;
       }
+      const territorialRefusal = pageActionRefusal(page.id, 'edit');
+      if (territorialRefusal !== null) { send(response, 403, { error: territorialRefusal }); return; }
       if (isSpecialPage(page.id)) {
         send(response, 422, {
           error: 'una página especial gobierna Vera y no se procesa automáticamente',
@@ -6350,7 +6588,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // vocabulario si el corpus ya la usó como respuesta de `concepto`; los
         // enlaces sirven para ordenar dentro del vocabulario, no para convertir
         // personas, fechas y proyectos en temas por accidente.
-        .filter((candidate) => candidate.id !== page.id && (uses.get(candidate.id) ?? 0) > 0)
+        .filter((candidate) => isReadablePage(candidate.id) && candidate.id !== page.id && (uses.get(candidate.id) ?? 0) > 0)
         .map((candidate) => {
           const first = graph.blocksOf(candidate.id)
             .find((block) => block.content.trim() !== '')?.content
@@ -6579,7 +6817,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        * proposiciones: un nombre escrito en una frase no siempre es una
        * referencia a la página que se llama igual, y eso lo decide quien lee.
        */
-      const known = graph.pages().map((one) => ({
+      const known = graph.pages().filter((one) => isReadablePage(one.id)).map((one) => ({
         id: one.id,
         title: one.title,
         backlinks: graph.backlinks(one.id).length,
@@ -6761,10 +6999,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               .map((page) => page.id),
           );
           const subjects = [
-            ...graph.pages().map((one) => one.id),
+            ...graph.pages().filter((one) => isReadablePage(one.id)).map((one) => one.id),
             ...graph
               .allBlocks()
-              .filter((one) => !governed.has(one.page))
+              .filter((one) => isReadablePage(one.page) && !governed.has(one.page))
               .map((one) => one.stableId),
           ].filter((one) => !governed.has(one));
           /*
@@ -6839,6 +7077,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (path.startsWith('/blocks/') && path.endsWith('/history')) {
         const id = decodeURIComponent(path.slice('/blocks/'.length, -'/history'.length));
         const block = graph.block(id);
+        if (!publicAccess && who.participant !== owner.id && (block === undefined || !isReadablePage(block.page))) {
+          send(response, 404, { error: 'no such block' });
+          return;
+        }
         const completeLog = graph.operations();
         let log = completeLog;
         let publicBoundary: { sequence: number; publishedAt: number } | null = null;
@@ -6982,7 +7224,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const names = propertyNames();
         const marked = discardRequests(store, {
           key: names.discard_request,
-          pages: graph.pages().map((one) => ({ id: one.id, title: one.title })),
+          pages: graph.pages().filter((one) => isReadablePage(one.id))
+            .map((one) => ({ id: one.id, title: one.title })),
           propertiesOf: (page) => graph.propertiesOf(page),
           nameOf: (participant) => graph.participant(participant)?.name ?? null,
         });
@@ -7001,10 +7244,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(
           response,
           200,
-          servicePages(graph, SPECIAL_KIND).map((service) => ({
+          servicePages(graph, SPECIAL_KIND).filter((service) => isReadablePage(service.id)).map((service) => ({
             ...service,
             secrets: secretsOf(store, service.id),
-            pages: service.service === 'zotero' ? brought.size : 0,
+            pages: service.service === 'zotero'
+              ? [...brought.values()].filter((one) => isReadablePage(one.page)).length
+              : 0,
           })),
         );
         return;
@@ -7013,6 +7258,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (request.method === 'GET' && path === '/special-pages') {
       const found = graph
         .pages()
+        .filter((page) => isReadablePage(page.id))
         .map((page) => ({
           page,
           kind: graph
@@ -7073,13 +7319,24 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       // Con `page`, lo que tiene lugar en ella: es lo que deja ver el audio
       // donde se habló en vez de en un limbo aparte.
       const page = url.searchParams.get('page');
-      send(response, 200, page === null ? recordings(store) : recordingsInPage(store, page));
+      if (page !== null && !isReadablePage(page)) {
+        send(response, 404, { error: 'no such page' });
+        return;
+      }
+      send(response, 200, page === null
+        ? recordings(store).filter((recording) => who.participant === owner.id ||
+            (recording.placedInPage !== null && isReadablePage(recording.placedInPage)))
+        : recordingsInPage(store, page));
       return;
     }
 
     if (request.method === 'GET' && /^\/recordings\/[^/]+$/.test(path)) {
       const held = recordingById(store, decodeURIComponent(path.split('/')[2] ?? ''));
       if (held === null) {
+        send(response, 404, { error: 'no such recording' });
+        return;
+      }
+      if (who.participant !== owner.id && (held.placedInPage === null || !isReadablePage(held.placedInPage))) {
         send(response, 404, { error: 'no such recording' });
         return;
       }
@@ -7113,6 +7370,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'no such block' });
         return;
       }
+      const territorialRefusal = pageActionRefusal(block.page, 'edit');
+      if (territorialRefusal !== null) { send(response, 403, { error: territorialRefusal }); return; }
       const said = block.content.trim();
       if (said === '') {
         send(response, 422, { error: 'un bloque vacío no pide nada' });
@@ -7664,7 +7923,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             // `anybody` no es miembro del grafo privado. La autoridad técnica
             // evalúa, pero `within` fija antes el universo público inducido.
             participant: publicAccess ? owner.id : requestedParticipant,
-            ...(publicAccess ? { within: graph.pages().filter((page) => isPublicPage(page.id)).map((page) => page.id) } : {}),
+            within: [...readablePageIds()],
           });
         } catch (problem) {
           send(response, 403, { error: problem instanceof Error ? problem.message : 'refused' });
@@ -7832,7 +8091,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
-    const participant = publicAccess ? ANYBODY : (url.searchParams.get('participant') ?? owner.id);
+    const participant = publicAccess ? ANYBODY : who.participant;
 
     try {
       if (path === '/embeds/google-map') {
@@ -7864,9 +8123,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
 
       if (path === '/health') {
-        const visiblePages = publicAccess
-          ? graph.pages().filter((page) => isPublicPage(page.id))
-          : graph.pages();
+        const visiblePages = graph.pages().filter((page) => isReadablePage(page.id));
           const siteEntry = pageShare?.page ?? (publicScopedSpace === null
             ? (publicSite()?.entryPoint ?? null)
             : (publicScopedSpace.entryPoint !== null && isPublicPage(publicScopedSpace.entryPoint)
@@ -7876,7 +8133,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 200, {
           graph: graph.name,
           libraryName: instanceLibraryName(store),
-          access: publicAccess ? 'anybody' : 'owner',
+          access: publicAccess ? 'anybody' : (who.participant === owner.id ? 'owner' : 'participant'),
           canEdit: publicAccess ? canEditScopedSpace : true,
           canContribute: publicAccess ? canContributeScopedSpace : false,
           canAskLibrarian: publicAccess
@@ -7916,9 +8173,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
 
       if (path === '/pages') {
-        const visible = publicAccess
-          ? graph.pages().filter((page) => isPublicPage(page.id))
-          : graph.pages();
+        const visible = graph.pages().filter((page) => isReadablePage(page.id));
         send(
           response,
           200,
@@ -7935,13 +8190,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             // Cuántas aristas toca. El cliente lo usa para no abrir de entrada
             // una página aislada, que se vería como un grafo vacío.
             linkCount:
-              graph.backlinks(page.id).filter((link) => !publicAccess || isPublicPage(link.sourcePage)).length +
+              graph.backlinks(page.id).filter((link) => isReadablePage(link.sourcePage)).length +
               graph
                 .blocksOf(page.id)
                 .reduce(
                   (n, block) =>
                     n + graph.linksOf(block.stableId).filter(
-                      (link) => link.target !== null && (!publicAccess || isPublicPage(link.target)),
+                      (link) => link.target !== null && isReadablePage(link.target),
                     ).length,
                   0,
                 ),
@@ -7960,8 +8215,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
         const found = bookletPages.filter((page): page is NonNullable<typeof page> => page !== undefined);
-        if (publicAccess && found.some((page) => !isPublicPage(page.id))) {
-          send(response, 404, { error: 'el recorrido contiene una página que no está publicada' });
+        if (found.some((page) => !isReadablePage(page.id))) {
+          send(response, 404, { error: 'el recorrido contiene una página fuera del territorio' });
           return;
         }
         const title = url.searchParams.get('title')?.trim() || 'Recorrido de Vera';
@@ -7980,7 +8235,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               indent: url.searchParams.get('sangria') !== null,
               resolveBlock: (stableId) => {
                 const cited = graph.block(stableId);
-                if (cited === undefined || (publicAccess && !isPublicPage(cited.page))) return null;
+                if (cited === undefined || !isReadablePage(cited.page)) return null;
                 return { page: graph.page(cited.page)?.title ?? cited.page, excerpt: cited.content };
               },
             })),
@@ -8040,7 +8295,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 404, { error: 'no such page' });
           return;
         }
-        if (publicAccess && !isPublicPage(page.id)) {
+        if (!isReadablePage(page.id)) {
           send(response, 404, { error: 'no such page' });
           return;
         }
@@ -8084,7 +8339,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
              */
             resolveBlock: (stableId) => {
               const cited = graph.block(stableId);
-              if (cited === undefined || (publicAccess && !isPublicPage(cited.page))) return null;
+              if (cited === undefined || !isReadablePage(cited.page)) return null;
               const from = graph.page(cited.page);
               return { page: from?.title ?? cited.page, excerpt: cited.content };
             },
@@ -8155,7 +8410,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 404, { error: 'no such page' });
           return;
         }
-        if (publicAccess && !isPublicPage(page.id)) {
+        if (!isReadablePage(page.id)) {
           send(response, 404, { error: 'no such page' });
           return;
         }
@@ -8182,7 +8437,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 404, { error: 'no such page' });
           return;
         }
-        if (publicAccess && !isPublicPage(page.id)) {
+        if (!isReadablePage(page.id)) {
           send(response, 404, { error: 'no such page' });
           return;
         }
@@ -8256,7 +8511,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                   if (id === '' || seen.has(id)) continue;
                   seen.add(id);
                   const target = graph.block(id);
-                  if (target === undefined || (publicAccess && !isPublicPage(target.page))) continue;
+                  if (target === undefined || !isReadablePage(target.page)) continue;
                   found.push({ id, page: target.page, excerpt: excerpt(target.content) });
                 }
               }
@@ -8353,9 +8608,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           // desaparecer y fabricar una continuidad que el autor nunca escribió.
           trail: (() => {
             const trail = trailOf(page.id);
-            return trail === null || !publicAccess
-              ? trail
-              : projectTrail(trail, isPublicPage);
+            return trail === null ? null : projectTrail(trail, isReadablePage);
           })(),
           visibility: page.visibility,
           publication: publicationView(page.id),
@@ -8402,7 +8655,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             // veces, retenía gigabytes y hacía parecer caído al servicio.
             const linkedPages = new Set(graph.backlinks(page.id).map((link) => link.sourcePage));
             const members = graph.pages().flatMap((candidate) => {
-              if (candidate.id === page.id || (publicAccess && !isPublicPage(candidate.id))) return [];
+              if (candidate.id === page.id || !isReadablePage(candidate.id)) return [];
               const blocks = graph.blocksOf(candidate.id);
               const declared = graph.propertiesOf(candidate.id).some(
                 (property) =>
@@ -8473,7 +8726,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            * la afirmación sin avisar.
            */
           crossingsOut: graph.crossingsOut(page.id)
-            .filter((crossing) => !publicAccess || (crossing.toPage !== null && isPublicPage(crossing.toPage)))
+            .filter((crossing) => crossing.toPage !== null && isReadablePage(crossing.toPage))
             .map((crossing) => ({
             ...crossing,
             revision: graph.revisions()
@@ -8485,11 +8738,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           })).concat(
             glossCrossings
               .filter((crossing) => crossing.fromPage === page.id)
-              .filter((crossing) => !publicAccess || (crossing.toPage !== null && isPublicPage(crossing.toPage)))
+              .filter((crossing) => crossing.toPage !== null && isReadablePage(crossing.toPage))
               .map((crossing) => crossingRow(crossing, true)),
           ),
           crossingsIn: graph.crossingsIn(page.id)
-            .filter((crossing) => !publicAccess || isPublicPage(crossing.fromPage))
+            .filter((crossing) => isReadablePage(crossing.fromPage))
             .map((crossing) => ({
             ...crossing,
             revision: graph.revisions()
@@ -8501,7 +8754,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           })).concat(
             glossCrossings
               .filter((crossing) => crossing.toPage === page.id)
-              .filter((crossing) => !publicAccess || isPublicPage(crossing.fromPage))
+              .filter((crossing) => isReadablePage(crossing.fromPage))
               .map((crossing) => crossingRow(crossing, false)),
           ),
           // La denominación de origen de los bloques hablados de esta página.
@@ -8563,7 +8816,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 if (id === '' || seen.has(id)) continue;
                 seen.add(id);
                 const target = graph.block(id);
-                if (target === undefined || (publicAccess && !isPublicPage(target.page))) continue;
+                if (target === undefined || !isReadablePage(target.page)) continue;
                 found.push({ id, page: target.page, excerpt: excerpt(target.content) });
               }
             }
@@ -8579,7 +8832,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             const pending = new Set<string>();
             for (const block of graph.blocksOf(page.id)) {
               for (const link of graph.linksOf(block.stableId)) {
-                if (link.target === null || (publicAccess && !isPublicPage(link.target))) {
+                if (link.target === null || !isReadablePage(link.target)) {
                   pending.add(link.targetTitle);
                 }
               }
@@ -8587,7 +8840,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             return [...pending];
           })(),
           backlinks: graph.backlinks(page.id)
-            .filter((link) => !publicAccess || isPublicPage(link.sourcePage))
+            .filter((link) => isReadablePage(link.sourcePage))
             .map((link) => {
             const source = graph.page(link.sourcePage);
             const block = link.sourceBlock === null ? undefined : graph.block(link.sourceBlock);
@@ -8619,13 +8872,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             const seen = new Map<string, { page: string | null; title: string; block: string; excerpt: string }>();
             for (const block of graph.blocksOf(page.id)) {
               for (const link of graph.linksOf(block.stableId)) {
-                const target = link.target === null ? undefined : graph.page(link.target);
+                const readableTarget = link.target !== null && isReadablePage(link.target);
+                const target = readableTarget ? graph.page(link.target!) : undefined;
                 const key = titleKey(target?.title ?? link.targetTitle);
                 if (key === '' || seen.has(key)) continue;
                 seen.set(key, {
-                  page: publicAccess && (link.target === null || !isPublicPage(link.target))
-                    ? null
-                    : link.target,
+                  page: readableTarget ? link.target : null,
                   title: target?.title ?? link.targetTitle,
                   block: block.stableId,
                   excerpt: excerpt(block.content),
@@ -8666,7 +8918,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (
           objectsRoot === null ||
           !HASH.test(hash) ||
-          (publicAccess && !publicMediaHashes(scopedPageIds).has(hash))
+          (who.participant !== owner.id && !publicMediaHashes(readablePageIds()).has(hash))
         ) {
           send(response, 404, { error: 'no such media' });
           return;
@@ -8698,9 +8950,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // frontera `anybody` no se admite al grafo. El resultado se recorta por
         // publicación antes de salir; no se inventa una membresía anónima.
         const outcome = graph.search({ text: asked, participant: publicAccess ? owner.id : participant });
-        const hits = publicAccess
-          ? outcome.hits.filter((hit) => isPublicPage(hit.page))
-          : outcome.hits;
+        const hits = outcome.hits.filter((hit) => isReadablePage(hit.page));
         /*
          * Una búsqueda que devolvió doce extractos expuso doce cosas, y el
          * registro tiene que poder nombrarlas: buscar es la manera barata de
@@ -8730,7 +8980,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         } else {
           hits = searchPageSummaries(store, asked);
         }
-        const visible = publicAccess ? hits.filter((hit) => isPublicPage(hit.page)) : hits;
+        const visible = hits.filter((hit) => isReadablePage(hit.page));
         deliver(visible, {
           surface: 'GET /search/pages',
           subject: asked,
@@ -8749,7 +8999,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             page: graph.block(gloss.block)?.page ?? null,
             content: gloss.content,
             updatedAt: gloss.updatedAt,
-          }));
+          }))
+          .filter((gloss) => gloss.page !== null && isReadablePage(gloss.page));
         deliver(
           { count: graph.glosses().length, matches },
           {
@@ -8771,9 +9022,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // El dueño puede mirar el mismo subgrafo publicado sin dejar de ser
         // dueño. Esto filtra sólo el mapa; no cambia la autoridad de la petición.
         const publishedMap = publicAccess || url.searchParams.get('published') === '1';
-        if (publishedMap) {
+        const territorialMap = readablePageIds().size !== graph.pages().length;
+        if (publishedMap || territorialMap) {
           const centred = graph.page(centre) ?? graph.pageTitled(centre);
-          if (centred === undefined || !isPublicPage(centred.id)) {
+          const allowed = publishedMap ? scopedPageIds : readablePageIds();
+          if (centred === undefined || !allowed.has(centred.id)) {
             send(response, 404, { error: 'no such page' });
             return;
           }
@@ -8781,7 +9034,6 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           // El mapa público se calcula sobre el subgrafo inducido. Filtrar un
           // vecindario privado después de recorrerlo revelaría que dos páginas
           // públicas están conectadas por algo oculto.
-          const allowed = scopedPageIds;
           const neighbours = new Map<string, Set<string>>();
           for (const id of allowed) neighbours.set(id, new Set());
           for (const id of allowed) {
@@ -8982,7 +9234,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // basta para afirmar que una página habla de esta identidad operativa.
         const aliases = participantAliases(store, canonicalId);
         const semanticPages = graph.pages()
-          .filter((page) => graph.propertiesOf(page.id).some(
+          .filter((page) => isReadablePage(page.id) && graph.propertiesOf(page.id).some(
             (property) => property.key.trim().toLowerCase() === 'identidad participante' &&
               aliases.includes(property.value.trim()),
           ))
@@ -9041,14 +9293,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const before = Number(url.searchParams.get('before') ?? Number.POSITIVE_INFINITY);
         const limit = 200;
         const activity = folded.activity
-          .filter((one) => one.sequence < before && (participant === null || participantIds.includes(one.participant)))
+          .filter((one) => one.sequence < before && one.page !== null && isReadablePage(one.page.id)
+            && (participant === null || participantIds.includes(one.participant)))
           .slice(0, limit);
         const more = activity.length === limit;
         send(response, 200, {
           activity,
-          deletedPages: folded.deletedPages.filter(
+          deletedPages: who.participant === owner.id ? folded.deletedPages.filter(
             (one) => participant === null || participantIds.includes(one.participant),
-          ),
+          ) : [],
           participant: person == null ? null : {
             id: participant!, name: person.name, kind: person.kind, status: person.status,
           },
@@ -9065,6 +9318,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           graph
             .operations()
             .filter((op) => op.sequence > since)
+            .filter((op) => {
+              const page = pageTouchedBy(op.submission.change, op.subjectId, (id) => graph.block(id)?.page);
+              return page !== null && isReadablePage(page);
+            })
             .map((op) => ({
               sequence: op.sequence,
               originId: op.originId,
