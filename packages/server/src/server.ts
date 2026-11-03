@@ -1051,14 +1051,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     void dispatchNextLibrarianRequest();
   };
 
+  const localCalendarDay = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const librarianRoutineTimer = setInterval(() => {
     const config = librarianRuntimeConfiguration(store);
     if (config === null || !config.enabled || !config.routine.enabled || embeddedLibrarianBusy) return;
     const now = new Date();
     if (now.getHours() !== config.routine.hour) return;
-    const day = now.toISOString().slice(0, 10);
+    const day = localCalendarDay(now);
     const latest = librarianRuntimeRuns(store, 20).find((run) => run.kind === 'routine');
-    if (latest !== undefined && new Date(latest.startedAt).toISOString().slice(0, 10) === day) return;
+    if (latest !== undefined && localCalendarDay(new Date(latest.startedAt)) === day) return;
     void executeLibrarianRoutine();
   }, 60_000);
   librarianRoutineTimer.unref();
