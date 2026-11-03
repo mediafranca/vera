@@ -837,7 +837,11 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
   const heading = document.createElement('h2'); heading.textContent = `Compartir · ${title}`;
   const close = document.createElement('button'); close.type = 'button'; close.className = 'settings-close';
   close.innerHTML = icon('x'); close.setAttribute('aria-label', 'Cerrar destinos');
-  close.onclick = () => host.remove(); head.append(heading, close); host.append(head);
+  close.onclick = () => {
+    if (host instanceof HTMLDialogElement) host.close();
+    else host.remove();
+  };
+  head.append(heading, close); host.append(head);
   const body = document.createElement('div'); body.className = 'settings-body'; host.append(body);
   const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo destinos…'; body.append(status);
   try {

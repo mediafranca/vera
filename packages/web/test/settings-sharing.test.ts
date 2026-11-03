@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
 const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+const publicationPage = readFileSync(new URL('../src/publication-page.ts', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 describe('administración de invitaciones', () => {
   it('abre los espacios en el origen público y conserva el slug', () => {
@@ -59,6 +61,14 @@ describe('destinos de una página', () => {
     assert.match(outliner, /add\.textContent = '\+'/);
     assert.match(outliner, /drawPageDestinationBadges\(badges, page\.id\)/);
     assert.doesNotMatch(outliner, /badge\.className = `visibility/);
+    assert.match(styles, /\.page-destination-add::before,[\s\S]*top: 50%;[\s\S]*left: 50%/);
+  });
+
+  it('abre los destinos en un modal compacto sin desplazar la página', () => {
+    assert.match(publicationPage, /document\.createElement\('dialog'\)/);
+    assert.match(publicationPage, /dialog\.showModal\(\)/);
+    assert.doesNotMatch(outliner, /renderPageSharing\(page\.id, page\.title[^;]*\.then/);
+    assert.match(styles, /\.page-sharing \{[\s\S]*width: min\(32rem,[\s\S]*max-height:/);
   });
 
   it('ofrece varios espacios y reserva la ruta para el destino público', () => {
