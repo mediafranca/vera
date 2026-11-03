@@ -4,8 +4,8 @@
 
 # Vera
 
-> Una infraestructura para conservar y recorrer una memoria intelectual propia,
-> y trabajar con inteligencias artificiales sin entregarles su gobierno.
+> Una infraestructura para conservar y recorrer una memoria intelectual propia
+> con una bibliotecaria gobernada por quien habita la biblioteca.
 
 ![Vera muestra una página y su grafo de relaciones](https://vera.mediafranca.net/assets/vera-interface.png)
 
@@ -42,9 +42,11 @@ ese recorrido puede ser objeto de estudio, reflexión y evaluación sin reducir 
 autoría a la falsa pregunta de si una frase fue escrita enteramente por una
 persona o por una máquina.
 
-Técnicamente, VERA es una wiki personal *local-first*, mantenible por personas y
-agentes. El proyecto se documenta desde su propio corpus para no sostener
-versiones paralelas de la misma explicación.
+Técnicamente, VERA es una wiki *local-first*, mantenible por personas y agentes.
+Cada instalación constituye una biblioteca con nombre propio, separada del
+nombre del programa y de sus identificadores internos. El proyecto se documenta
+desde su propio corpus para no sostener versiones paralelas de la misma
+explicación.
 
 ## Nacida desde dentro
 
@@ -55,12 +57,12 @@ trabajó como agente sobre la memoria mediante las mismas puertas que VERA ofrec
 a otros agentes. El desarrollo posterior también ha usado otras herramientas,
 entre ellas Codex, directamente sobre el repositorio.
 
-El Bibliotecario no viene incorporado en VERA y no es una autoridad privilegiada.
-Es una configuración posible: un agente con identidad, permisos y procedencia
-explícitos. Quien replique el sistema puede conectarle otro agente, darle otro
-nombre o no instalar ninguno. La capacidad transferible no es ese personaje,
-sino la separación entre el corpus soberano, la aplicación que lo gobierna y los
-agentes sustituibles autorizados para colaborar con él.
+La experiencia cambió el diseño: una biblioteca Vera se constituye con una
+**bibliotecaria de su persona dueña**. Vera Desktop propone «Lucienne», pero el
+nombre es editable. La agente pertenece a esa persona; Vera aporta un *harness*
+versionado con herramientas bibliotecarias. Ese armazón añade capacidades
+explícitas, no propiedad sobre la agente ni permiso territorial ilimitado. Los
+modelos, runtimes y servicios que la hacen operar siguen siendo sustituibles.
 
 Ahora el proyecto busca llevar esa experiencia situada a una conversación
 colectiva y contrastable. Que el sistema haya servido para examinar su propia
@@ -94,9 +96,14 @@ servicio multiusuario listo para producción.
 
 1. **Descarga Vera Desktop** para Windows, macOS o Linux desde la
    [última versión](https://github.com/mediafranca/vera/releases/latest).
-2. **Abre la aplicación.** Vera crea una memoria inicial en tu equipo; el corpus
-   no se sube a MediaFranca ni a un proveedor de IA.
-3. **Conecta la IA que elijas** desde la página **MCP** de Vera. Si el cliente
+2. **Constituye la biblioteca.** Vera pregunta cómo quieres aparecer, el nombre
+   de la biblioteca, si será personal o colectiva y el nombre de tu
+   bibliotecaria. En una biblioteca colectiva también pide el nombre de la
+   primera superficie compartida. Los valores sugeridos se pueden cambiar. La
+   memoria nace con la ontología inicial gobernada —Propiedades, Objetos y
+   Relaciones— ya poblada y editable.
+3. **Conecta el runtime de la bibliotecaria u otros agentes** desde la página
+   **MCP** de Vera. Si el cliente
    corre en el mismo equipo, usa la conexión local. Si vive en Internet, activa
    **Vera Conecta**, crea un acceso para ese cliente y copia la URL y la
    credencial que Vera muestra una sola vez.
@@ -163,14 +170,16 @@ npm run typecheck
 npm test
 ```
 
-## Hacer que Vera funcione con IA
+## Hacer que la bibliotecaria funcione con IA
 
-Vera no trae una IA cautiva ni obliga a contratar otra suscripción: cualquier
-cliente que hable
+La bibliotecaria es una identidad gobernada de la biblioteca, no un modelo
+cautivo. Cualquier cliente que hable
 [MCP](https://modelcontextprotocol.io/) —Claude Code, Claude Desktop, Codex,
 Gemini CLI, LM Studio y otros— se conecta a la misma puerta y opera el corpus
-con su propia identidad y credencial. La guía completa, con los cinco valores
-de conexión y un caso por cada forma de desplegar el cliente, está en
+con una identidad y credencial explícitas. Cambiar de modelo o proveedor no
+reemplaza la biblioteca ni la identidad histórica de su bibliotecaria. La guía
+completa, con los cinco valores de conexión y un caso por cada forma de
+desplegar el cliente, está en
 [Conectar una IA](docs/conectar-una-ia.md).
 
 - **Cliente local:** conecta por `stdio` o por loopback; los datos no necesitan
