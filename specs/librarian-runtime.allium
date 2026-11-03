@@ -164,6 +164,11 @@ surface LibrarianRuntimeAdministration {
     @guarantee RoutinesBeginDisabled
         -- Una ronda automática nace apagada y también puede ejecutarse a mano.
 
+    @guarantee RoutinesOnlyReportOperationalEvidence
+        -- Una ronda no encarga al modelo inventar diagnósticos a partir de
+        -- conteos. Sin violaciones observadas responde SIN_NOVEDAD; con ellas
+        -- enumera únicamente los controles que Vera comprobó y sus detalles.
+
     @guarantee EveryRunLeavesPublicOperationalEvidence
         -- Vera conserva modelo, manifiesto, comienzo, término, estado, salida o
         -- error. No conserva razonamiento privado ni el valor del secreto.

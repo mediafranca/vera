@@ -267,6 +267,9 @@ manifiesto, inicio, término, salida o error— sin guardar razonamiento privado
 El runtime nace detenido, la ronda nace apagada y ambos requieren un acto
 explícito de la persona dueña. El puente externo puede coexistir durante una
 mudanza: la reclamación atómica de la solicitud deja un solo ejecutor ganador.
+La ronda operacional es cerrada sobre evidencia: si los invariantes ejecutables
+no encuentran una falta devuelve `SIN_NOVEDAD`; nunca pide al modelo que infiera
+problemas a partir de simples conteos de páginas o bloques.
 
 El modelo completo de *clearance* territorial —selección positiva, biblioteca
 general, «todo», exclusiones dominantes y explicación de cada rechazo— está

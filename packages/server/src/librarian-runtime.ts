@@ -213,14 +213,3 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
     'Devuelve sólo la respuesta que leerá la persona, en Markdown.',
   ].join('\n\n');
 }
-
-export function librarianRoutinePrompt(store: Store, config: LibrarianRuntimeConfiguration,
-  libraryDigest: string): string {
-  return [
-    'Eres la bibliotecaria de esta biblioteca Vera y realizas una ronda gobernada.',
-    'Señala como máximo cinco asuntos concretos que merezcan atención. Si no hay ninguno, responde exactamente: SIN_NOVEDAD.',
-    'No cambies el corpus ni supongas herramientas. Devuelve observaciones públicas, nunca razonamiento privado.',
-    manifestPrompt(store, config.agent),
-    `Estado acotado de la biblioteca: ${libraryDigest}`,
-  ].join('\n\n');
-}

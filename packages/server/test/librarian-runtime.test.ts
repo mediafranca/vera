@@ -30,9 +30,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       for await (const _chunk of request) { /* consume body */ }
       inferenceCalls += 1;
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({
-        output_text: inferenceCalls === 1 ? 'Respuesta de Lucienne.' : 'SIN_NOVEDAD',
-      }));
+      response.end(JSON.stringify({ output_text: 'Respuesta de Lucienne.' }));
     });
     await new Promise<void>((resolve) => inference.listen(4399, '127.0.0.1', resolve));
     process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
@@ -102,7 +100,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       const runs = finalView['runs'] as Array<Record<string, unknown>>;
       assert.ok(runs.some((run) => run.kind === 'request' && run.status === 'completed'));
       assert.ok(runs.some((run) => run.kind === 'routine' && run.output === 'SIN_NOVEDAD'));
-      assert.equal(inferenceCalls, 2);
+      assert.equal(inferenceCalls, 1, 'una ronda sin evidencia no consulta al modelo ni le permite inventarla');
     } finally {
       await running.close();
       await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));
