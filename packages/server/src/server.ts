@@ -133,7 +133,6 @@ import {
   beginLibrarianRuntimeRun,
   finishLibrarianRuntimeRun,
   librarianRequestPrompt,
-  librarianRoutinePrompt,
   librarianRuntimeConfiguration,
   librarianRuntimeRuns,
   saveLibrarianRuntimeConfiguration,
@@ -1003,22 +1002,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     embeddedRuntimeStatus = 'working';
     const run = beginLibrarianRuntimeRun(store, { kind: 'routine', model: config.model });
     try {
-      const digest = JSON.stringify({
-        library: instanceLibraryName(store), pages: graph.pages().length,
-        blocks: graph.pages().reduce((sum, page) => sum + graph.blocksOf(page.id).length, 0),
-        queuedRequests: pendingLibrarianDispatches(store).length,
-        invariants: checkInvariants(graph).length,
-      });
-      const answered = await ask(librarianRoutinePrompt(store, config, digest), {
-        model: config.model,
-        ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
-        ...(resolvedRuntimeSecret(config.secretReference) === undefined
-          ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
-        maxTokens: 700,
-        timeoutMs: 300_000,
-      });
-      if ('error' in answered) throw new Error(answered.error);
-      finishLibrarianRuntimeRun(store, run.id, { output: answered.text });
+      const violations = checkInvariants(graph);
+      const output = violations.length === 0
+        ? 'SIN_NOVEDAD'
+        : violations.slice(0, 5)
+          .map((violation) => `- **${violation.invariant}:** ${violation.detail}`)
+          .join('\n');
+      finishLibrarianRuntimeRun(store, run.id, { output });
     } catch (error) {
       finishLibrarianRuntimeRun(store, run.id, {
         error: error instanceof Error ? error.message : 'la ronda no pudo terminar',
