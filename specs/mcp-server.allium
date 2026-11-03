@@ -65,6 +65,12 @@ contract MCPIsADoorAndNotASecondMemory {
         -- cabecera sin verificar. Es la misma regla que ya rige en
         -- @invariant IdentityComesFromTheCredential, dicha para una puerta nueva.
 
+    @invariant TheLivingMemoryIsNamedAsVera
+        -- Toda respuesta MCP que nombre la memoria viva la llama Vera. Un nombre
+        -- heredado de su importación o almacenamiento puede sobrevivir como
+        -- procedencia interna, pero nunca se presenta como el corpus vigente ni
+        -- como su autoridad: el origen histórico no suplanta la casa actual.
+
     @invariant ADeclaredRemoteConnectionFailsClosed
         -- Si una conexión remota no puede abrir la credencial que se le declaró,
         -- la puerta no inicia. Nunca degrada a una entrada anónima ni aprovecha

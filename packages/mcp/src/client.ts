@@ -246,7 +246,6 @@ export const failed = (value: unknown): value is Failure =>
 
 /** Lo que Vera contesta sobre sí misma al arrancar. */
 export interface Health {
-  graph: string;
   pages: number;
   blocks: number;
   lastSequence: number;
