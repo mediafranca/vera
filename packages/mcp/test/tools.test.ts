@@ -95,6 +95,8 @@ describe('quién soy', () => {
     assert.match(said, /participant:cotito/);
     assert.match(said, /read, write/);
     assert.match(said, /900 páginas/);
+    assert.match(said, /Corpus vivo de Vera/);
+    assert.doesNotMatch(said, /mind/);
     // Se le dice al modelo lo que no puede hacer, o lo intenta.
     assert.match(said, /puede escribir/);
   });
