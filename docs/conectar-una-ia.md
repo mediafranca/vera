@@ -20,7 +20,20 @@ la bibliotecaria.
 
 ---
 
-## La idea, en una frase
+## Dos maneras de darle runtime
+
+1. **Runtime embebido:** en **Centro de Vera → Bibliotecario**, constituye la
+   bibliotecaria si la memoria es anterior, elige un modelo local o un endpoint
+   compatible con OpenAI, revisa permisos y activa. Vera Desktop cifra la clave
+   en el almacén seguro del sistema; el corpus conserva sólo su referencia.
+2. **Runtime externo:** conecta Claude, Codex, Gemini, LM Studio u otro cliente
+   por MCP con una credencial propia. Es la vía para otros agentes y permanece
+   como puente reemplazable para la bibliotecaria.
+
+Ambos pueden estar instalados durante una transición. Cada solicitud tiene una
+reclamación atómica: responde quien la reclama primero, nunca los dos.
+
+## La idea de la puerta externa, en una frase
 
 **Vera no tiene una integración por proveedor.** Tiene una sola puerta —un
 servidor [MCP](https://modelcontextprotocol.io/)— y todos los formularios de
@@ -32,8 +45,9 @@ valores en cada formulario, de dónde se sacan, y qué hacer cuando no funciona.
 
 ## Inicio rápido desde Vera Desktop
 
-1. Instala la [última versión de Vera Desktop](https://github.com/mediafranca/vera/releases/latest),
-   constituye la biblioteca y abre la página **MCP**.
+1. Instala la [última versión de Vera Desktop](https://github.com/mediafranca/vera/releases/latest)
+   y constituye la biblioteca. Para Lucienne, abre **Centro de Vera → Bibliotecario**;
+   para otro agente o un runtime externo, abre **MCP**.
 2. Si la IA corre en el mismo equipo, crea allí una credencial y usa la
    configuración local que Vera calcula.
 3. Si la IA vive en Internet y acepta una URL MCP con bearer, activa **Vera

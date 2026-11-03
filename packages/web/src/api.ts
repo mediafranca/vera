@@ -660,6 +660,32 @@ export interface AgentAdministrationView {
   }[];
 }
 
+export type LibrarianRuntimePermission = 'read_request_context' | 'reply' | 'daily_round';
+
+export interface LibrarianRuntimeView {
+  librarian: { id: string; agent: string; name: string; owner: string } | null;
+  status: 'unconstituted' | 'stopped' | 'ready' | 'degraded' | 'working';
+  configuration: null | {
+    instance: string;
+    librarian: string;
+    agent: string;
+    enabled: boolean;
+    model: string | null;
+    endpoint: string | null;
+    secretReference: string | null;
+    permissions: LibrarianRuntimePermission[];
+    routine: { enabled: boolean; hour: number; timezone: string };
+    updatedBy: string;
+    updatedAt: number;
+  };
+  secret: { reference: string | null; available: boolean };
+  runs: {
+    id: string; kind: 'request' | 'routine'; request: string | null; model: string;
+    manifest: string | null; status: 'running' | 'completed' | 'failed';
+    startedAt: number; finishedAt: number | null; output: string | null; error: string | null;
+  }[];
+}
+
 /** Por qué columna se está mirando una tabla, y en qué sentido. */
 export interface QuerySort {
   by: 'title' | 'type' | 'topic' | 'created' | 'updated';
@@ -1547,6 +1573,26 @@ export const api = {
     }),
 
   agentAdministration: () => json<{ agents: AgentAdministrationView[] }>('/agent-administration'),
+
+  librarianRuntime: () => json<LibrarianRuntimeView>('/librarian/runtime'),
+
+  processingModels: () => json<{ models: {
+    id: string; name: string; provider: 'local' | 'openai'; location: 'this_device' | 'external';
+  }[] }>('/processing/models'),
+
+  constituteLibrarianRuntime: (name: string) => json<LibrarianRuntimeView>('/librarian/runtime/constitute', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+  }),
+
+  configureLibrarianRuntime: (configuration: {
+    enabled: boolean; model: string | null; endpoint: string | null; secretReference: string | null;
+    permissions: LibrarianRuntimePermission[];
+    routine: { enabled: boolean; hour: number; timezone: string };
+  }) => json<LibrarianRuntimeView>('/librarian/runtime', {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(configuration),
+  }),
+
+  runLibrarianRoutine: () => json<LibrarianRuntimeView>('/librarian/runtime/routine', { method: 'POST' }),
 
   establishAgentPrincipal: (agent: string, human: string) =>
     json<{ agent: string; human: string }>(`/agents/${encodeURIComponent(agent)}/principal`, {

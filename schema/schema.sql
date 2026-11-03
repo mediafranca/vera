@@ -175,6 +175,42 @@ CREATE TABLE IF NOT EXISTS librarian_harnesses (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_librarian_harness
     ON librarian_harnesses(librarian_id) WHERE status = 'active';
 
+-- El runtime es reemplazable; su configuración pertenece a la instalación y
+-- sólo conserva referencias a secretos custodiados fuera del corpus.
+CREATE TABLE IF NOT EXISTS librarian_runtime_configs (
+    instance_id       TEXT PRIMARY KEY REFERENCES instances (id) ON DELETE CASCADE,
+    librarian_id      TEXT NOT NULL REFERENCES owner_librarians (id),
+    agent_id          TEXT NOT NULL REFERENCES participants (id),
+    enabled           INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    model_id          TEXT,
+    endpoint          TEXT,
+    secret_reference TEXT,
+    permissions_json  TEXT NOT NULL DEFAULT '["read_request_context","reply"]',
+    routine_enabled   INTEGER NOT NULL DEFAULT 0 CHECK (routine_enabled IN (0,1)),
+    routine_hour      INTEGER NOT NULL DEFAULT 9 CHECK (routine_hour BETWEEN 0 AND 23),
+    routine_timezone  TEXT NOT NULL DEFAULT 'local',
+    updated_by        TEXT NOT NULL REFERENCES participants (id),
+    updated_at        INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS librarian_runtime_runs (
+    id            TEXT PRIMARY KEY,
+    instance_id   TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    agent_id      TEXT NOT NULL REFERENCES participants (id),
+    kind          TEXT NOT NULL CHECK (kind IN ('request','routine')),
+    request_id    TEXT REFERENCES agent_requests (id) ON DELETE SET NULL,
+    manifest_id   TEXT REFERENCES agent_manifests (id),
+    model_id      TEXT NOT NULL,
+    status        TEXT NOT NULL CHECK (status IN ('running','completed','failed')),
+    started_at    INTEGER NOT NULL,
+    finished_at   INTEGER,
+    output        TEXT,
+    error         TEXT
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS librarian_runtime_runs_recent
+    ON librarian_runtime_runs(instance_id, started_at DESC);
+
 CREATE TABLE IF NOT EXISTS instance_governance_grants (
     id              TEXT PRIMARY KEY,
     instance_id     TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,

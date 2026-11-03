@@ -83,9 +83,13 @@ export async function processingModels(): Promise<ProcessingModel[]> {
   return [...local, ...remote];
 }
 
-async function selectedModel(id?: string): Promise<{ descriptor: ProcessingModel; path?: string } | null> {
+async function selectedModel(id?: string, remoteKey?: string): Promise<{ descriptor: ProcessingModel; path?: string } | null> {
   const catalog = await processingModels();
-  const descriptor = id === undefined ? catalog[0] : catalog.find((one) => one.id === id);
+  const descriptor = id === undefined ? catalog[0] : catalog.find((one) => one.id === id) ?? (
+    id.startsWith('openai:') && (remoteKey ?? '').trim() !== ''
+      ? { id, name: id.slice('openai:'.length), provider: 'openai' as const, location: 'external' as const }
+      : undefined
+  );
   if (descriptor === undefined) return null;
   if (descriptor.provider === 'local') {
     const path = Buffer.from(descriptor.id.slice('local:'.length), 'base64url').toString('utf8');
@@ -132,6 +136,10 @@ export interface AskOptions {
   temperature?: number;
   /** Semilla de muestreo para procesos que necesitan una nueva posibilidad. */
   seed?: number;
+  /** Endpoint compatible con OpenAI Responses, gobernado por la instalación. */
+  endpoint?: string;
+  /** Secreto resuelto en el runtime; nunca se persiste en Vera. */
+  apiKey?: string;
 }
 
 export interface ModelFailure {
@@ -188,14 +196,15 @@ export async function ask(
   prompt: string,
   options: AskOptions = {},
 ): Promise<{ text: string } | ModelFailure> {
-  const selected = await selectedModel(options.model);
+  const selected = await selectedModel(options.model, options.apiKey);
   if (selected?.descriptor.provider === 'openai') {
-    const endpoint = `${(process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/responses`;
+    const base = options.endpoint ?? process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1';
+    const endpoint = `${base.replace(/\/$/, '')}/responses`;
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          authorization: `Bearer ${process.env['OPENAI_API_KEY'] ?? ''}`,
+          authorization: `Bearer ${options.apiKey ?? process.env['OPENAI_API_KEY'] ?? ''}`,
           'content-type': 'application/json',
         },
         body: JSON.stringify({

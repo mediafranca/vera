@@ -102,11 +102,11 @@ servicio multiusuario listo para producción.
    primera superficie compartida. Los valores sugeridos se pueden cambiar. La
    memoria nace con la ontología inicial gobernada —Propiedades, Objetos y
    Relaciones— ya poblada y editable.
-3. **Conecta el runtime de la bibliotecaria u otros agentes** desde la página
-   **MCP** de Vera. Si el cliente
-   corre en el mismo equipo, usa la conexión local. Si vive en Internet, activa
-   **Vera Conecta**, crea un acceso para ese cliente y copia la URL y la
-   credencial que Vera muestra una sola vez.
+3. **Inicia la bibliotecaria** en **Centro de Vera → Bibliotecario**. Elige un
+   modelo local o un endpoint compatible con OpenAI, revisa sus permisos y
+   activa el runtime. Vera Desktop cifra la clave de inferencia fuera del
+   corpus. Para conectar otros agentes, abre **MCP**; si viven en Internet, usa
+   Vera Conecta y una credencial exclusiva para cada cliente.
 
 La IA debe ejecutar primero `vera_quien_soy`: así compruebas la identidad y los
 alcances con que entró antes de dejarla leer o escribir. Una URL de Conecta no
@@ -173,7 +173,12 @@ npm test
 ## Hacer que la bibliotecaria funcione con IA
 
 La bibliotecaria es una identidad gobernada de la biblioteca, no un modelo
-cautivo. Cualquier cliente que hable
+cautivo. Vera Desktop incluye un runtime embebido: carga el manifiesto activo,
+usa el modelo elegido, responde la cola del Bibliotecario y deja recibos de cada
+solicitud o ronda. La ronda diaria nace apagada. El panel muestra sus permisos,
+estado, modelo y actividad; nunca devuelve el valor de la clave guardada.
+
+Un cliente externo que hable
 [MCP](https://modelcontextprotocol.io/) —Claude Code, Claude Desktop, Codex,
 Gemini CLI, LM Studio y otros— se conecta a la misma puerta y opera el corpus
 con una identidad y credencial explícitas. Cambiar de modelo o proveedor no

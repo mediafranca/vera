@@ -13,6 +13,12 @@ su historia nunca constituyó. Una biblioteca nueva recibe además el *starter*
 ontológico gobernado de la distribución: 36 propiedades, 16 objetos y 13
 relaciones iniciales, editables desde sus páginas rectoras.
 
+Desktop también puede custodiar la clave del runtime embebido de la
+bibliotecaria. La guarda cifrada mediante `safeStorage`, fuera de SQLite y del
+grafo. El renderer sólo puede reemplazarla, retirarla o consultar si existe;
+nunca puede volver a leer su valor. Cuando el sistema sólo ofrece un backend de
+texto básico, Vera rechaza guardarla en vez de fingir custodia segura.
+
 ## Dos niveles de confianza, formalizados en la spec
 
 `specs/desktop-distribution.allium` distingue dos categorías de release, cada

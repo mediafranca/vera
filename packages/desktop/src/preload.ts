@@ -40,3 +40,10 @@ contextBridge.exposeInMainWorld('veraExternalEditing', {
 contextBridge.exposeInMainWorld('veraVoiceConfiguration', {
   choosePath: (kind: string) => ipcRenderer.invoke('vera-voice:choose-path', kind),
 });
+
+contextBridge.exposeInMainWorld('veraLibrarianSecret', {
+  status: () => ipcRenderer.invoke('vera-librarian-secret:status'),
+  save: (input: { apiKey: string; endpoint: string; model: string }) =>
+    ipcRenderer.invoke('vera-librarian-secret:save', input),
+  clear: () => ipcRenderer.invoke('vera-librarian-secret:clear'),
+});

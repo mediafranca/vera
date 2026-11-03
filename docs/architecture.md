@@ -259,6 +259,15 @@ La separación es deliberada:
 - el *harness* no amplía por sí solo las superficies que la participante puede
   leer o modificar.
 
+El runtime embebido conserva otra separación. `librarian_runtime_configs`
+registra modelo, endpoint, referencia de secreto, permisos, activación y horario
+de ronda; el valor del secreto queda fuera de SQLite. En Desktop se cifra con
+`safeStorage`. `librarian_runtime_runs` conserva recibos operativos —modelo,
+manifiesto, inicio, término, salida o error— sin guardar razonamiento privado.
+El runtime nace detenido, la ronda nace apagada y ambos requieren un acto
+explícito de la persona dueña. El puente externo puede coexistir durante una
+mudanza: la reclamación atómica de la solicitud deja un solo ejecutor ganador.
+
 El modelo completo de *clearance* territorial —selección positiva, biblioteca
 general, «todo», exclusiones dominantes y explicación de cada rechazo— está
 formalizado, pero su cerco uniforme en todas las rutas sigue parcial. Ninguna
@@ -266,6 +275,7 @@ superficie activa puede quedar bajo custodia exclusiva de agentes: siempre debe
 conservar al menos una persona con lectura y administración efectivas. Ver
 [`library-surfaces-clearance.allium`](../specs/library-surfaces-clearance.allium),
 [`owner-librarian-harness.allium`](../specs/owner-librarian-harness.allium) y
+[`librarian-runtime.allium`](../specs/librarian-runtime.allium),
 [`desktop-onboarding.allium`](../specs/desktop-onboarding.allium).
 
 **Hecho.** Un agente participa con una credencial: token revocable, con alcance

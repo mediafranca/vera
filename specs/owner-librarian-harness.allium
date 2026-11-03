@@ -7,7 +7,7 @@
 --   role per instance, explicit harness capabilities, territorial clearance,
 --   ordinary attributed writes and revocation
 -- Excludes:
---   - Model selection and runtime transport
+--   - Model selection and runtime transport, governed by librarian-runtime.allium
 --   - Secret storage
 --   - The detailed catalogue of library tools, which remains to be elicited
 -- Dependencies: Human principal and manifest are governed by

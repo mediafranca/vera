@@ -115,6 +115,7 @@ import {
   claimLibrarianRequest,
   createLibrarianConversation,
   createLibrarianRequest,
+  failLibrarianRequest,
   librarianConversation,
   librarianConversations,
   librarianRequest,
@@ -125,6 +126,20 @@ import {
   removeLibrarianRequest,
   type LibrarianRequest,
 } from './librarian.ts';
+import { activeOwnerLibrarian, ensureOwnerLibrarian } from './owner-librarian.ts';
+import {
+  LIBRARIAN_RUNTIME_ID,
+  LIBRARIAN_RUNTIME_LABEL,
+  beginLibrarianRuntimeRun,
+  finishLibrarianRuntimeRun,
+  librarianRequestPrompt,
+  librarianRoutinePrompt,
+  librarianRuntimeConfiguration,
+  librarianRuntimeRuns,
+  saveLibrarianRuntimeConfiguration,
+  type LibrarianRuntimePermission,
+  type LibrarianRuntimeStatus,
+} from './librarian-runtime.ts';
 import type { Reading } from './model.ts';
 import {
   createOperationReviewProposal,
@@ -801,10 +816,15 @@ function readOperation(body: SubmitBody): { error: string } | {
 export function createVeraServer(options: ServerOptions): VeraServer {
   const store = openStore({ path: options.databasePath, graphName: 'mind' });
   let librarianDispatchInProgress = false;
+  let wakeEmbeddedLibrarian: ((id: string) => boolean) | null = null;
 
   const dispatchLibrarianRequest = async (id: string): Promise<void> => {
+    if (wakeEmbeddedLibrarian?.(id) === true) {
+      markLibrarianDispatched(store, id, true);
+      return;
+    }
     if (options.librarianHook === undefined) {
-      markLibrarianDispatched(store, id, false, 'el puente con OpenClaw no está configurado');
+      markLibrarianDispatched(store, id, false, 'no hay runtime embebido ni puente externo configurado');
       return;
     }
     try {
@@ -900,6 +920,149 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     );
   }
   const profile = ensureInstanceProfile(store, owner.id, options.instanceProfile, newGraph);
+
+  let embeddedLibrarianBusy = false;
+  let embeddedRuntimeStatus: LibrarianRuntimeStatus = 'unconstituted';
+
+  const resolvedRuntimeSecret = (reference: string | null): string | undefined =>
+    reference === null ? process.env['OPENAI_API_KEY'] : process.env[reference];
+
+  const assessEmbeddedRuntime = (): LibrarianRuntimeStatus => {
+    const config = librarianRuntimeConfiguration(store);
+    if (config === null) return activeOwnerLibrarian(store) === null ? 'unconstituted' : 'stopped';
+    if (!config.enabled) return 'stopped';
+    if (embeddedLibrarianBusy) return 'working';
+    if (config.model === null || activeManifest(store, config.agent) === null) return 'degraded';
+    if (config.model.startsWith('openai:') && (resolvedRuntimeSecret(config.secretReference) ?? '').trim() === '') {
+      return 'degraded';
+    }
+    return 'ready';
+  };
+
+  const writeEmbeddedReply = (turn: LibrarianRequest, agent: ParticipantId, text: string): string | null => {
+    if (turn.modality === 'block' || turn.sourcePageId === null) return null;
+    const page = graph.page(turn.sourcePageId);
+    if (page === undefined) return 'la página de la solicitud ya no existe';
+    const stableId = `block:librarian-reply:${turn.id.slice('agent-request:'.length)}`;
+    const roots = graph.blocksOf(page.id).filter((block) => block.parent === null);
+    const outcome = graph.submitOperation({
+      originId: `librarian-runtime:${turn.id}:page-reply`,
+      participant: agent,
+      channel: 'agent_generation',
+      change: { kind: 'create_block', stableId, page: page.id, parent: null, position: roots.length, content: text },
+    });
+    if (outcome.status === 'rejected') return outcome.reason;
+    if (outcome.status === 'applied') return persist(outcome.operation);
+    return null;
+  };
+
+  const executeEmbeddedRequest = async (id: string): Promise<void> => {
+    const config = librarianRuntimeConfiguration(store);
+    if (config === null || !config.enabled || config.model === null || embeddedLibrarianBusy) return;
+    const turn = librarianRequest(store, id);
+    const chat = turn === undefined ? undefined : librarianConversation(store, turn.conversationId);
+    if (turn === undefined || chat?.agent !== config.agent) return;
+    const claimed = claimLibrarianRequest(store, id);
+    if (claimed?.status !== 'working') return;
+    embeddedLibrarianBusy = true;
+    embeddedRuntimeStatus = 'working';
+    const run = beginLibrarianRuntimeRun(store, { kind: 'request', request: id, model: config.model });
+    addLibrarianProgress(store, {
+      requestId: id, kind: 'stage', text: `${LIBRARIAN_RUNTIME_LABEL} leyó la solicitud`, createdBy: config.agent,
+    });
+    try {
+      const answered = await ask(librarianRequestPrompt(store, config, claimed), {
+        model: config.model,
+        ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
+        ...(resolvedRuntimeSecret(config.secretReference) === undefined
+          ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
+        maxTokens: 1_200,
+        timeoutMs: 300_000,
+      });
+      if ('error' in answered) throw new Error(answered.error);
+      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, answered.text);
+      if (writeFailure !== null) throw new Error(writeFailure);
+      answerLibrarianRequest(store, { id, answeredBy: config.agent as ParticipantId, text: answered.text });
+      finishLibrarianRuntimeRun(store, run.id, { output: answered.text });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'el runtime no pudo responder';
+      failLibrarianRequest(store, id, reason);
+      finishLibrarianRuntimeRun(store, run.id, { error: reason });
+    } finally {
+      embeddedLibrarianBusy = false;
+      embeddedRuntimeStatus = assessEmbeddedRuntime();
+      void dispatchNextLibrarianRequest();
+    }
+  };
+
+  const executeLibrarianRoutine = async (): Promise<void> => {
+    const config = librarianRuntimeConfiguration(store);
+    if (config === null || !config.enabled || config.model === null || embeddedLibrarianBusy ||
+      !config.permissions.includes('daily_round')) return;
+    embeddedLibrarianBusy = true;
+    embeddedRuntimeStatus = 'working';
+    const run = beginLibrarianRuntimeRun(store, { kind: 'routine', model: config.model });
+    try {
+      const digest = JSON.stringify({
+        library: instanceLibraryName(store), pages: graph.pages().length,
+        blocks: graph.pages().reduce((sum, page) => sum + graph.blocksOf(page.id).length, 0),
+        queuedRequests: pendingLibrarianDispatches(store).length,
+        invariants: checkInvariants(graph).length,
+      });
+      const answered = await ask(librarianRoutinePrompt(store, config, digest), {
+        model: config.model,
+        ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
+        ...(resolvedRuntimeSecret(config.secretReference) === undefined
+          ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
+        maxTokens: 700,
+        timeoutMs: 300_000,
+      });
+      if ('error' in answered) throw new Error(answered.error);
+      finishLibrarianRuntimeRun(store, run.id, { output: answered.text });
+    } catch (error) {
+      finishLibrarianRuntimeRun(store, run.id, {
+        error: error instanceof Error ? error.message : 'la ronda no pudo terminar',
+      });
+    } finally {
+      embeddedLibrarianBusy = false;
+      embeddedRuntimeStatus = assessEmbeddedRuntime();
+    }
+  };
+
+  const refreshEmbeddedRuntime = (): void => {
+    embeddedRuntimeStatus = assessEmbeddedRuntime();
+    const config = librarianRuntimeConfiguration(store);
+    if (config === null || !config.enabled || embeddedRuntimeStatus === 'degraded') {
+      wakeEmbeddedLibrarian = null;
+      return;
+    }
+    wakeEmbeddedLibrarian = (id) => {
+      const turn = librarianRequest(store, id);
+      const chat = turn === undefined ? undefined : librarianConversation(store, turn.conversationId);
+      if (chat?.agent !== config.agent) return false;
+      setImmediate(() => void executeEmbeddedRequest(id));
+      return true;
+    };
+    const manifest = activeManifest(store, config.agent);
+    if (manifest !== null) {
+      reportRuntimeReceipt(store, config.agent, { id: LIBRARIAN_RUNTIME_ID, label: LIBRARIAN_RUNTIME_LABEL },
+        manifest.summary.id, manifest.summary.digest, 'ready', 'runtime embebido iniciado');
+    }
+    void dispatchNextLibrarianRequest();
+  };
+
+  const librarianRoutineTimer = setInterval(() => {
+    const config = librarianRuntimeConfiguration(store);
+    if (config === null || !config.enabled || !config.routine.enabled || embeddedLibrarianBusy) return;
+    const now = new Date();
+    if (now.getHours() !== config.routine.hour) return;
+    const day = now.toISOString().slice(0, 10);
+    const latest = librarianRuntimeRuns(store, 20).find((run) => run.kind === 'routine');
+    if (latest !== undefined && new Date(latest.startedAt).toISOString().slice(0, 10) === day) return;
+    void executeLibrarianRoutine();
+  }, 60_000);
+  librarianRoutineTimer.unref();
+  refreshEmbeddedRuntime();
 
   const webRoot = options.webRoot === undefined ? null : resolve(options.webRoot);
   const objectsRoot = options.objectsRoot === undefined ? null : resolve(options.objectsRoot);
@@ -2098,7 +2261,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
     };
 
-    const librarianAgent = 'participant:cotito' as ParticipantId;
+    // La conversación pertenece a la bibliotecaria constituida de esta Vera.
+    // Cotito permanece sólo como compatibilidad para instalaciones anteriores,
+    // nunca como identidad prestada a Lucienne.
+    const librarianAgent = (activeOwnerLibrarian(store)?.agent ?? 'participant:cotito') as ParticipantId;
     const librarianRequestView = (turn: LibrarianRequest) => ({
         ...turn,
         recording: turn.recordingId === null ? null : recordingById(store, turn.recordingId),
@@ -2106,9 +2272,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           ? null
           : graph.page(turn.sourcePageId)?.title ?? null,
       });
+    const isLibrarianExecutor = (): boolean =>
+      who.participant === librarianAgent ||
+      (options.librarianHook !== undefined && who.participant === 'participant:cotito');
     const canAnswerAsLibrarian = (): boolean => {
-      if (who.participant !== librarianAgent || who.credential === null) return false;
+      if (!isLibrarianExecutor() || who.credential === null) return false;
       return credentialById(store, who.credential)?.scopes.includes('write') ?? false;
+    };
+    const embeddedRuntimeView = () => {
+      const binding = activeOwnerLibrarian(store);
+      const config = librarianRuntimeConfiguration(store);
+      return {
+        librarian: binding === null ? null : {
+          id: binding.id, agent: binding.agent, name: binding.name, owner: binding.owner,
+        },
+        status: assessEmbeddedRuntime(),
+        configuration: config,
+        runs: librarianRuntimeRuns(store),
+        secret: config?.secretReference === null || config?.secretReference === undefined
+          ? { reference: null, available: (process.env['OPENAI_API_KEY'] ?? '').trim() !== '' }
+          : { reference: config.secretReference, available: (process.env[config.secretReference] ?? '').trim() !== '' },
+      };
     };
     const readSmallJson = async (maximum = 64 * 1024): Promise<Record<string, unknown>> => {
       const chunks: Buffer[] = [];
@@ -2308,6 +2492,92 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    if (request.method === 'GET' && path === '/librarian/runtime') {
+      if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña gobierna este runtime' }); return; }
+      send(response, 200, embeddedRuntimeView());
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/librarian/runtime/constitute') {
+      if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña constituye su bibliotecaria' }); return; }
+      let body: Record<string, unknown> = {};
+      try { body = await readSmallJson(); } catch { /* Lucienne es el smart default */ }
+      try {
+        const requestedName = typeof body['name'] === 'string' ? body['name'].trim() : 'Lucienne';
+        const binding = ensureOwnerLibrarian(store, graph, owner.id, requestedName || 'Lucienne');
+        if (activeManifest(store, binding.agent) === null) {
+          const defaults = [
+            { title: 'VERA — Principios', role: 'purpose' as ConstitutionRole },
+            { title: 'VERA: Gobierno', role: 'governance' as ConstitutionRole },
+            { title: 'VERA — Conectar una inteligencia artificial', role: 'practice' as ConstitutionRole },
+          ].flatMap((source) => {
+            const page = graph.pageTitled(source.title);
+            return page === undefined ? [] : [{ page: page.id, role: source.role }];
+          });
+          if (defaults.length === 0) throw new Error('faltan las páginas rectoras para constituir el manifiesto inicial');
+          chooseConstitutionSources(store, graph, owner.id, binding.agent, defaults);
+          const draft = buildManifest(store, graph, owner.id, binding.agent);
+          activateManifest(store, owner.id, binding.agent, draft.id);
+        }
+        if (librarianRuntimeConfiguration(store) === null) {
+          saveLibrarianRuntimeConfiguration(store, {
+            updatedBy: owner.id, enabled: false, model: null, endpoint: null,
+            secretReference: 'VERA_LIBRARIAN_API_KEY',
+            permissions: ['read_request_context', 'reply', 'daily_round'],
+            routine: { enabled: false, hour: 9, timezone: 'local' },
+          });
+        }
+        refreshEmbeddedRuntime();
+        send(response, 201, embeddedRuntimeView());
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'PUT' && path === '/librarian/runtime') {
+      if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña gobierna este runtime' }); return; }
+      try {
+        const body = await readSmallJson();
+        const permissions = Array.isArray(body['permissions'])
+          ? body['permissions'].filter((one): one is LibrarianRuntimePermission =>
+              typeof one === 'string' && ['read_request_context', 'reply', 'daily_round'].includes(one))
+          : [];
+        const routine = body['routine'] !== null && typeof body['routine'] === 'object'
+          ? body['routine'] as Record<string, unknown> : {};
+        saveLibrarianRuntimeConfiguration(store, {
+          updatedBy: owner.id,
+          enabled: body['enabled'] === true,
+          model: typeof body['model'] === 'string' ? body['model'] : null,
+          endpoint: typeof body['endpoint'] === 'string' ? body['endpoint'] : null,
+          secretReference: typeof body['secretReference'] === 'string' ? body['secretReference'] : null,
+          permissions,
+          routine: {
+            enabled: routine['enabled'] === true,
+            hour: typeof routine['hour'] === 'number' ? routine['hour'] : 9,
+            timezone: typeof routine['timezone'] === 'string' ? routine['timezone'] : 'local',
+          },
+        });
+        refreshEmbeddedRuntime();
+        send(response, 200, embeddedRuntimeView());
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/librarian/runtime/routine') {
+      if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña inicia esta ronda' }); return; }
+      const config = librarianRuntimeConfiguration(store);
+      if (config === null || !config.enabled || !config.permissions.includes('daily_round')) {
+        send(response, 409, { error: 'el runtime y el permiso de ronda deben estar activos' }); return;
+      }
+      if (embeddedLibrarianBusy) { send(response, 409, { error: 'Lucienne ya está trabajando' }); return; }
+      void executeLibrarianRoutine();
+      send(response, 202, embeddedRuntimeView());
+      return;
+    }
+
     if (request.method === 'GET' && path === '/librarian/conversations') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: 'sólo una persona puede leer sus conversaciones' });
@@ -2482,7 +2752,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 404, { error: 'la solicitud no existe' }); return;
       }
       if (request.method === 'GET' && action === null) {
-        if (conversationalHuman !== current.askedBy && who.participant !== librarianAgent) {
+        if (conversationalHuman !== current.askedBy && !isLibrarianExecutor()) {
           send(response, publicAccess ? 404 : 403, {
             error: publicAccess ? 'la solicitud no existe' : 'la solicitud pertenece a otra conversación',
           }); return;
@@ -8910,6 +9180,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     store,
     close: () => {
       clearInterval(retryLibrarianDispatches);
+      clearInterval(librarianRoutineTimer);
       if (options.voiceConfiguration !== undefined) options.voiceConfiguration.close();
       else options.speech?.close();
       store.close();
