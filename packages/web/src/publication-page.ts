@@ -24,9 +24,19 @@ export async function renderPublicationPage(): Promise<HTMLElement> {
 }
 
 export async function renderPageSharing(page: string, title: string,
-  onChange?: () => void): Promise<HTMLElement> {
-  const panel = document.createElement('section'); panel.className = 'page-sharing settings-sharing';
-  await drawPageSharing(panel, page, title, onChange); return panel;
+  onChange?: () => void): Promise<HTMLDialogElement> {
+  document.querySelector<HTMLDialogElement>('.page-sharing[open]')?.close();
+  const dialog = document.createElement('dialog');
+  dialog.className = 'page-sharing settings-sharing';
+  dialog.setAttribute('aria-label', `Compartir · ${title}`);
+  dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  void drawPageSharing(dialog, page, title, onChange);
+  return dialog;
 }
 
 export { drawPageDestinationBadges };

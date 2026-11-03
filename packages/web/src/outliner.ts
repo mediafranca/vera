@@ -4778,9 +4778,7 @@ export function renderOutliner(
     const add = document.createElement('button'); add.type = 'button'; add.className = 'page-destination-add';
     add.textContent = '+'; add.setAttribute('aria-label', 'Agregar destino'); add.title = 'Agregar destino';
     const refresh = (): void => { void drawPageDestinationBadges(badges, page.id); };
-    add.addEventListener('click', () => void renderPageSharing(page.id, page.title, refresh).then((panel) => {
-      container.querySelector('.page-sharing')?.remove(); header.after(panel);
-    }));
+    add.addEventListener('click', () => void renderPageSharing(page.id, page.title, refresh));
     destinationsValue.append(badges, add); properties.append(destinationsKey, destinationsValue); refresh();
   }
 
@@ -5429,10 +5427,7 @@ export function renderOutliner(
       {
         label: 'Compartir esta página',
         icon: 'affiliate',
-        run: () => void renderPageSharing(page.id, page.title).then((panel) => {
-          container.querySelector('.page-sharing')?.remove();
-          header.after(panel);
-        }),
+        run: () => void renderPageSharing(page.id, page.title),
       },
       {
         label: 'Solicitar al bibliotecario',

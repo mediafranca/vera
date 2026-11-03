@@ -11996,8 +11996,8 @@ html[data-working-slow='true']::after {
 .page-destination.private-link { color: var(--accent); border-color: var(--accent); }
 .page-destinations-empty { color: var(--text-dim); font-size: .72rem; }
 .page-destination-add {
-  display: grid;
-  place-items: center;
+  position: relative;
+  display: inline-block;
   width: 1.45rem;
   height: 1.45rem;
   padding: 0;
@@ -12005,12 +12005,43 @@ html[data-working-slow='true']::after {
   border-radius: 50%;
   color: var(--accent);
   background: transparent;
-  font: 1rem/1 var(--font-ui);
+  font-size: 0;
   cursor: pointer;
 }
+.page-destination-add::before,
+.page-destination-add::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: .62rem;
+  height: 1px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+.page-destination-add::after { transform: translate(-50%, -50%) rotate(90deg); }
 .page-destination-add:hover, .page-destination-add:focus-visible { border-color: var(--accent); outline: none; }
-.page-sharing { margin: .75rem 0 1rem; padding: .8rem 1rem 1rem; border: 1px solid var(--rule); border-radius: .65rem; background: var(--bg-raised); }
-.page-sharing .settings-body > h3 { margin: 1.25rem 0 .35rem; font-size: .9rem; }
+.page-sharing {
+  box-sizing: border-box;
+  width: min(32rem, calc(100vw - 1.5rem));
+  max-height: min(42rem, calc(100dvh - 1.5rem));
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: .7rem;
+  box-shadow: 0 1rem 3rem color-mix(in srgb, var(--text) 22%, transparent);
+}
+.page-sharing::backdrop { background: rgb(0 0 0 / 38%); }
+.page-sharing .settings-head { align-items: center; padding: .65rem .8rem .55rem; }
+.page-sharing .settings-body { max-height: calc(min(42rem, 100dvh - 1.5rem) - 2.8rem); padding: .75rem .85rem .9rem; overflow: auto; }
+.page-sharing .settings-body > .settings-note:first-child { margin: 0 0 .55rem; font-size: .72rem; }
+.page-sharing .settings-body > h3 { margin: .9rem 0 .25rem; font-size: .78rem; }
+.page-sharing .sharing-list li { gap: .5rem; padding: .4rem 0; }
+.page-sharing .sharing-group { margin: .9rem 0; }
+.page-sharing .sharing-publish { margin-top: .55rem; }
 .page-sharing-public { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
 .page-sharing-public > a { color: var(--accent); overflow-wrap: anywhere; }
 .page-sharing-private { grid-template-columns: minmax(9rem, .7fr) auto minmax(10rem, 1fr); }
@@ -12027,6 +12058,8 @@ html[data-working-slow='true']::after {
   .sharing-space-affordance { grid-column: 2; grid-row: 1; }
   .sharing-publish { grid-template-columns: 1fr; }
   .page-sharing-private { grid-template-columns: 1fr; }
+  .page-sharing { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); }
+  .page-sharing .settings-body { max-height: calc(100dvh - 3.8rem); }
 }
 
 /* --- Estado de servicios -------------------------------------------------
