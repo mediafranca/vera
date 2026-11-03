@@ -76,6 +76,7 @@ import {
 import { graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
 import { mapEmbeddingSource } from './map-embedding.ts';
+import { activatePageShareFromLocation, isPageShareRoute } from './page-share.ts';
 import {
   applyTokens,
   createDesign,
@@ -1891,6 +1892,10 @@ async function applyRoute(): Promise<void> {
     return;
   }
   const here = new URL(window.location.href);
+  if (isPageShareRoute() && isAnybody() && corpus?.entryPoint !== null && corpus?.entryPoint !== undefined) {
+    await openPage(corpus.entryPoint, null, { fromUrl: true });
+    return;
+  }
   let route = parseRoute(here);
   if (route.search !== null) {
     await openSearchResults(route.search, false);
@@ -4121,6 +4126,7 @@ function wireDivider(): void {
 // ---------------------------------------------------------------------------
 
 async function start(): Promise<void> {
+  await activatePageShareFromLocation();
   wireTheme();
   wireSubmissionState();
 
@@ -4331,7 +4337,8 @@ async function start(): Promise<void> {
    */
   const initialRoute = parseRoute(new URL(window.location.href));
   const eagerPublicCentre = isAnybody()
-    ? (initialRoute.page ?? (window.location.pathname === '/' ? corpus?.entryPoint ?? null : null))
+    ? (initialRoute.page ?? ((window.location.pathname === '/' || isPageShareRoute())
+        ? corpus?.entryPoint ?? null : null))
     : null;
   if (eagerPublicCentre !== null) {
     workspace.activePage = eagerPublicCentre;

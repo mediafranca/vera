@@ -265,6 +265,12 @@ import {
   revokeSession,
 } from './human-auth.ts';
 import { completeOwnerBootstrapIfDue } from './owner-bootstrap.ts';
+import {
+  createPageShare,
+  pageShares,
+  resolvePageShare,
+  revokePageShare,
+} from './page-shares.ts';
 
 const CHANGE_KINDS = new Set<string>(CORE_CHANGE_KINDS);
 
@@ -1058,10 +1064,20 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // editorial: simplemente no se ofrece un enlace que no se conoce.
       }
     }
+    let publicReady = false;
+    try {
+      // El origen dinámico y la proyección estática son dos adaptadores de la
+      // misma publicación. Un dominio canónico HTTPS ya declara la salida que
+      // el enlace usará; publicOutput sólo decide si además se hornea HTML.
+      publicReady = new URL(canonicalDomain).protocol === 'https:';
+    } catch {
+      publicReady = false;
+    }
     return {
       site: site?.id ?? null,
       title,
       canonicalDomain,
+      publicReady,
       entryPoint: site?.entryPoint ?? null,
       transparentBlockTraceability: site?.transparentBlockTraceability ?? false,
       previewUrl,
@@ -1729,6 +1745,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    // Una capacidad privada cerca sólo la navegación que permanece bajo su
+    // propia dirección. La cookie no puede encerrar después el sitio público:
+    // al salir de `/share/<id>`, deja de gobernar aunque siga viva para volver.
+    const pathPageShare = /^\/share\/([^/]+)(?:\/.*)?$/.exec(path);
+    let referringPageShare: RegExpExecArray | null = null;
+    try {
+      const referred = request.headers.referer;
+      referringPageShare = referred === undefined
+        ? null
+        : /^\/share\/([^/]+)(?:\/.*)?$/.exec(new URL(referred).pathname);
+    } catch {
+      referringPageShare = null;
+    }
+    const pageShareSegment = pathPageShare?.[1] ?? referringPageShare?.[1] ?? null;
+    const pageShareId = pageShareSegment === null ? null : decodeURIComponent(pageShareSegment);
+    const presentedPageShare = cookie('vera_page_share');
+    const resolvedPageShare = publicAccess && pageShareId !== null
+      ? resolvePageShare(store, presentedPageShare === '' ? null : presentedPageShare)
+      : null;
+    const pageShare = resolvedPageShare?.id === pageShareId ? resolvedPageShare : null;
+
     // Un espacio elige un subgrafo, no una aplicación distinta. Las rutas bajo
     // `/s/<slug>` llevan el ámbito consigo; las peticiones de la PWA a `/pages`,
     // `/graph`, `/search` y medios lo heredan del documento que las inició.
@@ -1766,11 +1803,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       scopedPermissions.includes('edit');
     const canContributeScopedSpace = canReadScopedSpace && scopedParticipant !== null &&
       scopedPermissions.includes('contribute');
-    const publicScopedSpace = canReadScopedSpace ? scopedSpace : null;
-    const scopedPageIds = publicScopedSpace === null
-      ? publicPageIds()
-      : new Set(graph.pages().filter((page) => pageBelongsToSharedSpace(graph, publicScopedSpace, page.id))
-        .map((page) => page.id));
+    const publicScopedSpace = pageShare === null && canReadScopedSpace ? scopedSpace : null;
+    const scopedPageIds = pageShare !== null
+      ? new Set([pageShare.page])
+      : publicScopedSpace === null
+        ? publicPageIds()
+        : new Set(graph.pages().filter((page) => pageBelongsToSharedSpace(graph, publicScopedSpace, page.id))
+          .map((page) => page.id));
     const isPublicPage = (page: string): boolean => scopedPageIds.has(page);
     const creatorOf = (page: string): { participant: string; name: string } | null => {
       const creation = graph.operations().find((operation) =>
@@ -1797,6 +1836,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     ) || (request.method === 'POST' && (
       /^\/invitations\/[^/]+\/redeem$/.test(path) ||
       /^\/collective-invitations\/[^/]+\/redeem$/.test(path) ||
+      /^\/page-shares\/[^/]+\/open$/.test(path) ||
       path === '/human-auth/device-enrollments' ||
       path === '/human-auth/registration/options' ||
       path === '/human-auth/registration/verify' ||
@@ -1849,6 +1889,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path.startsWith('/graph/') ||
         path.startsWith('/media/') ||
         path.startsWith('/invite/') ||
+        path.startsWith('/share/') ||
         path.startsWith('/enroll-device/') ||
         path === '/human-auth/me' ||
         /^\/invitations\/[^/]+$/.test(path) ||
@@ -3169,6 +3210,77 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    const openingPageShare = /^\/page-shares\/([^/]+)\/open$/.exec(path);
+    if (request.method === 'POST' && openingPageShare !== null) {
+      const body = await readSmallJson();
+      const shareId = decodeURIComponent(openingPageShare[1] ?? '');
+      const proof = typeof body['secret'] === 'string' ? body['secret'] : '';
+      const share = resolvePageShare(store, `${shareId}.${proof}`);
+      if (share === null) {
+        send(response, 404, { error: 'el enlace no existe, venció o fue revocado' });
+        return;
+      }
+      // El listener público de previsualización es HTTP loopback; el origen
+      // canónico sí exige HTTPS y por eso su cookie lleva Secure.
+      const secure = publicOrigin && !forcedPublic ? '; Secure' : '';
+      response.setHeader('set-cookie',
+        `vera_page_share=${encodeURIComponent(`${shareId}.${proof}`)}; Path=/; HttpOnly; SameSite=Strict${secure}`);
+      send(response, 200, { page: share.page });
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/page-shares') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const page = url.searchParams.get('page') ?? '';
+      if (graph.page(page) === undefined) { send(response, 404, { error: 'la página no existe' }); return; }
+      send(response, 200, { shares: pageShares(store, page) });
+      return;
+    }
+
+    const pageSharePage = /^\/pages\/([^/]+)\/shares$/.exec(path);
+    if (request.method === 'POST' && pageSharePage !== null) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const page = decodeURIComponent(pageSharePage[1] ?? '');
+      if (graph.page(page) === undefined) { send(response, 404, { error: 'la página no existe' }); return; }
+      const canonicalDomain = publicSite()?.canonicalDomain ?? options.publicSite?.canonicalDomain;
+      if (canonicalDomain === undefined || canonicalDomain.trim() === '' ||
+          publicationSiteView().publicReady !== true) {
+        send(response, 409, { error: 'esta Vera todavía no tiene una salida pública configurada' });
+        return;
+      }
+      const body = await readSmallJson();
+      const lifetimeMs = body['lifetimeMs'];
+      const allowed = [24 * 60 * 60 * 1000, 7 * 24 * 60 * 60 * 1000, 30 * 24 * 60 * 60 * 1000];
+      if (lifetimeMs !== null && lifetimeMs !== undefined &&
+          (typeof lifetimeMs !== 'number' || !allowed.includes(lifetimeMs))) {
+        send(response, 400, { error: 'la duración del enlace no está permitida' });
+        return;
+      }
+      try {
+        const share = createPageShare(store, owner.id, page,
+          typeof lifetimeMs === 'number' ? Date.now() + lifetimeMs : null);
+        const destination = new URL(`/share/${encodeURIComponent(share.id)}`,
+          `${canonicalDomain.replace(/\/$/, '')}/`);
+        destination.hash = new URLSearchParams({ secret: share.secret }).toString();
+        send(response, 201, { ...share, url: destination.toString() });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    const revokingPageShare = /^\/page-shares\/([^/]+)$/.exec(path);
+    if (request.method === 'DELETE' && revokingPageShare !== null) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const changed = revokePageShare(store, decodeURIComponent(revokingPageShare[1] ?? ''));
+      send(response, changed ? 200 : 409,
+        changed ? { status: 'revoked' } : { error: 'el enlace ya no estaba activo' });
+      return;
+    }
+
     const publicationPage = path.startsWith('/publications/')
       ? decodeURIComponent(path.slice('/publications/'.length))
       : null;
@@ -3257,7 +3369,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
-    /** Publicar es un acto del dueño distinto de declarar la página pública. */
+    /** La puerta pública es un destino: al entrar, abre también la visibilidad. */
     if (request.method === 'POST' && publicationPage !== null) {
       const blocked = ownerOnly();
       if (blocked !== null) {
@@ -3304,6 +3416,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               canonicalDomain: options.publicSite!.canonicalDomain,
             });
             saveSite(store, site);
+          }
+          if (page.visibility !== 'public') {
+            const visibility = graph.submitOperation({
+              originId: `publication:${randomUUID()}`,
+              participant: owner.id,
+              channel: 'typed_text',
+              change: { kind: 'set_page_visibility', page: page.id, visibility: 'public' },
+            });
+            if (visibility.status === 'rejected') throw new Error(visibility.reason);
+            if (visibility.status === 'applied') recordOperation(store, graph, visibility.operation);
           }
           const publication =
             graph.publicationsOf(site.id).find((candidate) => candidate.page === page.id) ??
@@ -3364,6 +3486,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       try {
         graph.unpublish({ site: site.id, path: publication.path, participant: owner.id });
         removePublication(store, site.id, publication.path);
+        const page = graph.page(publication.page);
+        if (page?.visibility === 'public' &&
+            !graph.publications().some((candidate) => candidate.page === publication.page)) {
+          const visibility = graph.submitOperation({
+            originId: `publication:${randomUUID()}`,
+            participant: owner.id,
+            channel: 'typed_text',
+            change: { kind: 'set_page_visibility', page: publication.page, visibility: 'private' },
+          });
+          if (visibility.status === 'rejected') throw new Error(visibility.reason);
+          if (visibility.status === 'applied') recordOperation(store, graph, visibility.operation);
+        }
         saveSite(store, site);
         store.db.exec('RELEASE withdraw_page');
       } catch (error) {
@@ -7421,12 +7555,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const visiblePages = publicAccess
           ? graph.pages().filter((page) => isPublicPage(page.id))
           : graph.pages();
-          const siteEntry = publicScopedSpace === null
+          const siteEntry = pageShare?.page ?? (publicScopedSpace === null
             ? (publicSite()?.entryPoint ?? null)
             : (publicScopedSpace.entryPoint !== null && isPublicPage(publicScopedSpace.entryPoint)
               ? publicScopedSpace.entryPoint
               : graph.pages().filter((page) => isPublicPage(page.id))
-                .sort((a, b) => a.title.localeCompare(b.title, 'es'))[0]?.id ?? null);
+                  .sort((a, b) => a.title.localeCompare(b.title, 'es'))[0]?.id ?? null));
         send(response, 200, {
           graph: graph.name,
           access: publicAccess ? 'anybody' : 'owner',
@@ -7440,7 +7574,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             ? { slug: publicScopedSpace.slug, name: publicScopedSpace.name }
             : null,
           entryPoint: publicAccess && siteEntry !== null && isPublicPage(siteEntry) ? siteEntry : null,
-          transparentBlockTraceability: publicAccess && publicScopedSpace === null
+          transparentBlockTraceability: publicAccess && pageShare === null && publicScopedSpace === null
             ? (publicSite()?.transparentBlockTraceability ?? false)
             : false,
           /*

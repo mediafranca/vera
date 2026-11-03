@@ -74,7 +74,12 @@ import { isConnectionsPage, renderConnections } from './mcp-page.ts';
 import { isActivityPage, participantProfilePath, renderActivityPage } from './activity-page.ts';
 import { isGovernancePage, renderGovernanceIndex } from './governance-page.ts';
 import { isServicePage, pickBibliography, renderService } from './service-page.ts';
-import { isPublicationPage, renderPageSharing, renderPublicationPage } from './publication-page.ts';
+import {
+  drawPageDestinationBadges,
+  isPublicationPage,
+  renderPageSharing,
+  renderPublicationPage,
+} from './publication-page.ts';
 import {
   DEADLINE_KEY,
   LIST_KEY,
@@ -4759,144 +4764,24 @@ export function renderOutliner(
   propertiesToggle.addEventListener('click', () => chooseProperties(metadata.hidden));
 
   /*
-   * Público o privado, entre las demás propiedades y no en un botón aparte.
-   *
-   * Era una marca al pie que decía «privada» mientras el front matter, dos
-   * centímetros más arriba, decía `public:: false`. Dos sitios diciendo lo mismo
-   * con palabras distintas, y ninguna forma de saber cuál mandaba — la respuesta
-   * era ésta, y no se veía.
-   *
-   * Ahora es una fila más, y la única que además gobierna: lo que se lee aquí es
-   * el estado de verdad, el que decide si la página se proyecta al sitio
-   * personal. La propiedad de texto que traía el corpus importado no se dibuja
-   * al lado, porque duplicarla es el problema que esto resuelve.
-   *
-   * Se ve distinta de las demás a propósito. Una propiedad de texto se edita
-   * escribiendo; ésta se contesta con un interruptor porque su dominio no está
-   * por decidir: es sí o no, y siempre lo fue. Ver el contrato PageFrontMatter
-   * en workspace-interface.allium.
+   * Compartir no es un booleano. Una página puede pertenecer a varios espacios,
+   * tener una publicación con ruta y mantener capacidades privadas revocables.
+   * La fila las reúne sin convertirlas en la misma entidad.
    */
-  const publica = page.visibility === 'public';
-  const publicada = page.publication?.publishedAt !== null && page.publication !== null && page.publication !== undefined;
-
-  const visibilityKey = document.createElement('dt');
-  visibilityKey.className = 'property-key';
-  /*
-   * Los tres renglones que no salen de una propiedad escrita.
-   *
-   * Se llaman como el corpus los llame —lo declara la ontología, igual que las
-   * demás— porque lo que la cabecera enseña como propiedad tiene que poder
-   * preguntarse como propiedad: `? público=sí`, `? creación=2026-08-07`. Lo que
-   * no hacen es guardarse: la visibilidad tiene su operación y su columna, y las
-   * dos fechas las sabe el registro. Dos sitios diciendo lo mismo acaban
-   * diciendo cosas distintas.
-   */
-  const derived = corpusNames();
-  visibilityKey.textContent = derived.visible;
-
-  const visibilityValue = document.createElement('dd');
-  visibilityValue.className = 'property-value governed';
-
-  const badge = document.createElement('button');
-  badge.type = 'button';
-  badge.className = `visibility ${page.visibility}`;
-  badge.textContent = publica ? 'pública' : 'privada';
-  badge.setAttribute('role', 'switch');
-  badge.setAttribute('aria-checked', String(publica));
-  badge.title = publica
-    ? publicada
-      ? 'Pública y publicada: despublícala antes de hacerla privada.'
-      : 'Pública: puede publicarse, pero todavía no está en el sitio.'
-    : 'Privada: no puede publicarse.';
-  badge.addEventListener('click', () => {
-    if (publica && publicada) {
-      toast('despublica la página antes de hacerla privada');
-      return;
-    }
-    void submitAndReload(
-      {
-        kind: 'set_page_visibility',
-        page: page.id,
-        visibility: publica ? 'private' : 'public',
-      },
-      callbacks,
-    );
-  });
-  visibilityValue.append(badge);
-  // En un día tampoco va el interruptor: publicar una jornada entera no es un
-  // gesto que se ofrezca de paso, y repetido sobre cada fecha de la lectura
-  // continua sería la fila más ruidosa de todas.
-  if (!day) properties.append(visibilityKey, visibilityValue);
-
-  if (!day && publica && page.publication !== null && page.publication !== undefined) {
-    const publicationKey = document.createElement('dt');
-    publicationKey.className = 'property-key';
-    publicationKey.textContent = 'sitio';
-
-    const publicationValue = document.createElement('dd');
-    publicationValue.className = 'property-value governed publication-state';
-    const address = document.createElement('code');
-    address.className = 'publication-address';
-    address.textContent = page.publication.entryPoint
-      ? `portada · /${page.publication.path}/`
-      : `/${page.publication.path}/`;
-    address.title = page.publication.url;
-
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.className = publicada ? 'publication-action published' : 'publication-action';
-    action.textContent = publicada ? 'Despublicar' : 'Publicar';
-    action.addEventListener('click', () => {
-      if (publicada) {
-        if (!window.confirm(`Retirar ${page.publication!.url} del sitio público?`)) return;
-        action.disabled = true;
-        void api
-          .unpublish(page.id)
-          .then((publication) => {
-            page.publication = publication;
-            toast('despublicada');
-            callbacks.onReload(null);
-          })
-          .catch((error) => toast(error instanceof Error ? error.message : 'no se pudo despublicar'))
-          .finally(() => { action.disabled = false; });
-        return;
-      }
-
-      const chosen = window.prompt('Dirección estable dentro del sitio', page.publication!.path);
-      if (chosen === null) return;
-      action.disabled = true;
-      void api
-        .publish(page.id, chosen.trim())
-        .then((publication) => {
-          page.publication = publication;
-          toast('publicada');
-          callbacks.onReload(null);
-        })
-        .catch((error) => toast(error instanceof Error ? error.message : 'no se pudo publicar'))
-        .finally(() => { action.disabled = false; });
-    });
-    publicationValue.append(address, action);
-
-    if (publicada && !page.publication.entryPoint) {
-      const entry = document.createElement('button');
-      entry.type = 'button';
-      entry.className = 'publication-entry';
-      entry.textContent = `Hacer portada de ${page.publication.siteTitle}`;
-      entry.addEventListener('click', () => {
-        entry.disabled = true;
-        void api
-          .publish(page.id, page.publication!.path, true)
-          .then((publication) => {
-            page.publication = publication;
-            toast(`ahora es la portada de ${page.publication!.siteTitle}`);
-            callbacks.onReload(null);
-          })
-          .catch((error) => toast(error instanceof Error ? error.message : 'no se pudo elegir la portada'))
-          .finally(() => { entry.disabled = false; });
-      });
-      publicationValue.append(entry);
-    }
-    properties.append(publicationKey, publicationValue);
+  if (!day && !readOnly) {
+    const destinationsKey = document.createElement('dt');
+    destinationsKey.className = 'property-key';
+    destinationsKey.textContent = 'compartida en';
+    const destinationsValue = document.createElement('dd');
+    destinationsValue.className = 'property-value governed page-destinations';
+    const badges = document.createElement('span'); badges.className = 'page-destination-badges';
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'page-destination-add';
+    add.textContent = '+'; add.setAttribute('aria-label', 'Agregar destino'); add.title = 'Agregar destino';
+    const refresh = (): void => { void drawPageDestinationBadges(badges, page.id); };
+    add.addEventListener('click', () => void renderPageSharing(page.id, page.title, refresh).then((panel) => {
+      container.querySelector('.page-sharing')?.remove(); header.after(panel);
+    }));
+    destinationsValue.append(badges, add); properties.append(destinationsKey, destinationsValue); refresh();
   }
 
   /*
@@ -4933,6 +4818,7 @@ export function renderOutliner(
     value.append(dayLink);
     properties.append(key, value);
   };
+  const derived = corpusNames();
   temporal(
     derived.created,
     page.originCreatedAt ?? page.createdAt,
@@ -4956,9 +4842,9 @@ export function renderOutliner(
     'Derivada automáticamente de la última revisión de la página.',
   );
 
-  // La `public::` heredada de Logseq no se dibuja: la fila de arriba dice lo
-  // mismo y además manda. Sigue en el corpus hasta que se adopte, y adoptarla
-  // es un acto aparte y deliberado — ver rule AdoptImportedVisibilityProperty.
+  // La `public::` heredada de Logseq no se dibuja: publicar se gobierna ahora
+  // como pertenencia a un destino con ruta, autor y fecha. Sigue en el corpus
+  // hasta que se adopte; adoptarla es un acto aparte y deliberado.
   const written = page.properties.filter((property) => property.key !== 'public');
 
   const outward = (raw: string): string | null => {
@@ -5541,7 +5427,7 @@ export function renderOutliner(
         },
       } satisfies MenuAction]),
       {
-        label: 'Espacios compartidos de esta página',
+        label: 'Compartir esta página',
         icon: 'affiliate',
         run: () => void renderPageSharing(page.id, page.title).then((panel) => {
           container.querySelector('.page-sharing')?.remove();

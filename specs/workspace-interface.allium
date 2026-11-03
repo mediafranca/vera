@@ -596,9 +596,9 @@ contract OutlineHierarchyPresentation {
 
 -- La cabecera de una página: lo que se pregunta de ella antes de leerla.
 --
--- Cuatro naturalezas distintas conviven ahí y la interfaz tiene que ser honesta
+-- Varias naturalezas distintas conviven ahí y la interfaz tiene que ser honesta
 -- sobre cuál es cuál, porque lo que se puede hacer con cada una es distinto:
--- estado gobernado con sus propias reglas (la visibilidad), tipos y conceptos
+-- destinos gobernados con sus propias reglas, tipos y conceptos
 -- declarados sobre el vocabulario, propiedades libres que el corpus trae
 -- escritas, y hechos derivados del registro. Dibujarlas iguales es afirmar que
 -- se comportan igual.
@@ -653,11 +653,12 @@ contract PageFrontMatter {
         -- would not produce a cleaner corpus; it would produce a corpus that
         -- stopped being annotated.
 
-    @invariant GovernedStateIsAskedWhereItIsRead
-        -- Visibility is one of the questions the header asks, in the header,
-        -- among the others. It is not a badge somewhere else. A page that reads
-        -- `public  false` in one place and `private` in another is telling a
-        -- reader two things and giving them no way to know which governs.
+    @invariant SharingDestinationsAreManagedWhereTheyAreRead
+        -- The header names every shared space, public publication and private
+        -- link currently carrying the page. One plus opens the available
+        -- destinations. It never compresses several independent relationships
+        -- into a public/private switch or repeats an imported `public::` line as
+        -- if that legacy text governed publication.
 
     @invariant WhatIsDerivedIsNotAField
         -- Dates come from the record and are presented as readings, not as

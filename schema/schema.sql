@@ -229,6 +229,26 @@ CREATE TABLE IF NOT EXISTS shared_space_manual_pages (
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_manual_page_inclusion
     ON shared_space_manual_pages(space_id, page_id) WHERE status = 'active';
 
+-- Una capacidad de lectura para una sola página. La página no se vuelve pública
+-- ni entra a un espacio; quien posee el secreto puede leerla hasta revocación o
+-- vencimiento. Como en las demás credenciales, sólo se conserva el digest.
+CREATE TABLE IF NOT EXISTS page_shares (
+    id              TEXT PRIMARY KEY,
+    graph_id        TEXT NOT NULL REFERENCES graphs (id),
+    page_id         TEXT NOT NULL REFERENCES pages (id) ON DELETE CASCADE,
+    issued_by       TEXT NOT NULL REFERENCES participants (id),
+    secret_digest   TEXT NOT NULL UNIQUE,
+    status          TEXT NOT NULL CHECK (status IN ('active', 'revoked', 'expired')),
+    issued_at       INTEGER NOT NULL,
+    expires_at      INTEGER,
+    revoked_at      INTEGER,
+    last_used_at    INTEGER,
+    CHECK (status <> 'revoked' OR revoked_at IS NOT NULL)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS page_shares_by_page
+    ON page_shares(graph_id, page_id, issued_at);
+
 CREATE TABLE IF NOT EXISTS access_invitations (
     id                TEXT PRIMARY KEY,
     space_id          TEXT NOT NULL REFERENCES shared_spaces (id) ON DELETE CASCADE,

@@ -238,6 +238,31 @@ contract InvitationCapability {
         -- bearer secret itself after it has been shown or delivered.
 }
 
+contract PrivatePageCapability {
+    issue: (owner: core/Participant, page: core/Page, expires_at: Timestamp?) -> PageShare
+    read: (share: PageShare, proof: String) -> core/Page
+    revoke: (owner: core/Participant, share: PageShare) -> PageShare
+
+    @invariant PossessionGrantsOnlyOnePage
+        -- A valid bearer secret reads exactly the page named by its grant. It
+        -- reveals no index, title, search result, backlink or absence outside
+        -- that page and never grants writing.
+
+    @invariant ThePageRemainsPrivate
+        -- Issuing a link neither changes Page.visibility nor creates a
+        -- Publication or SharedSpace membership. The grant is access, not a
+        -- declaration that the page belongs to a public corpus.
+
+    @invariant TheSecretIsShownOnceAndNeverStored
+        -- Vera returns the complete link only on issuance and persists only a
+        -- cryptographic digest. The same link may be revisited until explicit
+        -- revocation or optional expiry; Vera cannot reconstruct it afterwards.
+
+    @invariant RevocationIsImmediate
+        -- Revoking the grant makes every cookie or copied form of that bearer
+        -- secret inert without deleting the page or its history.
+}
+
 contract FederatedHumanIdentity {
     bind: (participant: core/Participant, remote_identity: String, invitation: AccessInvitation) -> FederatedIdentityBinding
     authenticate: (binding: FederatedIdentityBinding, assertion: String) -> HumanSession
@@ -286,6 +311,7 @@ enum DeliveryChannel { email | secret_link | qr_code | split_code | owner_confir
 enum ProposalStatus { awaiting_review | accepted | rejected }
 enum BindingStatus { active | revoked }
 enum EnrollmentStatus { pending | completed | revoked | expired }
+enum PageShareStatus { active | revoked | expired }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -411,6 +437,24 @@ entity ManualPageInclusion {
     transitions status {
         active -> removed
         terminal: removed
+    }
+}
+
+entity PageShare {
+    graph: core/Graph
+    page: core/Page
+    issued_by: core/Participant
+    proof_digest: String
+    status: PageShareStatus
+    issued_at: Timestamp
+    expires_at: Timestamp?
+    revoked_at: Timestamp?
+    last_used_at: Timestamp?
+
+    transitions status {
+        active -> revoked
+        active -> expired
+        terminal: revoked, expired
     }
 }
 
@@ -1634,21 +1678,37 @@ surface PageSharedSpaceConfiguration {
         page
         containing_spaces(page)
         membership_provenance(page)
+        core/Publication with page = this.page
+        PageShare with page = this.page
 
     provides:
         IncludePageInSharedSpace(owner, space, page)
             when space.owner = owner and space.graph = page.graph
         RemovePageFromSharedSpace(owner, inclusion)
             when inclusion.page = page and inclusion.space.owner = owner
+        IssuePrivatePageShare(owner, page, expires_at?)
+        RevokePrivatePageShare(owner, share)
+            when share.page = page and share.issued_by = owner
 
     contracts:
         fulfils SharedSpaceAccess
+        fulfils PrivatePageCapability
 
-    @guarantee OnePageMayBePublishedInSeveralSpaces
-        -- Page configuration presents a multi-valued "Espacios compartidos"
-        -- control. It lists every effective space and distinguishes criterion
-        -- membership from explicit inclusion. Adding or removing one explicit
-        -- membership leaves every other space unchanged.
+    @guarantee OnePageMayHaveSeveralDestinations
+        -- Page configuration presents a multi-valued "Compartida en" row and a
+        -- plus. It lists every effective space, public publication and active
+        -- private link. Adding or removing one leaves every other destination
+        -- unchanged; criterion membership remains visibly derived.
+
+    @guarantee OnlyPublicPublicationAsksForAPath
+        -- A site-relative path belongs to Publication. Shared spaces already
+        -- have their own namespace and private links receive random secrets, so
+        -- neither asks the owner to invent a slug for the page.
+
+    @guarantee PublicDestinationRequiresAReadyOrigin
+        -- The public destination is disabled with an explanation until the Vera
+        -- instance has a configured HTTPS origin and an effective public output.
+        -- Choosing it opens visibility and creates Publication as one act.
 
     @guarantee FrontMatterDoesNotDuplicateDerivedMembership
         -- The front-matter surface may display space membership, but criterion

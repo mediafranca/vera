@@ -762,25 +762,92 @@ async function drawCollectiveInvitationList(host: HTMLElement, initial?: Collect
   box.append(list); host.append(box);
 }
 
-/** Control contextual: pertenencia de una página sin obligar a reconstruirla
- * mentalmente dentro del directorio completo. */
-export async function drawPageSharing(host: HTMLElement, page: string, title: string): Promise<void> {
+interface PrivatePageShare {
+  id: string;
+  page: string;
+  status: 'active' | 'revoked' | 'expired';
+  issuedAt: number;
+  expiresAt: number | null;
+  revokedAt: number | null;
+  lastUsedAt: number | null;
+}
+
+const privatePageShares = async (page: string): Promise<PrivatePageShare[]> =>
+  (await sharingRequest(`/page-shares?page=${encodeURIComponent(page)}`)).shares as PrivatePageShare[];
+
+/** Las pertenencias visibles en la cabecera; cada ficha conserva su semántica. */
+export async function drawPageDestinationBadges(host: HTMLElement, page: string): Promise<void> {
+  host.innerHTML = '';
+  try {
+    const [spaces, shares, site] = await Promise.all([
+      sharingRequest('/shared-spaces').then((value) => value.spaces as SharedAdministration[]),
+      privatePageShares(page),
+      api.publicationSite(),
+    ]);
+    for (const space of spaces.filter((one) => one.effectivePages.some((candidate) => candidate.page === page))) {
+      const badge = document.createElement('span'); badge.className = 'page-destination';
+      badge.textContent = space.name; host.append(badge);
+    }
+    const publication = site.publications.find((one) => one.page === page);
+    if (publication !== undefined) {
+      const badge = document.createElement('span'); badge.className = 'page-destination public';
+      badge.textContent = `${site.title} · /${publication.path}`; host.append(badge);
+    }
+    const activeShares = shares.filter((one) => one.status === 'active');
+    if (activeShares.length > 0) {
+      const badge = document.createElement('span'); badge.className = 'page-destination private-link';
+      badge.textContent = `${activeShares.length} ${activeShares.length === 1 ? 'enlace privado' : 'enlaces privados'}`;
+      host.append(badge);
+    }
+    if (host.childElementCount === 0) {
+      const empty = document.createElement('span'); empty.className = 'page-destinations-empty';
+      empty.textContent = 'ningún destino'; host.append(empty);
+    }
+  } catch {
+    const failure = document.createElement('span'); failure.className = 'page-destinations-empty';
+    failure.textContent = 'no se pudieron leer'; host.append(failure);
+  }
+}
+
+function showPrivatePageShare(url: string, expiresAt: number | null): void {
+  const dialog = document.createElement('dialog'); dialog.className = 'page-share-secret';
+  const heading = document.createElement('h2'); heading.textContent = 'Enlace privado creado';
+  const note = document.createElement('p');
+  note.textContent = expiresAt === null
+    ? 'El secreto se muestra una sola vez y seguirá abriendo hasta que revoques el enlace.'
+    : `El secreto se muestra una sola vez y vence el ${new Date(expiresAt).toLocaleString()}.`;
+  const address = document.createElement('input'); address.readOnly = true; address.value = url;
+  const actions = document.createElement('div'); actions.className = 'dialog-actions';
+  const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'Copiar enlace';
+  copy.onclick = () => void navigator.clipboard.writeText(url)
+    .then(() => { copy.textContent = 'Enlace copiado'; })
+    .catch(() => { address.focus(); address.select(); copy.textContent = 'Selecciona y copia'; });
+  const close = document.createElement('button'); close.type = 'button'; close.textContent = 'Cerrar';
+  close.onclick = () => dialog.close(); actions.append(copy, close);
+  dialog.append(heading, note, address, actions);
+  dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
+  address.select();
+}
+
+/** Control contextual: todas las salidas de una página, sin aplanar permisos. */
+export async function drawPageSharing(host: HTMLElement, page: string, title: string,
+  onChange?: () => void): Promise<void> {
   host.innerHTML = '';
   const head = document.createElement('header'); head.className = 'settings-head';
-  const heading = document.createElement('h2'); heading.textContent = `Espacios compartidos · ${title}`;
+  const heading = document.createElement('h2'); heading.textContent = `Compartir · ${title}`;
   const close = document.createElement('button'); close.type = 'button'; close.className = 'settings-close';
-  close.innerHTML = icon('x'); close.setAttribute('aria-label', 'Cerrar espacios compartidos');
+  close.innerHTML = icon('x'); close.setAttribute('aria-label', 'Cerrar destinos');
   close.onclick = () => host.remove(); head.append(heading, close); host.append(head);
   const body = document.createElement('div'); body.className = 'settings-body'; host.append(body);
-  const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo pertenencia…'; body.append(status);
+  const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo destinos…'; body.append(status);
   try {
-    const [spaceView, participantView] = await Promise.all([
-      sharingRequest('/shared-spaces'), sharingRequest('/participants'),
+    const [spaceView, participantView, site, shares] = await Promise.all([
+      sharingRequest('/shared-spaces'), sharingRequest('/participants'), api.publicationSite(), privatePageShares(page),
     ]);
     const spaces = spaceView.spaces as SharedAdministration[];
     const people = (participantView.participants as ParticipantIdentity[])
       .filter((one) => one.kind === 'human' && one.status === 'active' && (one.credentials?.active ?? 0) > 0);
-    status.textContent = 'La pertenencia por criterio es derivada; la inclusión explícita puede cambiarse aquí.';
+    status.textContent = 'Una página puede vivir en varios espacios. La publicación y cada enlace privado conceden accesos distintos.';
     const list = document.createElement('ul'); list.className = 'sharing-list';
     for (const space of spaces) {
       const admitted = space.effectivePages.find((one) => one.page === page);
@@ -791,14 +858,48 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       action.textContent = manual ? 'Quitar inclusión' : admitted === undefined ? 'Incluir' : 'Pertenece por criterio';
       action.disabled = admitted !== undefined && !manual;
       action.onclick = () => void sharingRequest(`/shared-spaces/${encodeURIComponent(space.slug)}/pages${manual ? `/${encodeURIComponent(page)}` : ''}`,
-        manual ? 'DELETE' : 'POST', manual ? undefined : { page }).then(() => drawPageSharing(host, page, title));
+        manual ? 'DELETE' : 'POST', manual ? undefined : { page }).then(() => {
+          onChange?.(); return drawPageSharing(host, page, title, onChange);
+        });
       row.append(text, action); list.append(row);
     }
     if (spaces.length === 0) { const empty = document.createElement('li'); empty.textContent = 'No hay espacios compartidos.'; list.append(empty); }
-    body.append(list);
+    const spacesHeading = document.createElement('h3'); spacesHeading.textContent = 'Espacios';
+    body.append(spacesHeading, list);
+
+    const publicHeading = document.createElement('h3'); publicHeading.textContent = 'Sitio público'; body.append(publicHeading);
+    const publication = site.publications.find((one) => one.page === page);
+    if (publication !== undefined) {
+      const row = document.createElement('div'); row.className = 'page-sharing-public';
+      const address = document.createElement('a'); address.href = publication.url; address.target = '_blank';
+      address.rel = 'noreferrer'; address.textContent = `${site.title} · /${publication.path}`;
+      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Retirar';
+      remove.disabled = publication.entryPoint;
+      remove.title = publication.entryPoint ? 'Elige otra portada antes de retirarla' : 'Retirar del sitio público';
+      remove.onclick = () => void api.unpublish(page).then(() => {
+        onChange?.(); return drawPageSharing(host, page, title, onChange);
+      });
+      row.append(address, remove); body.append(row);
+    } else {
+      const form = document.createElement('form'); form.className = 'sharing-publish page-sharing-public';
+      const path = document.createElement('input'); path.placeholder = 'ruta-pública';
+      path.value = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const publish = document.createElement('button'); publish.type = 'submit'; publish.textContent = 'Publicar';
+      publish.disabled = !site.publicReady;
+      const reason = document.createElement('small'); reason.className = 'settings-note';
+      reason.textContent = site.publicReady ? site.canonicalDomain : 'Configura primero una salida pública HTTPS.';
+      form.append(path, publish, reason);
+      form.onsubmit = (event) => { event.preventDefault(); publish.disabled = true;
+        void api.publish(page, path.value.trim()).then(() => {
+          onChange?.(); return drawPageSharing(host, page, title, onChange);
+        }).catch((error) => { reason.textContent = error instanceof Error ? error.message : 'No se pudo publicar'; publish.disabled = false; });
+      };
+      body.append(form);
+    }
 
     const privateBox = document.createElement('section'); privateBox.className = 'sharing-group';
-    const privateHeading = document.createElement('h3'); privateHeading.textContent = 'Enviar enlace privado';
+    const privateHeading = document.createElement('h3'); privateHeading.textContent = 'Enviar enlace privado a una identidad';
     const explanation = document.createElement('p'); explanation.className = 'settings-note';
     explanation.textContent = 'La URL sólo localiza la página. Para abrirla, la persona elegida debe confirmar su propia passkey.';
     const personLabel = document.createElement('label'); personLabel.className = 'sharing-field';
@@ -833,6 +934,46 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
     })();
     privateBox.append(privateHeading, explanation, personLabel, send, result);
     body.append(privateBox);
+
+    const capabilityHeading = document.createElement('h3'); capabilityHeading.textContent = 'Enlaces privados por capacidad';
+    body.append(capabilityHeading);
+    const activeShares = shares.filter((one) => one.status === 'active');
+    const privateList = document.createElement('ul'); privateList.className = 'sharing-list';
+    for (const share of activeShares) {
+      const row = document.createElement('li'); const text = document.createElement('span');
+      text.textContent = `Creado ${new Date(share.issuedAt).toLocaleString()}`;
+      const detail = document.createElement('small'); detail.textContent = share.expiresAt === null
+        ? 'hasta revocación' : `vence ${new Date(share.expiresAt).toLocaleString()}`; text.append(detail);
+      const revoke = document.createElement('button'); revoke.type = 'button'; revoke.textContent = 'Revocar';
+      revoke.onclick = () => void sharingRequest(`/page-shares/${encodeURIComponent(share.id)}`, 'DELETE').then(() => {
+        onChange?.(); return drawPageSharing(host, page, title, onChange);
+      });
+      row.append(text, revoke); privateList.append(row);
+    }
+    if (activeShares.length === 0) {
+      const empty = document.createElement('li'); empty.textContent = 'No hay enlaces activos.'; privateList.append(empty);
+    }
+    body.append(privateList);
+    const make = document.createElement('form'); make.className = 'sharing-publish page-sharing-private';
+    const lifetime = document.createElement('select');
+    for (const [value, label] of [['', 'Hasta revocación'], ['86400000', 'Un día'],
+      ['604800000', 'Siete días'], ['2592000000', 'Treinta días']] as const) {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; lifetime.append(option);
+    }
+    const create = document.createElement('button'); create.type = 'submit'; create.textContent = 'Crear enlace por capacidad';
+    create.disabled = !site.publicReady;
+    const privateReason = document.createElement('small'); privateReason.className = 'settings-note';
+    privateReason.textContent = site.publicReady ? 'El secreto se mostrará una sola vez.' : 'Hace falta una salida pública HTTPS.';
+    make.append(lifetime, create, privateReason);
+    make.onsubmit = (event) => { event.preventDefault(); create.disabled = true;
+      void sharingRequest(`/pages/${encodeURIComponent(page)}/shares`, 'POST', {
+        lifetimeMs: lifetime.value === '' ? null : Number(lifetime.value),
+      }).then((made) => {
+        showPrivatePageShare(String(made.url), made.expiresAt == null ? null : Number(made.expiresAt));
+        onChange?.(); return drawPageSharing(host, page, title, onChange);
+      }).catch((error) => { privateReason.textContent = error instanceof Error ? error.message : 'No se pudo crear'; create.disabled = false; });
+    };
+    body.append(make);
   } catch (error) { status.textContent = error instanceof Error ? error.message : 'No se pudo leer la pertenencia.'; }
 }
 
