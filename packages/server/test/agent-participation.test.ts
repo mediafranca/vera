@@ -134,6 +134,48 @@ describe('credenciales', () => {
     assert.equal(renamed.status, 400);
   });
 
+  it('el dueño puede ampliar y reducir alcances sin repartir otro secreto', async () => {
+    const issued = await call('/agents/credentials', {
+      method: 'POST',
+      body: { participant: COTITO, scopes: ['read', 'write'], label: 'editable' },
+    });
+    const id = String(issued.json['id']);
+    const secret = String(issued.json['secret']);
+    const expanded = await call(`/agents/credentials/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: { scopes: ['read', 'write', 'discard'] },
+    });
+    assert.equal(expanded.status, 200, JSON.stringify(expanded.json));
+    assert.deepEqual(expanded.json['scopes'], ['discard', 'read', 'write']);
+    assert.deepEqual((await call('/agents/whoami', { secret })).json['scopes'], ['discard', 'read', 'write']);
+
+    const reduced = await call(`/agents/credentials/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: { scopes: ['read'] },
+    });
+    assert.equal(reduced.status, 200, JSON.stringify(reduced.json));
+    assert.deepEqual(reduced.json['scopes'], ['read']);
+  });
+
+  it('discard no se concede sin write ni se deja una credencial vacía', async () => {
+    const issued = await call('/agents/credentials', {
+      method: 'POST',
+      body: { participant: COTITO, scopes: ['read'], label: 'lector' },
+    });
+    const path = `/agents/credentials/${encodeURIComponent(String(issued.json['id']))}`;
+    assert.equal((await call(path, { method: 'PATCH', body: { scopes: ['discard'] } })).status, 400);
+    assert.equal((await call(path, { method: 'PATCH', body: { scopes: [] } })).status, 400);
+  });
+
+  it('una llave de captura no se convierte en una credencial MCP', async () => {
+    const issued = await call('/agents/credentials', {
+      method: 'POST',
+      body: { participant: COTITO, scopes: ['capture'], label: 'Vera Clip' },
+    });
+    const path = `/agents/credentials/${encodeURIComponent(String(issued.json['id']))}`;
+    const changed = await call(path, { method: 'PATCH', body: { scopes: ['read', 'write'] } });
+    assert.equal(changed.status, 400);
+    assert.match(String(changed.json['error']), /captura/);
+  });
+
   it('capture deposita por su puerta pero no abre páginas ni operaciones', async () => {
     const issued = await call('/agents/credentials', {
       method: 'POST',

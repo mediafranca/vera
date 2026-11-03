@@ -40,20 +40,24 @@ const run = async (
 };
 
 describe('el catálogo', () => {
-  it('ofrece escritura individual y por lote, y ninguna de borrado', () => {
+  it('ofrece escritura, propuesta y descarte explícitamente destructivo', () => {
     assert.deepEqual(TOOLS.filter((tool) => tool.readOnly === false).map((tool) => tool.name), [
       'vera_escribir',
       'vera_editar_bloque_propio',
       'vera_mover_bloque_propio',
       'vera_proponer_edicion',
       'vera_escribir_lote',
+      'vera_descartar',
     ]);
-    assert.ok(TOOLS.every((tool) => !/borrar|eliminar|descartar/.test(tool.name)));
+    assert.deepEqual(TOOLS.filter((tool) => tool.destructive === true).map((tool) => tool.name), [
+      'vera_descartar',
+    ]);
     assert.deepEqual(
       TOOLS.map((tool) => tool.name).sort(),
       [
         'vera_buscar',
         'vera_consultar',
+        'vera_descartar',
         'vera_editar_bloque_propio',
         'vera_escribir',
         'vera_escribir_lote',
@@ -249,6 +253,56 @@ describe('preparar una escritura', () => {
     ]);
     assert.match(said, /Una idea por bloque/);
     assert.match(said, /"topic": "concepto"/);
+  });
+});
+
+describe('descartar', () => {
+  const page = {
+    id: 'page:limpieza', title: 'Limpieza', visibility: 'private', createdAt: 0, lastEditedAt: 0,
+    properties: [], backlinks: [], references: [], authorship: {},
+    blocks: [
+      { stableId: 'block:root', parent: null, position: 0, content: 'Viejo' },
+      { stableId: 'block:child', parent: 'block:root', position: 0, content: 'Más viejo' },
+      { stableId: 'block:keep', parent: null, position: 1, content: 'Conservar' },
+    ],
+  };
+
+  it('retira un subárbol de hojas a raíz en un lote auditable', async () => {
+    const { ask } = fakeVera({ '/pages/page%3Alimpieza': page });
+    const calls: { origin: string; changes: readonly Record<string, unknown>[] }[] = [];
+    const batch: WriteBatch = async (origin, changes) => {
+      calls.push({ origin, changes });
+      return { status: 'applied', operations: changes.map((_, at) => ({ sequence: 90 + at, subjectId: `gone:${at}` })) };
+    };
+    const tool = toolNamed('vera_descartar');
+    assert.ok(tool !== undefined);
+    const said = await tool.run({
+      origen: 'agente:limpieza:1', pagina: 'page:limpieza', bloque: 'block:root', bloques_confirmados: 2,
+    }, ask, undefined, batch);
+    assert.deepEqual(calls, [{
+      origin: 'agente:limpieza:1',
+      changes: [
+        { kind: 'remove_block', block: 'block:child' },
+        { kind: 'remove_block', block: 'block:root' },
+      ],
+    }]);
+    assert.match(typeof said === 'string' ? said : said.text, /2 bloques/);
+  });
+
+  it('si cambió la cantidad no aplica nada', async () => {
+    const { ask } = fakeVera({ '/pages/page%3Alimpieza': page });
+    let called = false;
+    const batch: WriteBatch = async () => {
+      called = true;
+      return { status: 'applied', operations: [] };
+    };
+    const tool = toolNamed('vera_descartar');
+    assert.ok(tool !== undefined);
+    const said = await tool.run({
+      origen: 'agente:limpieza:2', pagina: 'page:limpieza', bloque: 'block:root', bloques_confirmados: 1,
+    }, ask, undefined, batch);
+    assert.equal(called, false);
+    assert.match(typeof said === 'string' ? said : said.text, /No se borró nada/);
   });
 });
 

@@ -145,6 +145,7 @@ piloto con Solid—.
 | `vera_mover_bloque_propio` | Mueve estructura propia contra la revisión exacta sin cambiar la autoría del texto. |
 | `vera_proponer_edicion` | Deja una corrección sobre palabras ajenas en la cola privada de revisión sin modificar el corpus. |
 | `vera_escribir_lote` | Aplica una intervención nueva como lote atómico e idempotente. |
+| `vera_descartar` | Retira un subárbol o una página completa tras releer y confirmar la cantidad exacta, con `write + discard`. |
 | `vera_ontologia` | Cómo está clasificada esta memoria. |
 
 La revisión de un bloque es el identificador de la última operación que lo tocó.
@@ -154,6 +155,11 @@ del mismo participante. Mover conserva la autoría. Las palabras ajenas pasan po
 una propuesta que una persona puede aceptar, rechazar o encontrar en conflicto.
 Una credencial administrativa no cercada conserva su autoridad amplia, pero
 también debe presentar la revisión exacta.
+
+Descartar es una herramienta separada y declarada destructiva. Relee la página,
+compara `bloques_confirmados` y sólo entonces envía un lote atómico de
+`remove_block` desde las hojas; al retirar una página añade `remove_page` al
+final. Si la cuenta cambió o la credencial carece de `discard`, no aplica nada.
 
 ## Cómo se conecta cada cliente
 

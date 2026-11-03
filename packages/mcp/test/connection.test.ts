@@ -91,7 +91,7 @@ before(async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       participant: 'participant:mcp-test',
-      scopes: ['read', 'write'],
+      scopes: ['read', 'write', 'discard'],
       label: 'MCP de prueba',
     }),
   });
@@ -123,7 +123,7 @@ after(async () => {
 describe('vera-mcp por stdio', () => {
   it('arranca y ofrece su catálogo', async () => {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 15);
+    assert.equal(tools.length, 16);
     assert.ok(tools.some((tool) => tool.name === 'vera_mi_constitucion'));
     assert.ok(tools.some((tool) => tool.name === 'vera_preparar_escritura'));
     assert.ok(tools.some((tool) => tool.name === 'vera_consultar'));
@@ -131,11 +131,13 @@ describe('vera-mcp por stdio', () => {
     assert.equal(tools.find((tool) => tool.name === 'vera_editar_bloque_propio')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_mover_bloque_propio')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_proponer_edicion')?.annotations?.readOnlyHint, false);
+    assert.equal(tools.find((tool) => tool.name === 'vera_descartar')?.annotations?.readOnlyHint, false);
+    assert.equal(tools.find((tool) => tool.name === 'vera_descartar')?.annotations?.destructiveHint, true);
     assert.ok(
       tools
         .filter((tool) => ![
           'vera_escribir', 'vera_escribir_lote', 'vera_editar_bloque_propio',
-          'vera_mover_bloque_propio', 'vera_proponer_edicion',
+          'vera_mover_bloque_propio', 'vera_proponer_edicion', 'vera_descartar',
         ].includes(tool.name))
         .every((tool) => tool.annotations?.readOnlyHint === true),
     );
@@ -146,6 +148,7 @@ describe('vera-mcp por stdio', () => {
     assert.match(answer, /Conectado a Vera/);
     assert.match(answer, /participant:mcp-test/);
     assert.match(answer, /read, write/);
+    assert.match(answer, /discard/);
     assert.match(answer, /1 páginas, 2 bloques/);
   });
 
@@ -217,6 +220,25 @@ describe('vera-mcp por stdio', () => {
     });
     assert.match(answer, /Cambio aplicado/);
     assert.match(await call('vera_leer_pagina', { pagina: PAGE }), /Escrito por la puerta MCP/);
+  });
+
+  it('descarta un subárbol con confirmación y alcance discard', async () => {
+    const madeRoot = await call('vera_escribir', {
+      origen: 'mcp:connection:test:discard:root',
+      cambio: { kind: 'create_block', page: PAGE, parent: null, position: 2, content: 'Chatarra' },
+    });
+    const cleanRoot = madeRoot.match(/(block:[^,\s]+)/)?.[1];
+    assert.ok(cleanRoot !== undefined, madeRoot);
+    const madeChild = await call('vera_escribir', {
+      origen: 'mcp:connection:test:discard:child',
+      cambio: { kind: 'create_block', page: PAGE, parent: cleanRoot, position: 0, content: 'Chatarra hija' },
+    });
+    assert.match(madeChild, /Cambio aplicado/);
+    const answer = await call('vera_descartar', {
+      origen: 'mcp:connection:test:discard', pagina: PAGE, bloque: cleanRoot, bloques_confirmados: 2,
+    });
+    assert.match(answer, /Descarte aplicado/);
+    assert.doesNotMatch(await call('vera_leer_pagina', { pagina: PAGE }), /Chatarra/);
   });
 
   it('corrige sólo palabras propias con la revisión exacta y falla cerrado ante conflicto', async () => {

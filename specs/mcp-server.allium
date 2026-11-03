@@ -30,7 +30,8 @@
 -- pertenece sólo si nombra la revisión exacta que leyó. El corte siguiente
 -- extiende esa precondición a mover estructura propia y conserva como propuesta
 -- revisable cualquier corrección sobre palabras ajenas. Eliminar y subir
--- binarios siguen fuera de esta puerta.
+-- binarios siguen fuera de esta puerta. El descarte confirmado de bloques y
+-- páginas entra por la misma API canónica cuando la credencial lleva discard.
 
 use "./core.allium" as core
 
@@ -359,6 +360,16 @@ contract AWriteCanBeRepeatedWithoutRepeating {
         -- Un rechazo del dominio llega como rechazo, con su código y su motivo
         -- legible, y no se convierte en éxito parcial ni en prosa ambigua. Quien
         -- llama tiene que poder distinguir «no puedes» de «eso no se puede».
+
+    @invariant DiscardNamesWhatWillDisappear
+        -- Descartar por MCP exige releer la página y confirmar la cantidad
+        -- exacta de bloques que desaparecerán. Si la estructura cambió, no se
+        -- aplica ningún prefijo: el cliente vuelve a leer y decide de nuevo.
+
+    @invariant DiscardIsAtomicAndAuditable
+        -- Un subárbol se retira desde sus hojas y una página desde todos sus
+        -- bloques hasta su identidad, dentro de un lote atómico. Cada ausencia
+        -- conserva su operación, participante y canal agent_generation.
 }
 
 ------------------------------------------------------------
@@ -549,6 +560,27 @@ rule WritingABatchThroughMCPIsOneCanonicalGesture {
         -- haga una llamada por bloque.
 }
 
+rule DiscardingThroughMCPIsOneConfirmedCanonicalGesture {
+    when: DiscardThroughMCP(participant, connection, batch, confirmed_blocks)
+
+    let applied = AWriteCanBeRepeatedWithoutRepeating.apply_batch(batch)
+
+    requires: batch.connection = connection
+    requires: confirmed_blocks = blocks_removed_by(batch)
+    requires: batch.proposals.count > 0
+    requires: batch.proposals.count <= max_batch_changes
+    requires: batch_size(batch) <= max_batch_bytes
+    requires: exists applied
+
+    ensures: batch_written(applied)
+
+    @guidance
+        -- La credencial decide si discard está permitido. La herramienta no
+        -- concede autoridad: sólo vuelve visible el alcance y compone las
+        -- remove_block necesarias, de hojas a raíz, más remove_page cuando se
+        -- pidió retirar la página completa.
+}
+
 rule ProposingForeignWordsDoesNotWriteThem {
     when: ProposeThroughMCP(participant, connection, proposal)
 
@@ -645,6 +677,7 @@ surface MemoryOverMCP {
         ReadThroughMCP(participant, connection, subject)
         WriteThroughMCP(participant, connection, proposal)
         WriteBatchThroughMCP(participant, connection, batch)
+        DiscardThroughMCP(participant, connection, batch, confirmed_blocks)
         ProposeThroughMCP(participant, connection, proposal)
 
     @guarantee ContextIsComposedAndNotDumped
@@ -674,6 +707,11 @@ surface MemoryOverMCP {
         -- y qué riesgo corre. Ampliar la autoridad de una herramienta exige
         -- versión nueva: un nombre familiar no puede ganar poder en silencio.
 
+    @guarantee DiscardIsDiscoverableOnlyAsAnExplicitDestructiveTool
+        -- Limpiar no se disfraza de escritura ordinaria. La herramienta se
+        -- declara destructiva, nombra el alcance discard y exige una cuenta
+        -- leída antes de retirar un subárbol o una página completa.
+
     @guarantee ExternalPromptProvenanceIsTruthfullyPartial
         -- Cada invocación deja su entrada MCP exacta en el registro. Cuando el
         -- cliente no entregó el prompt humano anterior, Vera dice que ese origen
@@ -702,6 +740,7 @@ surface PublicMemoryOverHTTPS {
     provides:
         ReadThroughMCP(participant, connection, subject)
         WriteThroughMCP(participant, connection, proposal)
+        DiscardThroughMCP(participant, connection, batch, confirmed_blocks)
         ProposeThroughMCP(participant, connection, proposal)
 
     @guarantee PublicMeansReachableAndNotAnonymous

@@ -170,6 +170,28 @@ export function renameCredential(store: Store, id: string, label: string): Crede
   return credentialById(store, id);
 }
 
+/** Cambia los alcances de una llave vigente sin cambiar su secreto ni identidad. */
+export function rescopeCredential(store: Store, id: string, scopes: Scope[]): Credential | null {
+  if (scopes.length === 0) throw new Error('una credencial debe conservar al menos un alcance');
+  const next = [...new Set(scopes)].sort();
+  if (next.includes('capture')) {
+    throw new Error('capture pertenece a una puerta especializada y no se mezcla con permisos MCP');
+  }
+  if (next.includes('discard') && !next.includes('write')) {
+    throw new Error('discard necesita write: borrar también es una operación de escritura');
+  }
+  const current = credentialById(store, id);
+  if (current === null) return null;
+  if (current.status !== 'active') throw new Error('una credencial revocada no puede cambiar de alcance');
+  if (current.scopes.includes('capture')) {
+    throw new Error('una credencial de captura conserva su puerta especializada');
+  }
+  store.db
+    .prepare(`UPDATE access_tokens SET scopes = ? WHERE id = ? AND graph_id = ? AND status = 'active'`)
+    .run(next.join(','), id, store.graphId);
+  return credentialById(store, id);
+}
+
 export function credentialById(store: Store, id: string): Credential | null {
   const row = store.db
     .prepare(

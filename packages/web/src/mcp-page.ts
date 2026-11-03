@@ -1148,13 +1148,8 @@ function connectForm(
     touched = false;
   });
 
-  /*
-   * El trato, en tres y no en tres casillas de alcance.
-   *
-   * `read`, `write` y `discard` son el vocabulario del código. Aquí la pregunta
-   * es qué clase de trato es éste, que es una sola decisión y se puede leer.
-   */
-  const deals: { value: 'leer' | 'propio' | 'todo'; label: string; says: string }[] = [
+  /* Los tratos rápidos siguen, y Personalizado deja ver cada alcance. */
+  const deals: { value: 'leer' | 'propio' | 'todo' | 'personalizado'; label: string; says: string }[] = [
     { value: 'leer', label: 'Sólo leer', says: 'lo que la puerta hace hoy' },
     {
       value: 'propio',
@@ -1162,6 +1157,7 @@ function connectForm(
       says: 'crea páginas de una clase, escribe dentro de ellas, y no borra: marca',
     },
     { value: 'todo', label: 'Todo', says: 'la excepción de la casa; escribe y borra donde sea' },
+    { value: 'personalizado', label: 'Personalizado', says: 'elige leer, escribir y descartar por separado' },
   ];
   const chooser = document.createElement('label');
   chooser.className = 'connect-field';
@@ -1177,6 +1173,23 @@ function connectForm(
   chooser.append(dealSaid, select);
   form.append(chooser);
 
+  const scopeWrap = document.createElement('div');
+  scopeWrap.className = 'connect-scopes';
+  const scopes = (['read', 'write', 'discard'] as const).map((scope) => {
+    const choice = document.createElement('label');
+    choice.className = 'conecta-scope';
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.value = scope; input.checked = scope === 'read';
+    choice.append(input, scope === 'read' ? 'leer' : scope === 'write' ? 'escribir' : 'descartar');
+    scopeWrap.append(choice);
+    return { scope, input };
+  });
+  const writeScope = scopes.find((one) => one.scope === 'write')!.input;
+  const discardScope = scopes.find((one) => one.scope === 'discard')!.input;
+  discardScope.addEventListener('change', () => { if (discardScope.checked) writeScope.checked = true; });
+  writeScope.addEventListener('change', () => { if (!writeScope.checked) discardScope.checked = false; });
+  form.append(scopeWrap);
+
   const kind = field('Clase que puede crear', 'Nota de máquina');
   const explains = document.createElement('p');
   explains.className = 'connect-says';
@@ -1185,6 +1198,7 @@ function connectForm(
   const settle = (): void => {
     const chosen = deals.find((one) => one.value === select.value);
     explains.textContent = chosen?.says ?? '';
+    scopeWrap.hidden = select.value !== 'personalizado';
     // La clase sólo se pregunta cuando hay cerco que ponerle.
     (kind.parentElement as HTMLElement).hidden = select.value !== 'propio';
   };
@@ -1218,14 +1232,21 @@ function connectForm(
       born.append(warning, steps);
       return;
     }
+    const customScopes = scopes.filter((one) => one.input.checked).map((one) => one.scope);
     const said = {
       name: name.value.trim(),
       client: client.value.trim(),
-      deal: select.value as 'leer' | 'propio' | 'todo',
+      ...(select.value === 'personalizado'
+        ? { scopes: customScopes }
+        : { deal: select.value as 'leer' | 'propio' | 'todo' }),
       ...(select.value === 'propio' ? { kind: kind.value.trim() } : {}),
     };
     if (said.name === '' || said.client === '') {
       notify('una conexión necesita nombre y con qué palabra se declara');
+      return;
+    }
+    if (select.value === 'personalizado' && customScopes.length === 0) {
+      notify('elige al menos un permiso');
       return;
     }
     go.disabled = true;
@@ -1497,7 +1518,42 @@ function renderCredentialGroups(
         );
       });
       row.append(alias, saveAlias, description);
-      if (one.status === 'active') {
+      if (one.status === 'active' && !one.scopes.includes('capture')) {
+        const permissions = document.createElement('span');
+        permissions.className = 'access-scopes';
+        const scopeInputs = (['read', 'write', 'discard'] as const).map((scope) => {
+          const choice = document.createElement('label');
+          choice.className = 'conecta-scope';
+          const input = document.createElement('input');
+          input.type = 'checkbox'; input.value = scope; input.checked = one.scopes.includes(scope);
+          choice.append(input, scope === 'read' ? 'leer' : scope === 'write' ? 'escribir' : 'descartar');
+          permissions.append(choice);
+          return { scope, input };
+        });
+        const writeScope = scopeInputs.find((item) => item.scope === 'write')!.input;
+        const discardScope = scopeInputs.find((item) => item.scope === 'discard')!.input;
+        discardScope.addEventListener('change', () => { if (discardScope.checked) writeScope.checked = true; });
+        writeScope.addEventListener('change', () => { if (!writeScope.checked) discardScope.checked = false; });
+        const all = document.createElement('button');
+        all.type = 'button'; all.className = 'connect-copy'; all.textContent = 'todo';
+        all.addEventListener('click', () => scopeInputs.forEach((item) => (item.input.checked = true)));
+        const saveScopes = document.createElement('button');
+        saveScopes.type = 'button'; saveScopes.className = 'connect-copy'; saveScopes.textContent = 'guardar permisos';
+        saveScopes.addEventListener('click', () => {
+          const next = scopeInputs.filter((item) => item.input.checked).map((item) => item.scope);
+          if (next.length === 0) { notify('una credencial debe conservar al menos un permiso'); return; }
+          saveScopes.disabled = true;
+          void api.rescopeCredential(one.id, next).then(
+            (changed) => {
+              one.scopes = changed.scopes;
+              saveScopes.textContent = 'guardados';
+              window.setTimeout(() => refresh(), 700);
+            },
+            (error: Error) => { saveScopes.disabled = false; notify(error.message); },
+          );
+        });
+        permissions.append(all, saveScopes);
+        row.append(permissions);
         const revoke = document.createElement('button');
         revoke.type = 'button';
         revoke.className = 'connect-copy';

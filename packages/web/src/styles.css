@@ -10901,6 +10901,23 @@ html[data-working-slow='true']::after {
   accent-color: var(--accent);
 }
 
+.connect-scopes,
+.access-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.7rem;
+}
+
+.connect-scopes {
+  min-height: 2.25rem;
+  padding: 0 0.2rem;
+}
+
+.access-credential > .access-scopes {
+  color: var(--text);
+}
+
 .conecta-clients {
   margin: 0 0 1.4rem;
 }

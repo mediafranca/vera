@@ -101,6 +101,7 @@ import {
   resolveSecret,
   revokeCredential,
   renameCredential,
+  rescopeCredential,
   credentialById,
   scopeRefusal,
   type Credential,
@@ -4549,11 +4550,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
      * corpus, y porque el bloque de la fila entra por la puerta de siempre, con
      * su autor y su sitio en la secuencia, como cualquier edición hecha a mano.
      *
-     * El trato es grueso a propósito. `read`, `write` y `discard` son el
-     * vocabulario del código —«deliberadamente grueso», dice credentials.ts— y
-     * aun así son tres decisiones donde quien conecta una IA tiene una: qué clase
-     * de trato es éste. Tres tratos con nombre se pueden leer y decidir; tres
-     * casillas obligan a saberse qué implica cada una antes de poder contestar.
+     * `read`, `write` y `discard` siguen siendo familias legibles. La superficie
+     * puede enviarlas una por una; `todo` es sólo la suma de las tres. Se aceptan
+     * además los tratos antiguos para no romper clientes ya instalados.
      */
     if (request.method === 'POST' && path === '/mcp/connections') {
       const blocked = ownerOnly();
@@ -4568,6 +4567,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           name?: unknown;
           client?: unknown;
           deal?: unknown;
+          scopes?: unknown;
+          confined?: unknown;
           kind?: unknown;
           source?: unknown;
           says?: unknown;
@@ -4588,15 +4589,39 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
-        const DEALS: Record<string, { scopes: Scope[]; permission: string; fenced: boolean }> = {
-          leer: { scopes: ['read'], permission: 'leer', fenced: false },
-          propio: { scopes: ['read', 'write'], permission: 'escribe en lo suyo', fenced: true },
-          todo: { scopes: ['read', 'write', 'discard'], permission: 'todo', fenced: false },
-          capturar: { scopes: ['capture'], permission: 'depositar capturas', fenced: false },
+        const DEALS: Record<string, { scopes: Scope[]; permission: string; fenced: boolean; capture: boolean }> = {
+          leer: { scopes: ['read'], permission: 'leer', fenced: false, capture: false },
+          propio: { scopes: ['read', 'write'], permission: 'escribe en lo suyo', fenced: true, capture: false },
+          todo: { scopes: ['read', 'write', 'discard'], permission: 'todo', fenced: false, capture: false },
+          capturar: { scopes: ['capture'], permission: 'depositar capturas', fenced: false, capture: true },
         };
-        const chosen = DEALS[deal];
+        let chosen = DEALS[deal];
+        if (body.scopes !== undefined) {
+          const asked = Array.isArray(body.scopes) ? body.scopes : [];
+          const scopes = asked.filter((scope): scope is Scope =>
+            scope !== 'capture' && SCOPES.includes(scope as Scope));
+          if (scopes.length !== asked.length || scopes.length === 0) {
+            send(response, 400, { error: 'scopes debe elegir al menos uno de read, write, discard' });
+            return;
+          }
+          if (scopes.includes('discard') && !scopes.includes('write')) {
+            send(response, 400, { error: 'discard necesita write' });
+            return;
+          }
+          const ordered = [...new Set(scopes)].sort();
+          chosen = {
+            scopes: ordered,
+            permission: ordered.length === 3 ? 'todo' : ordered.join(' + '),
+            fenced: body.confined === true,
+            capture: false,
+          };
+        }
         if (chosen === undefined) {
-          send(response, 400, { error: `el trato es uno de ${Object.keys(DEALS).join(', ')}` });
+          send(response, 400, { error: `indica scopes o uno de estos tratos: ${Object.keys(DEALS).join(', ')}` });
+          return;
+        }
+        if (chosen.fenced && chosen.scopes.includes('discard')) {
+          send(response, 400, { error: 'una credencial cercada no puede descartar; puede marcar para revisión' });
           return;
         }
         const kind = typeof body.kind === 'string' ? body.kind.trim() : '';
@@ -4625,10 +4650,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * no: demuestra qué cliente ejecutó el gesto, pero quien incorpora el
          * material sigue siendo la persona propietaria y el canal será import.
          */
-        const participant = deal === 'capturar'
+        const participant = chosen.capture
           ? owner
           : `participant:${client.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
-        if (deal !== 'capturar' && graph.participant(participant) === undefined) {
+        if (!chosen.capture && graph.participant(participant) === undefined) {
           saveParticipant(store, { id: participant, name, kind: 'agent' });
           establishAgentPrincipal(store, participant, owner, owner);
           graph.addParticipant({ id: participant, name, kind: 'agent' });
@@ -4893,24 +4918,43 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
-        let body: { label?: unknown };
+        let body: { label?: unknown; scopes?: unknown };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
         } catch {
           send(response, 400, { error: 'the body must be JSON' });
           return;
         }
-        const label = typeof body.label === 'string' ? body.label.trim() : '';
-        if (label === '') {
-          send(response, 400, { error: 'el alias de una credencial no puede quedar vacío' });
+        const changesLabel = body.label !== undefined;
+        const changesScopes = body.scopes !== undefined;
+        if (!changesLabel && !changesScopes) {
+          send(response, 400, { error: 'indica label, scopes o ambos' });
           return;
         }
-        const renamed = renameCredential(store, id, label);
-        if (renamed === null) {
-          send(response, 404, { error: `no existe la credencial ${id}` });
-          return;
+        try {
+          let changed = credentialById(store, id);
+          if (changed === null) {
+            send(response, 404, { error: `no existe la credencial ${id}` });
+            return;
+          }
+          if (changesLabel) {
+            const label = typeof body.label === 'string' ? body.label.trim() : '';
+            if (label === '') throw new Error('el alias de una credencial no puede quedar vacío');
+            changed = renameCredential(store, id, label);
+          }
+          if (changesScopes) {
+            const asked = Array.isArray(body.scopes) ? body.scopes : [];
+            const scopes = asked.filter((scope): scope is Scope =>
+              scope !== 'capture' && SCOPES.includes(scope as Scope));
+            if (scopes.length !== asked.length || scopes.length === 0) {
+              throw new Error('scopes debe elegir al menos uno de read, write, discard');
+            }
+            changed = rescopeCredential(store, id, scopes);
+          }
+          send(response, 200, changed);
+        } catch (error) {
+          send(response, 400, { error: error instanceof Error ? error.message : String(error) });
         }
-        send(response, 200, renamed);
       });
       return;
     }

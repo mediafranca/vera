@@ -422,6 +422,30 @@ describe('conectar una IA es un solo acto', () => {
     })).status, 401);
   });
 
+  it('acepta alcances explícitos y todo es la suma de leer, escribir y descartar', async () => {
+    await door();
+    const made = await call('/mcp/connections', {
+      method: 'POST',
+      body: { name: 'Agente completo', client: 'agente-completo', scopes: ['read', 'write', 'discard'] },
+    });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    assert.deepEqual(made.json['scopes'], ['discard', 'read', 'write']);
+    const secret = String(made.json['secret']);
+    const born = await submit({ kind: 'create_page', title: `Descartable ${Date.now()}`, visibility: 'private' }, secret);
+    assert.equal(born.status, 201, JSON.stringify(born.json));
+    const dropped = await submit({ kind: 'remove_page', page: born.json['subjectId'] }, secret);
+    assert.equal(dropped.status, 201, JSON.stringify(dropped.json));
+  });
+
+  it('rechaza discard sin write en una conexión personalizada', async () => {
+    await door();
+    const tried = await call('/mcp/connections', {
+      method: 'POST', body: { name: 'Incoherente', client: 'incoherente', scopes: ['discard'] },
+    });
+    assert.equal(tried.status, 400, JSON.stringify(tried.json));
+    assert.match(String(tried.json['error']), /necesita write/);
+  });
+
   it('lo que se rechaza no deja media conexión detrás', async () => {
     /*
      * Un cerco sin clase se rechaza, y se rechaza antes de emitir nada.

@@ -76,6 +76,7 @@ contract AttributedGeneration {
 -- taken back without touching anything it already did.
 contract AgentCredentialing {
     issue: (owner: core/Participant, agent: core/Participant, scopes: Set<Scope>) -> AccessToken
+    rescope: (owner: core/Participant, token: AccessToken, scopes: Set<Scope>) -> AccessToken
     revoke: (owner: core/Participant, token: AccessToken) -> AccessToken
 
     @invariant SovereignOwnerCredentials
@@ -101,6 +102,21 @@ contract AgentCredentialing {
         -- What a credential may do is decided against each change it submits,
         -- not once at the door. A credential that may write does not thereby
         -- discard.
+
+    @invariant EveryPermissionIsVisibleAndEverythingIsTheirSum
+        -- La administración presenta read, write y discard por separado. «Todo»
+        -- selecciona esos tres alcances y no crea un cuarto permiso oculto: la
+        -- persona puede partir de la suma y retirar cualquiera de sus partes.
+
+    @invariant RescopingTakesEffectAtOnce
+        -- Cambiar los alcances de una credencial vigente afecta la siguiente
+        -- llamada. No obliga a repartir otro secreto, pero sí exige una decisión
+        -- explícita de la persona propietaria y nunca deja una credencial vacía.
+
+    @invariant CaptureCredentialsStaySpecialised
+        -- Una credencial de captura no se convierte en una llave MCP ni mezcla
+        -- capture con read, write o discard. Su identidad y su puerta reducida
+        -- son parte de la misma garantía.
 }
 
 ------------------------------------------------------------
@@ -301,6 +317,24 @@ rule OwnerRenamesCredential {
         -- no cambia a quién representa, qué permite ni el secreto que la prueba.
 }
 
+rule OwnerChangesCredentialScopes {
+    when: RescopeCredential(owner, token, scopes)
+
+    requires: instance.owner = owner
+    requires: token.status = active
+    requires: scopes != {}
+    requires: capture not in token.scopes
+    requires: capture not in scopes
+    requires: discard not in scopes or write in scopes
+
+    ensures: token.scopes = scopes
+
+    @guidance
+        -- El secreto sigue siendo el mismo. Ampliar o reducir sus alcances no
+        -- reescribe lo que la credencial hizo antes y rige desde la siguiente
+        -- resolución del secreto.
+}
+
 -- The rule that makes @invariant IdentityComesFromTheCredential operational.
 --
 -- The submitter says who it is and presents its secret, and both have to agree
@@ -459,6 +493,7 @@ surface CredentialAdministration {
 
     provides:
         IssueCredential(owner, agent, scopes, label, digest)
+        RescopeCredential(owner, token, scopes)
         RenameCredential(owner, token, label)
         RevokeCredential(owner, token)
         DelegateAct(owner, instance.graph, agent, act, subject, reason)
