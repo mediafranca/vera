@@ -10,8 +10,13 @@
     main { width: min(34rem, calc(100vw - 3rem)); }
     h1 { font: 400 3rem/1.05 Georgia, serif; margin: 0 0 1rem; }
     p { line-height: 1.55; }
-    label { display: block; font-weight: 650; margin-top: 2rem; }
+    label, legend { display: block; font-weight: 650; margin-top: 1.4rem; }
     input { box-sizing: border-box; width: 100%; margin: .5rem 0 1rem; padding: .8rem; font: inherit; border: 1px solid #858177; border-radius: .35rem; background: #fff; color: #24231f; }
+    fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
+    .profiles { display: flex; gap: 1.5rem; margin-top: .65rem; }
+    .profiles label { display: flex; gap: .45rem; align-items: center; margin: 0; font-weight: 500; }
+    .profiles input { width: auto; margin: 0; }
+    [hidden] { display: none !important; }
     button { padding: .8rem 1.1rem; font: inherit; font-weight: 650; border: 0; border-radius: .35rem; background: #24231f; color: #fff; cursor: pointer; }
     button[disabled] { opacity: .55; cursor: wait; }
     #error { min-height: 1.5rem; color: #a1261f; }
@@ -26,27 +31,76 @@
 </head>
 <body>
   <main>
-    <h1>Esta memoria necesita una persona.</h1>
-    <p>Vera conservará este nombre como la persona propietaria y autora humana de la memoria. Los agentes que conectes tendrán identidades distintas.</p>
+    <h1>Constituye tu biblioteca.</h1>
+    <p>Vera necesita saber quién la gobierna, cómo se llama la biblioteca y quién será su primera bibliotecaria.</p>
     <form id="setup">
-      <label for="name">¿Cómo quieres aparecer?</label>
-      <input id="name" name="name" autocomplete="name" required minlength="2" autofocus>
-      <button id="submit" type="submit">Crear mi memoria</button>
+      <label for="person">¿Cómo quieres aparecer?</label>
+      <input id="person" name="person" autocomplete="name" required minlength="2" autofocus>
+
+      <label for="library">Nombre de la biblioteca</label>
+      <input id="library" name="library" required minlength="2">
+
+      <fieldset>
+        <legend>¿Qué clase de biblioteca es?</legend>
+        <div class="profiles">
+          <label><input type="radio" name="profile" value="personal" checked> Personal</label>
+          <label><input type="radio" name="profile" value="collective"> Colectiva</label>
+        </div>
+      </fieldset>
+
+      <div id="collective-fields" hidden>
+        <label for="surface">Primera superficie compartida</label>
+        <input id="surface" name="surface" value="Superficie colectiva" minlength="2">
+      </div>
+
+      <label for="librarian">Nombre de tu bibliotecaria</label>
+      <input id="librarian" name="librarian" value="Lucienne" required minlength="2">
+
+      <button id="submit" type="submit">Crear biblioteca</button>
       <p id="error" role="alert"></p>
     </form>
     <small>El programa y la memoria se guardan por separado. Actualizar o desinstalar Vera no debe borrar tu corpus.</small>
   </main>
   <script>
     const form = document.querySelector('#setup');
-    const name = document.querySelector('#name');
+    const person = document.querySelector('#person');
+    const library = document.querySelector('#library');
+    const librarian = document.querySelector('#librarian');
+    const surface = document.querySelector('#surface');
+    const collectiveFields = document.querySelector('#collective-fields');
     const submit = document.querySelector('#submit');
     const error = document.querySelector('#error');
-    window.veraSetup.systemName().then((value) => { if (!name.value) name.placeholder = value; });
+    let libraryEdited = false;
+    const suggestedLibrary = () => `Biblioteca de ${person.value.trim() || 'ti'}`;
+    const updateSuggestedLibrary = () => { if (!libraryEdited) library.value = suggestedLibrary(); };
+    library.addEventListener('input', () => { libraryEdited = true; });
+    person.addEventListener('input', updateSuggestedLibrary);
+    document.querySelectorAll('input[name="profile"]').forEach((choice) => {
+      choice.addEventListener('change', () => {
+        const collective = choice.checked && choice.value === 'collective';
+        if (collective) collectiveFields.hidden = false;
+        else if (choice.checked) collectiveFields.hidden = true;
+        surface.required = !collectiveFields.hidden;
+      });
+    });
+    window.veraSetup.systemName().then((value) => {
+      if (!person.value) person.value = value;
+      updateSuggestedLibrary();
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       error.textContent = '';
       submit.disabled = true;
-      try { await window.veraSetup.initialize(name.value); }
+      const profile = document.querySelector('input[name="profile"]:checked').value;
+      try {
+        await window.veraSetup.initialize({
+          personName: person.value,
+          libraryName: library.value,
+          profile,
+          ownerLibrarianName: librarian.value,
+          initialCollectiveSurfaceName: profile === 'collective' ? surface.value : null,
+        });
+      }
       catch (cause) {
         error.textContent = cause && cause.message ? cause.message : 'No fue posible crear la memoria.';
         submit.disabled = false;

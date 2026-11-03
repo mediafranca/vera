@@ -26,12 +26,15 @@ const INSTANCE_ID = 'instance:1';
 const INVITATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function ensureInstanceProfile(store: Store, owner: string, requested: InstanceProfile | undefined,
-  newGraph: boolean): InstanceProfile {
-  const held = store.db.prepare('SELECT id,profile FROM instances WHERE graph_id=?')
-    .get(store.graphId) as { id: string; profile: InstanceProfile } | undefined;
+  newGraph: boolean, requestedLibraryName?: string): InstanceProfile {
+  const held = store.db.prepare('SELECT id,profile,library_name FROM instances WHERE graph_id=?')
+    .get(store.graphId) as { id: string; profile: InstanceProfile; library_name: string } | undefined;
   if (held !== undefined) {
     if (requested !== undefined && requested !== held.profile) {
       throw new Error(`esta instancia ya es ${held.profile}; cambiar de perfil exige migrar a otro corpus`);
+    }
+    if (requestedLibraryName !== undefined && requestedLibraryName.trim() !== held.library_name) {
+      throw new Error(`esta biblioteca ya se llama ${held.library_name}; renombrarla exige un acto de gobierno`);
     }
     return held.profile;
   }
@@ -43,11 +46,16 @@ export function ensureInstanceProfile(store: Store, owner: string, requested: In
     throw new Error('un corpus personal existente no se convierte en colectivo en el lugar; crea otra instancia');
   }
 
+  const ownerRow = store.db.prepare('SELECT name FROM participants WHERE id=?').get(owner) as
+    { name: string } | undefined;
+  const libraryName = requestedLibraryName?.trim() ||
+    `Biblioteca de ${ownerRow?.name?.trim() || 'su persona dueña'}`;
+
   const now = Date.now();
   store.db.exec('BEGIN');
   try {
-    store.db.prepare('INSERT INTO instances (id,graph_id,owner_id,profile) VALUES (?,?,?,?)')
-      .run(INSTANCE_ID, store.graphId, owner, profile);
+    store.db.prepare('INSERT INTO instances (id,graph_id,owner_id,library_name,profile) VALUES (?,?,?,?,?)')
+      .run(INSTANCE_ID, store.graphId, owner, libraryName, profile);
     store.db.prepare(`INSERT INTO instance_governance_grants
       (id,instance_id,participant_id,role,status,granted_by,granted_at)
       VALUES (?,?,?,'root_custodian','active',?,?)`)
@@ -68,6 +76,12 @@ export function instanceProfile(store: Store): InstanceProfile {
   const row = store.db.prepare('SELECT profile FROM instances WHERE graph_id=?').get(store.graphId) as
     { profile: InstanceProfile } | undefined;
   return row?.profile ?? 'personal';
+}
+
+export function instanceLibraryName(store: Store): string {
+  const row = store.db.prepare('SELECT library_name FROM instances WHERE graph_id=?').get(store.graphId) as
+    { library_name: string } | undefined;
+  return row?.library_name ?? 'Biblioteca';
 }
 
 export function collectiveRoles(store: Store, participant: string): CollectiveRole[] {

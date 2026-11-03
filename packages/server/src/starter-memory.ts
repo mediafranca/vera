@@ -4,6 +4,8 @@ import { dirname } from 'node:path';
 import { type Change, VeraGraph } from '@vera/core';
 import { loadGraph, openStore, recordOperation, saveParticipant } from '@vera/store';
 import { ensureInstanceProfile, type InstanceProfile } from './instance-governance.ts';
+import { ensureOwnerLibrarian } from './owner-librarian.ts';
+import { createSharedSpace } from './shared-spaces.ts';
 import {
   STARTER_OBJECT_DEFINITIONS,
   STARTER_PROPERTY_DEFINITIONS,
@@ -268,6 +270,9 @@ export interface InitializeStarterMemoryOptions {
   /** Obligatoria sólo cuando la memoria todavía no tiene persona propietaria. */
   readonly owner?: { readonly id: string; readonly name: string };
   readonly profile?: InstanceProfile;
+  readonly libraryName?: string;
+  readonly ownerLibrarianName?: string;
+  readonly initialCollectiveSurfaceName?: string;
 }
 
 export interface StarterMemoryReport {
@@ -291,6 +296,12 @@ function forProfile(entry: StarterChange, profile: InstanceProfile): StarterChan
   return content === undefined ? entry : { ...entry, change: { ...entry.change, content } };
 }
 
+function surfaceSlug(name: string): string {
+  const slug = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return slug || 'superficie-colectiva';
+}
+
 export function initializeStarterMemory(options: InitializeStarterMemoryOptions): StarterMemoryReport {
   if (options.databasePath !== ':memory:') mkdirSync(dirname(options.databasePath), { recursive: true });
   const store = openStore({ path: options.databasePath, graphName: 'mind' });
@@ -310,7 +321,19 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
     }
     const owner = established ?? options.owner?.id;
     if (owner === undefined) throw new Error('la memoria no declara persona propietaria');
-    const profile = ensureInstanceProfile(store, owner, options.profile, established === null);
+    const newGraph = established === null;
+    const profile = ensureInstanceProfile(store, owner, options.profile, newGraph, options.libraryName);
+    if (newGraph) {
+      ensureOwnerLibrarian(store, graph, owner, options.ownerLibrarianName ?? 'Lucienne');
+      if (profile === 'collective') {
+        const surfaceName = options.initialCollectiveSurfaceName?.trim() || 'Superficie colectiva';
+        createSharedSpace(store, owner, {
+          name: surfaceName,
+          slug: surfaceSlug(surfaceName),
+          audience: 'restricted',
+        });
+      }
+    }
 
     if (graph.participant(DISTRIBUTION_PARTICIPANT) === undefined) {
       saveParticipant(store, {

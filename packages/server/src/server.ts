@@ -137,6 +137,7 @@ import {
   collectiveGovernanceView,
   collectiveRoles,
   ensureInstanceProfile,
+  instanceLibraryName,
   inspectCollectiveInvitation,
   inviteToCollective,
   isCollectiveAdministrator,
@@ -7563,6 +7564,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                   .sort((a, b) => a.title.localeCompare(b.title, 'es'))[0]?.id ?? null));
         send(response, 200, {
           graph: graph.name,
+          libraryName: instanceLibraryName(store),
           access: publicAccess ? 'anybody' : 'owner',
           canEdit: publicAccess ? canEditScopedSpace : true,
           canContribute: publicAccess ? canContributeScopedSpace : false,
