@@ -1,0 +1,170 @@
+-- allium: 3
+-- librarian-runtime.allium
+
+-- Scope: ejecución embebida y gobernada de la bibliotecaria de una Vera.
+-- Includes: constitución, configuración de inferencia por referencia, ciclo de
+--   vida, solicitudes, ronda diaria, recibos y coexistencia con un puente externo.
+-- Excludes: custodia material del secreto, semántica de cada modelo y herramientas
+--   mutantes distintas de la respuesta ordinaria del Bibliotecario.
+
+use "./core.allium" as core
+use "./agent-manifest.allium" as manifests
+use "./owner-librarian-harness.allium" as harnesses
+
+enum LibrarianRunKind { request | routine }
+enum LibrarianRunState { running | completed | failed }
+enum LibrarianRuntimePermission { read_request_context | reply | daily_round }
+
+entity LibrarianRuntimeConfiguration {
+    librarian: harnesses/OwnerLibrarian
+    enabled: Boolean
+    model_id: String?
+    endpoint: String?
+    secret_reference: String?
+    permissions: List<LibrarianRuntimePermission>
+    routine_enabled: Boolean
+    routine_hour: Integer
+    routine_timezone: String
+    updated_by: core/Participant
+    updated_at: Timestamp
+}
+
+entity LibrarianRuntimeRun {
+    id: String
+    librarian: harnesses/OwnerLibrarian
+    manifest: manifests/AgentManifest?
+    kind: LibrarianRunKind
+    request_id: String?
+    model_id: String
+    status: LibrarianRunState
+    started_at: Timestamp
+    finished_at: Timestamp?
+    output: String?
+    error: String?
+}
+
+actor LibrarianOwner {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+rule OwnerConfiguresEmbeddedRuntime {
+    when: ConfigureLibrarianRuntime(owner, librarian, enabled, model_id, endpoint, secret_reference, permissions, routine_enabled, routine_hour, routine_timezone)
+    requires: librarian.owner = owner
+    requires: not enabled or model_id != null
+    requires: routine_hour >= 0 and routine_hour <= 23
+    requires: not enabled or (permissions.contains(read_request_context) and permissions.contains(reply))
+    requires: not routine_enabled or permissions.contains(daily_round)
+    ensures: LibrarianRuntimeConfiguration.created(
+        librarian: librarian,
+        enabled: enabled,
+        model_id: model_id,
+        endpoint: endpoint,
+        secret_reference: secret_reference,
+        permissions: permissions,
+        routine_enabled: routine_enabled,
+        routine_hour: routine_hour,
+        routine_timezone: routine_timezone,
+        updated_by: owner,
+        updated_at: now
+    )
+}
+
+rule EmbeddedRuntimeAnswersOneClaimedRequest {
+    when: RunLibrarianRequest(configuration, request_id)
+    requires: configuration.enabled
+    requires: configuration.model_id != null
+    requires: configuration.permissions.contains(read_request_context)
+    requires: configuration.permissions.contains(reply)
+    ensures: LibrarianRuntimeRun.created(
+        id: generated_id,
+        librarian: configuration.librarian,
+        manifest: active_manifest(configuration.librarian.librarian),
+        kind: request,
+        request_id: request_id,
+        model_id: configuration.model_id,
+        status: completed,
+        started_at: now,
+        finished_at: now,
+        output: generated_reply,
+        error: null
+    )
+}
+
+rule OwnerRunsTheDailyRound {
+    when: RunLibrarianRoutine(owner, configuration)
+    requires: configuration.librarian.owner = owner
+    requires: configuration.enabled
+    requires: configuration.permissions.contains(daily_round)
+    ensures: LibrarianRuntimeRun.created(
+        id: generated_id,
+        librarian: configuration.librarian,
+        manifest: active_manifest(configuration.librarian.librarian),
+        kind: routine,
+        request_id: null,
+        model_id: configuration.model_id,
+        status: completed,
+        started_at: now,
+        finished_at: now,
+        output: generated_round,
+        error: null
+    )
+}
+
+invariant SecretsAreReferencesNotValues {
+    for configuration in LibrarianRuntimeConfigurations:
+        configuration.secret_reference = null or
+        not configuration.secret_reference.contains("Bearer ")
+}
+
+invariant OneRuntimeConfigurationPerOwnerLibrarian {
+    for a in LibrarianRuntimeConfigurations:
+        for b in LibrarianRuntimeConfigurations:
+            a.librarian = b.librarian implies a = b
+}
+
+surface LibrarianRuntimeAdministration {
+    facing owner: LibrarianOwner
+    context configuration: LibrarianRuntimeConfiguration where configuration.librarian.owner = owner
+
+    exposes:
+        configuration.librarian
+        configuration.enabled
+        configuration.model_id
+        configuration.endpoint
+        configuration.secret_reference
+        configuration.permissions
+        configuration.routine_enabled
+        configuration.routine_hour
+        configuration.routine_timezone
+        for run in LibrarianRuntimeRuns where librarian = configuration.librarian:
+            run.kind
+            run.model_id
+            run.status
+            run.started_at
+            run.finished_at
+            run.output
+            run.error
+
+    provides:
+        ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, model_id, endpoint, secret_reference, permissions, routine_enabled, routine_hour, routine_timezone)
+        RunLibrarianRoutine(owner, configuration)
+
+    @guarantee RuntimeIdentityIsTheConstitutedLibrarian
+        -- La bibliotecaria responde con su participante. Cotito puede seguir
+        -- operando por el puente externo, pero nunca firma como Lucienne.
+
+    @guarantee OneClaimHasOneWinner
+        -- El runtime embebido y un puente externo pueden coexistir. La primera
+        -- reclamación atómica gana y la otra recibe que el turno ya no está en cola.
+
+    @guarantee ActivationRequiresAnExplicitHumanAct
+        -- Constituir una bibliotecaria o migrar una instalación no inicia un
+        -- modelo ni una rutina. La persona elige modelo, permisos y activación.
+
+    @guarantee RoutinesBeginDisabled
+        -- Una ronda automática nace apagada y también puede ejecutarse a mano.
+
+    @guarantee EveryRunLeavesPublicOperationalEvidence
+        -- Vera conserva modelo, manifiesto, comienzo, término, estado, salida o
+        -- error. No conserva razonamiento privado ni el valor del secreto.
+}

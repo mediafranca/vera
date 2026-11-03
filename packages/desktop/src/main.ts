@@ -35,6 +35,7 @@ const webRoot = app.isPackaged ? join(process.resourcesPath, 'web') : join(ROOT,
 const setupPage = join(HERE, 'setup.html');
 const preload = join(HERE, 'preload.cjs');
 const conectaSecretPath = join(dataRoot, 'secrets', 'vera-conecta.bin');
+const librarianSecretPath = join(dataRoot, 'secrets', 'vera-librarian.bin');
 const externalEditsRoot = join(dataRoot, 'external-edits');
 const externalEditorsPath = join(dataRoot, 'external-editors.json');
 
@@ -128,10 +129,42 @@ const secureConectaStore = (): SecureConectaStore => ({
   },
 });
 
+interface LibrarianSecretState {
+  apiKey: string;
+  endpoint: string;
+  model: string;
+}
+
+const readLibrarianSecret = (): LibrarianSecretState | null => {
+  if (!existsSync(librarianSecretPath) || !safeStorage.isEncryptionAvailable()) return null;
+  try {
+    const parsed = JSON.parse(safeStorage.decryptString(readFileSync(librarianSecretPath))) as Partial<LibrarianSecretState>;
+    if (typeof parsed.apiKey !== 'string' || parsed.apiKey.trim() === '') return null;
+    return {
+      apiKey: parsed.apiKey,
+      endpoint: typeof parsed.endpoint === 'string' ? parsed.endpoint : '',
+      model: typeof parsed.model === 'string' ? parsed.model : '',
+    };
+  } catch {
+    return null;
+  }
+};
+
+const applyLibrarianSecret = (state: LibrarianSecretState | null): void => {
+  if (state === null) {
+    delete process.env['VERA_LIBRARIAN_API_KEY'];
+    return;
+  }
+  process.env['VERA_LIBRARIAN_API_KEY'] = state.apiKey;
+  if (state.endpoint.trim() !== '') process.env['OPENAI_BASE_URL'] = state.endpoint.trim();
+  if (state.model.trim() !== '') process.env['VERA_OPENAI_MODELS'] = state.model.replace(/^openai:/, '').trim();
+};
+
 const databaseExists = (): boolean => existsSync(databasePath) && statSync(databasePath).size > 0;
 
 async function startVera(): Promise<void> {
   if (running === null) {
+    applyLibrarianSecret(readLibrarianSecret());
     // El starter es un registro versionado e idempotente. Al abrir una memoria
     // existente aplica únicamente las adiciones de la distribución nueva; no
     // vuelve a crear ni pisa operaciones que esa memoria ya recibió.
@@ -336,6 +369,34 @@ ipcMain.handle('vera-conecta:revoke-client', async (_event, principalId: unknown
   if (conecta === null) throw new Error('Vera todavía no está iniciada.');
   await conecta.revokeClient(principalId);
   return { ok: true };
+});
+
+ipcMain.handle('vera-librarian-secret:status', () => ({
+  available: readLibrarianSecret() !== null,
+  secureStorage: safeStorage.isEncryptionAvailable() &&
+    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+}));
+ipcMain.handle('vera-librarian-secret:save', (_event, raw: unknown) => {
+  if (!safeStorage.isEncryptionAvailable() ||
+    (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
+    throw new Error('este equipo no ofrece un almacén seguro para la clave de inferencia');
+  }
+  if (raw === null || typeof raw !== 'object') throw new Error('la configuración del secreto está incompleta');
+  const input = raw as Record<string, unknown>;
+  const apiKey = typeof input.apiKey === 'string' ? input.apiKey.trim() : '';
+  const endpoint = typeof input.endpoint === 'string' ? input.endpoint.trim() : '';
+  const model = typeof input.model === 'string' ? input.model.trim() : '';
+  if (apiKey === '') throw new Error('la clave de inferencia está vacía');
+  const state = { apiKey, endpoint, model };
+  mkdirSync(dirname(librarianSecretPath), { recursive: true });
+  writeFileSync(librarianSecretPath, safeStorage.encryptString(JSON.stringify(state)), { mode: 0o600 });
+  applyLibrarianSecret(state);
+  return { available: true, secureStorage: true };
+});
+ipcMain.handle('vera-librarian-secret:clear', () => {
+  if (existsSync(librarianSecretPath)) unlinkSync(librarianSecretPath);
+  applyLibrarianSecret(null);
+  return { available: false, secureStorage: safeStorage.isEncryptionAvailable() };
 });
 
 ipcMain.handle('vera-external-editing:open', async (_event, raw: unknown) => {

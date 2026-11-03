@@ -408,6 +408,14 @@ export function answerLibrarianRequest(store: Store, input: {
   return librarianRequest(store, input.id);
 }
 
+export function failLibrarianRequest(store: Store, id: string, reason: string): LibrarianRequest | undefined {
+  store.db.prepare(`UPDATE agent_requests SET status='failed',finished_at=?,failure_reason=?
+    WHERE graph_id=? AND id=? AND status='working'`).run(
+      Date.now(), reason.slice(0, 2_000), store.graphId, id,
+    );
+  return librarianRequest(store, id);
+}
+
 export function removeLibrarianRequest(store: Store, id: string): boolean {
   const removed = store.db.prepare(`DELETE FROM agent_requests WHERE graph_id=? AND id=?`).run(
     store.graphId, id,

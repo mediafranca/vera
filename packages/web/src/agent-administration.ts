@@ -4,7 +4,14 @@
 // corpus, construye una proyección versionada y decide qué revisión puede leer
 // el runtime. Los secretos y la ejecución permanecen fuera.
 
-import { api, type AgentAdministrationView, type ConstitutionRole, type PageSummary } from './api.ts';
+import {
+  api,
+  type AgentAdministrationView,
+  type ConstitutionRole,
+  type LibrarianRuntimePermission,
+  type LibrarianRuntimeView,
+  type PageSummary,
+} from './api.ts';
 
 const ROLE_LABELS: Record<ConstitutionRole, string> = {
   identity: 'Identidad', purpose: 'Propósito', practice: 'Práctica', memory: 'Memoria', governance: 'Gobierno',
@@ -134,6 +141,122 @@ function runtimeState(agent: AgentAdministrationView): HTMLElement {
   section.append(list); return section;
 }
 
+interface DesktopLibrarianSecretBridge {
+  status(): Promise<{ available: boolean; secureStorage: boolean }>;
+  save(input: { apiKey: string; endpoint: string; model: string }): Promise<{ available: boolean }>;
+  clear(): Promise<{ available: boolean }>;
+}
+
+function field(label: string, input: HTMLInputElement): HTMLLabelElement {
+  const held = document.createElement('label');
+  const name = document.createElement('span'); name.textContent = label;
+  held.append(name, input); return held;
+}
+
+async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: () => Promise<void>): Promise<HTMLElement> {
+  const section = document.createElement('section'); section.className = 'agent-runtime-configuration';
+  const heading = document.createElement('h2'); heading.textContent = 'Runtime de la bibliotecaria';
+  const status = document.createElement('p'); status.className = `agent-runtime-badge is-${view.status}`;
+  status.textContent = ({
+    unconstituted: 'Aún no constituida', stopped: 'Detenido', ready: 'Listo',
+    degraded: 'Configuración incompleta', working: 'Trabajando',
+  } as Record<LibrarianRuntimeView['status'], string>)[view.status];
+  section.append(heading, status);
+
+  if (view.librarian === null) {
+    const explanation = document.createElement('p'); explanation.className = 'settings-note';
+    explanation.textContent = 'Esta biblioteca precede al smart default. Constituirla crea el agente, su vínculo con la persona dueña, el harness y un manifiesto inicial editable.';
+    const name = document.createElement('input'); name.value = 'Lucienne'; name.required = true;
+    section.append(explanation, field('Nombre editable', name), control('Constituir bibliotecaria', async () => {
+      await api.constituteLibrarianRuntime(name.value); await refresh();
+    }, 'primary'));
+    return section;
+  }
+
+  const config = view.configuration;
+  if (config === null) {
+    const missing = document.createElement('p'); missing.className = 'settings-note';
+    missing.textContent = 'La bibliotecaria existe, pero su runtime aún no tiene configuración.';
+    section.append(missing); return section;
+  }
+  const modelCatalog = await api.processingModels().catch(() => ({ models: [] }));
+  const form = document.createElement('form'); form.className = 'agent-runtime-form';
+  const model = document.createElement('input'); model.value = config.model ?? '';
+  model.placeholder = 'openai:gpt-5.6-luna o local:…'; model.setAttribute('list', 'librarian-models');
+  const models = document.createElement('datalist'); models.id = 'librarian-models';
+  for (const offered of modelCatalog.models) {
+    const option = document.createElement('option'); option.value = offered.id;
+    option.label = `${offered.name} · ${offered.location === 'external' ? 'externo' : 'en este equipo'}`;
+    models.append(option);
+  }
+  const endpoint = document.createElement('input'); endpoint.type = 'url';
+  endpoint.value = config.endpoint ?? ''; endpoint.placeholder = 'https://api.openai.com/v1';
+  const reference = document.createElement('input'); reference.value = config.secretReference ?? 'VERA_LIBRARIAN_API_KEY';
+  reference.pattern = '[A-Z][A-Z0-9_]{2,63}';
+  const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = config.enabled;
+  const routine = document.createElement('input'); routine.type = 'checkbox'; routine.checked = config.routine.enabled;
+  const hour = document.createElement('input'); hour.type = 'number'; hour.min = '0'; hour.max = '23';
+  hour.value = String(config.routine.hour);
+  const key = document.createElement('input'); key.type = 'password'; key.autocomplete = 'new-password';
+  key.placeholder = view.secret.available ? 'clave guardada; deja vacío para conservarla' : 'clave de inferencia';
+  const desktop = (window as unknown as { veraLibrarianSecret?: DesktopLibrarianSecretBridge }).veraLibrarianSecret;
+  if (desktop === undefined) key.hidden = true;
+
+  const permissionList = document.createElement('fieldset');
+  const legend = document.createElement('legend'); legend.textContent = 'Permisos del runtime'; permissionList.append(legend);
+  const permissionControls = new Map<LibrarianRuntimePermission, HTMLInputElement>();
+  const labels: Record<LibrarianRuntimePermission, string> = {
+    read_request_context: 'Leer el contexto que la persona envía',
+    reply: 'Responder en la conversación y en la página',
+    daily_round: 'Ejecutar la ronda bibliotecaria',
+  };
+  for (const permission of Object.keys(labels) as LibrarianRuntimePermission[]) {
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+    checkbox.checked = config.permissions.includes(permission); permissionControls.set(permission, checkbox);
+    const label = document.createElement('label'); label.append(checkbox, document.createTextNode(labels[permission]));
+    permissionList.append(label);
+  }
+  const activeLabel = document.createElement('label'); activeLabel.append(enabled, document.createTextNode('Runtime activo'));
+  const routineLabel = document.createElement('label'); routineLabel.append(routine, document.createTextNode('Ronda diaria activa'));
+  form.append(
+    models, field('Modelo de inferencia', model), field('Endpoint compatible con OpenAI', endpoint),
+    field('Referencia del secreto', reference), field('Clave (sólo Desktop)', key),
+    permissionList, activeLabel, routineLabel, field('Hora local de la ronda', hour),
+  );
+  form.append(control('Guardar configuración', async () => {
+    if (desktop !== undefined && key.value.trim() !== '') {
+      await desktop.save({ apiKey: key.value, endpoint: endpoint.value, model: model.value });
+    }
+    await api.configureLibrarianRuntime({
+      enabled: enabled.checked,
+      model: model.value.trim() || null,
+      endpoint: endpoint.value.trim() || null,
+      secretReference: reference.value.trim() || null,
+      permissions: [...permissionControls].filter(([, box]) => box.checked).map(([permission]) => permission),
+      routine: { enabled: routine.checked, hour: Number(hour.value), timezone: 'local' },
+    });
+    await refresh();
+  }, 'primary'));
+  if (config.enabled && config.permissions.includes('daily_round')) {
+    form.append(control('Ejecutar ronda ahora', async () => { await api.runLibrarianRoutine(); await refresh(); }));
+  }
+  section.append(form);
+
+  const history = document.createElement('ol'); history.className = 'agent-runtime-runs';
+  for (const run of view.runs.slice(0, 8)) {
+    const item = document.createElement('li');
+    const label = document.createElement('strong'); label.textContent = run.kind === 'request' ? 'Solicitud' : 'Ronda';
+    const meta = document.createElement('span');
+    meta.textContent = ` ${run.status} · ${new Date(run.startedAt).toLocaleString('es-CL')} · ${run.model}`;
+    item.append(label, meta);
+    if (run.error !== null) { const error = document.createElement('p'); error.textContent = run.error; item.append(error); }
+    else if (run.output !== null) { const output = document.createElement('p'); output.textContent = run.output; item.append(output); }
+    history.append(item);
+  }
+  if (view.runs.length > 0) section.append(history);
+  return section;
+}
+
 export async function renderAgentAdministration(host: HTMLElement): Promise<void> {
   host.replaceChildren();
   const root = document.createElement('article'); root.className = 'agent-administration';
@@ -148,7 +271,10 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
 
   const refresh = async (): Promise<void> => renderAgentAdministration(host);
   try {
-    const [{ agents }, directory] = await Promise.all([api.agentAdministration(), api.participants()]);
+    const [{ agents }, directory, runtime] = await Promise.all([
+      api.agentAdministration(), api.participants(), api.librarianRuntime(),
+    ]);
+    body.append(await runtimeConfigurationPanel(runtime, refresh));
     let pagesPromise: Promise<PageSummary[]> | null = null;
     const pages = (): Promise<PageSummary[]> => pagesPromise ??= api.pages();
     const humans = directory.participants.filter((one) => one.kind === 'human' && one.status === 'active');

@@ -6513,6 +6513,28 @@ body.settings-open #text {
 .librarian-boundary h3 { margin: 0 0 .35rem; font-size: .9rem; }
 .librarian-boundary p { margin: 0; color: var(--text-dim); font-size: .8rem; line-height: 1.45; }
 
+.agent-runtime-configuration {
+  margin: 0 0 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+.agent-runtime-configuration h2 { margin: 0 0 .55rem; font-size: 1rem; }
+.agent-runtime-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem 1rem; margin-top: 1rem; }
+.agent-runtime-form > label { display: grid; gap: .3rem; color: var(--text-dim); font-size: .78rem; }
+.agent-runtime-form input:is([type='text'], [type='url'], [type='password'], [type='number']),
+.agent-runtime-form > label > input:not([type]) {
+  width: 100%; box-sizing: border-box; padding: .55rem .65rem;
+  border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--text);
+}
+.agent-runtime-form fieldset { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .75rem 1.2rem; border: 0; padding: 0; }
+.agent-runtime-form fieldset legend { width: 100%; margin-bottom: .35rem; font-weight: 650; }
+.agent-runtime-form fieldset label,
+.agent-runtime-form > label:has(input[type='checkbox']) { display: flex; align-items: center; gap: .4rem; color: var(--text); }
+.agent-runtime-runs { margin: 1rem 0 0; padding-left: 1.25rem; }
+.agent-runtime-runs p { margin: .25rem 0 .8rem; white-space: pre-wrap; color: var(--text-dim); }
+
 .voice-path-form { display: grid; gap: .55rem; }
 .voice-path-group { padding: .55rem .7rem; border: 1px solid var(--rule); border-radius: 6px; }
 .voice-path-group > summary { cursor: pointer; font-weight: 600; }
@@ -6544,6 +6566,7 @@ body.settings-open #text {
 
 @media (max-width: 640px) {
   .librarian-boundary { grid-template-columns: 1fr; }
+  .agent-runtime-form { grid-template-columns: 1fr; }
   .voice-path-entry { grid-template-columns: 1fr; }
 }
 

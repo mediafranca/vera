@@ -213,6 +213,11 @@ nombre de la biblioteca. Vera aporta por separado un *harness* versionado y
 capacidades explícitas; el runtime, el modelo y los servicios siguen siendo
 reemplazables.
 
+El runtime embebido se configura después de constituir la biblioteca. Su
+modelo, endpoint, permisos, activación y referencia de secreto son portables;
+la clave material no lo es y debe restituirse en el almacén seguro del nuevo
+equipo. Una copia de SQLite jamás debe bastar para extraerla.
+
 ### 4.3 La ontología
 
 El vocabulario con que Vera clasifica vive en **páginas rectoras del corpus**,

@@ -12,6 +12,20 @@ export interface OwnerLibrarianBinding {
   harness: string;
 }
 
+export function activeOwnerLibrarian(store: Store): OwnerLibrarianBinding | null {
+  const held = store.db.prepare(`SELECT l.id,l.owner_id,l.agent_id,p.name,h.id AS harness_id
+    FROM owner_librarians l
+    JOIN participants p ON p.id=l.agent_id
+    JOIN librarian_harnesses h ON h.librarian_id=l.id AND h.status='active'
+    WHERE l.instance_id=(SELECT id FROM instances WHERE graph_id=?) AND l.status='active'`)
+    .get(store.graphId) as {
+      id: string; owner_id: string; agent_id: string; name: string; harness_id: string;
+    } | undefined;
+  return held === undefined ? null : {
+    id: held.id, owner: held.owner_id, agent: held.agent_id, name: held.name, harness: held.harness_id,
+  };
+}
+
 /**
  * Constituye la bibliotecaria de la persona dueña de una Vera nueva.
  *
@@ -25,17 +39,10 @@ export function ensureOwnerLibrarian(
   owner: string,
   requestedName: string,
 ): OwnerLibrarianBinding {
-  const held = store.db.prepare(`SELECT l.id,l.owner_id,l.agent_id,p.name,h.id AS harness_id
-    FROM owner_librarians l
-    JOIN participants p ON p.id=l.agent_id
-    JOIN librarian_harnesses h ON h.librarian_id=l.id AND h.status='active'
-    WHERE l.instance_id=(SELECT id FROM instances WHERE graph_id=?) AND l.status='active'`)
-    .get(store.graphId) as {
-      id: string; owner_id: string; agent_id: string; name: string; harness_id: string;
-    } | undefined;
-  if (held !== undefined) {
-    if (held.owner_id !== owner) throw new Error('la bibliotecaria activa pertenece a otra persona dueña');
-    return { id: held.id, owner, agent: held.agent_id, name: held.name, harness: held.harness_id };
+  const held = activeOwnerLibrarian(store);
+  if (held !== null) {
+    if (held.owner !== owner) throw new Error('la bibliotecaria activa pertenece a otra persona dueña');
+    return held;
   }
 
   const name = requestedName.trim();

@@ -1205,6 +1205,51 @@ const addLibraryIdentityAndOwnerLibrarian: Migration = {
   },
 };
 
+/** 33 — ejecución embebida y gobernada de la bibliotecaria de la instancia. */
+const addEmbeddedLibrarianRuntime: Migration = {
+  version: 33,
+  name: 'runtime embebido de la bibliotecaria',
+  apply(db) {
+    const librarians = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='owner_librarians'",
+    ).get();
+    if (librarians === undefined) return;
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS librarian_runtime_configs (
+        instance_id TEXT PRIMARY KEY REFERENCES instances (id) ON DELETE CASCADE,
+        librarian_id TEXT NOT NULL REFERENCES owner_librarians (id),
+        agent_id TEXT NOT NULL REFERENCES participants (id),
+        enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+        model_id TEXT,
+        endpoint TEXT,
+        secret_reference TEXT,
+        permissions_json TEXT NOT NULL DEFAULT '["read_request_context","reply"]',
+        routine_enabled INTEGER NOT NULL DEFAULT 0 CHECK (routine_enabled IN (0,1)),
+        routine_hour INTEGER NOT NULL DEFAULT 9 CHECK (routine_hour BETWEEN 0 AND 23),
+        routine_timezone TEXT NOT NULL DEFAULT 'local',
+        updated_by TEXT NOT NULL REFERENCES participants (id),
+        updated_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS librarian_runtime_runs (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL REFERENCES participants (id),
+        kind TEXT NOT NULL CHECK (kind IN ('request','routine')),
+        request_id TEXT REFERENCES agent_requests (id) ON DELETE SET NULL,
+        manifest_id TEXT REFERENCES agent_manifests (id),
+        model_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('running','completed','failed')),
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        output TEXT,
+        error TEXT
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS librarian_runtime_runs_recent
+        ON librarian_runtime_runs(instance_id, started_at DESC);
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1238,6 +1283,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addAgentRuntimeReceipts,
   addPrivatePageShares,
   addLibraryIdentityAndOwnerLibrarian,
+  addEmbeddedLibrarianRuntime,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */
