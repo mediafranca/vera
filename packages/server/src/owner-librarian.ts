@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { VeraGraph } from '@vera/core';
 import { saveParticipant, type Store } from '@vera/store';
 import { establishAgentPrincipal } from './agent-manifests.ts';
+import { ensureTerritoryPolicy } from './library-clearance.ts';
 
 export interface OwnerLibrarianBinding {
   id: string;
@@ -68,12 +69,18 @@ export function ensureOwnerLibrarian(
       VALUES (?,?,?,?,'active',?)`).run(librarian, instance.id, owner, agent, now);
     store.db.prepare(`INSERT INTO librarian_harnesses
       (id,instance_id,librarian_id,version,status,attached_by,attached_at)
-      VALUES (?,?,?,'vera-librarian-harness:1','active',?,?)`)
+      VALUES (?,?,?,'vera-librarian-harness:2','active',?,?)`)
       .run(harness, instance.id, librarian, owner, now);
     store.db.exec('COMMIT');
   } catch (error) {
     store.db.exec('ROLLBACK');
     throw error;
   }
+  // Constituir el oficio no concede superficies. La bibliotecaria empieza en
+  // la biblioteca general y la persona amplía su territorio deliberadamente.
+  // La bibliotecaria de la persona dueña ya atendía el corpus completo antes
+  // de existir el clearance. Constituirla conserva ese alcance explícitamente;
+  // la persona puede estrecharlo después desde Administración.
+  ensureTerritoryPolicy(store, agent, owner, { mode: 'all', includeGeneral: true });
   return { id: librarian, owner, agent, name, harness };
 }

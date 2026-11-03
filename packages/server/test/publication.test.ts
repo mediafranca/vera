@@ -115,6 +115,11 @@ describe('publicación del sitio personal', () => {
       `https://${hostname().split('.')[0]?.toLowerCase()}.tuatara-carat.ts.net:${PREVIEW_PORT}/`,
     );
     assert.deepEqual(configured.publications, []);
+    const territories = await fetch(`${base}/territories`).then((response) => response.json()) as {
+      surfaces: { kind: string; stewards: { participant: string; name: string }[] }[];
+    };
+    const publicSurface = territories.surfaces.find((surface) => surface.kind === 'public');
+    assert.deepEqual(publicSurface?.stewards, [{ participant: OWNER, name: 'Herbert' }]);
 
     const created = await write({
       kind: 'create_page',

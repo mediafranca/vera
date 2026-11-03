@@ -9,7 +9,7 @@
 -- Excludes:
 --   - Model selection and runtime transport, governed by librarian-runtime.allium
 --   - Secret storage
---   - The detailed catalogue of library tools, which remains to be elicited
+--   - Connected third-party tools, governed by agent-tools.allium
 -- Dependencies: Human principal and manifest are governed by
 --   agent-manifest.allium; tools by agent-tools.allium; territory by
 --   library-surfaces-clearance.allium
@@ -64,6 +64,25 @@ contract OwnerLibrarianHarnessAdministration {
         -- block content outside the librarian's current clearance.
 }
 
+contract LibrarianHarnessCatalogue {
+    list_capabilities: (harness: LibrarianHarness) -> List<HarnessCapability>
+    project_capabilities: (harness: LibrarianHarness, librarian: core/Participant) -> List<HarnessCapability>
+
+    @invariant CatalogueDoesNotBecomeAuthority
+        -- The catalogue says what Vera can offer. Only active grants, current
+        -- territorial clearance and any per-call approval make one capability
+        -- usable by this librarian now.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum HarnessCapabilityName {
+    search_memory | read_page | query_graph | inspect_relations |
+    check_invariants | reply_to_request | propose_edit | apply_approved_edit
+}
+
 ------------------------------------------------------------
 -- Entities
 ------------------------------------------------------------
@@ -85,6 +104,17 @@ entity LibrarianHarness {
     status: active | withdrawn
     attached_by: core/Participant
     attached_at: Timestamp
+}
+
+entity HarnessCapability {
+    harness: LibrarianHarness
+    name: HarnessCapabilityName
+    revision: String
+    read_only: Boolean
+    mutates_corpus: Boolean
+    destructive: Boolean
+    approval: tools/ApprovalPolicy
+    status: active | withdrawn
 }
 
 ------------------------------------------------------------
@@ -129,6 +159,16 @@ rule OwnerAttachesLibrarianHarness {
         attached_by: owner,
         attached_at: now
     )
+
+    ensures:
+        HarnessCapability.created(harness: harness, name: search_memory, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: read_page, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: query_graph, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: inspect_relations, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: check_invariants, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: reply_to_request, revision: "1", read_only: false, mutates_corpus: true, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: propose_edit, revision: "1", read_only: false, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: apply_approved_edit, revision: "1", read_only: false, mutates_corpus: true, destructive: false, approval: confirm_each_call, status: active)
 }
 
 invariant OneActiveOwnerLibrarianPerInstance {
@@ -152,8 +192,51 @@ invariant HarnessNeverOverridesSurfaceExclusion {
                 not harness_can_read_content(harness, surface_rule.surface)
 }
 
+invariant DestructiveCapabilityIsAbsentFromTheInitialHarness {
+    for capability in HarnessCapabilities where status = active:
+        capability.harness.version = "vera-librarian-harness:2" implies not capability.destructive
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor LibrarianHarnessOwner {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface LibrarianHarnessAdministration {
+    facing owner: LibrarianHarnessOwner
+    context harness: LibrarianHarness where harness.librarian.owner = owner
+
+    contracts:
+        fulfils LibrarianHarnessCatalogue
+
+    exposes:
+        harness.id
+        harness.version
+        for capability in HarnessCapabilities where harness = harness:
+            capability.name
+            capability.revision
+            capability.read_only
+            capability.mutates_corpus
+            capability.destructive
+            capability.approval
+            capability.status
+
+    @guarantee TheInitialCatalogueIsSmallAndLegible
+        -- Vera starts with search, reading, structured query, relations,
+        -- invariant inspection, answering and an editorial proposal path.
+        -- Applying a proposal requires a fresh human confirmation; deletion is
+        -- absent rather than hidden behind a broad librarian role.
+}
+
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
 
-open question "¿Cuál es el catálogo mínimo de herramientas internas que recibe el harness bibliotecario al constituirse, y cuáles exigen confirmación humana por llamada?"
+open question "¿Qué capacidad y ceremonia posteriores deberían añadir mantenimiento destructivo sin convertir el papel de bibliotecaria en un permiso comodín?"

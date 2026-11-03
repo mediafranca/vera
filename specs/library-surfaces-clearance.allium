@@ -446,6 +446,76 @@ invariant EveryRefusalNamesItsFailedChecksAndCorrectionPath {
 }
 
 ------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor TerritoryAdministrator {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+actor TerritorialParticipant {
+    identified_by: core/Participant where this.status = active
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface TerritoryAdministration {
+    facing administrator: TerritoryAdministrator
+    context policy: TerritoryPolicy where may_govern_participant_territory(administrator, policy.participant, policy.instance)
+
+    exposes:
+        policy.participant
+        policy.mode
+        policy.include_general
+        policy.changed_by
+        policy.changed_at
+        for rule in policy.rules:
+            rule.surface
+            rule.disposition
+            rule.permissions
+            rule.governed_by
+            rule.created_at
+            rule.status
+
+    provides:
+        ChangeTerritoryPolicy(administrator, policy, mode, include_general)
+        IncludeSurface(administrator, policy, surface, permissions)
+        ExcludeSurface(administrator, policy, surface)
+        RemoveSurfaceRule(administrator, rule)
+        AppointSurfaceSteward(administrator, surface, human)
+        RemoveSurfaceSteward(administrator, stewardship)
+
+    @guarantee MigrationPreservesExistingAuthority
+        -- When this boundary first becomes effective, existing participants
+        -- receive an explicit policy equivalent to their previous reach. New
+        -- participants begin selected and must be granted surfaces deliberately.
+}
+
+surface TerritorialPageDoor {
+    facing participant: TerritorialParticipant
+    context page: core/Page
+
+    provides:
+        AttemptPageAction(participant, page, action, proof)
+
+    @guarantee EveryPageBearingDoorUsesTheSameDecision
+        -- Direct page reads, lists, search, structured queries, relations,
+        -- media, imports, operations, librarian context and MCP all evaluate
+        -- the same current policy before content leaves or a mutation begins.
+
+    @guarantee HiddenPagesDoNotLeakThroughStructure
+        -- A refused page is absent from counts, excerpts, backlinks, graph
+        -- paths, media discovery and unresolved-link hints. Filtering occurs
+        -- before traversal rather than after a private intermediary was used.
+
+    @guarantee ARefusalIsUsefulWithoutLeakingContent
+        -- A known participant receives the failed rule and correction path,
+        -- but no title, block text or relation from a page outside clearance.
+}
+
+------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
 

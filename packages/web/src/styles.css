@@ -6534,6 +6534,26 @@ body.settings-open #text {
 .agent-runtime-form > label:has(input[type='checkbox']) { display: flex; align-items: center; gap: .4rem; color: var(--text); }
 .agent-runtime-runs { margin: 1rem 0 0; padding-left: 1.25rem; }
 .agent-runtime-runs p { margin: .25rem 0 .8rem; white-space: pre-wrap; color: var(--text-dim); }
+.librarian-tool-catalogue { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--rule); }
+.librarian-tool-catalogue h3 { margin: 0 0 .35rem; font-size: .9rem; }
+.librarian-tool-catalogue ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem 1rem; padding: 0; list-style: none; }
+.librarian-tool-catalogue li { display: grid; gap: .08rem; }
+.librarian-tool-catalogue li span { color: var(--text-dim); font-size: .72rem; }
+
+.territory-administration { padding: 1rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-raised); }
+.territory-administration > h2 { margin: 0 0 .55rem; font-size: 1rem; }
+.territory-policy { border-top: 1px solid var(--rule); }
+.territory-policy > summary { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; cursor: pointer; }
+.territory-policy > summary span { color: var(--text-dim); font-size: .78rem; }
+.territory-form { display: grid; gap: .8rem; padding: 0 0 1rem; }
+.territory-form > label { display: grid; gap: .25rem; font-size: .78rem; color: var(--text-dim); }
+.territory-form > label:has(input[type='checkbox']) { display: flex; align-items: center; color: var(--text); }
+.territory-surfaces { display: grid; gap: .45rem; }
+.territory-surface { display: grid; grid-template-columns: minmax(10rem, 1fr) auto minmax(18rem, 1.2fr); gap: .75rem; align-items: center; padding: .6rem; border: 1px solid var(--rule); border-radius: 4px; }
+.territory-surface > div:first-child { display: grid; gap: .08rem; }
+.territory-surface > div:first-child span { color: var(--text-dim); font-size: .72rem; }
+.territory-surface fieldset { display: flex; flex-wrap: wrap; gap: .35rem .65rem; border: 0; padding: 0; }
+.territory-surface fieldset label { display: flex; align-items: center; gap: .2rem; font-size: .72rem; }
 
 .voice-path-form { display: grid; gap: .55rem; }
 .voice-path-group { padding: .55rem .7rem; border: 1px solid var(--rule); border-radius: 6px; }
@@ -6567,6 +6587,9 @@ body.settings-open #text {
 @media (max-width: 640px) {
   .librarian-boundary { grid-template-columns: 1fr; }
   .agent-runtime-form { grid-template-columns: 1fr; }
+  .librarian-tool-catalogue ul { grid-template-columns: 1fr; }
+  .territory-policy > summary, .territory-surface { grid-template-columns: 1fr; }
+  .territory-policy > summary { display: grid; }
   .voice-path-entry { grid-template-columns: 1fr; }
 }
 

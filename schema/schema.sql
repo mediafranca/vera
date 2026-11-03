@@ -211,6 +211,55 @@ CREATE TABLE IF NOT EXISTS librarian_runtime_runs (
 CREATE INDEX IF NOT EXISTS librarian_runtime_runs_recent
     ON librarian_runtime_runs(instance_id, started_at DESC);
 
+-- Territorio efectivo de cada participante. Una política no duplica páginas:
+-- selecciona la biblioteca general y las superficies compartidas o públicas
+-- que las otras tablas ya gobiernan.
+CREATE TABLE IF NOT EXISTS territory_policies (
+    id               TEXT PRIMARY KEY,
+    instance_id      TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    participant_id   TEXT NOT NULL REFERENCES participants (id),
+    mode             TEXT NOT NULL CHECK (mode IN ('selected','all')),
+    include_general  INTEGER NOT NULL CHECK (include_general IN (0,1)),
+    changed_by       TEXT NOT NULL REFERENCES participants (id),
+    changed_at       INTEGER NOT NULL,
+    UNIQUE (instance_id, participant_id)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS territory_surface_rules (
+    id               TEXT PRIMARY KEY,
+    policy_id        TEXT NOT NULL REFERENCES territory_policies (id) ON DELETE CASCADE,
+    surface_kind     TEXT NOT NULL CHECK (surface_kind IN ('shared','public')),
+    surface_id       TEXT NOT NULL,
+    disposition      TEXT NOT NULL CHECK (disposition IN ('included','excluded')),
+    permissions_json TEXT NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('active','removed')),
+    governed_by      TEXT NOT NULL REFERENCES participants (id),
+    created_at       INTEGER NOT NULL,
+    removed_at       INTEGER,
+    CHECK (status <> 'removed' OR removed_at IS NOT NULL)
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_territory_surface_rule
+    ON territory_surface_rules(policy_id, surface_kind, surface_id)
+    WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS surface_stewards (
+    id               TEXT PRIMARY KEY,
+    instance_id      TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    surface_kind     TEXT NOT NULL CHECK (surface_kind IN ('shared','public')),
+    surface_id       TEXT NOT NULL,
+    human_id         TEXT NOT NULL REFERENCES participants (id),
+    status           TEXT NOT NULL CHECK (status IN ('active','removed')),
+    appointed_by     TEXT NOT NULL REFERENCES participants (id),
+    appointed_at     INTEGER NOT NULL,
+    removed_at       INTEGER,
+    CHECK (status <> 'removed' OR removed_at IS NOT NULL)
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_surface_steward
+    ON surface_stewards(instance_id, surface_kind, surface_id, human_id)
+    WHERE status = 'active';
+
 CREATE TABLE IF NOT EXISTS instance_governance_grants (
     id              TEXT PRIMARY KEY,
     instance_id     TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,

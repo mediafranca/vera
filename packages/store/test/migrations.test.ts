@@ -354,4 +354,51 @@ describe('migraciones', () => {
     assert.equal(version(db), SCHEMA_VERSION);
     db.close();
   });
+
+  it('preserva el alcance existente al añadir territorios y lleva el harness a v2', () => {
+    const store = openStore({ path: ':memory:', graphName: 'mind' });
+    saveParticipant(store, { id: 'participant:owner', name: 'Dueña', kind: 'human' });
+    saveParticipant(store, { id: 'participant:lucienne', name: 'Lucienne', kind: 'agent' });
+    store.db.exec(`
+      INSERT INTO instances VALUES ('instance:1', '${store.graphId}', 'participant:owner', 'Biblioteca', 'personal');
+      INSERT OR IGNORE INTO memberships VALUES ('${store.graphId}', 'participant:owner', 'active');
+      INSERT OR IGNORE INTO memberships VALUES ('${store.graphId}', 'participant:lucienne', 'active');
+      INSERT INTO owner_librarians VALUES (
+        'librarian:1','instance:1','participant:owner','participant:lucienne','active',1
+      );
+      INSERT INTO librarian_harnesses VALUES (
+        'harness:1','instance:1','librarian:1','vera-librarian-harness:1','active','participant:owner',1
+      );
+      INSERT INTO shared_spaces
+        (id,graph_id,owner_id,name,slug,selector_key,selector_value,audience,status,created_at)
+      VALUES ('space:1','${store.graphId}','participant:owner','Taller','taller','espacio','taller',
+        'restricted','active',1);
+      DROP TABLE territory_surface_rules;
+      DROP TABLE surface_stewards;
+      DROP TABLE territory_policies;
+      PRAGMA user_version = 33;
+    `);
+
+    migrate(store.db, false);
+
+    assert.equal(version(store.db), SCHEMA_VERSION);
+    assert.deepEqual(
+      store.db.prepare(`SELECT participant_id,mode,include_general FROM territory_policies
+        ORDER BY participant_id`).all().map((row) => ({ ...row })),
+      [
+        { participant_id: 'participant:lucienne', mode: 'all', include_general: 1 },
+        { participant_id: 'participant:owner', mode: 'all', include_general: 1 },
+      ],
+    );
+    assert.equal(
+      (store.db.prepare('SELECT version FROM librarian_harnesses WHERE id=?').get('harness:1') as any).version,
+      'vera-librarian-harness:2',
+    );
+    assert.deepEqual(
+      store.db.prepare(`SELECT surface_kind,surface_id,human_id FROM surface_stewards`).all()
+        .map((row) => ({ ...row })),
+      [{ surface_kind: 'shared', surface_id: 'space:1', human_id: 'participant:owner' }],
+    );
+    store.close();
+  });
 });

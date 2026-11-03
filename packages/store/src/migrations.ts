@@ -1250,6 +1250,88 @@ const addEmbeddedLibrarianRuntime: Migration = {
   },
 };
 
+/** 34 — territorio por participante y catálogo v2 de la bibliotecaria. */
+const addTerritorialClearanceAndLibrarianHarnessV2: Migration = {
+  version: 34,
+  name: 'clearance territorial y harness bibliotecario v2',
+  apply(db) {
+    const instances = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='instances'",
+    ).get();
+    if (instances === undefined) return;
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS territory_policies (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+        participant_id TEXT NOT NULL REFERENCES participants (id),
+        mode TEXT NOT NULL CHECK (mode IN ('selected','all')),
+        include_general INTEGER NOT NULL CHECK (include_general IN (0,1)),
+        changed_by TEXT NOT NULL REFERENCES participants (id),
+        changed_at INTEGER NOT NULL,
+        UNIQUE (instance_id, participant_id)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS territory_surface_rules (
+        id TEXT PRIMARY KEY,
+        policy_id TEXT NOT NULL REFERENCES territory_policies (id) ON DELETE CASCADE,
+        surface_kind TEXT NOT NULL CHECK (surface_kind IN ('shared','public')),
+        surface_id TEXT NOT NULL,
+        disposition TEXT NOT NULL CHECK (disposition IN ('included','excluded')),
+        permissions_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','removed')),
+        governed_by TEXT NOT NULL REFERENCES participants (id),
+        created_at INTEGER NOT NULL,
+        removed_at INTEGER,
+        CHECK (status <> 'removed' OR removed_at IS NOT NULL)
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_territory_surface_rule
+        ON territory_surface_rules(policy_id,surface_kind,surface_id) WHERE status='active';
+      CREATE TABLE IF NOT EXISTS surface_stewards (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+        surface_kind TEXT NOT NULL CHECK (surface_kind IN ('shared','public')),
+        surface_id TEXT NOT NULL,
+        human_id TEXT NOT NULL REFERENCES participants (id),
+        status TEXT NOT NULL CHECK (status IN ('active','removed')),
+        appointed_by TEXT NOT NULL REFERENCES participants (id),
+        appointed_at INTEGER NOT NULL,
+        removed_at INTEGER,
+        CHECK (status <> 'removed' OR removed_at IS NOT NULL)
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_surface_steward
+        ON surface_stewards(instance_id,surface_kind,surface_id,human_id) WHERE status='active';
+    `);
+    const table = (name: string): boolean => db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?",
+    ).get(name) !== undefined;
+    if (table('memberships')) db.exec(`
+      INSERT OR IGNORE INTO territory_policies
+        (id,instance_id,participant_id,mode,include_general,changed_by,changed_at)
+      SELECT 'territory:migrated:' || i.id || ':' || m.participant_id,
+        i.id,m.participant_id,'all',1,i.owner_id,unixepoch('now') * 1000
+      FROM instances i JOIN memberships m ON m.graph_id=i.graph_id;
+    `);
+    if (table('shared_spaces')) db.exec(`
+      INSERT OR IGNORE INTO surface_stewards
+        (id,instance_id,surface_kind,surface_id,human_id,status,appointed_by,appointed_at)
+      SELECT 'steward:migrated:shared:' || s.id || ':' || s.owner_id,
+        i.id,'shared',s.id,s.owner_id,'active',s.owner_id,s.created_at
+      FROM shared_spaces s JOIN instances i ON i.graph_id=s.graph_id
+      WHERE s.status='active';
+    `);
+    if (table('personal_sites')) db.exec(`
+      INSERT OR IGNORE INTO surface_stewards
+        (id,instance_id,surface_kind,surface_id,human_id,status,appointed_by,appointed_at)
+      SELECT 'steward:migrated:public:' || p.id || ':' || p.owner_id,
+        i.id,'public',p.id,p.owner_id,'active',p.owner_id,unixepoch('now') * 1000
+      FROM personal_sites p JOIN instances i ON i.graph_id=p.graph_id;
+    `);
+    if (table('librarian_harnesses')) db.exec(`
+      UPDATE librarian_harnesses SET version='vera-librarian-harness:2'
+      WHERE status='active';
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1284,6 +1366,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addPrivatePageShares,
   addLibraryIdentityAndOwnerLibrarian,
   addEmbeddedLibrarianRuntime,
+  addTerritorialClearanceAndLibrarianHarnessV2,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

@@ -271,11 +271,29 @@ La ronda operacional es cerrada sobre evidencia: si los invariantes ejecutables
 no encuentran una falta devuelve `SIN_NOVEDAD`; nunca pide al modelo que infiera
 problemas a partir de simples conteos de páginas o bloques.
 
-El modelo completo de *clearance* territorial —selección positiva, biblioteca
-general, «todo», exclusiones dominantes y explicación de cada rechazo— está
-formalizado, pero su cerco uniforme en todas las rutas sigue parcial. Ninguna
-superficie activa puede quedar bajo custodia exclusiva de agentes: siempre debe
-conservar al menos una persona con lectura y administración efectivas. Ver
+El *clearance* territorial es una política persistida por participante. Puede
+abarcar la biblioteca general, superficies seleccionadas o todo el corpus; una
+exclusión siempre domina una inclusión. La decisión se aplica en el servidor
+antes de proyectar listas, búsqueda, consultas, relaciones, medios, historial,
+exportaciones, solicitudes del bibliotecario u operaciones, de modo que sitio,
+API y MCP comparten la misma puerta. El panel **Bibliotecario → Territorios y
+superficies** muestra la política vigente y entrega una explicación con ruta de
+corrección cuando se rechaza una acción. La migración da a cada participante
+existente una política `all` equivalente a su alcance anterior; participantes
+nuevos nacen en `selected` con la biblioteca general, hasta que la persona dueña
+delimite sus superficies.
+
+El harness v2 de Lucienne declara ocho capacidades estables: buscar, leer una
+página, consultar la estructura, inspeccionar relaciones, comprobar invariantes,
+responder, proponer una edición y aplicar una propuesta ya aprobada. Las cinco
+lecturas y la propuesta pueden entrar al bucle del modelo; una propuesta no
+edita el corpus, y su aplicación requiere confirmación humana actual. No existe
+herramienta destructiva en este harness. El catálogo añade repertorio, nunca
+territorio: cada llamada vuelve a evaluar la política vigente.
+
+Ninguna superficie activa puede quedar bajo custodia exclusiva de agentes:
+siempre debe conservar al menos una persona con lectura y administración
+efectivas. Ver
 [`library-surfaces-clearance.allium`](../specs/library-surfaces-clearance.allium),
 [`owner-librarian-harness.allium`](../specs/owner-librarian-harness.allium) y
 [`librarian-runtime.allium`](../specs/librarian-runtime.allium),
@@ -303,8 +321,8 @@ es el único acto que el grafo no puede enseñarte después.
 - **Passkeys/WebAuthn** para humanos, implementadas con SimpleWebAuthn.
 - Cookies de sesión `HttpOnly`, `Secure` y `SameSite`; protección CSRF donde
   corresponda.
-- Autorización de lectura por alcance: hoy `read` se emite y se muestra, pero
-  las rutas de lectura no lo exigen todavía.
+- La ceremonia local de alta del dueño todavía es una deuda separada; el
+  clearance territorial presupone una identidad ya resuelta.
 - Publicación: `OnlySiteOwnerPublishes` ya impide que un agente publique.
 
 v0 no autentica al dueño. Quien llega sin credencial se toma por él, que es

@@ -33,6 +33,17 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /Vera no confunde activación con ejecución/);
   });
 
+  it('expone el catálogo del harness y gobierna territorios sin prometer autoridad nueva', () => {
+    assert.match(administration, /Herramientas ·/);
+    assert.match(administration, /no contiene herramientas destructivas/);
+    assert.match(administration, /Territorios y superficies/);
+    assert.match(administration, /Una exclusión domina cualquier inclusión/);
+    assert.match(administration, /api\.updateTerritory/);
+    assert.match(administration, /Incluir páginas de la biblioteca general/);
+    assert.match(styles, /\.librarian-tool-catalogue/);
+    assert.match(styles, /\.territory-surface/);
+  });
+
   it('mantiene blancos táctiles y una composición legible en móvil', () => {
     assert.match(styles, /\.agent-administration :is\(button, select, input\)[\s\S]*?min-height: 2\.75rem/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-source-row/);

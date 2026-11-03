@@ -51,7 +51,7 @@ describe('memoria inicial distribuida', () => {
       WHERE l.status='active' AND h.status='active'`).get() as any;
     assert.equal(librarian.owner_id, owner.id);
     assert.equal(librarian.name, 'Aurelia');
-    assert.equal(librarian.version, 'vera-librarian-harness:1');
+    assert.equal(librarian.version, 'vera-librarian-harness:2');
     assert.deepEqual(
       { ...(store.db.prepare("SELECT human_id,status FROM agent_principals WHERE agent_id=?")
         .get(librarian.agent_id) as any) },
