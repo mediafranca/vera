@@ -426,13 +426,19 @@ En la página «VERA: la puerta MCP», sección **«Conectar una IA»**:
    portátil».
 2. **Se declara como** — el `VERA_CLIENT`. Se deriva del nombre, y se puede
    corregir.
-3. **Qué se le permite** — «Sólo leer», «Escribe en lo suyo», «Todo».
+3. **Qué se le permite** — «Sólo leer», «Escribe en lo suyo», «Todo» o
+   «Personalizado», donde `read`, `write` y `discard` se eligen por separado.
 4. **Clase que puede crear** — sólo si eliges «escribe en lo suyo»: la clase de
    página dentro de la cual queda cercada.
 
 Vera admite al participante, emite la credencial y escribe la fila de la
 conexión, todo junto. **El secreto se muestra una vez.** Guárdalo en un archivo
 y apunta `VERA_TOKEN_FILE` ahí:
+
+Los permisos de una credencial vigente pueden ampliarse o reducirse después en
+**Accesos vigentes**, sin cambiar su secreto ni su participante. «Todo» es la
+suma visible de leer, escribir y descartar; `discard` exige `write`. Revocar
+sigue siendo el gesto para retirar la llave completa.
 
 ```sh
 install -m 600 /dev/null ~/.config/vera/claude-desktop.token

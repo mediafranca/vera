@@ -53,6 +53,7 @@ export interface VeraTool {
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   readOnly?: boolean;
+  destructive?: boolean;
   run(
     args: Record<string, unknown>,
     ask: Ask,
@@ -164,7 +165,7 @@ export const TOOLS: readonly VeraTool[] = [
         `Credencial: ${who.label ?? 'sin credencial: se entró como el dueño'}\n` +
         `Alcances: ${who.scopes === null ? 'todos, por ser el dueño' : who.scopes.join(', ')}` +
         size +
-        `\nEsta puerta puede escribir cuando la credencial tiene alcance write; no ofrece borrado.`
+        `\nEsta puerta puede escribir con write y limpiar con vera_descartar cuando además tiene discard.`
       );
     },
   },
@@ -854,6 +855,93 @@ export const TOOLS: readonly VeraTool[] = [
       const last = result.operations.at(-1)?.sequence;
       return `${result.status === 'duplicate' ? 'Ese lote ya estaba aplicado' : 'Lote aplicado'}: ` +
         `${result.operations.length} cambios${first === undefined ? '' : `, operaciones ${first}–${last}`}.`;
+    },
+  },
+
+  {
+    name: 'vera_descartar',
+    title: 'Descartar un subárbol o una página',
+    readOnly: false,
+    destructive: true,
+    description:
+      'Retira un bloque con todos sus descendientes, o una página completa cuando no se indica bloque. ' +
+      'Necesita los alcances write y discard. Antes relee la página y exige la cantidad exacta de bloques ' +
+      'confirmada por quien llama; si la estructura cambió, no borra nada. Aplica las eliminaciones en un ' +
+      'lote atómico y auditable, desde las hojas hacia la raíz. Una página de 1000 bloques o más debe ' +
+      'limpiarse por subárboles para respetar el límite de 1000 operaciones por lote.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origen: {
+          type: 'string', minLength: 1,
+          description: 'Clave estable de idempotencia para este descarte exacto.',
+        },
+        pagina: {
+          type: 'string', minLength: 1,
+          description: 'Título exacto o identificador page:… de la página que se leyó.',
+        },
+        bloque: {
+          type: 'string',
+          description: 'Bloque raíz del subárbol. Si se omite, se retira la página completa.',
+        },
+        bloques_confirmados: {
+          type: 'integer', minimum: 0, maximum: 1000,
+          description: 'Cantidad exacta de bloques que se leyó y se acepta retirar, incluida la raíz.',
+        },
+      },
+      required: ['origen', 'pagina', 'bloques_confirmados'],
+      additionalProperties: false,
+    },
+    async run(args, ask, _write, writeBatch) {
+      const origin = say(args.origen).trim();
+      const named = say(args.pagina).trim();
+      const blockId = say(args.bloque).trim();
+      const confirmed = Number(args.bloques_confirmados);
+      if (origin === '') return 'Falta `origen`: una clave estable para reintentar sin repetir.';
+      if (named === '') return 'Falta `pagina`: hay que releer el territorio que se va a limpiar.';
+      if (!Number.isInteger(confirmed) || confirmed < 0 || confirmed > 1000) {
+        return '`bloques_confirmados` debe ser una cantidad entera entre 0 y 1000.';
+      }
+      if (writeBatch === undefined) return 'Esta conexión MCP no habilitó la escritura por lotes.';
+      const page = await ask<Page>(`/pages/${encodeURIComponent(named)}`);
+      if (failed(page)) return page.status === 404 ? `No hay ninguna página que se llame «${named}».` : trouble(page);
+
+      const byId = new Map(page.blocks.map((block) => [block.stableId, block]));
+      const children = new Map<string | null, Page['blocks'][number][]>();
+      for (const block of page.blocks) {
+        const kin = children.get(block.parent) ?? [];
+        kin.push(block);
+        children.set(block.parent, kin);
+      }
+      const removing: Page['blocks'][number][] = [];
+      const visit = (id: string): void => {
+        for (const child of children.get(id) ?? []) visit(child.stableId);
+        const block = byId.get(id);
+        if (block !== undefined) removing.push(block);
+      };
+      if (blockId !== '') {
+        if (!byId.has(blockId)) return `El bloque ${blockId} no pertenece a «${page.title}». No se borró nada.`;
+        visit(blockId);
+      } else {
+        for (const root of children.get(null) ?? []) visit(root.stableId);
+      }
+      if (removing.length !== confirmed) {
+        return `La estructura cambió: se confirmaron ${confirmed} bloques y ahora desaparecerían ${removing.length}. ` +
+          'No se borró nada; vuelve a leer la página.';
+      }
+      const changes: Record<string, unknown>[] = removing.map((block) => ({
+        kind: 'remove_block', block: block.stableId,
+      }));
+      if (blockId === '') changes.push({ kind: 'remove_page', page: page.id });
+      if (changes.length > 1000) {
+        return `Este descarte necesita ${changes.length} operaciones y el máximo atómico es 1000. ` +
+          'Limpia primero uno o más subárboles.';
+      }
+      const result = await writeBatch(origin, changes);
+      if (failed(result)) return `No pude descartar eso: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `${result.status === 'duplicate' ? 'Ese descarte ya estaba aplicado' : 'Descarte aplicado'}: ` +
+        `${removing.length} bloques${blockId === '' ? ' y la página' : ''}, ` +
+        `${result.operations.length} operaciones auditables.`;
     },
   },
 

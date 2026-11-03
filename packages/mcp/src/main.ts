@@ -88,7 +88,9 @@ Al escribir:
 - Esta superficie crea páginas y bloques y corrige propiedades. También puede
   corregir y mover bloques propios con una revisión exacta. Para palabras ajenas,
   vera_proponer_edicion deja un diff humano revisable y no cambia el corpus.
-  Esta puerta no borra bloques.
+- Para limpiar, usa vera_descartar sólo después de leer la página y contar el
+  subárbol o la página completa. La credencial necesita write + discard; si la
+  cantidad cambió, Vera no borra nada.
 - Parte del corpus lo escribieron otras inteligencias. vera_leer_pagina lo dice.
   No presentes como recuerdo de esta persona algo que generó una máquina.
 - Todo lo que leas queda anotado en el registro de exposición del dueño: qué
@@ -116,7 +118,7 @@ export function mcpServer(connection: Connection): Server {
       ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
       annotations: {
         readOnlyHint: tool.readOnly !== false,
-        destructiveHint: false,
+        destructiveHint: tool.destructive === true,
         openWorldHint: false,
       },
     })),

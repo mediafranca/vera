@@ -1073,6 +1073,13 @@ export const api = {
       body: JSON.stringify({ label }),
     }),
 
+  /** Ampliar o reducir una llave vigente; el secreto y la identidad no cambian. */
+  rescopeCredential: (id: string, scopes: string[]) =>
+    json<CredentialView>(`/agents/credentials/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ scopes }),
+    }),
+
   /** Cercar una credencial: qué clase puede plantar y con qué se marca lo suyo. */
   confine: (id: string, said: { kind: string; source: string | null }) =>
     json(`/agents/credentials/${encodeURIComponent(id)}/confinement`, {
@@ -1097,7 +1104,9 @@ export const api = {
   connect: (said: {
     name: string;
     client: string;
-    deal: 'leer' | 'propio' | 'todo' | 'capturar';
+    deal?: 'leer' | 'propio' | 'todo' | 'capturar';
+    scopes?: string[];
+    confined?: boolean;
     kind?: string;
     source?: string;
     says?: string;
