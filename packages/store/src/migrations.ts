@@ -1159,6 +1159,52 @@ const addPrivatePageShares: Migration = {
   },
 };
 
+/** 32 — la biblioteca tiene nombre propio y su bibliotecaria pertenece al dueño. */
+const addLibraryIdentityAndOwnerLibrarian: Migration = {
+  version: 32,
+  name: 'identidad de biblioteca y bibliotecaria del dueño',
+  apply(db) {
+    const instances = db.prepare(
+      "SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name='instances'",
+    ).get();
+    if (instances === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(instances)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'library_name')) {
+      db.exec("ALTER TABLE instances ADD COLUMN library_name TEXT NOT NULL DEFAULT 'Biblioteca'");
+      db.exec(`UPDATE instances
+        SET library_name = 'Biblioteca de ' || COALESCE(
+          (SELECT p.name FROM participants p WHERE p.id = instances.owner_id),
+          'su persona dueña'
+        )`);
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS owner_librarians (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+        owner_id TEXT NOT NULL REFERENCES participants (id),
+        agent_id TEXT NOT NULL REFERENCES participants (id),
+        status TEXT NOT NULL CHECK (status IN ('active','replaced')),
+        designated_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_owner_librarian
+        ON owner_librarians(instance_id) WHERE status='active';
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_owner_librarian_role_per_agent
+        ON owner_librarians(agent_id) WHERE status='active';
+      CREATE TABLE IF NOT EXISTS librarian_harnesses (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+        librarian_id TEXT NOT NULL REFERENCES owner_librarians (id),
+        version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','withdrawn')),
+        attached_by TEXT NOT NULL REFERENCES participants (id),
+        attached_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_librarian_harness
+        ON librarian_harnesses(librarian_id) WHERE status='active';
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1191,6 +1237,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addConversationalSessions,
   addAgentRuntimeReceipts,
   addPrivatePageShares,
+  addLibraryIdentityAndOwnerLibrarian,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

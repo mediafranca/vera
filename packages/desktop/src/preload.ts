@@ -1,7 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('veraSetup', {
-  initialize: (name: string) => ipcRenderer.invoke('vera:initialize', name),
+  initialize: (input: {
+    personName: string;
+    libraryName: string;
+    profile: 'personal' | 'collective';
+    ownerLibrarianName: string;
+    initialCollectiveSurfaceName: string | null;
+  }) => ipcRenderer.invoke('vera:initialize', input),
   systemName: () => ipcRenderer.invoke('vera:system-name'),
 });
 

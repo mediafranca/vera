@@ -156,7 +156,7 @@ export const TOOLS: readonly VeraTool[] = [
       const health = await ask<Health>('/health');
       const size = failed(health)
         ? ''
-        : `\nCorpus vivo de Vera: ${health.pages} páginas, ${health.blocks} bloques, ` +
+        : `\nBiblioteca «${health.libraryName}»: ${health.pages} páginas, ${health.blocks} bloques, ` +
           `${health.lastSequence} operaciones.`;
       return (
         `Conectado a Vera.\n` +

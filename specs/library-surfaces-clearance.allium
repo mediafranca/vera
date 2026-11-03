@@ -1,0 +1,453 @@
+-- allium: 3
+-- library-surfaces-clearance.allium
+
+-- Scope: The human identity of one Vera library and the clearance by which a
+--   participant may act on pages distributed across several surfaces
+-- Includes: Configurable library names, the general unassigned library,
+--   participant-level territory, surface inclusions and exclusions, credential
+--   reduction, restriction precedence, immediate policy changes and explained
+--   clearance decisions
+-- Excludes:
+--   - Authentication ceremonies and secret storage
+--     (see identity-access.allium and agent-participation.allium)
+--   - How a shared or public surface selects its pages
+--     (see shared-space-access.allium and personal-site-projection.allium)
+--   - Federation of surfaces between distinct Vera instances
+--   - The visual form of the administration controls
+-- Dependencies: Instance and participant identity are governed by
+--   identity-access.allium; pages and participants by core.allium
+
+use "./core.allium" as core
+use "./identity-access.allium" as identity
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract LibraryIdentityAdministration {
+    name: (administrator: core/Participant, library: LibraryIdentity, name: String) -> LibraryIdentity
+
+    @invariant VeraIsTheSoftwareNotTheLibraryName
+        -- Vera names the software. Every installation separately names the
+        -- library it serves; a person's name, an institution, a department or
+        -- a name of fancy are equally valid library identities.
+
+    @invariant StorageIdentifiersNeverNameTheLibrary
+        -- A graph key, database filename, import source or historical repository
+        -- name may remain as internal provenance. None is presented as the
+        -- library's human name or used as its default after installation.
+
+    @invariant RenamingPreservesLibraryIdentity
+        -- Changing the display name does not replace the instance, graph,
+        -- pages, participants, surfaces, history or authority.
+}
+
+contract ParticipantSurfaceClearance {
+    evaluate: (participant: core/Participant, page: core/Page, action: ClearanceAction, proof: AccessProof) -> ClearanceDecision
+    change_policy: (administrator: core/Participant, policy: TerritoryPolicy, mode: TerritoryMode, include_general: Boolean) -> TerritoryPolicy
+    include_surface: (administrator: core/Participant, policy: TerritoryPolicy, surface: LibrarySurface, permissions: Set<SurfacePermission>) -> SurfaceRule
+    exclude_surface: (administrator: core/Participant, policy: TerritoryPolicy, surface: LibrarySurface) -> SurfaceRule
+    remove_surface_rule: (administrator: core/Participant, rule: SurfaceRule) -> SurfaceRule
+    appoint_steward: (administrator: core/Participant, surface: LibrarySurface, human: core/Participant) -> SurfaceSteward
+    remove_steward: (administrator: core/Participant, stewardship: SurfaceSteward) -> SurfaceSteward
+
+    @invariant TerritoryBelongsToTheParticipant
+        -- A person or agent is one Participant. Every session, passkey or agent
+        -- credential proves exactly one Participant and therefore observes the
+        -- same current territory; rotating credentials never creates another
+        -- territorial identity.
+
+    @invariant CredentialsOnlyReduceAuthority
+        -- A proof may restrict actions inside the participant's territory. It
+        -- never adds a page, surface or action that the current participant
+        -- policy does not authorize.
+
+    @invariant EveryApplicableCheckMustPass
+        -- Clearance is granted only when every applicable identity, proof,
+        -- action, territory and restriction check is green. One failed check is
+        -- sufficient to refuse the attempted action.
+
+    @invariant RestrictionDominatesContradiction
+        -- If one surface authorizes a page while any other surface containing
+        -- that same page is excluded, the exclusion wins. Multiple membership
+        -- can never be used as a path around an explicit restriction.
+
+    @invariant RefusalExplainsItsProvenance
+        -- A participant who can legitimately identify the attempted page sees
+        -- which rule authorized it, which rule refused it, who governs those
+        -- rules and how to request correction. Security is cautious, not opaque.
+
+    @invariant PolicyChangesTakeEffectImmediately
+        -- Changing a participant's territory affects all of that participant's
+        -- active sessions, credentials and runtimes on their next attempt. No
+        -- proof retains a stale territorial snapshot.
+
+    @invariant GeneralMeansNoSurfaceMembership
+        -- The general library contains exactly the pages that belong to no
+        -- active surface. It is a computed remainder, not a hidden default
+        -- surface and not another copy of those pages.
+
+    @invariant AllIncludesFutureSurfaces
+        -- `all` includes the general library and every present or future active
+        -- surface, except those explicitly excluded. `selected` includes only
+        -- the general remainder when requested and explicitly included surfaces.
+
+    @invariant NoActiveSurfaceLosesHumanCustody
+        -- There are no agent-only surfaces. An administrator may exclude their
+        -- own ordinary access only while another active human steward retains
+        -- effective read and administration clearance. Agents may work there,
+        -- but never become the last route by which a surface can be recovered,
+        -- corrected or governed.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum SurfaceKind { shared | public }
+enum SurfaceStatus { active | withdrawn }
+enum TerritoryMode { selected | all }
+enum SurfaceDisposition { included | excluded }
+enum SurfaceRuleStatus { active | removed }
+enum ClearanceAction { read | contribute | edit | publish | administer }
+enum SurfacePermission { read | contribute | edit | publish | administer }
+enum ClearanceOutcome { granted | refused }
+enum ClearanceCheckKind { identity | proof | action | general | surface_inclusion | surface_exclusion }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity LibraryIdentity {
+    instance: identity/VeraInstance
+    name: String
+    named_by: core/Participant
+    named_at: Timestamp
+    previous_names: LibraryNameRevision with library = this
+}
+
+entity LibraryNameRevision {
+    library: LibraryIdentity
+    former_name: String
+    changed_by: core/Participant
+    changed_at: Timestamp
+}
+
+-- A common territorial projection over the concrete shared and public
+-- surfaces governed by their own specifications. It does not duplicate pages.
+entity LibrarySurface {
+    instance: identity/VeraInstance
+    name: String
+    kind: SurfaceKind
+    status: SurfaceStatus
+    governed_by: core/Participant
+    stewards: SurfaceSteward with surface = this and status = active
+    pages: Set<core/Page>
+}
+
+entity SurfaceSteward {
+    surface: LibrarySurface
+    human: core/Participant
+    appointed_by: core/Participant
+    appointed_at: Timestamp
+    status: active | removed
+    removed_at: Timestamp?
+}
+
+entity TerritoryPolicy {
+    instance: identity/VeraInstance
+    participant: core/Participant
+    mode: TerritoryMode
+    include_general: Boolean
+    rules: SurfaceRule with policy = this and status = active
+    changed_by: core/Participant
+    changed_at: Timestamp
+}
+
+entity SurfaceRule {
+    policy: TerritoryPolicy
+    surface: LibrarySurface
+    disposition: SurfaceDisposition
+    permissions: Set<SurfacePermission>
+    status: SurfaceRuleStatus
+    governed_by: core/Participant
+    created_at: Timestamp
+    removed_at: Timestamp?
+
+    transitions status {
+        active -> removed
+        terminal: removed
+    }
+}
+
+-- A session or credential proves exactly one Participant and may carry action
+-- scopes. Authentication mechanism and secret material remain external.
+entity AccessProof {
+    participant: core/Participant
+    actions: Set<ClearanceAction>
+    active: Boolean
+}
+
+entity ClearanceDecision {
+    participant: core/Participant
+    page: core/Page
+    action: ClearanceAction
+    outcome: ClearanceOutcome
+    checks: ClearanceCheck with decision = this
+    decided_at: Timestamp
+}
+
+entity ClearanceCheck {
+    decision: ClearanceDecision
+    kind: ClearanceCheckKind
+    passed: Boolean
+    source: String
+    governed_by: core/Participant?
+    explanation: String
+    correction_path: String?
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule AdministratorNamesLibrary {
+    when: NameLibrary(administrator, library, name)
+
+    requires: name.trim.length > 0
+    requires: may_govern_instance(administrator, library.instance)
+
+    ensures:
+        LibraryNameRevision.created(
+            library: library,
+            former_name: library.name,
+            changed_by: administrator,
+            changed_at: now
+        )
+        library.name = name.trim
+}
+
+rule AdministratorChangesParticipantTerritory {
+    when: ChangeTerritoryPolicy(administrator, policy, mode, include_general)
+
+    requires: may_govern_participant_territory(administrator, policy.participant, policy.instance)
+
+    ensures:
+        policy.mode = mode
+        policy.include_general = include_general
+        policy.changed_by = administrator
+        policy.changed_at = now
+}
+
+rule AdministratorIncludesSurface {
+    when: IncludeSurface(administrator, policy, surface, permissions)
+
+    requires: surface.instance = policy.instance
+    requires: surface.status = active
+    requires: permissions.count > 0
+    requires: may_govern_participant_territory(administrator, policy.participant, policy.instance)
+    requires: not exists SurfaceRule{policy: policy, surface: surface, status: active}
+
+    ensures: SurfaceRule.created(
+        policy: policy,
+        surface: surface,
+        disposition: included,
+        permissions: permissions,
+        status: active,
+        governed_by: administrator,
+        created_at: now,
+        removed_at: null
+    )
+}
+
+rule AdministratorExcludesSurface {
+    when: ExcludeSurface(administrator, policy, surface)
+
+    requires: surface.instance = policy.instance
+    requires: surface.status = active
+    requires: may_govern_participant_territory(administrator, policy.participant, policy.instance)
+    requires: not exists SurfaceRule{policy: policy, surface: surface, status: active}
+    requires:
+        exists other in TerritoryPolicies where
+            other.instance = policy.instance and
+            other.participant != policy.participant and
+            other.participant.kind = human and
+            exists SurfaceSteward{surface: surface, human: other.participant, status: active} and
+            has_effective_clearance(other.participant, surface, read) and
+            has_effective_clearance(other.participant, surface, administer)
+
+    ensures: SurfaceRule.created(
+        policy: policy,
+        surface: surface,
+        disposition: excluded,
+        permissions: {},
+        status: active,
+        governed_by: administrator,
+        created_at: now,
+        removed_at: null
+    )
+}
+
+rule AdministratorAppointsHumanSurfaceSteward {
+    when: AppointSurfaceSteward(administrator, surface, human)
+
+    requires: administrator.kind = human
+    requires: human.kind = human
+    requires: human.status = active
+    requires: surface.status = active
+    requires: may_govern_instance(administrator, surface.instance)
+    requires: not exists SurfaceSteward{surface: surface, human: human, status: active}
+
+    ensures: SurfaceSteward.created(
+        surface: surface,
+        human: human,
+        appointed_by: administrator,
+        appointed_at: now,
+        status: active,
+        removed_at: null
+    )
+}
+
+rule AdministratorRemovesHumanSurfaceSteward {
+    when: RemoveSurfaceSteward(administrator, stewardship)
+
+    requires: administrator.kind = human
+    requires: stewardship.status = active
+    requires: may_govern_instance(administrator, stewardship.surface.instance)
+    requires:
+        exists other in SurfaceStewards where
+            other.surface = stewardship.surface and
+            other.status = active and
+            other.human != stewardship.human and
+            has_effective_clearance(other.human, stewardship.surface, read) and
+            has_effective_clearance(other.human, stewardship.surface, administer)
+
+    ensures:
+        stewardship.status = removed
+        stewardship.removed_at = now
+}
+
+rule AdministratorRemovesSurfaceRule {
+    when: RemoveSurfaceRule(administrator, rule)
+
+    requires: rule.status = active
+    requires: may_govern_participant_territory(administrator, rule.policy.participant, rule.policy.instance)
+
+    ensures:
+        rule.status = removed
+        rule.removed_at = now
+}
+
+rule AttemptWithoutCompleteClearanceIsRefused {
+    when: AttemptPageAction(participant, page, action, proof)
+
+    let instance = identity/VeraInstance{graph: page.graph}
+    let policy = TerritoryPolicy{participant: participant, instance: instance}
+    let surfaces = LibrarySurfaces where instance = policy.instance and status = active and page in pages
+    let exclusions = policy.rules where disposition = excluded and surface in surfaces
+    let inclusions = policy.rules where disposition = included and surface in surfaces and permission_for(action) in permissions
+    let general = surfaces.count = 0 and policy.include_general
+
+    requires:
+        not proof.active
+        or proof.participant != participant
+        or action not in proof.actions
+        or exclusions.count > 0
+        or (policy.mode = selected and not general and inclusions.count = 0)
+
+    ensures: ClearanceDecision.created(
+        participant: participant,
+        page: page,
+        action: action,
+        outcome: refused,
+        decided_at: now
+    )
+
+    ensures:
+        let decision = ClearanceDecision{
+            participant: participant,
+            page: page,
+            action: action,
+            outcome: refused
+        }
+        decision.checks.count > 0
+        decision.checks.all(check => check.explanation.trim.length > 0)
+        decision.checks.any(check => not check.passed and check.correction_path != null)
+
+    @guidance
+        -- The decision records every applicable positive and negative check.
+        -- When an inclusion and exclusion collide, its explanation names both
+        -- and identifies the governors; it never collapses to a bare denial.
+}
+
+rule AttemptWithCompleteClearanceIsGranted {
+    when: AttemptPageAction(participant, page, action, proof)
+
+    let instance = identity/VeraInstance{graph: page.graph}
+    let policy = TerritoryPolicy{participant: participant, instance: instance}
+    let surfaces = LibrarySurfaces where instance = policy.instance and status = active and page in pages
+    let exclusions = policy.rules where disposition = excluded and surface in surfaces
+    let inclusions = policy.rules where disposition = included and surface in surfaces and permission_for(action) in permissions
+    let general = surfaces.count = 0 and policy.include_general
+
+    requires: proof.active
+    requires: proof.participant = participant
+    requires: action in proof.actions
+    requires: exclusions.count = 0
+    requires: policy.mode = all or general or inclusions.count > 0
+
+    ensures: ClearanceDecision.created(
+        participant: participant,
+        page: page,
+        action: action,
+        outcome: granted,
+        decided_at: now
+    )
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant OneLibraryIdentityPerInstance {
+    for a in LibraryIdentities:
+        for b in LibraryIdentities:
+            a.instance = b.instance implies a = b
+}
+
+invariant OneTerritoryPolicyPerParticipantAndInstance {
+    for a in TerritoryPolicies:
+        for b in TerritoryPolicies:
+            a.instance = b.instance and a.participant = b.participant implies a = b
+}
+
+invariant ARestrictionAlwaysRefuses {
+    for decision in ClearanceDecisions:
+        decision.checks.any(check => check.kind = surface_exclusion and not check.passed) implies
+            decision.outcome = refused
+}
+
+invariant EveryActiveSurfaceRetainsAHumanSteward {
+    for surface in LibrarySurfaces where status = active:
+        exists stewardship in SurfaceStewards where
+            stewardship.surface = surface and
+            stewardship.status = active and
+            stewardship.human.kind = human and
+            has_effective_clearance(stewardship.human, surface, read) and
+            has_effective_clearance(stewardship.human, surface, administer)
+}
+
+invariant EveryRefusalNamesItsFailedChecksAndCorrectionPath {
+    for decision in ClearanceDecisions where outcome = refused:
+        decision.checks.any(check => not check.passed) and
+        decision.checks.where(check => not check.passed).all(check =>
+            check.explanation.trim.length > 0 and check.correction_path != null
+        )
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "Al crear una página mediante una credencial autorizada para varias superficies, ¿debe elegirse una superficie explícita, quedar en la biblioteca general o rechazarse por ambigüedad?"
+open question "¿Qué acciones exactas puede conceder una superficie pública además de lectura y publicación?"

@@ -1,0 +1,337 @@
+-- allium: 3
+-- desktop-onboarding.allium
+
+-- Scope: First-run constitution of one new Vera library in Vera Desktop
+-- Includes: Human owner name, configurable library name, explicit personal or
+--   collective profile choice, a required initial collective surface, smart
+--   defaults, the owner's initial librarian agent, atomic creation and the
+--   founder's initial territorial policy
+-- Excludes:
+--   - Program installation, signing and updates
+--     (see desktop-distribution.allium)
+--   - Later profile migration between distinct corpora
+--     (see instance-profiles.allium)
+--   - Authentication ceremony after local constitution
+--   - Later creation, publication or federation of surfaces
+-- Dependencies: Instance profiles are governed by instance-profiles.allium;
+--   library identity and territory by library-surfaces-clearance.allium; the
+--   librarian's human principal by agent-manifest.allium
+
+use "./core.allium" as core
+use "./identity-access.allium" as identity
+use "./instance-profiles.allium" as profiles
+use "./library-surfaces-clearance.allium" as libraries
+use "./agent-manifest.allium" as agents
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract DesktopLibraryConstitution {
+    prepare: (person_name: String) -> OnboardingDraft
+    constitute: (draft: OnboardingDraft) -> identity/VeraInstance
+
+    @invariant FirstRunNamesPersonAndLibrarySeparately
+        -- The person's display name answers who participates and authors. The
+        -- library name answers what this installation's corpus is called. Vera
+        -- Desktop asks for both and never uses one as hidden storage for the other.
+
+    @invariant SmartDefaultsRemainChoices
+        -- Desktop may propose a library and collective-surface name from human
+        -- context. The person sees and may replace each value before creation;
+        -- a suggestion becomes authoritative only when explicitly confirmed.
+
+    @invariant GovernanceProfileIsExplicit
+        -- Personal may be preselected, but first run presents both Personal and
+        -- Collective before any instance is created and requires confirmation.
+        -- Network location, library name or accepting a default never chooses
+        -- the profile implicitly.
+
+    @invariant CollectiveBeginsWithACommonSurface
+        -- A collective library is not constituted without at least one named
+        -- shared surface. Desktop proposes “Superficie colectiva” and permits a
+        -- department, postgraduate programme or other deliberate name instead.
+
+    @invariant EveryLibraryBeginsWithANamedOwnerLibrarian
+        -- Desktop proposes “Lucienne” as the owner's librarian agent name for
+        -- both personal and collective libraries.
+        -- It is a visible, editable smart default: accepting it constitutes that
+        -- identity; replacing it creates the chosen identity instead. The agent
+        -- belongs to the human owner; Vera supplies its librarian harness.
+
+    @invariant TheFounderIsTheLibrariansFirstHumanPrincipal
+        -- Creating an agent never creates ownerless agency. The founding person
+        -- is the librarian's human principal and remains visibly responsible
+        -- until governance transfers that binding to another active person.
+
+    @invariant HarnessCapabilitiesDoNotReplaceClearance
+        -- The owner's librarian runs in Vera's librarian harness and therefore
+        -- receives explicit library-specific tools. Those capabilities determine
+        -- what the runtime can do; the participant's clearance still determines
+        -- where it may do it. The harness is not a territorial back door.
+
+    @invariant PersonalMayBeginWithoutSurfaces
+        -- A personal library may begin entirely in its general unassigned
+        -- territory and create shared or public surfaces later.
+
+    @invariant FirstRunIsAtomic
+        -- Failure before completion leaves no half-constituted library that
+        -- appears ready. Retrying presents the draft again or opens the single
+        -- completed instance; it never creates a second owner, library or surface.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum OnboardingStatus { drafting | constituted }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity OnboardingDraft {
+    person_name: String
+    library_name: String
+    profile: profiles/InstanceProfile
+    initial_collective_surface_name: String?
+    owner_librarian_name: String
+    status: OnboardingStatus
+
+    transitions status {
+        drafting -> constituted
+        terminal: constituted
+    }
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule DesktopSuggestsSeparateHumanNames {
+    when: BeginDesktopOnboarding(person_name)
+
+    requires: person_name.trim.length > 0
+
+    ensures: OnboardingDraft.created(
+        person_name: person_name.trim,
+        library_name: suggested_library_name(person_name.trim),
+        profile: personal,
+        initial_collective_surface_name: null,
+        owner_librarian_name: "Lucienne",
+        status: drafting
+    )
+
+    @guidance
+        -- The visible smart default is “Biblioteca de <persona>”. It is an
+        -- editable proposal, never a derivation performed after constitution.
+}
+
+rule ChoosingCollectiveSuggestsItsFirstSurface {
+    when: ChooseOnboardingProfile(draft, collective)
+
+    requires: draft.status = drafting
+
+    ensures:
+        draft.profile = collective
+        draft.initial_collective_surface_name = "Superficie colectiva"
+}
+
+rule ChoosingPersonalRemovesTheCollectiveRequirement {
+    when: ChooseOnboardingProfile(draft, personal)
+
+    requires: draft.status = drafting
+
+    ensures:
+        draft.profile = personal
+        draft.initial_collective_surface_name = null
+}
+
+rule PersonConstitutesPersonalLibrary {
+    when: ConstituteDesktopLibrary(draft)
+
+    requires: draft.status = drafting
+    requires: draft.profile = personal
+    requires: draft.person_name.trim.length > 0
+    requires: draft.library_name.trim.length > 0
+    requires: draft.owner_librarian_name.trim.length > 0
+
+    ensures:
+        let owner = core/Participant.created(
+            name: draft.person_name.trim,
+            kind: human,
+            status: active
+        )
+        let instance = identity/VeraInstance.created(
+            owner: owner
+        )
+        profiles/InstanceGovernance.created(
+            instance: instance,
+            profile: personal,
+            custody_root: owner
+        )
+        let librarian = core/Participant.created(
+            name: draft.owner_librarian_name.trim,
+            kind: agent,
+            status: active
+        )
+        agents/AgentPrincipal.created(
+            agent: librarian,
+            human: owner,
+            established_by: owner,
+            established_at: now,
+            status: active
+        )
+        libraries/LibraryIdentity.created(
+            instance: instance,
+            name: draft.library_name.trim,
+            named_by: owner,
+            named_at: now
+        )
+        libraries/TerritoryPolicy.created(
+            instance: instance,
+            participant: owner,
+            mode: all,
+            include_general: true,
+            changed_by: owner,
+            changed_at: now
+        )
+        libraries/TerritoryPolicy.created(
+            instance: instance,
+            participant: librarian,
+            mode: all,
+            include_general: true,
+            changed_by: owner,
+            changed_at: now
+        )
+        draft.status = constituted
+}
+
+rule PersonConstitutesCollectiveLibrary {
+    when: ConstituteDesktopLibrary(draft)
+
+    requires: draft.status = drafting
+    requires: draft.profile = collective
+    requires: draft.person_name.trim.length > 0
+    requires: draft.library_name.trim.length > 0
+    requires: draft.initial_collective_surface_name != null
+    requires: draft.initial_collective_surface_name.trim.length > 0
+    requires: draft.owner_librarian_name.trim.length > 0
+
+    ensures:
+        let custodian = core/Participant.created(
+            name: draft.person_name.trim,
+            kind: human,
+            status: active
+        )
+        let instance = identity/VeraInstance.created(
+            owner: custodian
+        )
+        profiles/InstanceGovernance.created(
+            instance: instance,
+            profile: collective,
+            custody_root: custodian
+        )
+        let surface = libraries/LibrarySurface.created(
+            instance: instance,
+            name: draft.initial_collective_surface_name.trim,
+            kind: shared,
+            status: active,
+            governed_by: custodian,
+            pages: {}
+        )
+        let librarian = core/Participant.created(
+            name: draft.owner_librarian_name.trim,
+            kind: agent,
+            status: active
+        )
+        agents/AgentPrincipal.created(
+            agent: librarian,
+            human: custodian,
+            established_by: custodian,
+            established_at: now,
+            status: active
+        )
+        libraries/SurfaceSteward.created(
+            surface: surface,
+            human: custodian,
+            appointed_by: custodian,
+            appointed_at: now,
+            status: active,
+            removed_at: null
+        )
+        libraries/LibraryIdentity.created(
+            instance: instance,
+            name: draft.library_name.trim,
+            named_by: custodian,
+            named_at: now
+        )
+        let policy = libraries/TerritoryPolicy.created(
+            instance: instance,
+            participant: custodian,
+            mode: all,
+            include_general: true,
+            changed_by: custodian,
+            changed_at: now
+        )
+        libraries/SurfaceRule.created(
+            policy: policy,
+            surface: surface,
+            disposition: included,
+            permissions: {read, contribute, edit, publish, administer},
+            status: active,
+            governed_by: custodian,
+            created_at: now,
+            removed_at: null
+        )
+        libraries/TerritoryPolicy.created(
+            instance: instance,
+            participant: librarian,
+            mode: all,
+            include_general: true,
+            changed_by: custodian,
+            changed_at: now
+        )
+        draft.status = constituted
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+actor DesktopFounder {
+    identified_by: DesktopPerson
+}
+
+external entity DesktopPerson {}
+
+surface DesktopFirstRun {
+    facing founder: DesktopFounder
+    context draft: OnboardingDraft
+
+    exposes:
+        draft.person_name
+        draft.library_name
+        draft.profile
+        draft.initial_collective_surface_name
+        draft.owner_librarian_name
+
+    provides:
+        ChooseOnboardingProfile(draft, personal)
+        ChooseOnboardingProfile(draft, collective)
+        ConstituteDesktopLibrary(draft)
+
+    contracts:
+        fulfils DesktopLibraryConstitution
+
+    @guarantee NamesAreEditableBeforeCreation
+        -- Person, library, initial collective surface and owner librarian remain
+        -- visibly distinct and editable until the single
+        -- constitutive act succeeds.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "¿Debe la primera ejecución colectiva constituir inmediatamente otra persona administradora, o basta con que la custodia inicial sea también la primera administradora?"

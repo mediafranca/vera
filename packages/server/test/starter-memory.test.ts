@@ -23,7 +23,12 @@ describe('memoria inicial distribuida', () => {
     const databasePath = join(mkdtempSync(join(tmpdir(), 'vera-starter-')), 'vera.sqlite');
     const owner = { id: 'participant:nueva', name: 'Persona Nueva' };
 
-    const first = initializeStarterMemory({ databasePath, owner });
+    const first = initializeStarterMemory({
+      databasePath,
+      owner,
+      libraryName: 'Biblioteca de prueba',
+      ownerLibrarianName: 'Aurelia',
+    });
     assert.equal(first.version, STARTER_MEMORY_VERSION);
     assert.equal(first.applied, STARTER_CHANGES.length);
     assert.equal(first.duplicates, 0);
@@ -33,6 +38,26 @@ describe('memoria inicial distribuida', () => {
     const store = openStore({ path: databasePath, graphName: 'mind' });
     const graph = loadGraph(store, 'mind');
     assert.equal(graph.owner, owner.id);
+    const instance = store.db.prepare('SELECT owner_id,library_name,profile FROM instances').get() as any;
+    assert.deepEqual({ ...instance }, {
+      owner_id: owner.id,
+      library_name: 'Biblioteca de prueba',
+      profile: 'personal',
+    });
+    const librarian = store.db.prepare(`SELECT l.owner_id,l.agent_id,p.name,h.version
+      FROM owner_librarians l
+      JOIN participants p ON p.id=l.agent_id
+      JOIN librarian_harnesses h ON h.librarian_id=l.id
+      WHERE l.status='active' AND h.status='active'`).get() as any;
+    assert.equal(librarian.owner_id, owner.id);
+    assert.equal(librarian.name, 'Aurelia');
+    assert.equal(librarian.version, 'vera-librarian-harness:1');
+    assert.deepEqual(
+      { ...(store.db.prepare("SELECT human_id,status FROM agent_principals WHERE agent_id=?")
+        .get(librarian.agent_id) as any) },
+      { human_id: owner.id, status: 'active' },
+    );
+    assert.equal(Number((store.db.prepare('SELECT COUNT(*) AS n FROM shared_spaces').get() as any).n), 0);
     assert.deepEqual(
       graph.pages().map((one) => one.title).sort(),
       [
@@ -126,8 +151,14 @@ describe('memoria inicial distribuida', () => {
 
   it('una memoria colectiva se presenta como colectiva desde el primer bloque', () => {
     const databasePath = join(mkdtempSync(join(tmpdir(), 'vera-starter-collective-')), 'vera.sqlite');
-    initializeStarterMemory({ databasePath, owner: { id: 'participant:custodia', name: 'Custodia' },
-      profile: 'collective' });
+    initializeStarterMemory({
+      databasePath,
+      owner: { id: 'participant:custodia', name: 'Custodia' },
+      profile: 'collective',
+      libraryName: 'Postgrado de Diseño',
+      ownerLibrarianName: 'Lucienne',
+      initialCollectiveSurfaceName: 'Taller doctoral',
+    });
     const store = openStore({ path: databasePath, graphName: 'mind' });
     const graph = loadGraph(store, 'mind');
     const firstSteps = graph.pages().find((page) => page.title === 'VERA — Primeros pasos');
@@ -136,6 +167,24 @@ describe('memoria inicial distribuida', () => {
     assert.ok(graph.blocksOf(firstSteps.id).some((block) => /cada persona entra con su propia passkey/.test(block.content)));
     assert.ok(graph.blocksOf(principles.id).some((block) => /pertenece a su comunidad gobernada/.test(block.content)));
     assert.ok(!graph.blocksOf(firstSteps.id).some((block) => /única persona propietaria/.test(block.content)));
+    assert.deepEqual(
+      { ...(store.db.prepare('SELECT name,slug,owner_id,audience,status FROM shared_spaces').get() as any) },
+      {
+        name: 'Taller doctoral',
+        slug: 'taller-doctoral',
+        owner_id: 'participant:custodia',
+        audience: 'restricted',
+        status: 'active',
+      },
+    );
+    const collectiveLibrarian = store.db.prepare(`SELECT p.name,l.owner_id,ap.human_id
+      FROM owner_librarians l JOIN participants p ON p.id=l.agent_id
+      JOIN agent_principals ap ON ap.agent_id=l.agent_id WHERE l.status='active'`).get() as any;
+    assert.deepEqual({ ...collectiveLibrarian }, {
+      name: 'Lucienne',
+      owner_id: 'participant:custodia',
+      human_id: 'participant:custodia',
+    });
     store.close();
   });
 });

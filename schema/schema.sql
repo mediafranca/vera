@@ -138,11 +138,42 @@ CREATE TABLE IF NOT EXISTS graphs (
 
 -- invariant OneInstanceServesOneGraph
 CREATE TABLE IF NOT EXISTS instances (
-    id        TEXT PRIMARY KEY,
-    graph_id  TEXT NOT NULL UNIQUE REFERENCES graphs (id),
-    owner_id  TEXT NOT NULL REFERENCES participants (id),
-    profile   TEXT NOT NULL DEFAULT 'personal' CHECK (profile IN ('personal', 'collective'))
+    id            TEXT PRIMARY KEY,
+    graph_id      TEXT NOT NULL UNIQUE REFERENCES graphs (id),
+    owner_id      TEXT NOT NULL REFERENCES participants (id),
+    library_name  TEXT NOT NULL,
+    profile       TEXT NOT NULL DEFAULT 'personal' CHECK (profile IN ('personal', 'collective'))
 ) STRICT;
+
+-- La bibliotecaria de una instalación pertenece a la persona dueña. Vera no
+-- es su principal: aporta el harness versionado con que ejerce el oficio.
+CREATE TABLE IF NOT EXISTS owner_librarians (
+    id              TEXT PRIMARY KEY,
+    instance_id     TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    owner_id        TEXT NOT NULL REFERENCES participants (id),
+    agent_id        TEXT NOT NULL REFERENCES participants (id),
+    status          TEXT NOT NULL CHECK (status IN ('active', 'replaced')),
+    designated_at   INTEGER NOT NULL
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_owner_librarian
+    ON owner_librarians(instance_id) WHERE status = 'active';
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_owner_librarian_role_per_agent
+    ON owner_librarians(agent_id) WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS librarian_harnesses (
+    id              TEXT PRIMARY KEY,
+    instance_id     TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    librarian_id    TEXT NOT NULL REFERENCES owner_librarians (id),
+    version         TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('active', 'withdrawn')),
+    attached_by     TEXT NOT NULL REFERENCES participants (id),
+    attached_at     INTEGER NOT NULL
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_librarian_harness
+    ON librarian_harnesses(librarian_id) WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS instance_governance_grants (
     id              TEXT PRIMARY KEY,

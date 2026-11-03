@@ -1,0 +1,159 @@
+-- allium: 3
+-- owner-librarian-harness.allium
+
+-- Scope: The librarian agent that belongs to the human owner of one Vera and
+--   the special library capabilities that Vera supplies through its harness
+-- Includes: Owner/principal binding, editable identity, one active librarian
+--   role per instance, explicit harness capabilities, territorial clearance,
+--   ordinary attributed writes and revocation
+-- Excludes:
+--   - Model selection and runtime transport
+--   - Secret storage
+--   - The detailed catalogue of library tools, which remains to be elicited
+-- Dependencies: Human principal and manifest are governed by
+--   agent-manifest.allium; tools by agent-tools.allium; territory by
+--   library-surfaces-clearance.allium
+
+use "./core.allium" as core
+use "./identity-access.allium" as identity
+use "./agent-manifest.allium" as manifests
+use "./agent-tools.allium" as tools
+use "./library-surfaces-clearance.allium" as libraries
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract OwnerLibrarianHarnessAdministration {
+    designate: (owner: core/Participant, instance: identity/VeraInstance, librarian: core/Participant) -> OwnerLibrarian
+    attach_harness: (owner: core/Participant, librarian: OwnerLibrarian, harness: LibrarianHarness) -> LibrarianHarness
+
+    @invariant TheLibrarianBelongsToTheHumanOwner
+        -- Lucienne is not an ownerless institutional intelligence. The active
+        -- librarian is an agent participant whose single active human principal
+        -- is the person who owns this Vera. Renaming the default does not change
+        -- that ownership relation.
+
+    @invariant VeraSuppliesTheHarnessNotThePrincipal
+        -- Vera constitutes and versions the librarian harness and its specific
+        -- tools. The harness does not own the agent, become its human principal
+        -- or replace the owner's responsibility for delegated action.
+
+    @invariant LucienneIsAnEditableDefaultNotAProductIdentity
+        -- Desktop may propose “Lucienne”. Renaming before constitution creates a
+        -- differently named librarian without changing the role or guarantees.
+
+    @invariant TheHarnessAddsCapabilitiesNotTerritory
+        -- The harness may expose privileged library tools unavailable to an
+        -- ordinary agent runtime. It never widens the librarian participant's
+        -- general/selected/all territory or cancels an explicit exclusion.
+
+    @invariant EveryHarnessCapabilityIsExplicit
+        -- Each built-in or connected capability has a stable name, revision,
+        -- risk class and approval policy. “Librarian” is not itself a wildcard
+        -- permission.
+
+    @invariant WritesUseTheOrdinaryAttributedDoor
+        -- A harness tool that changes corpus content still submits an ordinary
+        -- operation as the librarian participant. Authorship, revision fences,
+        -- clearance, restrictions and the activity log remain effective.
+
+    @invariant OperationalInspectionDoesNotRevealExcludedContent
+        -- Health, index, migration and backup tools may inspect operational
+        -- state needed to care for the installation. They do not return page or
+        -- block content outside the librarian's current clearance.
+}
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity OwnerLibrarian {
+    instance: identity/VeraInstance
+    owner: core/Participant
+    librarian: core/Participant
+    principal: manifests/AgentPrincipal
+    status: active | replaced
+    designated_at: Timestamp
+}
+
+entity LibrarianHarness {
+    id: String
+    librarian: OwnerLibrarian
+    version: String
+    capabilities: tools/AgentToolGrant with agent = librarian.librarian and status = active
+    status: active | withdrawn
+    attached_by: core/Participant
+    attached_at: Timestamp
+}
+
+------------------------------------------------------------
+-- Rules and invariants
+------------------------------------------------------------
+
+rule OwnerDesignatesTheirLibrarian {
+    when: DesignateOwnerLibrarian(owner, instance, librarian, principal)
+
+    requires: instance.owner = owner
+    requires: owner.kind = human
+    requires: owner.status = active
+    requires: librarian.kind = agent
+    requires: librarian.status = active
+    requires: principal.agent = librarian
+    requires: principal.human = owner
+    requires: principal.status = active
+    requires: not exists OwnerLibrarian{instance: instance, status: active}
+
+    ensures: OwnerLibrarian.created(
+        instance: instance,
+        owner: owner,
+        librarian: librarian,
+        principal: principal,
+        status: active,
+        designated_at: now
+    )
+}
+
+rule OwnerAttachesLibrarianHarness {
+    when: AttachLibrarianHarness(owner, librarian, harness_id, version)
+
+    requires: librarian.owner = owner
+    requires: librarian.status = active
+    requires: not exists LibrarianHarness{librarian: librarian, status: active}
+
+    ensures: LibrarianHarness.created(
+        id: harness_id,
+        librarian: librarian,
+        version: version,
+        status: active,
+        attached_by: owner,
+        attached_at: now
+    )
+}
+
+invariant OneActiveOwnerLibrarianPerInstance {
+    for a in OwnerLibrarians where status = active:
+        for b in OwnerLibrarians where status = active:
+            a.instance = b.instance implies a = b
+}
+
+invariant OwnerLibrarianPrincipalIsTheInstanceOwner {
+    for binding in OwnerLibrarians where status = active:
+        binding.owner = binding.instance.owner and
+        binding.principal.human = binding.owner and
+        binding.principal.agent = binding.librarian
+}
+
+invariant HarnessNeverOverridesSurfaceExclusion {
+    for harness in LibrarianHarnesses where status = active:
+        for surface_rule in libraries/SurfaceRules where
+            policy.participant = harness.librarian.librarian and
+            disposition = excluded and status = active:
+                not harness_can_read_content(harness, surface_rule.surface)
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "¿Cuál es el catálogo mínimo de herramientas internas que recibe el harness bibliotecario al constituirse, y cuáles exigen confirmación humana por llamada?"

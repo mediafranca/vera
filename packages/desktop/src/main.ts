@@ -272,16 +272,40 @@ function createWindow(): void {
   else void window.loadFile(setupPage);
 }
 
-ipcMain.handle('vera:initialize', async (_event, rawName: unknown) => {
-  if (typeof rawName !== 'string' || rawName.trim().length < 2) {
+ipcMain.handle('vera:initialize', async (_event, rawInput: unknown) => {
+  if (typeof rawInput !== 'object' || rawInput === null) {
+    throw new Error('La constitución de la biblioteca está incompleta.');
+  }
+  const input = rawInput as Record<string, unknown>;
+  if (typeof input.personName !== 'string' || input.personName.trim().length < 2) {
     throw new Error('Escribe el nombre con que firmarás esta memoria.');
   }
+  if (typeof input.libraryName !== 'string' || input.libraryName.trim().length < 2) {
+    throw new Error('Escribe el nombre de la biblioteca.');
+  }
+  if (input.profile !== 'personal' && input.profile !== 'collective') {
+    throw new Error('Elige si la biblioteca es personal o colectiva.');
+  }
+  if (typeof input.ownerLibrarianName !== 'string' || input.ownerLibrarianName.trim().length < 2) {
+    throw new Error('Escribe el nombre de la bibliotecaria.');
+  }
+  if (input.profile === 'collective' &&
+    (typeof input.initialCollectiveSurfaceName !== 'string' ||
+      input.initialCollectiveSurfaceName.trim().length < 2)) {
+    throw new Error('La biblioteca colectiva necesita una primera superficie compartida.');
+  }
   if (databaseExists()) throw new Error('Esta memoria ya fue inicializada.');
-  const name = rawName.trim();
+  const name = input.personName.trim();
   const { initializeStarterMemory } = await import('../../server/src/starter-memory.ts');
   initializeStarterMemory({
     databasePath,
     owner: { id: `participant:${randomUUID()}`, name },
+    libraryName: input.libraryName.trim(),
+    profile: input.profile,
+    ownerLibrarianName: input.ownerLibrarianName.trim(),
+    ...(input.profile === 'collective'
+      ? { initialCollectiveSurfaceName: (input.initialCollectiveSurfaceName as string).trim() }
+      : {}),
   });
   await startVera();
   return { ok: true };

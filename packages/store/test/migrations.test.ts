@@ -343,11 +343,14 @@ describe('migraciones', () => {
 
     migrate(db, false);
 
-    const instance = db.prepare('SELECT owner_id,profile FROM instances').get() as any;
+    const instance = db.prepare('SELECT owner_id,profile,library_name FROM instances').get() as any;
     assert.equal(instance.owner_id, 'participant:herbert');
     assert.equal(instance.profile, 'personal');
+    assert.equal(instance.library_name, 'Biblioteca de Herbert');
     assert.equal(count(db, 'instance_governance_grants'), 0);
     assert.equal(count(db, 'collective_invitations'), 0);
+    assert.equal(count(db, 'owner_librarians'), 0);
+    assert.equal(count(db, 'librarian_harnesses'), 0);
     assert.equal(version(db), SCHEMA_VERSION);
     db.close();
   });

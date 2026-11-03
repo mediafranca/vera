@@ -89,13 +89,13 @@ describe('quién soy', () => {
         scopes: ['read', 'write'],
         label: 'Cotito · OpenClaw',
       },
-      '/health': { graph: 'mind', pages: 900, blocks: 40000, lastSequence: 123 },
+      '/health': { graph: 'mind', libraryName: 'Biblioteca de Herbert', pages: 900, blocks: 40000, lastSequence: 123 },
     });
     const said = await run('vera_quien_soy', {}, ask);
     assert.match(said, /participant:cotito/);
     assert.match(said, /read, write/);
     assert.match(said, /900 páginas/);
-    assert.match(said, /Corpus vivo de Vera/);
+    assert.match(said, /Biblioteca «Biblioteca de Herbert»/);
     assert.doesNotMatch(said, /mind/);
     // Se le dice al modelo lo que no puede hacer, o lo intenta.
     assert.match(said, /puede escribir/);
