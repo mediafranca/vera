@@ -19,7 +19,7 @@ import {
   type PublicationSiteView,
   type VoiceRuntimePaths,
 } from './api.ts';
-import { icon } from './icons.ts';
+import { icon, type IconName } from './icons.ts';
 import { openMediaDetails } from './media-dialog.ts';
 import {
   createServiceStatusIndicator,
@@ -829,6 +829,17 @@ function showPrivatePageShare(url: string, expiresAt: number | null): void {
   address.select();
 }
 
+function pageSharingAction(name: IconName, label: string): HTMLButtonElement {
+  const button = document.createElement('button'); button.type = 'button';
+  button.className = 'page-sharing-action'; button.innerHTML = icon(name);
+  button.setAttribute('aria-label', label); button.title = label;
+  return button;
+}
+
+function setPageSharingAction(button: HTMLButtonElement, name: IconName, label: string): void {
+  button.innerHTML = icon(name); button.setAttribute('aria-label', label); button.title = label;
+}
+
 /** Control contextual: todas las salidas de una página, sin aplanar permisos. */
 export async function drawPageSharing(host: HTMLElement, page: string, title: string,
   onChange?: () => void): Promise<void> {
@@ -858,8 +869,9 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       const manual = space.manualPages.includes(page);
       const row = document.createElement('li'); const text = document.createElement('span'); text.textContent = space.name;
       const reason = document.createElement('small'); reason.textContent = admitted?.reasons.join(' + ') ?? 'no pertenece'; text.append(reason);
-      const action = document.createElement('button'); action.type = 'button';
-      action.textContent = manual ? 'Quitar inclusión' : admitted === undefined ? 'Incluir' : 'Pertenece por criterio';
+      const action = pageSharingAction(manual ? 'minus' : admitted === undefined ? 'plus' : 'check',
+        manual ? `Quitar de ${space.name}` : admitted === undefined ? `Incluir en ${space.name}` : `Pertenece a ${space.name} por criterio`);
+      action.classList.toggle('active', manual);
       action.disabled = admitted !== undefined && !manual;
       action.onclick = () => void sharingRequest(`/shared-spaces/${encodeURIComponent(space.slug)}/pages${manual ? `/${encodeURIComponent(page)}` : ''}`,
         manual ? 'DELETE' : 'POST', manual ? undefined : { page }).then(() => {
@@ -877,7 +889,7 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       const row = document.createElement('div'); row.className = 'page-sharing-public';
       const address = document.createElement('a'); address.href = publication.url; address.target = '_blank';
       address.rel = 'noreferrer'; address.textContent = `${site.title} · /${publication.path}`;
-      const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Retirar';
+      const remove = pageSharingAction('world', 'Retirar del sitio público'); remove.classList.add('active');
       remove.disabled = publication.entryPoint;
       remove.title = publication.entryPoint ? 'Elige otra portada antes de retirarla' : 'Retirar del sitio público';
       remove.onclick = () => void api.unpublish(page).then(() => {
@@ -889,7 +901,7 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       const path = document.createElement('input'); path.placeholder = 'ruta-pública';
       path.value = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
         .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      const publish = document.createElement('button'); publish.type = 'submit'; publish.textContent = 'Publicar';
+      const publish = pageSharingAction('world', 'Publicar en el sitio'); publish.type = 'submit';
       publish.disabled = !site.publicReady;
       const reason = document.createElement('small'); reason.className = 'settings-note';
       reason.textContent = site.publicReady ? site.canonicalDomain : 'Configura primero una salida pública HTTPS.';
@@ -914,11 +926,11 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       participant.append(option);
     }
     personLabel.append(personName, participant);
-    const send = document.createElement('button'); send.type = 'button'; send.textContent = 'Crear enlace privado';
+    const send = pageSharingAction('link', 'Crear enlace privado para esta identidad');
     send.disabled = people.length === 0;
     const result = document.createElement('div'); result.className = 'sharing-invitation-result';
     send.onclick = () => void (async () => {
-      send.disabled = true; send.textContent = 'Creando…'; result.replaceChildren();
+      send.disabled = true; setPageSharingAction(send, 'link', 'Creando enlace privado…'); result.replaceChildren();
       try {
         const made = await sharingRequest(`/pages/${encodeURIComponent(page)}/private-invitations`, 'POST', {
           participant: participant.value, lifetimeMs: 604_800_000,
@@ -934,9 +946,11 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
         const failure = document.createElement('p'); failure.className = 'settings-note';
         failure.textContent = error instanceof Error ? error.message : 'No se pudo crear el enlace.';
         result.append(failure);
-      } finally { send.disabled = people.length === 0; send.textContent = 'Crear enlace privado'; }
+      } finally { send.disabled = people.length === 0; setPageSharingAction(send, 'link', 'Crear enlace privado para esta identidad'); }
     })();
-    privateBox.append(privateHeading, explanation, personLabel, send, result);
+    const identityControls = document.createElement('div'); identityControls.className = 'page-sharing-controls';
+    identityControls.append(personLabel, send);
+    privateBox.append(privateHeading, explanation, identityControls, result);
     body.append(privateBox);
 
     const capabilityHeading = document.createElement('h3'); capabilityHeading.textContent = 'Enlaces privados por capacidad';
@@ -948,7 +962,7 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       text.textContent = `Creado ${new Date(share.issuedAt).toLocaleString()}`;
       const detail = document.createElement('small'); detail.textContent = share.expiresAt === null
         ? 'hasta revocación' : `vence ${new Date(share.expiresAt).toLocaleString()}`; text.append(detail);
-      const revoke = document.createElement('button'); revoke.type = 'button'; revoke.textContent = 'Revocar';
+      const revoke = pageSharingAction('minus', 'Revocar enlace privado'); revoke.classList.add('active');
       revoke.onclick = () => void sharingRequest(`/page-shares/${encodeURIComponent(share.id)}`, 'DELETE').then(() => {
         onChange?.(); return drawPageSharing(host, page, title, onChange);
       });
@@ -964,7 +978,7 @@ export async function drawPageSharing(host: HTMLElement, page: string, title: st
       ['604800000', 'Siete días'], ['2592000000', 'Treinta días']] as const) {
       const option = document.createElement('option'); option.value = value; option.textContent = label; lifetime.append(option);
     }
-    const create = document.createElement('button'); create.type = 'submit'; create.textContent = 'Crear enlace por capacidad';
+    const create = pageSharingAction('link', 'Crear enlace privado por capacidad'); create.type = 'submit';
     create.disabled = !site.publicReady;
     const privateReason = document.createElement('small'); privateReason.className = 'settings-note';
     privateReason.textContent = site.publicReady ? 'El secreto se mostrará una sola vez.' : 'Hace falta una salida pública HTTPS.';

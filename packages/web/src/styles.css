@@ -12042,9 +12042,31 @@ html[data-working-slow='true']::after {
 .page-sharing .sharing-list li { gap: .5rem; padding: .4rem 0; }
 .page-sharing .sharing-group { margin: .9rem 0; }
 .page-sharing .sharing-publish { margin-top: .55rem; }
-.page-sharing-public { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
-.page-sharing-public > a { color: var(--accent); overflow-wrap: anywhere; }
-.page-sharing-private { grid-template-columns: minmax(9rem, .7fr) auto minmax(10rem, 1fr); }
+.page-sharing-action {
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 2.25rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
+}
+.page-sharing-action svg { width: 1.05rem; height: 1.05rem; }
+.page-sharing-action.active { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.page-sharing-public,
+.page-sharing-controls,
+.page-sharing-private {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: .45rem .6rem;
+}
+.page-sharing-public > a { align-self: center; color: var(--accent); overflow-wrap: anywhere; }
+.page-sharing-public > .settings-note,
+.page-sharing-private > .settings-note { grid-column: 1 / -1; margin: 0; }
+.page-sharing-controls .sharing-field { min-width: 0; }
+.page-sharing-controls select { width: 100%; }
 .page-share-secret { width: min(42rem, calc(100vw - 2rem)); color: var(--text); background: var(--bg-raised); border: 1px solid var(--rule); border-radius: .65rem; }
 .page-share-secret::backdrop { background: rgb(0 0 0 / 35%); }
 .page-share-secret input { box-sizing: border-box; width: 100%; padding: .65rem; color: var(--text); background: var(--bg); border: 1px solid var(--rule); font: .8rem var(--font-mono); }
@@ -12057,7 +12079,8 @@ html[data-working-slow='true']::after {
   .sharing-space-facts { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
   .sharing-space-affordance { grid-column: 2; grid-row: 1; }
   .sharing-publish { grid-template-columns: 1fr; }
-  .page-sharing-private { grid-template-columns: 1fr; }
+  .page-sharing .page-sharing-public,
+  .page-sharing .page-sharing-private { grid-template-columns: minmax(0, 1fr) auto; }
   .page-sharing { width: calc(100vw - 1rem); max-height: 86dvh; }
   .page-sharing .settings-body { max-height: calc(86dvh - 2.8rem); }
 }

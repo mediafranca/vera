@@ -125,6 +125,12 @@ const SHAPES = {
   'columns-3': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 21V3"/><path d="M15 21V3"/>',
   'circle-plus': '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
   'circle-minus': '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  // Tabler `world`: una página que sale del recinto privado hacia el sitio.
+  world:
+    '<circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8"/>' +
+    '<path d="M11.5 3a15.5 15.5 0 0 0 0 18M12.5 3a15.5 15.5 0 0 1 0 18"/>',
   'align-center': '<path d="M17 10H7"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M17 18H7"/>',
   'align-right': '<path d="M21 10H7"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H7"/>',
 

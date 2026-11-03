@@ -77,6 +77,15 @@ describe('destinos de una página', () => {
     assert.match(settings, /publish\.disabled = !site\.publicReady/);
   });
 
+  it('presenta las acciones como iconos compactos con nombre accesible', () => {
+    assert.match(settings, /pageSharingAction\(manual \? 'minus' : admitted === undefined \? 'plus' : 'check'/);
+    assert.match(settings, /pageSharingAction\('world', 'Publicar en el sitio'\)/);
+    assert.match(settings, /pageSharingAction\('link', 'Crear enlace privado para esta identidad'\)/);
+    assert.match(settings, /setAttribute\('aria-label', label\)/);
+    assert.match(styles, /\.page-sharing-action \{[\s\S]*width: 2\.25rem;[\s\S]*height: 2\.25rem;/);
+    assert.match(styles, /\.page-sharing-controls,[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
+  });
+
   it('crea capacidades privadas, muestra el secreto una vez y permite revocarlas', () => {
     assert.match(settings, /El secreto se muestra una sola vez/);
     assert.match(settings, /`\/pages\/\$\{encodeURIComponent\(page\)\}\/shares`/);
