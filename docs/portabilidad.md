@@ -205,9 +205,13 @@ razonamiento que contienen. Déjalas mientras estudias el sistema, y usa tus
 propias personas cuando escribas specs nuevas. Si mandas un pull request tocando
 specs, no las renombres: sería un diff ilegible que esconde el cambio real.
 
-**Sobre el agente:** «el bibliotecario» es un rol de esta instancia, no una parte
-fija de Vera. El tuyo tendrá otro nombre y otras instrucciones — son páginas del
-corpus, no código.
+**Sobre la bibliotecaria:** Vera Desktop propone «Lucienne» como valor inicial,
+pero no impone ese nombre ni una personalidad universal. La bibliotecaria es una
+participante agente cuyo principal humano es la persona dueña de la instalación.
+Su identidad e instrucciones pueden cambiar sin confundirlas con Vera ni con el
+nombre de la biblioteca. Vera aporta por separado un *harness* versionado y
+capacidades explícitas; el runtime, el modelo y los servicios siguen siendo
+reemplazables.
 
 ### 4.3 La ontología
 

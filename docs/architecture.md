@@ -236,6 +236,38 @@ reutiliza el contenido autorizado sin dar acceso al corpus privado.
 
 Los agentes ya se autentican; las personas todavía no.
 
+### Instancia, biblioteca y bibliotecaria — parte construida
+
+Vera es el programa, no el nombre de la memoria que abre. `instances.library_name`
+guarda el nombre humano configurable de cada biblioteca; el identificador del
+grafo, el archivo SQLite y una fuente de importación permanecen como detalles
+internos. `GET /health` y la puerta MCP presentan el nombre de la biblioteca y
+nunca promueven esos identificadores de almacenamiento a identidad del corpus.
+
+La primera ejecución de Desktop pregunta por la persona dueña, el nombre de la
+biblioteca y su perfil personal o colectivo. También constituye una participante
+agente como bibliotecaria de esa persona —«Lucienne» es sólo el valor sugerido—
+y registra por separado el *harness* que Vera le ofrece. En una instalación
+colectiva crea además una primera superficie compartida, con nombre editable y
+custodia humana inicial.
+
+La separación es deliberada:
+
+- la persona es principal y responsable de su agente;
+- la bibliotecaria conserva identidad, procedencia y credenciales propias;
+- Vera versiona el *harness* y sus capacidades bibliotecarias;
+- el *harness* no amplía por sí solo las superficies que la participante puede
+  leer o modificar.
+
+El modelo completo de *clearance* territorial —selección positiva, biblioteca
+general, «todo», exclusiones dominantes y explicación de cada rechazo— está
+formalizado, pero su cerco uniforme en todas las rutas sigue parcial. Ninguna
+superficie activa puede quedar bajo custodia exclusiva de agentes: siempre debe
+conservar al menos una persona con lectura y administración efectivas. Ver
+[`library-surfaces-clearance.allium`](../specs/library-surfaces-clearance.allium),
+[`owner-librarian-harness.allium`](../specs/owner-librarian-harness.allium) y
+[`desktop-onboarding.allium`](../specs/desktop-onboarding.allium).
+
 **Hecho.** Un agente participa con una credencial: token revocable, con alcance
 y digest almacenado en lugar del secreto. La identidad de una operación sale de
 la credencial, nunca de lo que el cuerpo afirme, y el canal se deriva de qué es

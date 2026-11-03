@@ -4,6 +4,15 @@ Vera se distribuye como una aplicación instalable para Windows, macOS y Linux.
 El programa y la memoria son piezas distintas: actualizar o desinstalar el
 primero no borra la segunda.
 
+En una instalación nueva, la primera ejecución no inventa una memoria anónima:
+pregunta quién la gobierna, cómo se llama la biblioteca, si es personal o
+colectiva y cómo se llama su bibliotecaria. «Biblioteca de …», «Lucienne» y
+«Superficie colectiva» son valores sugeridos editables. Actualizar una memoria
+existente conserva su identidad y no crea retroactivamente una bibliotecaria que
+su historia nunca constituyó. Una biblioteca nueva recibe además el *starter*
+ontológico gobernado de la distribución: 36 propiedades, 16 objetos y 13
+relaciones iniciales, editables desde sus páginas rectoras.
+
 ## Dos niveles de confianza, formalizados en la spec
 
 `specs/desktop-distribution.allium` distingue dos categorías de release, cada

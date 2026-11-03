@@ -4,9 +4,15 @@ La página [VERA: Conexiones](https://vera.mediafranca.net/vera-conexiones/) pre
 capacidad desde Vera. Aquí permanecen los pasos operativos, credenciales y
 límites necesarios para conectar clientes concretos.
 
-Cómo enchufar cualquier servicio de inteligencia artificial —Anthropic, OpenAI,
-Google, Microsoft, DeepSeek, Mistral o el que aparezca el mes que viene— a esta
-memoria.
+Cómo dar runtime a la bibliotecaria de una instalación —o conectar otro agente—
+mediante Anthropic, OpenAI, Google, Microsoft, DeepSeek, Mistral o el servicio
+que aparezca el mes que viene.
+
+La bibliotecaria, el modelo y la conexión son objetos distintos. La primera es
+una participante agente con una persona responsable; el modelo es
+intercambiable; la conexión prueba una identidad y sólo puede reducir sus
+alcances. Cambiar de proveedor no crea otra biblioteca ni borra la historia de
+la bibliotecaria.
 
 > La puerta local ofrece lectura y escritura no destructiva bajo credencial. Lo
 > que todavía no existe está marcado como tal en [Lo que no hay](#lo-que-no-hay),
@@ -26,8 +32,8 @@ valores en cada formulario, de dónde se sacan, y qué hacer cuando no funciona.
 
 ## Inicio rápido desde Vera Desktop
 
-1. Instala la [última versión de Vera Desktop](https://github.com/mediafranca/vera/releases/latest)
-   y abre la página **MCP**.
+1. Instala la [última versión de Vera Desktop](https://github.com/mediafranca/vera/releases/latest),
+   constituye la biblioteca y abre la página **MCP**.
 2. Si la IA corre en el mismo equipo, crea allí una credencial y usa la
    configuración local que Vera calcula.
 3. Si la IA vive en Internet y acepta una URL MCP con bearer, activa **Vera

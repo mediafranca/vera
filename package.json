@@ -1,9 +1,9 @@
 {
   "name": "vera",
-  "version": "0.6.18",
+  "version": "0.6.19",
   "private": true,
   "type": "module",
-  "description": "Memoria personal soberana: corpus versionado, editable, replicable y auditable",
+  "description": "Biblioteca soberana: corpus versionado, editable, replicable y auditable",
   "author": {
     "name": "Herbert Spencer y colaboradores de Vera",
     "email": "hspencer@ead.cl"
