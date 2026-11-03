@@ -12025,7 +12025,7 @@ html[data-working-slow='true']::after {
 .page-sharing {
   box-sizing: border-box;
   width: min(32rem, calc(100vw - 1.5rem));
-  max-height: min(42rem, calc(100dvh - 1.5rem));
+  max-height: min(36rem, 80dvh);
   padding: 0;
   overflow: hidden;
   color: var(--text);
@@ -12036,7 +12036,7 @@ html[data-working-slow='true']::after {
 }
 .page-sharing::backdrop { background: rgb(0 0 0 / 38%); }
 .page-sharing .settings-head { align-items: center; padding: .65rem .8rem .55rem; }
-.page-sharing .settings-body { max-height: calc(min(42rem, 100dvh - 1.5rem) - 2.8rem); padding: .75rem .85rem .9rem; overflow: auto; }
+.page-sharing .settings-body { max-height: calc(min(36rem, 80dvh) - 2.8rem); padding: .75rem .85rem .9rem; overflow: auto; }
 .page-sharing .settings-body > .settings-note:first-child { margin: 0 0 .55rem; font-size: .72rem; }
 .page-sharing .settings-body > h3 { margin: .9rem 0 .25rem; font-size: .78rem; }
 .page-sharing .sharing-list li { gap: .5rem; padding: .4rem 0; }
@@ -12058,8 +12058,8 @@ html[data-working-slow='true']::after {
   .sharing-space-affordance { grid-column: 2; grid-row: 1; }
   .sharing-publish { grid-template-columns: 1fr; }
   .page-sharing-private { grid-template-columns: 1fr; }
-  .page-sharing { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); }
-  .page-sharing .settings-body { max-height: calc(100dvh - 3.8rem); }
+  .page-sharing { width: calc(100vw - 1rem); max-height: 86dvh; }
+  .page-sharing .settings-body { max-height: calc(86dvh - 2.8rem); }
 }
 
 /* --- Estado de servicios -------------------------------------------------
