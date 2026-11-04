@@ -92,6 +92,7 @@ export function formativeChallenge(practice: FormativePractice): string {
 
 export interface LibrarianRuntimeRun {
   id: string;
+  agent: { id: string; name: string };
   kind: 'request' | 'routine';
   request: string | null;
   model: string;
@@ -344,15 +345,18 @@ export function readDialecticDecision(text: string): LibrarianDialecticDecision 
 export function librarianRuntimeRuns(store: Store, limit = 20): LibrarianRuntimeRun[] {
   const binding = activeBinding(store);
   if (binding === null) return [];
-  const rows = store.db.prepare(`SELECT id,kind,request_id,model_id,manifest_id,status,started_at,
-      finished_at,output,error FROM librarian_runtime_runs WHERE instance_id=?
-    ORDER BY started_at DESC,id DESC LIMIT ?`).all(binding.instance_id, Math.max(1, Math.min(100, limit))) as Array<{
-      id: string; kind: 'request' | 'routine'; request_id: string | null; model_id: string;
+  const rows = store.db.prepare(`SELECT r.id,r.agent_id,p.name AS agent_name,r.kind,r.request_id,r.model_id,
+      r.manifest_id,r.status,r.started_at,r.finished_at,r.output,r.error
+    FROM librarian_runtime_runs r JOIN participants p ON p.id=r.agent_id
+    WHERE r.instance_id=? ORDER BY r.started_at DESC,r.id DESC LIMIT ?`)
+    .all(binding.instance_id, Math.max(1, Math.min(100, limit))) as Array<{
+      id: string; agent_id: string; agent_name: string; kind: 'request' | 'routine'; request_id: string | null; model_id: string;
       manifest_id: string | null; status: 'running' | 'completed' | 'failed'; started_at: number;
       finished_at: number | null; output: string | null; error: string | null;
     }>;
   return rows.map((row) => ({
-    id: row.id, kind: row.kind, request: row.request_id, model: row.model_id, manifest: row.manifest_id,
+    id: row.id, agent: { id: row.agent_id, name: row.agent_name },
+    kind: row.kind, request: row.request_id, model: row.model_id, manifest: row.manifest_id,
     status: row.status, startedAt: row.started_at, finishedAt: row.finished_at,
     output: row.output, error: row.error,
   }));
@@ -373,7 +377,10 @@ export function beginLibrarianRuntimeRun(store: Store, input: {
     VALUES (?,?,?,?,?,?,?,'running',?)`).run(
       id, binding.instance_id, binding.agent_id, input.kind, input.request ?? null, manifest, input.model, startedAt,
     );
-  return { id, kind: input.kind, request: input.request ?? null, model: input.model, manifest,
+  const agentName = store.db.prepare('SELECT name FROM participants WHERE id=?').get(binding.agent_id) as
+    { name: string } | undefined;
+  return { id, agent: { id: binding.agent_id, name: agentName?.name ?? binding.agent_id },
+    kind: input.kind, request: input.request ?? null, model: input.model, manifest,
     status: 'running', startedAt, finishedAt: null, output: null, error: null };
 }
 

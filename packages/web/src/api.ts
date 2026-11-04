@@ -695,6 +695,10 @@ export interface TerritoryAdministrationView {
 
 export interface LibrarianRuntimeView {
   librarian: { id: string; agent: string; name: string; owner: string } | null;
+  eligible: { agent: string; name: string }[];
+  history: {
+    id: string; agent: string; name: string; status: 'active' | 'replaced'; designatedAt: number;
+  }[];
   status: 'unconstituted' | 'stopped' | 'ready' | 'degraded' | 'working';
   configuration: null | {
     instance: string;
@@ -720,7 +724,8 @@ export interface LibrarianRuntimeView {
   territory: TerritoryPolicyView | null;
   secret: { reference: string | null; available: boolean };
   runs: {
-    id: string; kind: 'request' | 'routine'; request: string | null; model: string;
+    id: string; agent: { id: string; name: string };
+    kind: 'request' | 'routine'; request: string | null; model: string;
     manifest: string | null; status: 'running' | 'completed' | 'failed';
     startedAt: number; finishedAt: number | null; output: string | null; error: string | null;
   }[];
@@ -1632,6 +1637,10 @@ export const api = {
 
   constituteLibrarianRuntime: (name: string) => json<LibrarianRuntimeView>('/librarian/runtime/constitute', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+  }),
+
+  designateLibrarianRuntime: (agent: string) => json<LibrarianRuntimeView>('/librarian/runtime/designate', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent }),
   }),
 
   configureLibrarianRuntime: (configuration: {

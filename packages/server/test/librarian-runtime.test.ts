@@ -55,9 +55,11 @@ describe('runtime embebido de la bibliotecaria', () => {
     process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
     const running = listen({ port: 4398, databasePath });
     const base = 'http://127.0.0.1:4398';
-    const call = async (path: string, options: { method?: string; body?: unknown } = {}) => {
+    const call = async (path: string, options: { method?: string; body?: unknown; secret?: string } = {}) => {
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (options.secret !== undefined) headers['authorization'] = `Bearer ${options.secret}`;
       const response = await fetch(`${base}${path}`, {
-        method: options.method ?? 'GET', headers: { 'content-type': 'application/json' },
+        method: options.method ?? 'GET', headers,
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       });
       return { status: response.status, json: await response.json() as Record<string, unknown> };
@@ -140,6 +142,93 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.ok(runs.some((run) => run.kind === 'request' && run.status === 'completed'));
       assert.ok(runs.some((run) => run.kind === 'routine' && run.output === 'SIN_NOVEDAD'));
       assert.equal(inferenceCalls, 1, 'una ronda sin evidencia no consulta al modelo ni le permite inventarla');
+
+      const priorConversation = await call('/librarian/conversation');
+      const priorConversationId = (priorConversation.json['conversation'] as Record<string, string>).id;
+      assert.ok(priorConversationId);
+      const admitted = await call('/agents', { method: 'POST', body: {
+        id: 'participant:successor-runtime', name: 'Archivista', principal: owner.id,
+      } });
+      assert.equal(admitted.status, 201, JSON.stringify(admitted.json));
+      const chosen = await call('/agents/participant%3Asuccessor-runtime/constitution', {
+        method: 'PUT', body: { sources: [{ page, role: 'identity' }] },
+      });
+      assert.equal(chosen.status, 200, JSON.stringify(chosen.json));
+      const built = await call('/agents/participant%3Asuccessor-runtime/manifests', { method: 'POST' });
+      assert.equal(built.status, 201, JSON.stringify(built.json));
+      const successorManifest = (built.json['manifest'] as Record<string, string>).id;
+      assert.ok(successorManifest);
+      const activated = await call(`/agents/participant%3Asuccessor-runtime/manifests/${encodeURIComponent(successorManifest)}/activate`, { method: 'POST' });
+      assert.equal(activated.status, 200, JSON.stringify(activated.json));
+
+      const eligible = await call('/librarian/runtime');
+      assert.deepEqual(eligible.json['eligible'], [{ agent: 'participant:successor-runtime', name: 'Archivista' }]);
+      const outsider = await call('/participants', {
+        method: 'POST', body: { name: 'Otra persona', kind: 'human' },
+      });
+      assert.equal(outsider.status, 201, JSON.stringify(outsider.json));
+      const outsiderId = (outsider.json['participant'] as Record<string, string>).id;
+      assert.ok(outsiderId);
+      const outsiderAgent = await call('/agents', { method: 'POST', body: {
+        id: 'participant:outsider-agent', name: 'Agente ajeno', principal: outsiderId,
+      } });
+      assert.equal(outsiderAgent.status, 201, JSON.stringify(outsiderAgent.json));
+      const credential = await call('/agents/credentials', {
+        method: 'POST', body: { participant: 'participant:outsider-agent', scopes: ['read', 'write'], label: 'agente ajeno' },
+      });
+      assert.equal(credential.status, 201, JSON.stringify(credential.json));
+      const outsiderSecret = credential.json['secret'] as string | undefined;
+      assert.ok(outsiderSecret);
+      const forbidden = await call('/librarian/runtime/designate', {
+        method: 'POST', secret: outsiderSecret, body: { agent: 'participant:successor-runtime' },
+      });
+      assert.equal(forbidden.status, 403);
+      const designated = await call('/librarian/runtime/designate', {
+        method: 'POST', body: { agent: 'participant:successor-runtime' },
+      });
+      assert.equal(designated.status, 200, JSON.stringify(designated.json));
+      assert.equal((designated.json['librarian'] as Record<string, string>).name, 'Archivista');
+      assert.equal((designated.json['configuration'] as Record<string, unknown>)['model'], 'openai:test-model');
+      assert.equal(designated.json['territory'], null, 'designar no concede el territorio del ocupante anterior');
+      assert.deepEqual((designated.json['history'] as Array<Record<string, unknown>>).map((entry) => entry.status),
+        ['active', 'replaced']);
+      assert.ok((designated.json['runs'] as Array<Record<string, any>>)
+        .every((run) => run.agent.id === librarianAgent), 'las ejecuciones anteriores conservan su agente');
+      const successorConversation = await call('/librarian/conversation');
+      assert.equal(successorConversation.json['conversation'], null, 'el sucesor comienza una conversación propia');
+      const inheritedConversation = await call(`/librarian/conversation?id=${encodeURIComponent(priorConversationId)}`);
+      assert.equal(inheritedConversation.status, 404, 'la conversación anterior no se transfiere al sucesor');
+
+      const withoutManifest = await call('/agents', { method: 'POST', body: {
+        id: 'participant:unconstituted-successor', name: 'Sin manifiesto', principal: owner.id,
+      } });
+      assert.equal(withoutManifest.status, 201, JSON.stringify(withoutManifest.json));
+      const refused = await call('/librarian/runtime/designate', {
+        method: 'POST', body: { agent: 'participant:unconstituted-successor' },
+      });
+      assert.equal(refused.status, 409);
+      assert.match(String(refused.json['error']), /manifiesto activo/);
+
+      const granted = await call('/territories/participant%3Asuccessor-runtime', {
+        method: 'PUT', body: { mode: 'all', includeGeneral: true, rules: [] },
+      });
+      assert.equal(granted.status, 200, JSON.stringify(granted.json));
+      const formative = await call('/librarian/requests', {
+        method: 'POST', body: { pageId: page, text: 'Hazme una síntesis completa.' },
+      });
+      assert.equal(formative.status, 201, JSON.stringify(formative.json));
+      let challenged = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const current = await call(`/librarian/requests/${encodeURIComponent(String(formative.json['id']))}`);
+        if (current.json['status'] === 'answered') { challenged = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.equal(challenged, true, 'el umbral formativo no llegó a abrirse');
+      const busy = await call('/librarian/runtime/designate', {
+        method: 'POST', body: { agent: librarianAgent },
+      });
+      assert.equal(busy.status, 409);
+      assert.match(String(busy.json['error']), /trabajo abierto/);
     } finally {
       await running.close();
       await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));

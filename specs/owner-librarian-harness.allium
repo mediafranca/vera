@@ -26,6 +26,7 @@ use "./library-surfaces-clearance.allium" as libraries
 
 contract OwnerLibrarianHarnessAdministration {
     designate: (owner: core/Participant, instance: identity/VeraInstance, librarian: core/Participant) -> OwnerLibrarian
+    replace: (owner: core/Participant, current: OwnerLibrarian, successor: core/Participant) -> OwnerLibrarian
     attach_harness: (owner: core/Participant, librarian: OwnerLibrarian, harness: LibrarianHarness) -> LibrarianHarness
 
     @invariant TheLibrarianBelongsToTheHumanOwner
@@ -55,6 +56,17 @@ contract OwnerLibrarianHarnessAdministration {
         -- names its participant. Other agent participants remain in the
         -- participant directory even when they have manifests, tools or broad
         -- territory of their own.
+
+    @invariant ReplacingTheOccupantDoesNotTransferIdentity
+        -- The office continues, but conversations, authorship, manifests,
+        -- credentials and participant history remain with the agent that made
+        -- them. The successor starts new conversations under its own identity.
+
+    @invariant ReplacementWaitsForAnIdleOffice
+        -- The owner cannot replace the active librarian while a request, a
+        -- dialectic gate or a runtime execution is still in progress. The
+        -- current occupant either finishes or the owner resolves that work
+        -- explicitly before designation changes hands.
 
     @invariant TheHarnessAddsCapabilitiesNotTerritory
         -- The harness may expose privileged library tools unavailable to an
@@ -184,6 +196,46 @@ rule OwnerAttachesLibrarianHarness {
         HarnessCapability.created(harness: harness, name: apply_approved_edit, revision: "1", read_only: false, mutates_corpus: true, destructive: false, approval: confirm_each_call, status: active)
 }
 
+rule OwnerReplacesTheirLibrarian {
+    when: ReplaceOwnerLibrarian(owner, current, successor, principal)
+
+    let current_harness = LibrarianHarness{librarian: current, status: active}
+
+    requires: current.owner = owner
+    requires: current.status = active
+    requires: owner = current.instance.owner
+    requires: successor != current.librarian
+    requires: successor.kind = agent
+    requires: successor.status = active
+    requires: principal.agent = successor
+    requires: principal.human = owner
+    requires: principal.status = active
+    requires: exists manifests/AgentManifest{agent: successor, status: active}
+    requires: exists current_harness
+    requires: not has_open_librarian_work(current)
+
+    ensures: current.status = replaced
+    ensures: current_harness.status = withdrawn
+    ensures:
+        let replacement = OwnerLibrarian.created(
+            instance: current.instance,
+            owner: owner,
+            librarian: successor,
+            principal: principal,
+            status: active,
+            designated_at: now
+        )
+        LibrarianHarness.created(
+            id: generated_id,
+            librarian: replacement,
+            version: current_harness.version,
+            status: active,
+            attached_by: owner,
+            attached_at: now
+        )
+        OwnerLibrarianReplaced(current, replacement)
+}
+
 invariant OneActiveOwnerLibrarianPerInstance {
     for a in OwnerLibrarians where status = active:
         for b in OwnerLibrarians where status = active:
@@ -225,6 +277,9 @@ actor LibrarianHarnessOwner {
 surface LibrarianHarnessAdministration {
     facing owner: LibrarianHarnessOwner
     context harness: LibrarianHarness where harness.librarian.owner = owner
+    let candidates = manifests/AgentPrincipals where
+        human = owner and status = active and agent.status = active and
+        agent != harness.librarian.librarian
 
     contracts:
         fulfils LibrarianHarnessCatalogue
@@ -232,6 +287,10 @@ surface LibrarianHarnessAdministration {
     exposes:
         harness.id
         harness.version
+        harness.librarian.librarian
+        for candidate in candidates:
+            candidate.agent
+            candidate.agent.name
         for capability in HarnessCapabilities where harness = harness:
             capability.name
             capability.revision
@@ -240,6 +299,9 @@ surface LibrarianHarnessAdministration {
             capability.destructive
             capability.approval
             capability.status
+
+    provides:
+        ReplaceOwnerLibrarian(owner, harness.librarian, successor, principal)
 
     @guarantee TheInitialCatalogueIsSmallAndLegible
         -- Vera starts with search, reading, structured query, relations,
@@ -251,6 +313,11 @@ surface LibrarianHarnessAdministration {
         -- The surface heading shows the active participant name followed by the
         -- singular office. Runtime, constitution, harness and territory are
         -- sections of that one identity, not cards in a generic agent list.
+
+    @guarantee ReplacementIsAnExplicitDesignation
+        -- The surface distinguishes renaming the current participant from
+        -- designating another eligible agent. It names both identities, warns
+        -- that their histories do not merge and requires fresh confirmation.
 }
 
 ------------------------------------------------------------
