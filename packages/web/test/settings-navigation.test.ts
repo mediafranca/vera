@@ -72,7 +72,8 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /Configurar \$\{librarianName\}/);
     assert.match(settings, /Leyendo la bibliotecaria activa…/);
     assert.match(settings, /Bitácora de hoy/);
-    assert.match(settings, /Dialéctica bibliotecaria/);
+    const librarian = settings.match(/async function drawLibrarian[\s\S]*?async function drawConnections/)?.[0] ?? '';
+    assert.doesNotMatch(librarian, /pendingDestination\('Dialéctica bibliotecaria'/);
     assert.match(settings, /pendingDestination/);
   });
 

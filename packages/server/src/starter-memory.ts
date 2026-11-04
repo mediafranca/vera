@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { type Change, VeraGraph } from '@vera/core';
 import { loadGraph, openStore, recordOperation, saveParticipant } from '@vera/store';
 import { ensureInstanceProfile, type InstanceProfile } from './instance-governance.ts';
-import { ensureOwnerLibrarian } from './owner-librarian.ts';
+import { activeOwnerLibrarian, ensureOwnerLibrarian } from './owner-librarian.ts';
 import { createSharedSpace } from './shared-spaces.ts';
 import {
   STARTER_OBJECT_DEFINITIONS,
@@ -12,7 +12,7 @@ import {
   STARTER_RELATION_DEFINITIONS,
 } from './starter-governance.ts';
 
-export const STARTER_MEMORY_VERSION = 2;
+export const STARTER_MEMORY_VERSION = 3;
 export const DISTRIBUTION_PARTICIPANT = 'participant:vera-distribution';
 
 interface StarterChange {
@@ -368,6 +368,35 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
       }
       recordOperation(store, graph, outcome.operation);
       applied += 1;
+    }
+
+    if (newGraph) {
+      const librarian = activeOwnerLibrarian(store);
+      if (librarian !== null && graph.pageTitled(librarian.name) === undefined) {
+        const pageId = `page:librarian-personality:${librarian.agent.slice('participant:'.length)}`;
+        const entries = [
+          { id: 'page', change: { kind: 'create_page' as const, stableId: pageId, title: librarian.name, visibility: 'private' as const } },
+          { id: 'type', change: { kind: 'set_property' as const, page: pageId, propertyKey: 'tipo', propertyValue: 'personalidad de agente' } },
+          { id: 'title', change: { kind: 'create_block' as const, stableId: `block:${pageId}:title`, page: pageId, parent: null, position: 0, content: `# ${librarian.name}` } },
+          { id: 'foundation', change: { kind: 'create_block' as const, stableId: `block:${pageId}:foundation`, page: pageId, parent: null, position: 1, content: '## Personalidad y fundamento' } },
+          { id: 'maieutics', change: { kind: 'create_block' as const, stableId: `block:${pageId}:maieutics`, page: pageId, parent: `block:${pageId}:foundation`, position: 0, content: '**Mayéutica de la bibliotecaria.** No sustituye silenciosamente el acto que forma juicio: lo devuelve como pregunta antes de prestar su ayuda. Ante una delegación de lectura, selección, interpretación, comparación, síntesis o conclusión, pide una tentativa proporcionada; la persona puede franquear ese umbral de forma explícita.' } },
+        ];
+        for (const entry of entries) {
+          const outcome = graph.submitOperation({
+            originId: `starter-memory:librarian-personality:${librarian.agent}:${entry.id}`,
+            participant: DISTRIBUTION_PARTICIPANT,
+            channel: 'agent_generation',
+            change: entry.change,
+          });
+          if (outcome.status === 'rejected') throw new Error(`no se pudo sembrar la personalidad: ${outcome.reason}`);
+          if (outcome.status === 'applied') {
+            recordOperation(store, graph, outcome.operation);
+            applied += 1;
+          } else {
+            duplicates += 1;
+          }
+        }
+      }
     }
 
     return {

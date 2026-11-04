@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS librarian_runtime_configs (
     endpoint          TEXT,
     secret_reference TEXT,
     permissions_json  TEXT NOT NULL DEFAULT '["read_request_context","reply"]',
+    dialectic_enabled INTEGER NOT NULL DEFAULT 1 CHECK (dialectic_enabled IN (0,1)),
     routine_enabled   INTEGER NOT NULL DEFAULT 0 CHECK (routine_enabled IN (0,1)),
     routine_hour      INTEGER NOT NULL DEFAULT 9 CHECK (routine_hour BETWEEN 0 AND 23),
     routine_timezone  TEXT NOT NULL DEFAULT 'local',
@@ -210,6 +211,33 @@ CREATE TABLE IF NOT EXISTS librarian_runtime_runs (
 
 CREATE INDEX IF NOT EXISTS librarian_runtime_runs_recent
     ON librarian_runtime_runs(instance_id, started_at DESC);
+
+-- La dialéctica es un protocolo durable de conversación. El desafío puede
+-- resolverse con una tentativa humana o franquearse de forma explícita.
+CREATE TABLE IF NOT EXISTS librarian_dialectic_gates (
+    id                 TEXT PRIMARY KEY,
+    instance_id        TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+    conversation_id    TEXT NOT NULL REFERENCES agent_conversations (id) ON DELETE CASCADE,
+    opening_request_id TEXT NOT NULL UNIQUE REFERENCES agent_requests (id) ON DELETE CASCADE,
+    practice           TEXT NOT NULL CHECK (practice IN (
+                           'reading','selection','interpretation','comparison','synthesis','conclusion')),
+    challenge          TEXT NOT NULL,
+    status             TEXT NOT NULL CHECK (status IN ('open','responding','fulfilled','bypassed')),
+    closing_request_id TEXT UNIQUE REFERENCES agent_requests (id) ON DELETE SET NULL,
+    closing_mode       TEXT CHECK (closing_mode IN ('contribution','bypass')),
+    opened_at          INTEGER NOT NULL,
+    closed_at          INTEGER,
+    CHECK ((status='open' AND closing_request_id IS NULL AND closing_mode IS NULL AND closed_at IS NULL)
+        OR (status='responding' AND closing_request_id IS NOT NULL AND closing_mode IS NOT NULL AND closed_at IS NULL)
+        OR (status IN ('fulfilled','bypassed') AND closing_request_id IS NOT NULL AND closing_mode IS NOT NULL AND closed_at IS NOT NULL))
+) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_librarian_dialectic_gate
+    ON librarian_dialectic_gates(instance_id, conversation_id)
+    WHERE status IN ('open','responding');
+
+CREATE INDEX IF NOT EXISTS librarian_dialectic_gates_by_request
+    ON librarian_dialectic_gates(opening_request_id, closing_request_id);
 
 -- Territorio efectivo de cada participante. Una política no duplica páginas:
 -- selecciona la biblioteca general y las superficies compartidas o públicas

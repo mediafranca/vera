@@ -291,6 +291,15 @@ edita el corpus, y su aplicación requiere confirmación humana actual. No exist
 herramienta destructiva en este harness. El catálogo añade repertorio, nunca
 territorio: cada llamada vuelve a evaluar la política vigente.
 
+La personalidad visible funda también una dialéctica bibliotecaria operativa.
+Cuando una petición delega leer, seleccionar, interpretar, comparar, sintetizar
+o concluir, el runtime puede abrir un umbral formativo: devuelve un desafío
+breve, espera una tentativa de la persona y sólo entonces escribe la respuesta
+final. La persona puede franquear el umbral de forma explícita; el recibo
+distingue contribución de bypass. Las tareas instrumentales siguen directas.
+El puente externo sólo se despacha cuando el runtime residente no está listo,
+de modo que no pueda competir con Lucienne ni eludir este protocolo.
+
 Ninguna superficie activa puede quedar bajo custodia exclusiva de agentes:
 siempre debe conservar al menos una persona con lectura y administración
 efectivas. Ver

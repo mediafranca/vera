@@ -216,6 +216,18 @@ export interface LibrarianRequestView {
   dispatchAttempts: number;
   createdAt: number;
   failureReason: string | null;
+  dialectic: null | {
+    id: string;
+    conversation: string;
+    openingRequest: string;
+    practice: 'reading' | 'selection' | 'interpretation' | 'comparison' | 'synthesis' | 'conclusion';
+    challenge: string;
+    status: 'open' | 'responding' | 'fulfilled' | 'bypassed';
+    closingRequest: string | null;
+    closingMode: 'contribution' | 'bypass' | null;
+    openedAt: number;
+    closedAt: number | null;
+  };
   events: Array<{
     id: string;
     kind: 'stage' | 'tool' | 'pending';
@@ -693,6 +705,7 @@ export interface LibrarianRuntimeView {
     endpoint: string | null;
     secretReference: string | null;
     permissions: LibrarianRuntimePermission[];
+    dialectic: { enabled: boolean };
     routine: { enabled: boolean; hour: number; timezone: string };
     updatedBy: string;
     updatedAt: number;
@@ -1038,7 +1051,7 @@ export const api = {
     return response.blob();
   },
 
-  askLibrarian: (said: { pageId: string; blockId?: string; text: string; conversationId?: string; recordingId?: string }) =>
+  askLibrarian: (said: { pageId: string; blockId?: string; text: string; conversationId?: string; recordingId?: string; dialecticBypass?: boolean }) =>
     json<LibrarianRequestView>('/librarian/requests', {
       method: 'POST',
       body: JSON.stringify(said),
@@ -1624,6 +1637,7 @@ export const api = {
   configureLibrarianRuntime: (configuration: {
     enabled: boolean; model: string | null; endpoint: string | null; secretReference: string | null;
     permissions: LibrarianRuntimePermission[];
+    dialectic: { enabled: boolean };
     routine: { enabled: boolean; hour: number; timezone: string };
   }) => json<LibrarianRuntimeView>('/librarian/runtime', {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(configuration),

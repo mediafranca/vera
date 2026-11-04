@@ -1007,7 +1007,31 @@ export async function openLibrarianConversation(
         stream.append(turn('status', next.agent.name, event.text, `${event.kind} · ${when(event.createdAt)}`));
       }
       if (request.reply !== null) {
-        stream.append(turn('agent', next.agent.name, request.reply.text, when(request.reply.createdAt)));
+        const replied = turn('agent', next.agent.name, request.reply.text, when(request.reply.createdAt));
+        if (request.dialectic?.status === 'open' && request.dialectic.openingRequest === request.id) {
+          const actions = replied.querySelector('footer') ?? replied.appendChild(document.createElement('footer'));
+          actions.classList.add('librarian-conversation-turn-actions');
+          const bypass = document.createElement('button');
+          bypass.type = 'button';
+          bypass.className = 'librarian-dialectic-bypass';
+          bypass.textContent = 'Resolver directamente esta vez';
+          bypass.addEventListener('click', () => {
+            bypass.disabled = true;
+            void api.askLibrarian({
+              pageId: page.id,
+              conversationId: request.conversationId,
+              text: 'Esta vez necesito resolver la tarea directamente.',
+              dialecticBypass: true,
+            }).then(async () => {
+              await refresh(true);
+              callbacks.onReload(null);
+            }).catch(() => toast('no se pudo franquear el umbral')).finally(() => {
+              if (bypass.isConnected) bypass.disabled = false;
+            });
+          });
+          actions.append(bypass);
+        }
+        stream.append(replied);
       } else {
         const reason = request.status === 'failed' && request.failureReason !== null
           ? `${librarianRequestState(request)} · ${request.failureReason}`

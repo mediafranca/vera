@@ -1332,6 +1332,45 @@ const addTerritorialClearanceAndLibrarianHarnessV2: Migration = {
   },
 };
 
+/** 35 — umbrales formativos persistentes de la dialéctica bibliotecaria. */
+const addLibrarianDialectic: Migration = {
+  version: 35,
+  name: 'dialéctica bibliotecaria v1',
+  apply(db) {
+    const runtime = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_runtime_configs'",
+    ).get();
+    if (runtime === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
+    if (!columns.some((one) => one.name === 'dialectic_enabled')) {
+      db.exec('ALTER TABLE librarian_runtime_configs ADD COLUMN dialectic_enabled INTEGER NOT NULL DEFAULT 1 CHECK (dialectic_enabled IN (0,1))');
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS librarian_dialectic_gates (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id) ON DELETE CASCADE,
+        conversation_id TEXT NOT NULL REFERENCES agent_conversations (id) ON DELETE CASCADE,
+        opening_request_id TEXT NOT NULL UNIQUE REFERENCES agent_requests (id) ON DELETE CASCADE,
+        practice TEXT NOT NULL CHECK (practice IN ('reading','selection','interpretation','comparison','synthesis','conclusion')),
+        challenge TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open','responding','fulfilled','bypassed')),
+        closing_request_id TEXT UNIQUE REFERENCES agent_requests (id) ON DELETE SET NULL,
+        closing_mode TEXT CHECK (closing_mode IN ('contribution','bypass')),
+        opened_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        CHECK ((status='open' AND closing_request_id IS NULL AND closing_mode IS NULL AND closed_at IS NULL)
+          OR (status='responding' AND closing_request_id IS NOT NULL AND closing_mode IS NOT NULL AND closed_at IS NULL)
+          OR (status IN ('fulfilled','bypassed') AND closing_request_id IS NOT NULL AND closing_mode IS NOT NULL AND closed_at IS NOT NULL))
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_active_librarian_dialectic_gate
+        ON librarian_dialectic_gates(instance_id,conversation_id)
+        WHERE status IN ('open','responding');
+      CREATE INDEX IF NOT EXISTS librarian_dialectic_gates_by_request
+        ON librarian_dialectic_gates(opening_request_id,closing_request_id);
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1367,6 +1406,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addLibraryIdentityAndOwnerLibrarian,
   addEmbeddedLibrarianRuntime,
   addTerritorialClearanceAndLibrarianHarnessV2,
+  addLibrarianDialectic,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

@@ -173,6 +173,101 @@ describe('runtime embebido de la bibliotecaria', () => {
     }
   });
 
+  it('abre un umbral formativo, espera la tentativa y permite un bypass explícito', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-dialectic-'));
+    directories.push(directory);
+    const databasePath = join(directory, 'vera.sqlite');
+    const owner = { id: 'participant:dialectic-owner', name: 'Dueña' };
+    initializeStarterMemory({ databasePath, owner, ownerLibrarianName: 'Lucienne' });
+    const outputs = [
+      JSON.stringify({ dialectic: 'challenge', practice: 'synthesis', text: 'Antes, dime tus tres ideas centrales.' }),
+      JSON.stringify({ dialectic: 'answer', text: 'Tu lectura distingue tres ideas; el corpus añade una cuarta tensión.' }),
+      JSON.stringify({ dialectic: 'challenge', practice: 'selection', text: 'Elige primero dos pasajes decisivos.' }),
+      JSON.stringify({ dialectic: 'answer', text: 'Selección directa preparada esta vez.' }),
+      'Ordené las referencias alfabéticamente.',
+    ];
+    const inference = createHttpServer(async (_request, response) => {
+      for await (const _chunk of _request) { /* consume body */ }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ output_text: outputs.shift() ?? 'Respuesta inesperada.' }));
+    });
+    await new Promise<void>((resolve) => inference.listen(4392, '127.0.0.1', resolve));
+    process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
+    const running = listen({ port: 4391, databasePath });
+    const call = async (path: string, options: { method?: string; body?: unknown } = {}) => {
+      const response = await fetch(`http://127.0.0.1:4391${path}`, {
+        method: options.method ?? 'GET', headers: { 'content-type': 'application/json' },
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      });
+      return { status: response.status, json: await response.json() as Record<string, any> };
+    };
+    const waitAnswered = async (id: string): Promise<Record<string, any>> => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const current = await call(`/librarian/requests/${encodeURIComponent(id)}`);
+        if (current.json.status === 'answered') return current.json;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      throw new Error(`Lucienne no respondió ${id}`);
+    };
+    try {
+      await call('/librarian/runtime/constitute', { method: 'POST', body: {} });
+      await call('/librarian/runtime', { method: 'PUT', body: {
+        enabled: true, model: 'openai:test', endpoint: 'http://127.0.0.1:4392/v1',
+        secretReference: 'VERA_TEST_LIBRARIAN_KEY', permissions: ['read_request_context', 'reply'],
+        dialectic: { enabled: true }, routine: { enabled: false, hour: 9, timezone: 'local' },
+      } });
+      const made = await call('/operations', { method: 'POST', body: {
+        originId: 'dialectic-test:page', change: { kind: 'create_page', title: 'Lectura formativa', visibility: 'private' },
+      } });
+      const page = made.json.subjectId as string;
+
+      const opened = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, text: 'Hazme una síntesis completa.',
+      } });
+      const challenge = await waitAnswered(opened.json.id);
+      assert.match(challenge.reply.text, /tres ideas centrales/);
+      assert.equal(challenge.dialectic.status, 'open');
+      assert.equal(challenge.dialectic.practice, 'synthesis');
+      const beforeContribution = await call(`/pages/${encodeURIComponent(page)}`);
+      assert.doesNotMatch(JSON.stringify(beforeContribution.json), /tres ideas centrales/,
+        'el desafío conversacional no se deposita como respuesta final en la página');
+
+      const contribution = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, conversationId: challenge.conversationId,
+        text: 'Veo soberanía, autoría y una tensión entre fluidez y formación.',
+      } });
+      const completed = await waitAnswered(contribution.json.id);
+      assert.match(completed.reply.text, /cuarta tensión/);
+      assert.equal(completed.dialectic.status, 'fulfilled');
+      assert.equal(completed.dialectic.closingMode, 'contribution');
+
+      const second = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, conversationId: challenge.conversationId, text: 'Elige los pasajes más importantes.',
+      } });
+      const secondChallenge = await waitAnswered(second.json.id);
+      assert.equal(secondChallenge.dialectic.status, 'open');
+      const bypass = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, conversationId: challenge.conversationId,
+        text: 'Esta vez necesito resolver la tarea directamente.', dialecticBypass: true,
+      } });
+      const bypassed = await waitAnswered(bypass.json.id);
+      assert.match(bypassed.reply.text, /Selección directa/);
+      assert.equal(bypassed.dialectic.status, 'bypassed');
+      assert.equal(bypassed.dialectic.closingMode, 'bypass');
+
+      const operational = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, conversationId: challenge.conversationId, text: 'Ordena alfabéticamente estas referencias.',
+      } });
+      const direct = await waitAnswered(operational.json.id);
+      assert.match(direct.reply.text, /Ordené/);
+      assert.equal(direct.dialectic, null);
+      assert.equal(outputs.length, 0);
+    } finally {
+      await running.close();
+      await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  });
+
   it('rechaza activar un runtime sin permisos mínimos', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-runtime-permissions-'));
     directories.push(directory);
@@ -214,7 +309,14 @@ describe('runtime embebido de la bibliotecaria', () => {
       wake = (JSON.parse(body) as { requestId: string }).requestId;
       response.writeHead(202).end();
     });
+    const inference = createHttpServer(async (request, response) => {
+      for await (const _chunk of request) { /* consume body */ }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ output_text: 'Respondió Lucienne desde el runtime residente.' }));
+    });
     await new Promise<void>((resolve) => hook.listen(4396, '127.0.0.1', resolve));
+    await new Promise<void>((resolve) => inference.listen(4389, '127.0.0.1', resolve));
+    process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
     const running = listen({
       port: 4395, databasePath,
       librarianHook: { url: 'http://127.0.0.1:4396/wake', token: 'hook-token' },
@@ -243,8 +345,9 @@ describe('runtime embebido de la bibliotecaria', () => {
         originId: 'bridge-test:page', participant: owner.id,
         change: { kind: 'create_page', title: 'Puente transparente', visibility: 'private' },
       } });
+      const page = made.json['subjectId'] as string;
       const requested = await call('/librarian/requests', { method: 'POST', body: {
-        pageId: made.json['subjectId'], text: 'Responde por el puente',
+        pageId: page, text: 'Responde por el puente',
       } });
       const requestId = requested.json['id'] as string;
       for (let attempt = 0; attempt < 50 && wake === ''; attempt += 1) {
@@ -261,9 +364,31 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal((answered.json['reply'] as Record<string, unknown>)['answeredBy'], 'participant:cotito');
       const conversation = await call('/librarian/conversation');
       assert.equal((conversation.json['agent'] as Record<string, unknown>)['id'], lucienne);
+
+      const configured = await call('/librarian/runtime', { method: 'PUT', body: {
+        enabled: true, model: 'openai:test', endpoint: 'http://127.0.0.1:4389/v1',
+        secretReference: 'VERA_TEST_LIBRARIAN_KEY', permissions: ['read_request_context', 'reply'],
+        dialectic: { enabled: true }, routine: { enabled: false, hour: 9, timezone: 'local' },
+      } });
+      assert.equal(configured.status, 200, JSON.stringify(configured.json));
+      wake = '';
+      const resident = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, text: 'Ordena esta referencia.',
+      } });
+      const residentId = resident.json['id'] as string;
+      let residentAnswer: Record<string, any> | null = null;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const current = await call(`/librarian/requests/${encodeURIComponent(residentId)}`);
+        if (current.json['status'] === 'answered') { residentAnswer = current.json; break; }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(residentAnswer, 'Lucienne no atendió la solicitud cuando su runtime estaba listo');
+      assert.equal(wake, '', 'el puente no compite con el runtime residente');
+      assert.equal(residentAnswer.reply.answeredBy, lucienne);
     } finally {
       await running.close();
       await new Promise<void>((resolve, reject) => hook.close((error) => error === undefined ? resolve() : reject(error)));
+      await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));
     }
   });
 });

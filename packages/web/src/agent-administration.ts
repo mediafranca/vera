@@ -215,6 +215,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const reference = document.createElement('input'); reference.value = config.secretReference ?? 'VERA_LIBRARIAN_API_KEY';
   reference.pattern = '[A-Z][A-Z0-9_]{2,63}';
   const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = config.enabled;
+  const dialectic = document.createElement('input'); dialectic.type = 'checkbox'; dialectic.checked = config.dialectic.enabled;
   const routine = document.createElement('input'); routine.type = 'checkbox'; routine.checked = config.routine.enabled;
   const hour = document.createElement('input'); hour.type = 'number'; hour.min = '0'; hour.max = '23';
   hour.value = String(config.routine.hour);
@@ -238,11 +239,15 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     permissionList.append(label);
   }
   const activeLabel = document.createElement('label'); activeLabel.append(enabled, document.createTextNode('Runtime activo'));
+  const dialecticLabel = document.createElement('label');
+  dialecticLabel.append(dialectic, document.createTextNode('Dialéctica bibliotecaria activa'));
+  const dialecticNote = document.createElement('p'); dialecticNote.className = 'settings-note';
+  dialecticNote.textContent = 'Ante una delegación de lectura o juicio, Lucienne pide primero una tentativa. La persona puede franquear ese umbral de forma explícita.';
   const routineLabel = document.createElement('label'); routineLabel.append(routine, document.createTextNode('Ronda diaria activa'));
   form.append(
     models, field('Modelo de inferencia', model), field('Endpoint compatible con OpenAI', endpoint),
     field('Referencia del secreto', reference), field('Clave (sólo Desktop)', key),
-    permissionList, activeLabel, routineLabel, field('Hora local de la ronda', hour),
+    permissionList, activeLabel, dialecticLabel, dialecticNote, routineLabel, field('Hora local de la ronda', hour),
   );
   form.append(control('Guardar configuración', async () => {
     if (desktop !== undefined && key.value.trim() !== '') {
@@ -254,6 +259,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
       endpoint: endpoint.value.trim() || null,
       secretReference: reference.value.trim() || null,
       permissions: [...permissionControls].filter(([, box]) => box.checked).map(([permission]) => permission),
+      dialectic: { enabled: dialectic.checked },
       routine: { enabled: routine.checked, hour: Number(hour.value), timezone: 'local' },
     });
     await refresh();

@@ -30,9 +30,9 @@ describe('memoria inicial distribuida', () => {
       ownerLibrarianName: 'Aurelia',
     });
     assert.equal(first.version, STARTER_MEMORY_VERSION);
-    assert.equal(first.applied, STARTER_CHANGES.length);
+    assert.equal(first.applied, STARTER_CHANGES.length + 5);
     assert.equal(first.duplicates, 0);
-    assert.equal(first.pages, 13);
+    assert.equal(first.pages, 14);
     assert.ok(first.blocks > 90);
 
     const store = openStore({ path: databasePath, graphName: 'mind' });
@@ -61,6 +61,7 @@ describe('memoria inicial distribuida', () => {
     assert.deepEqual(
       graph.pages().map((one) => one.title).sort(),
       [
+        'Aurelia',
         'Vera',
         'VERA — Acceder desde tus otros dispositivos',
         'VERA — Conectar una inteligencia artificial',
@@ -115,6 +116,17 @@ describe('memoria inicial distribuida', () => {
     assert.equal(authored.length, STARTER_CHANGES.length);
     assert.ok(authored.every((operation) => operation.submission.submittedBy === DISTRIBUTION_PARTICIPANT));
     assert.ok(authored.every((operation) => operation.submission.channel === 'agent_generation'));
+    const personality = graph.pageTitled('Aurelia');
+    assert.ok(personality);
+    assert.ok(graph.blocksOf(personality.id).some((block) => /Mayéutica de la bibliotecaria/.test(block.content)));
+    const personalityOperations = graph.operations().filter((operation) =>
+      operation.originId.startsWith('starter-memory:librarian-personality:')
+    );
+    assert.equal(personalityOperations.length, 5);
+    assert.ok(personalityOperations.every((operation) =>
+      operation.submission.submittedBy === DISTRIBUTION_PARTICIPANT &&
+      operation.submission.channel === 'agent_generation'
+    ));
     store.close();
 
     const second = initializeStarterMemory({ databasePath, owner });
