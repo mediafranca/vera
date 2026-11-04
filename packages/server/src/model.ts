@@ -130,6 +130,8 @@ export interface AskOptions {
   timeoutMs?: number;
   /** Cuántos tokens como mucho. Lo que se pide aquí son respuestas cortas. */
   maxTokens?: number;
+  /** Ventana del runtime local; se ignora en proveedores remotos. */
+  contextTokens?: number;
   /** Identidad opaca devuelta por processingModels. */
   model?: string;
   /** Creatividad explícita. Omitida conserva la lectura reproducible a temperatura cero. */
@@ -146,6 +148,27 @@ export interface ModelFailure {
   error: string;
   /** Reintentar otra parte no puede cambiar este fallo durante esta ejecución. */
   fatal?: boolean;
+}
+
+export function readLocalModelOutput(stdout: string, prompt: string): { text: string } | ModelFailure {
+  let text = stdout;
+  const echoed = text.lastIndexOf(prompt);
+  const cut = text.lastIndexOf('(truncated)');
+  const tail = prompt
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .at(-1);
+  const near = tail === undefined ? -1 : text.lastIndexOf(tail);
+  if (echoed !== -1) text = text.slice(echoed + prompt.length);
+  else if (cut !== -1) text = text.slice(cut + '(truncated)'.length);
+  else if (near !== -1 && tail !== undefined) text = text.slice(near + tail.length);
+  text = text.split(/\n\[ Prompt:/)[0] ?? '';
+  text = text.replace(/\n?Exiting\.\.\.\s*$/, '').trim();
+  if (/^Error:\s*request \(\d+ tokens\) exceeds the available context size/i.test(text)) {
+    return { error: `el modelo local rechazó el contexto: ${text.slice('Error: '.length)}`, fatal: true };
+  }
+  return text === '' ? { error: 'el modelo no respondió nada' } : { text };
 }
 
 /** Memoria que el kernel todavía considera utilizable sin ahogar la máquina. */
@@ -267,7 +290,7 @@ export async function ask(
         // Cuatro núcleos físicos: usar los ocho hilos dejaba SSH compitiendo con
         // la inferencia y no mejoraba proporcionalmente el tiempo de respuesta.
         '-t', '4',
-        '-c', '4096',
+        '-c', String(Math.max(4_096, Math.min(32_768, Math.trunc(options.contextTokens ?? 4_096)))),
         '-n', String(options.maxTokens ?? 200),
         '--temp', String(options.temperature ?? 0),
         ...(options.seed === undefined ? [] : ['--seed', String(options.seed)]),
@@ -292,21 +315,7 @@ export async function ask(
      * devuelve tal cual y lo rechazará quien lo lea, que es mejor que devolver
      * medio rótulo creyendo que es una respuesta.
      */
-    let text = stdout;
-    const echoed = text.lastIndexOf(prompt);
-    const cut = text.lastIndexOf('(truncated)');
-    const tail = prompt
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '')
-      .at(-1);
-    const near = tail === undefined ? -1 : text.lastIndexOf(tail);
-    if (echoed !== -1) text = text.slice(echoed + prompt.length);
-    else if (cut !== -1) text = text.slice(cut + '(truncated)'.length);
-    else if (near !== -1 && tail !== undefined) text = text.slice(near + tail.length);
-    text = text.split(/\n\[ Prompt:/)[0] ?? '';
-    text = text.replace(/\n?Exiting\.\.\.\s*$/, '').trim();
-    return text === '' ? { error: 'el modelo no respondió nada' } : { text };
+    return readLocalModelOutput(stdout, prompt);
   } catch (error) {
     const why = error instanceof Error ? error.message : 'error desconocido';
     return { error: `el modelo no pudo leer la página: ${why}` };

@@ -13,8 +13,30 @@ import {
   mergeReadings,
   readingFrom,
   readingPrompt,
+  readLocalModelOutput,
   READING_PROMPT_CHARS,
 } from '../src/model.ts';
+
+describe('salida del runtime local', () => {
+  it('rechaza como fallo el error de ventana que llama-cli imprime por stdout', () => {
+    assert.deepEqual(
+      readLocalModelOutput(
+        'Error: request (5692 tokens) exceeds the available context size (4096 tokens), try increasing it',
+        'prompt breve',
+      ),
+      {
+        error: 'el modelo local rechazó el contexto: request (5692 tokens) exceeds the available context size (4096 tokens), try increasing it',
+        fatal: true,
+      },
+    );
+  });
+
+  it('conserva una respuesta ordinaria después de retirar el eco del prompt', () => {
+    assert.deepEqual(readLocalModelOutput('prompt breve\nRespuesta útil.\nExiting...', 'prompt breve'), {
+      text: 'Respuesta útil.',
+    });
+  });
+});
 
 const flat = [
   { stableId: 'block:1', page: 'page:1', parent: null, position: 0, content: 'Problema' },

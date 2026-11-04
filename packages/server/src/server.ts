@@ -1047,6 +1047,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         ...(resolvedRuntimeSecret(config.secretReference) === undefined
           ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
         maxTokens: 1_200,
+        contextTokens: 12_288,
         timeoutMs: 300_000,
       };
       const gate = dialecticGateForRequest(store, id);
