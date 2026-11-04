@@ -62,6 +62,13 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(settings, /onDesignRemoved/);
   });
 
+  it('integra el selector de tema al lenguaje común de controles', () => {
+    assert.match(styles, /:root \{[\s\S]*--form-control-height: 2\.75rem;/);
+    assert.match(styles, /\.settings-field select,[\s\S]*\.settings-field input \{[\s\S]*height: var\(--form-control-height\);/);
+    assert.match(styles, /\.settings-field select,[\s\S]*-webkit-appearance: none;[\s\S]*appearance: none;/);
+    assert.match(styles, /\.appearance-design-actions button \{[\s\S]*min-height: var\(--form-control-height\);/);
+  });
+
   it('sitúa una muestra compacta antes de los colores y representa el mapa con texto', () => {
     const list = settings.indexOf('host.append(list, designs, chooser, intro, appearancePreview(), advanced)');
     assert.ok(list >= 0, 'la muestra debe quedar inmediatamente antes de los colores avanzados');

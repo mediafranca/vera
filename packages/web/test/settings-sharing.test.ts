@@ -82,8 +82,15 @@ describe('destinos de una página', () => {
     assert.match(settings, /pageSharingAction\('world', 'Publicar en el sitio'\)/);
     assert.match(settings, /pageSharingAction\('link', 'Crear enlace privado para esta identidad'\)/);
     assert.match(settings, /setAttribute\('aria-label', label\)/);
-    assert.match(styles, /\.page-sharing-action \{[\s\S]*width: 2\.25rem;[\s\S]*height: 2\.25rem;/);
+    assert.match(styles, /\.page-sharing-action \{[\s\S]*width: var\(--form-control-height\);[\s\S]*height: var\(--form-control-height\);/);
     assert.match(styles, /\.page-sharing-controls,[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
+  });
+
+  it('normaliza select, input y acción con una sola altura y paleta', () => {
+    assert.match(styles, /:root \{[\s\S]*--form-control-height: 2\.75rem;/);
+    assert.match(styles, /\.sharing-publish input \{[\s\S]*height: var\(--form-control-height\);/);
+    assert.match(styles, /\.sharing-field select,[\s\S]*\.sharing-publish select \{[\s\S]*appearance: none;/);
+    assert.match(styles, /background-image:[\s\S]*linear-gradient\(45deg, transparent 50%, currentColor 50%\)/);
   });
 
   it('crea capacidades privadas, muestra el secreto una vez y permite revocarlas', () => {
