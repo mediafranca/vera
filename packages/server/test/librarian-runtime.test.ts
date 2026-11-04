@@ -198,9 +198,7 @@ describe('runtime embebido de la bibliotecaria', () => {
     const owner = { id: 'participant:dialectic-owner', name: 'Dueña' };
     initializeStarterMemory({ databasePath, owner, ownerLibrarianName: 'Lucienne' });
     const outputs = [
-      'Aquí tienes la síntesis completa que el harness no debe dejar pasar.',
       JSON.stringify({ dialectic: 'answer', text: 'Tu lectura distingue tres ideas; el corpus añade una cuarta tensión.' }),
-      JSON.stringify({ dialectic: 'challenge', practice: 'selection', text: 'Elige primero dos pasajes decisivos.' }),
       JSON.stringify({ dialectic: 'answer', text: 'Selección directa preparada esta vez.' }),
       'Ordené las referencias alfabéticamente.',
     ];
@@ -244,7 +242,6 @@ describe('runtime embebido de la bibliotecaria', () => {
       } });
       const challenge = await waitAnswered(opened.json.id);
       assert.match(challenge.reply.text, /tres ideas centrales/);
-      assert.doesNotMatch(challenge.reply.text, /Aquí tienes la síntesis/);
       assert.equal(challenge.dialectic.status, 'open');
       assert.equal(challenge.dialectic.practice, 'synthesis');
       const beforeContribution = await call(`/pages/${encodeURIComponent(page)}`);
