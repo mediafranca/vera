@@ -23,8 +23,10 @@ use "./core.allium" as core
 -- Vera described inside Vera.
 --
 -- What the corpus truly governs — such as its vocabulary and service
--- declarations — lives in pages written in the same Markdown as everything
--- else. Other special pages may instead administer state held elsewhere,
+-- declarations — remains visible in pages with the same provenance and history
+-- as everything else. Configuration presents the structured declarations as
+-- controls over those pages; it does not ask a person to infer operational
+-- state from prose. Other special pages may administer state held elsewhere,
 -- project derived records or document behaviour not yet wired to the program.
 -- Their status is visible: being special never silently claims that prose is
 -- executable configuration.
@@ -96,6 +98,18 @@ contract SelfDescription {
         -- prose and may use `VERA — …`; punctuation therefore distinguishes
         -- system governance from writing about the system without creating a
         -- second hidden classification rule.
+
+    @invariant ProseExplainsButControlsConfigure
+        -- A special page may preserve rationale, instructions and provenance,
+        -- but every effective setting exposed in the Centre has a typed control
+        -- that shows its current value and writes through the ordinary audited
+        -- operation door. Free prose never becomes executable merely because it
+        -- sits on a special page.
+
+    @invariant UnimplementedConfigurationIsNamedHonestly
+        -- When a declared governing concern has no control yet, Configuration
+        -- shows its place and marks it Pendiente. Opening an explanatory page is
+        -- not treated as implementing the setting.
 
     @invariant SpecialPagesArePermanentGovernance
         -- A page declared as `tipo=página especial` cannot be deleted. Its

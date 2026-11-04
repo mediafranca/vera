@@ -29,6 +29,12 @@ describe('gobierno de participantes', () => {
     assert.match(surface, /retainedBy/);
   });
 
+  it('administra cada inteligencia desde su identidad participante', () => {
+    assert.match(surface, /one\.kind === 'agent'/);
+    assert.match(surface, /Constitución y territorio/);
+    assert.match(surface, /\/agentes\?participante=/);
+  });
+
   it('proyecta cada gesto localmente y concilia en segundo plano sin reconstruir la página', () => {
     assert.match(surface, /apply\(\); redraw\(focusParticipant, focusAction\);[\s\S]*void request\(\)\.then/);
     assert.match(surface, /focus\(\{ preventScroll: true \}\)/);

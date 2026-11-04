@@ -13,6 +13,7 @@ const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url
 const embeddedMap = readFileSync(new URL('../src/map-frame.ts', import.meta.url), 'utf8');
 const executableFrames = readFileSync(new URL('../src/executable-frames.ts', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const memorySurface = main.slice(main.indexOf('function drawMemory'), main.indexOf('function applyLayout'));
 
 describe('superficies especiales', () => {
   it('reemplazan las áreas del mapa y ocupan la columna completa', () => {
@@ -46,8 +47,10 @@ describe('superficies especiales', () => {
 
   it('distingue gobierno efectivo, superficies, proyecciones y documentación', () => {
     assert.match(settings, /Gobierno de Vera/);
-    assert.match(main, /known === undefined[\s\S]*known\.what/);
-    assert.doesNotMatch(main, /known\.mode/);
+    assert.match(main, /kind\.mode !== 'documentación'/);
+    assert.match(main, /item\.disabled = true/);
+    assert.match(main, /state\.textContent = 'Pendiente'/);
+    assert.doesNotMatch(memorySurface, /openPage\(page\.id/);
     assert.match(governing, /'rectora' \| 'superficie' \| 'derivada' \| 'documentación'/);
     assert.match(governing, /key: 'activity'.*mode: 'derivada'/);
     assert.match(governing, /key: 'governance'.*mode: 'derivada'/);

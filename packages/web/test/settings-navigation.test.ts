@@ -10,12 +10,13 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Biblioteca', 'Personas', 'Bibliotecario', 'Conexiones', 'Gobierno', 'Apariencia', 'Ayuda', 'Sistema']) {
+    for (const label of ['Biblioteca', 'Participantes', 'Bibliotecaria', 'Conexiones', 'Gobierno', 'Apariencia', 'Sistema']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
+    assert.doesNotMatch(settings, /label: 'Ayuda'/);
     assert.doesNotMatch(settings, /label: 'Inicio'/);
     assert.doesNotMatch(settings, /function drawStart/);
-    assert.match(settings, /'Participantes',[\s\S]*handlers\.onOpenPeople/);
+    assert.match(settings, /'Directorio',[\s\S]*handlers\.onOpenPeople/);
     assert.match(settings, /'Espacios compartidos',[\s\S]*handlers\.onOpenSharing/);
     assert.match(settings, /'Archivos',[\s\S]*handlers\.onOpenFiles/);
     assert.match(settings, /'Registro de actividad',[\s\S]*handlers\.onOpenActivity/);
@@ -30,11 +31,13 @@ describe('arquitectura de configuración', () => {
     assert.match(main, /workspace\.scheme === 'dark' \? 'light' : 'dark'/);
   });
 
-  it('busca ajustes y ayuda desde un campo transversal', () => {
-    assert.match(settings, /placeholder = 'Buscar ajustes y ayuda'/);
+  it('busca sólo ajustes operables desde un campo transversal', () => {
+    assert.match(settings, /placeholder = 'Buscar ajustes'/);
     assert.match(settings, /CENTRE_DESTINATIONS\.filter/);
     assert.match(settings, /entry\.terms/);
     assert.match(settings, /handlers\.onSectionChange\(entry\.section\)/);
+    assert.doesNotMatch(settings, /section: 'ayuda'/);
+    assert.doesNotMatch(settings, /open: \(h\) => h\.onOpenPage\('VERA —/);
   });
 
   it('explica que una Vera personal no se convierte con un interruptor', () => {
@@ -63,18 +66,21 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /veraVoiceConfiguration/);
   });
 
-  it('hace visible la frontera entre constitución y operación privada', () => {
-    assert.match(settings, /Dentro de su contexto/);
-    assert.match(settings, /Fuera de su contexto/);
+  it('reemplaza la explicación abstracta por controles y estados concretos', () => {
+    assert.doesNotMatch(settings, /Dentro de su contexto/);
+    assert.doesNotMatch(settings, /Fuera de su contexto/);
+    assert.match(settings, /Configurar \$\{librarianName\}/);
+    assert.match(settings, /Leyendo la bibliotecaria activa…/);
     assert.match(settings, /Bitácora de hoy/);
-    assert.match(settings, /Permisos y credenciales/);
+    assert.match(settings, /Dialéctica bibliotecaria/);
+    assert.match(settings, /pendingDestination/);
   });
 
   it('presenta páginas del sistema sin exponer el espacio de nombres ni la taxonomía técnica', () => {
     assert.match(main, /replace\(\/\^VERA\\s\*:\\s\*\/i, ''\)/);
-    assert.match(main, /known === undefined[\s\S]*known\.what/);
-    assert.doesNotMatch(main, /`\$\{known\.mode\} · \$\{known\.what\}`/);
-    assert.match(main, /page\.kind !== 'activity' && page\.kind !== 'publication'/);
+    assert.match(main, /kind\.mode !== 'documentación'/);
+    assert.match(main, /item\.classList\.add\('is-pending'\)/);
+    assert.doesNotMatch(main, /openPage\(page\.id[\s\S]*gesture: 'opened_directly'/);
   });
 
   it('da más ancho al menú y conserva una sola columna en teléfono', () => {
@@ -99,7 +105,8 @@ describe('arquitectura de configuración', () => {
   });
 
   it('deja respaldo e identidad de instancia en Sistema', () => {
-    assert.match(settings, /function drawSystem[\s\S]*'Esta Vera'[\s\S]*drawPortability/);
+    assert.match(settings, /function drawSystem[\s\S]*drawInstanceConfiguration[\s\S]*drawPortability/);
+    assert.match(settings, /Nombre de esta Vera · Pendiente/);
     assert.match(settings, /settings-backup/);
   });
 
@@ -107,18 +114,18 @@ describe('arquitectura de configuración', () => {
     assert.match(main, /row\('Ontología', 'Objetos, propiedades y relaciones en un visor facetado'\)/);
     assert.match(main, /ontologyKinds = new Set\(\['objects', 'properties', 'relations'\]\)/);
     assert.match(main, /page\.kind === 'objects'/);
-    assert.match(main, /!ontologyKinds\.has\(page\.kind\)/);
-    assert.doesNotMatch(main, /page\.kind !== 'governance'/);
+    assert.match(main, /!ontologyKinds\.has\(kind\.key\)/);
+    assert.match(main, /const elsewhere = new Set/);
   });
 
   it('reserva las instrucciones del agente para Bibliotecario', () => {
-    assert.match(main, /page\.kind !== 'instructions'/);
-    assert.match(main, /kind\.key === 'instructions'/);
+    assert.match(main, /'instructions'/);
+    assert.match(settings, /Configurar \$\{librarianName\}/);
   });
 
   it('conserva la ontología histórica fuera del Gobierno vigente', () => {
     assert.doesNotMatch(settings, /Ontología anterior/);
-    assert.match(main, /page\.kind !== 'ontology'/);
+    assert.match(main, /kind\.mode !== 'documentación'/);
   });
 
   it('presenta cada comando una sola vez en Teclado', () => {

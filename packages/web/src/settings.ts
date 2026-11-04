@@ -1,16 +1,14 @@
 // La configuración de Vera.
 //
-// El Centro de Vera reúne ajustes, gobierno y ayuda. Las teclas se leen de
-// bindings.ts, que es de donde el editor también las lee, así que esta página
-// siempre enseña los atajos que la aplicación ejecuta.
+// El Centro de Vera reúne ajustes y gobierno. La documentación permanece en la
+// biblioteca: una página puede explicar una decisión, pero aquí cada decisión
+// aparece como un control con estado efectivo o como un pendiente explícito.
 //
 // @guarantee EditableDesignSystem: los tokens siguen siendo fuente legible y
 // editable desde dentro de Vera. Lo que cambia es el control: un color se elige
 // con un selector de color y una tipografía de una lista, en vez de escribir el
 // valor a ciegas en un campo de texto.
 
-import { BINDINGS, GESTURES, TRIGGERS } from './bindings.ts';
-import { COMMANDS } from './autocomplete.ts';
 import {
   api,
   type CatalogAsset,
@@ -53,7 +51,6 @@ export type Section =
   | 'conexiones'
   | 'gobierno'
   | 'apariencia'
-  | 'ayuda'
   | 'sistema';
 
 export interface SettingsHandlers {
@@ -91,12 +88,11 @@ export interface SettingsHandlers {
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'biblioteca', label: 'Biblioteca' },
-  { id: 'personas', label: 'Personas' },
-  { id: 'bibliotecario', label: 'Bibliotecario' },
+  { id: 'personas', label: 'Participantes' },
+  { id: 'bibliotecario', label: 'Bibliotecaria' },
   { id: 'conexiones', label: 'Conexiones' },
   { id: 'gobierno', label: 'Gobierno' },
   { id: 'apariencia', label: 'Apariencia' },
-  { id: 'ayuda', label: 'Ayuda' },
   { id: 'sistema', label: 'Sistema' },
 ];
 
@@ -110,27 +106,18 @@ type CentreDestination = {
 
 const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'biblioteca', label: 'Archivos', note: 'Imágenes, audios, documentos y adjuntos', open: (h) => h.onOpenFiles() },
-  { section: 'personas', label: 'Participantes', note: 'Presencia, passkeys, sesiones y roles', open: (h) => h.onOpenPeople() },
-  { section: 'bibliotecario', label: 'Bibliotecario', note: 'Constitución, capacidades, autoridad y evidencia' },
-  { section: 'bibliotecario', label: 'Constitución y versiones', note: 'Páginas editables, manifiesto y runtime', open: (h) => h.onOpenAgents() },
+  { section: 'personas', label: 'Directorio', note: 'Personas y agentes, autoridad, credenciales, sesiones y roles', open: (h) => h.onOpenPeople() },
+  { section: 'bibliotecario', label: 'Bibliotecaria', note: 'Identidad, personalidad, harness, runtime y territorio' },
+  { section: 'bibliotecario', label: 'Constitución y runtime', note: 'Fuentes editables, manifiesto, herramientas y ejecución', open: (h) => h.onOpenAgents() },
   { section: 'bibliotecario', label: 'Voz', note: 'Escuchar con STT y hablar con TTS local', terms: 'audio whisper kokoro micrófono transcripción' },
   { section: 'personas', label: 'Espacios compartidos', note: 'Superficies, invitaciones y permisos', open: (h) => h.onOpenSharing() },
-  { section: 'conexiones', label: 'Puerta de conexiones', note: 'Entradas, salidas, canales y credenciales', terms: 'mcp extensión web telegram zotero', open: (h) => h.onOpenPage('VERA: Conexiones') },
+  { section: 'conexiones', label: 'Agentes y clientes MCP', note: 'Identidad, alcance, estado y revocación', terms: 'mcp inteligencia credencial', open: (h) => h.onOpenPage('VERA: Conexiones') },
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
   { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
-  { section: 'ayuda', label: 'Manual de Vera', note: 'Guía completa con búsqueda', terms: 'documentación aprender', open: (h) => h.onOpenPage('VERA — Manual') },
-  { section: 'ayuda', label: 'Teclado y gestos', note: 'Atajos, mapa, comandos y autocompletado', terms: 'ayuda teclas' },
   { section: 'sistema', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
   { section: 'sistema', label: 'Registro de actividad', note: 'Cambios, eliminaciones y restauraciones', open: (h) => h.onOpenActivity() },
-  { section: 'sistema', label: 'Esta Vera', note: 'Nombre, perfil Personal o Colectiva y ubicación de datos', terms: 'instancia identidad', open: (h) => h.onOpenPage('Vera — Perfiles de instancia') },
-];
-
-const GROUPS: { id: string; label: string; note?: string }[] = [
-  { id: 'navegación', label: 'Navegación', note: 'Valen en cualquier momento.' },
-  { id: 'estructura', label: 'Estructura del esquema', note: 'Editando un bloque.' },
-  { id: 'edición', label: 'Edición', note: 'Editando un bloque.' },
-  { id: 'autocompletado', label: 'Autocompletado', note: 'Con la lista de sugerencias abierta.' },
+  { section: 'sistema', label: 'Esta Vera', note: 'Nombre, perfil y ubicación de datos', terms: 'instancia identidad' },
 ];
 
 const waitingService = (id: ObservedServiceStatus['id']): ServiceStatus => ({
@@ -266,7 +253,7 @@ export function renderSettings(
   search.className = 'settings-search';
   const query = document.createElement('input');
   query.type = 'search';
-  query.placeholder = 'Buscar ajustes y ayuda';
+  query.placeholder = 'Buscar ajustes';
   query.setAttribute('aria-label', 'Buscar en el Centro de Vera');
   const matches = document.createElement('div');
   matches.className = 'settings-search-results';
@@ -314,8 +301,7 @@ export function renderSettings(
   else if (active === 'conexiones') void drawConnections(body, handlers);
   else if (active === 'gobierno') drawGovernment(body, handlers);
   else if (active === 'apariencia') drawAppearance(body, tokens, handlers);
-  else if (active === 'ayuda') drawHelp(body, handlers);
-  else drawSystem(body, handlers);
+  else void drawSystem(body, handlers);
 }
 
 type ExternalEditorsBridge = {
@@ -1713,13 +1699,13 @@ function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
 }
 
 function drawPeople(host: HTMLElement, handlers: SettingsHandlers): void {
-  heading(host, 'Personas', 'Identidades humanas, participación y espacios compartidos.');
+  heading(host, 'Participantes', 'Identidades humanas y agentes, con su autoridad y formas de acceso.');
   const administration = document.createElement('div');
   administration.className = 'settings-destinations';
   administration.append(
     destination(
-      'Participantes',
-      'Perfil de instancia, roles, passkeys, sesiones e invitaciones',
+      'Directorio',
+      'Personas, agentes, roles, credenciales, sesiones e invitaciones',
       handlers.onOpenPeople,
     ),
     destination(
@@ -1741,40 +1727,28 @@ function todayTitle(): string {
 }
 
 async function drawLibrarian(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
+  const loading = document.createElement('p');
+  loading.className = 'settings-note';
+  loading.textContent = 'Leyendo la bibliotecaria activa…';
+  host.append(loading);
+  const runtime = await api.librarianRuntime().catch(() => null);
+  host.replaceChildren();
+  const librarianName = runtime?.librarian?.name ?? 'Bibliotecaria';
   heading(
     host,
-    'Bibliotecario',
-    'El agente que cuida esta Vera. Su constitución vive en páginas editables; su runtime, permisos y secretos siguen siendo capas operativas distintas.',
+    runtime?.librarian === null ? 'Bibliotecaria aún no constituida' : `${librarianName} · bibliotecaria`,
+    'Un oficio singular de esta Vera. Las demás inteligencias conectadas se administran como agentes dentro de Participantes.',
   );
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
   actions.append(
-    destination('Constitución y versiones', 'Páginas rectoras, manifiestos, rollback y runtime efectivo', handlers.onOpenAgents),
-    destination('Herramientas y habilidades', 'Catálogo, concesiones y capacidades disponibles', () =>
-      handlers.onOpenPage('VERA — Configuración de agentes y herramientas')),
-    destination('Permisos y credenciales', 'Alcance, confinamiento, uso y revocación; nunca el secreto', () =>
-      handlers.onOpenPage('VERA: Conexiones')),
+    destination(`Configurar ${librarianName}`, 'Constitución, manifiesto, harness, modelo, permisos y territorio', handlers.onOpenAgents),
     destination('Bitácora de hoy', 'Lo que el bibliotecario hizo y decidió dentro del corpus', () =>
       handlers.onOpenPage(todayTitle())),
     destination('Registro de actividad', 'Operaciones atribuidas, eliminaciones y restauraciones', handlers.onOpenActivity),
+    pendingDestination('Dialéctica bibliotecaria', 'Personalidad, mayéutica y franqueo todavía no tienen controles propios'),
   );
   host.append(actions);
-
-  heading(host, 'Qué forma parte de él', 'La frontera entre contexto constitutivo y operación privada.');
-  const boundary = document.createElement('div');
-  boundary.className = 'librarian-boundary';
-  const contextual = document.createElement('section');
-  const contextualTitle = document.createElement('h3'); contextualTitle.textContent = 'Dentro de su contexto';
-  const contextualText = document.createElement('p');
-  contextualText.textContent = 'Identidad, propósito, prácticas, memoria y gobierno son páginas normales de Vera: se pueden abrir, editar, enlazar, versionar y reemplazar en el manifiesto activo.';
-  contextual.append(contextualTitle, contextualText);
-  const operational = document.createElement('section');
-  const operationalTitle = document.createElement('h3'); operationalTitle.textContent = 'Fuera de su contexto';
-  const operationalText = document.createElement('p');
-  operationalText.textContent = 'Los valores de secretos, caches, credenciales y trazas privadas del runtime no entran al grafo ni al manifiesto. Vera conserva referencias, estados, recibos y fechas para poder gobernarlos.';
-  operational.append(operationalTitle, operationalText);
-  boundary.append(contextual, operational);
-  host.append(boundary);
 
   await drawVoiceConfiguration(host);
 }
@@ -1784,9 +1758,9 @@ async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): P
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
   actions.append(
-    destination('Puerta de conexiones', 'Identidad, alcance, estado y revocación', () => handlers.onOpenPage('VERA: Conexiones')),
-    destination('Captura web', 'Extensión y entradas desde el navegador', () => handlers.onOpenPage('VERA: Conexiones')),
-    destination('Canales', 'Chat interno, Telegram y futuras puertas', () => handlers.onOpenPage('VERA: Conexiones')),
+    destination('Agentes y clientes MCP', 'Identidad participante, credencial, alcance, estado y revocación', () => handlers.onOpenPage('VERA: Conexiones')),
+    pendingDestination('Captura web', 'La extensión funciona, pero falta reunir aquí su estado y autorización'),
+    pendingDestination('Canales', 'Chat interno, Telegram y futuras puertas aún no comparten un panel'),
   );
   host.append(actions);
   heading(host, 'Vera hacia afuera', 'Aplicaciones que abren o procesan los materiales.');
@@ -1990,28 +1964,44 @@ function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {
 
 }
 
-function drawHelp(host: HTMLElement, handlers: SettingsHandlers): void {
-  heading(host, 'Ayuda', 'Manual, gestos y atajos desde el mismo lugar.');
-  const actions = document.createElement('div');
-  actions.className = 'settings-destinations';
-  actions.append(
-    destination('Manual de Vera', 'Guía completa y enlazada', () => handlers.onOpenPage('VERA — Manual')),
-    destination('Primeros pasos', 'Escribir, importar, relacionar y compartir', () => handlers.onOpenPage('VERA — Manual')),
-  );
-  host.append(actions);
-  drawKeyboard(host);
-}
-
-function drawSystem(host: HTMLElement, handlers: SettingsHandlers): void {
+async function drawSystem(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
   heading(host, 'Sistema', 'Continuidad, actividad e identidad de esta instancia.');
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
   actions.append(
     destination('Registro de actividad', 'Cambios, eliminaciones y restauraciones', handlers.onOpenActivity),
-    destination('Esta Vera', 'Nombre, perfil Personal o Colectiva y ubicación de datos', () => handlers.onOpenPage('Vera — Perfiles de instancia')),
   );
   host.append(actions);
+  await drawInstanceConfiguration(host);
   drawPortability(host);
+}
+
+async function drawInstanceConfiguration(host: HTMLElement): Promise<void> {
+  heading(host, 'Esta Vera', 'Identidad operativa de la instalación, expresada como campos y estados.');
+  const panel = document.createElement('section'); panel.className = 'instance-configuration';
+  let profile = 'desconocido';
+  try {
+    const view = await sharingRequest('/collective-governance') as CollectiveGovernance;
+    profile = view.profile === 'collective' ? 'Colectiva' : 'Personal';
+  } catch { /* El campo conserva un estado legible aun sin conexión. */ }
+  const name = document.createElement('input'); name.value = 'Pendiente de conectar al registro de instancia';
+  name.disabled = true;
+  const kind = document.createElement('select'); kind.disabled = true;
+  const option = document.createElement('option'); option.textContent = profile; option.selected = true; kind.append(option);
+  const location = document.createElement('input'); location.value = 'Gestionada por esta instalación'; location.disabled = true;
+  const labelled = (label: string, control: HTMLInputElement | HTMLSelectElement): HTMLLabelElement => {
+    const held = document.createElement('label');
+    const text = document.createElement('span'); text.textContent = label;
+    held.append(text, control); return held;
+  };
+  panel.append(
+    labelled('Nombre de esta Vera · Pendiente', name),
+    labelled('Perfil de instancia', kind),
+    labelled('Ubicación de datos · Pendiente', location),
+  );
+  const note = document.createElement('p'); note.className = 'settings-note';
+  note.textContent = 'Los campos pendientes muestran el lugar de la decisión sin fingir que una página descriptiva ya la configura.';
+  panel.append(note); host.append(panel);
 }
 
 function drawPortability(host: HTMLElement): void {
@@ -2080,6 +2070,16 @@ function destination(label: string, note: string, open: () => void): HTMLButtonE
   return button;
 }
 
+/** Un lugar reconocido del mapa cuya interacción aún no existe. */
+function pendingDestination(label: string, note: string): HTMLButtonElement {
+  const button = destination(label, note, () => undefined);
+  button.disabled = true;
+  button.classList.add('is-pending');
+  const state = document.createElement('small'); state.textContent = 'Pendiente';
+  button.append(state);
+  return button;
+}
+
 /** Un encabezado de sección, con su aclaración de cuándo vale lo que sigue. */
 function heading(host: HTMLElement, label: string, note?: string): void {
   const title = document.createElement('h3');
@@ -2090,91 +2090,6 @@ function heading(host: HTMLElement, label: string, note?: string): void {
   said.className = 'settings-note';
   said.textContent = note;
   host.append(said);
-}
-
-/** Una tabla de «esto se hace así», que es la única forma que toma esta página. */
-function table(host: HTMLElement, rows: { keys: string; what: string; when?: string }[]): void {
-  const list = document.createElement('dl');
-  list.className = 'keys';
-  for (const row of rows) {
-    const key = document.createElement('dt');
-    const chip = document.createElement('kbd');
-    chip.textContent = row.keys;
-    key.append(chip);
-
-    const what = document.createElement('dd');
-    what.textContent = row.what;
-    if (row.when !== undefined) {
-      const when = document.createElement('span');
-      when.className = 'keys-when';
-      when.textContent = row.when;
-      what.append(when);
-    }
-    list.append(key, what);
-  }
-  host.append(list);
-}
-
-/**
- * Qué se puede hacer, y cómo.
- *
- * Se llama «Teclado» por costumbre, pero lo que contesta es «qué puedo hacer»,
- * y la respuesta no depende de si lo que se usa es una tecla, un dedo o una
- * barra escrita. Por eso están juntos los atajos, los gestos del mapa y los
- * comandos: quien viene aquí no sabe todavía en cuál de las tres categorías cae
- * lo que busca.
- *
- * Todo se lee del sitio del que la aplicación lo toma —`BINDINGS`, `GESTURES`,
- * `COMMANDS`—, nunca de una copia. Una lista de ayuda escrita aparte se
- * desincroniza sola, y entonces enseña teclas que ya no hacen eso.
- */
-function drawKeyboard(host: HTMLElement): void {
-  const intro = document.createElement('p');
-  intro.className = 'settings-note';
-  intro.textContent =
-    'Todo lo que sigue se lee del mismo sitio del que la aplicación lo toma, así que ' +
-    'lo que dice aquí es lo que hace.';
-  host.append(intro);
-
-  for (const group of GROUPS) {
-    const rows = BINDINGS.filter((binding) => binding.group === group.id);
-    if (rows.length === 0) continue;
-    heading(host, group.label, group.note);
-    table(
-      host,
-      rows.map((binding) => ({ keys: binding.keys, what: binding.what, when: binding.when })),
-    );
-  }
-
-  /*
-   * El mapa, que no se conduce con teclas.
-   *
-   * Estaba sin documentar en ninguna parte: había que descubrir a tientas que
-   * dos dedos lo corren, o que con Shift se desplaza en vez de girar. Un gesto
-   * que nadie enseña es un gesto que no existe.
-   */
-  heading(host, 'Mapa', 'El plano y el de tres dimensiones no se conducen igual.');
-  table(
-    host,
-    GESTURES.map((gesture) => ({
-      keys: gesture.does,
-      what: gesture.what,
-      when: gesture.where === 'las dos' ? 'en las dos vistas' : `sólo en ${gesture.where}`,
-    })),
-  );
-
-  heading(
-    host,
-    'Comandos',
-    'Se escriben con una barra al principio de un bloque. Basta teclear parte del nombre.',
-  );
-  table(
-    host,
-    COMMANDS.map((command) => ({ keys: `/${command.name}`, what: command.hint })),
-  );
-
-  heading(host, 'Lo que se escribe para abrir el autocompletado');
-  table(host, TRIGGERS);
 }
 
 function downloadDesignTokenPackage(tokens: DesignToken[], name: string): void {

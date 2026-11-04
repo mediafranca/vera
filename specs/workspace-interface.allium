@@ -1765,21 +1765,40 @@ surface VeraWorkspace {
 
     @guarantee TheCentreFollowsHumanPurposes
         -- El Centro de Vera abre en Biblioteca y agrupa sus destinos bajo
-        -- Biblioteca, Personas, Bibliotecario, Conexiones, Gobierno, Apariencia,
-        -- Ayuda y Sistema. Cada
-        -- pestaña presenta botones grandes con una consecuencia legible. Los
+        -- Biblioteca, Participantes, Bibliotecaria, Conexiones, Gobierno, Apariencia,
+        -- y Sistema. Cada pestaña presenta controles explícitos o botones
+        -- grandes con una consecuencia legible. Los
         -- controles frecuentes aparecen primero; la identidad y el perfil de la
         -- instancia cierran Sistema como decisiones estructurales infrecuentes.
-        -- Las instrucciones constitutivas del agente aparecen sólo bajo
-        -- Bibliotecario: Gobierno no repite esa entrada como si fuera otro
-        -- objeto administrativo.
+        -- La ayuda y la documentación siguen siendo páginas de la biblioteca y
+        -- no se mezclan con decisiones operativas.
+        -- Las instrucciones constitutivas de la bibliotecaria aparecen sólo bajo
+        -- su oficio: Gobierno no repite esa entrada como si fuera otro objeto
+        -- administrativo, y los demás agentes permanecen en Participantes.
         -- Las superficies históricas que ya no gobiernan la instancia tampoco
         -- ocupan un lugar en el menú; su historia permanece en el corpus.
 
-    @guarantee HelpAndSettingsShareOneSearch
-        -- Una búsqueda del Centro encuentra ajustes, destinos administrativos,
-        -- manual y atajos desde un solo campo. Cada resultado nombra su pestaña
-        -- y abre el destino o la sección correspondiente.
+    @guarantee ConfigurationIsMadeOfControlsNotProse
+        -- Un ajuste se presenta como input, selector, interruptor, casilla,
+        -- tabla o acción explícita que muestra su valor efectivo. Una página de
+        -- prosa puede explicar la decisión y conservar su historia, pero el
+        -- Centro nunca obliga a interpretar o editar párrafos como si fueran
+        -- controles. Si la superficie todavía no existe, su lugar aparece
+        -- desactivado y dice Pendiente; no finge estar implementada abriendo un
+        -- documento.
+
+    @guarantee ConfigurationSearchOnlyFindsOperableDestinations
+        -- La búsqueda del Centro encuentra ajustes y destinos administrativos,
+        -- no páginas de documentación. Cada resultado nombra su sección y abre
+        -- el control que gobierna la decisión.
+
+    @guarantee OneLibrarianRoleNamesItsCurrentOccupant
+        -- Bibliotecario es un oficio singular de la instancia y muestra el
+        -- nombre de quien lo ocupa, por defecto Lucienne. Su panel contiene sólo
+        -- su constitución, harness, runtime y territorio. Cotito y cualquier IA
+        -- conectada por MCP son agentes participantes y se administran desde
+        -- Personas, aunque una ficha individual pueda abrir sus propios
+        -- controles de constitución y alcance.
 
     @guarantee ConnectionsDeclareTheirDirection
         -- Conexiones distingue las salidas de Vera hacia otras aplicaciones,

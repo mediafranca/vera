@@ -50,6 +50,12 @@ contract ParticipantProfileReading {
         -- pages of their own and never appear as authors. They prove or exercise
         -- a participant identity; they are not that identity.
 
+    @invariant ConnectedIntelligencesAreAgentParticipants
+        -- Cotito and every intelligence admitted through MCP, a local runtime or
+        -- another credential appear once in the Agentes facet. Connection,
+        -- credential, model and runtime describe how that participant acts; none
+        -- creates another identity or turns it into the instance librarian.
+
     @invariant SecretsNeverReachTheProfile
         -- The profile may summarize active and revoked credentials, but never
         -- exposes a secret, digest, session proof or recoverable authenticator.
@@ -194,4 +200,10 @@ surface ParticipantDirectory {
         -- suspension shows the inactive state and erasure removes only an empty
         -- row. The directory refreshes from the canonical system sources after
         -- each accepted act.
+
+    @guarantee AgentAdministrationBeginsFromItsParticipant
+        -- Each agent row reaches that agent's constitution, credentials and
+        -- territory without passing through the singular Bibliotecario panel.
+        -- The same agent is never repeated as a second top-level configuration
+        -- object.
 }
