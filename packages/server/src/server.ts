@@ -1043,6 +1043,25 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const clearance = clearanceForPage(store, graph, config.agent, claimed.sourcePageId, 'read');
         if (clearance.outcome === 'refused') throw new Error(clearance.explanation);
       }
+      const gate = dialecticGateForRequest(store, id);
+      const requiredPractice = gate === null && config.dialectic.enabled
+        ? formativePracticeFor(claimed.text)
+        : null;
+      if (requiredPractice !== null) {
+        const challenge = formativeChallenge(requiredPractice);
+        openDialecticGate(store, {
+          conversation: claimed.conversationId,
+          openingRequest: claimed.id,
+          practice: requiredPractice,
+          challenge,
+        });
+        const answered = answerLibrarianRequest(store, {
+          id, answeredBy: config.agent as ParticipantId, text: challenge,
+        });
+        if (answered === undefined) throw new Error('no se pudo dejar abierto el umbral formativo');
+        finishLibrarianRuntimeRun(store, run.id, { output: challenge });
+        return;
+      }
       const modelOptions = {
         model: config.model,
         ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
@@ -1052,10 +1071,6 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         contextTokens: 12_288,
         timeoutMs: 300_000,
       };
-      const gate = dialecticGateForRequest(store, id);
-      const requiredPractice = gate === null && config.dialectic.enabled
-        ? formativePracticeFor(claimed.text)
-        : null;
       const basePrompt = `${librarianRequestPrompt(store, config, claimed, gate)}\n\n${librarianToolInstructions()}`;
       let transcript = basePrompt;
       let final = '';
@@ -1077,9 +1092,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (gate !== null && decision.mode === 'challenge') {
         throw new Error('un umbral ya respondido no puede abrir otro desafío en el mismo turno');
       }
-      if (decision.mode === 'challenge' || requiredPractice !== null) {
-        const practice = decision.mode === 'challenge' ? decision.practice : requiredPractice!;
-        const challenge = decision.mode === 'challenge' ? decision.text : formativeChallenge(practice);
+      if (decision.mode === 'challenge') {
+        const practice = decision.practice;
+        const challenge = decision.text;
         openDialecticGate(store, {
           conversation: claimed.conversationId,
           openingRequest: claimed.id,

@@ -57,8 +57,9 @@ const folded = (text: string): string => text.normalize('NFD').replace(/[\u0300-
 /**
  * Reconoce el borde deliberadamente estrecho de la dialéctica v1.
  *
- * El modelo compone el desafío; no decide si puede saltarse el umbral. Las
- * primeras posiciones explícitas cuentan como contribución y siguen fluidas.
+ * El harness compone el desafío; el modelo no decide si puede saltarse el
+ * umbral. Las primeras posiciones explícitas cuentan como contribución y
+ * siguen fluidas.
  */
 export function formativePracticeFor(text: string): FormativePractice | null {
   const said = folded(text);
