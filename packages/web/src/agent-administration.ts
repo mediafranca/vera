@@ -209,6 +209,46 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   identity.append(identityHeading, identityNote, identityForm);
   section.append(identity);
 
+  const designation = document.createElement('section'); designation.className = 'agent-runtime-identity agent-runtime-designation';
+  const designationHeading = document.createElement('h3'); designationHeading.textContent = 'Designación';
+  const designationNote = document.createElement('p'); designationNote.className = 'settings-note';
+  designationNote.textContent = 'Designar a otro agente cambia quién ocupa el oficio. No transfiere conversaciones, manifiestos, autoría, credenciales ni territorio; cada identidad conserva su historia.';
+  designation.append(designationHeading, designationNote);
+  if (view.eligible.length === 0) {
+    const unavailable = document.createElement('p'); unavailable.className = 'settings-note';
+    unavailable.textContent = 'No hay otro agente activo, con la misma persona principal y un manifiesto vigente, que pueda ser designado.';
+    designation.append(unavailable);
+  } else {
+    const designationForm = document.createElement('form'); designationForm.className = 'agent-runtime-identity-form';
+    const successor = document.createElement('select');
+    for (const candidate of view.eligible) {
+      const option = document.createElement('option'); option.value = candidate.agent; option.textContent = candidate.name;
+      successor.append(option);
+    }
+    const designate = control('Designar agente', async () => {
+      const candidate = view.eligible.find((one) => one.agent === successor.value);
+      if (candidate === undefined) return;
+      const accepted = confirm(`¿Designar a ${candidate.name} como agente de biblioteca en reemplazo de ${view.librarian!.name}? Las identidades y sus historias permanecerán separadas.`);
+      if (!accepted) return;
+      await api.designateLibrarianRuntime(candidate.agent); await refresh();
+    }, 'primary');
+    designationForm.onsubmit = (event) => { event.preventDefault(); designate.click(); };
+    designationForm.append(field('Agente sucesor', successor), designate);
+    designation.append(designationForm);
+  }
+  const prior = view.history.filter((entry) => entry.status === 'replaced');
+  if (prior.length > 0) {
+    const priorHeading = document.createElement('h4'); priorHeading.textContent = 'Ocupantes anteriores';
+    const priorList = document.createElement('ul'); priorList.className = 'librarian-occupant-history';
+    for (const entry of prior) {
+      const item = document.createElement('li');
+      const when = new Date(entry.designatedAt).toLocaleDateString('es-CL');
+      item.textContent = `${entry.name} · designado ${when}`; priorList.append(item);
+    }
+    designation.append(priorHeading, priorList);
+  }
+  section.append(designation);
+
   const config = view.configuration;
   if (config === null) {
     const missing = document.createElement('p'); missing.className = 'settings-note';
@@ -289,7 +329,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     const item = document.createElement('li');
     const label = document.createElement('strong'); label.textContent = run.kind === 'request' ? 'Solicitud' : 'Ronda';
     const meta = document.createElement('span');
-    meta.textContent = ` ${run.status} · ${new Date(run.startedAt).toLocaleString('es-CL')} · ${run.model}`;
+    meta.textContent = ` · ${run.agent.name} · ${run.status} · ${new Date(run.startedAt).toLocaleString('es-CL')} · ${run.model}`;
     item.append(label, meta);
     if (run.error !== null) { const error = document.createElement('p'); error.textContent = run.error; item.append(error); }
     else if (run.output !== null) { const output = document.createElement('p'); output.textContent = run.output; item.append(output); }

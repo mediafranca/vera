@@ -126,7 +126,13 @@ import {
   removeLibrarianRequest,
   type LibrarianRequest,
 } from './librarian.ts';
-import { activeOwnerLibrarian, ensureOwnerLibrarian } from './owner-librarian.ts';
+import {
+  activeOwnerLibrarian,
+  eligibleOwnerLibrarians,
+  ensureOwnerLibrarian,
+  ownerLibrarianHistory,
+  replaceOwnerLibrarian,
+} from './owner-librarian.ts';
 import {
   clearanceForGeneral,
   clearanceForPage,
@@ -2449,6 +2455,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         librarian: binding === null ? null : {
           id: binding.id, agent: binding.agent, name: binding.name, owner: binding.owner,
         },
+        eligible: eligibleOwnerLibrarians(store),
+        history: ownerLibrarianHistory(store),
         status: assessEmbeddedRuntime(),
         configuration: config,
         harness: binding === null ? null : (() => {
@@ -2700,6 +2708,27 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         refreshEmbeddedRuntime();
         send(response, 201, embeddedRuntimeView());
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/librarian/runtime/designate') {
+      if (who.participant !== owner.id) {
+        send(response, 403, { error: 'sólo la persona dueña designa el agente de biblioteca' }); return;
+      }
+      if (embeddedLibrarianBusy) {
+        send(response, 409, { error: `${activeOwnerLibrarian(store)?.name ?? 'El agente de biblioteca'} todavía está trabajando` });
+        return;
+      }
+      try {
+        const body = await readSmallJson();
+        const successor = typeof body['agent'] === 'string' ? body['agent'].trim() : '';
+        if (successor === '') throw new Error('elige un agente sucesor');
+        replaceOwnerLibrarian(store, owner.id, successor);
+        refreshEmbeddedRuntime();
+        send(response, 200, embeddedRuntimeView());
       } catch (error) {
         send(response, 409, { error: error instanceof Error ? error.message : String(error) });
       }

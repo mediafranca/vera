@@ -58,6 +58,16 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /conserva el oficio, la constitución, el harness, el territorio y la historia/);
   });
 
+  it('separa el cambio de nombre de la designación de otro agente', () => {
+    assert.match(administration, /Designación/);
+    assert.match(administration, /api\.designateLibrarianRuntime\(candidate\.agent\)/);
+    assert.match(administration, /No transfiere conversaciones, manifiestos, autoría, credenciales ni territorio/);
+    assert.match(administration, /Ocupantes anteriores/);
+    assert.match(administration, /run\.agent\.name/);
+    assert.match(administration, /confirm\(`/);
+    assert.match(styles, /\.agent-runtime-identity-form select/);
+  });
+
   it('mantiene blancos táctiles y una composición legible en móvil', () => {
     assert.match(styles, /\.agent-administration :is\(button, select, input\)[\s\S]*?min-height: 2\.75rem/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-source-row/);
