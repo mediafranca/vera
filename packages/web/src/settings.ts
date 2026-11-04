@@ -1746,7 +1746,6 @@ async function drawLibrarian(host: HTMLElement, handlers: SettingsHandlers): Pro
     destination('Bitácora de hoy', 'Lo que el bibliotecario hizo y decidió dentro del corpus', () =>
       handlers.onOpenPage(todayTitle())),
     destination('Registro de actividad', 'Operaciones atribuidas, eliminaciones y restauraciones', handlers.onOpenActivity),
-    pendingDestination('Dialéctica bibliotecaria', 'Personalidad, mayéutica y franqueo todavía no tienen controles propios'),
   );
   host.append(actions);
 

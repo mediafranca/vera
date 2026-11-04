@@ -9,11 +9,14 @@
 
 use "./core.allium" as core
 use "./agent-manifest.allium" as manifests
+use "./agent-conversation.allium" as conversations
 use "./owner-librarian-harness.allium" as harnesses
 
 enum LibrarianRunKind { request | routine }
 enum LibrarianRunState { running | completed | failed }
 enum LibrarianRuntimePermission { read_request_context | reply | daily_round }
+enum FormativePractice { reading | selection | interpretation | comparison | synthesis | conclusion }
+enum DialecticGateStatus { open | responding | fulfilled | bypassed }
 
 entity LibrarianRuntimeConfiguration {
     librarian: harnesses/OwnerLibrarian
@@ -22,11 +25,24 @@ entity LibrarianRuntimeConfiguration {
     endpoint: String?
     secret_reference: String?
     permissions: List<LibrarianRuntimePermission>
+    dialectic_enabled: Boolean
     routine_enabled: Boolean
     routine_hour: Integer
     routine_timezone: String
     updated_by: core/Participant
     updated_at: Timestamp
+}
+
+entity LibrarianDialecticGate {
+    librarian: harnesses/OwnerLibrarian
+    conversation: conversations/Conversation
+    opening_request: conversations/ConversationRequest
+    practice: FormativePractice
+    challenge: String
+    status: DialecticGateStatus
+    closing_request: conversations/ConversationRequest?
+    opened_at: Timestamp
+    closed_at: Timestamp?
 }
 
 entity LibrarianRuntimeRun {
@@ -48,7 +64,7 @@ actor LibrarianOwner {
 }
 
 rule OwnerConfiguresEmbeddedRuntime {
-    when: ConfigureLibrarianRuntime(owner, librarian, enabled, model_id, endpoint, secret_reference, permissions, routine_enabled, routine_hour, routine_timezone)
+    when: ConfigureLibrarianRuntime(owner, librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
     requires: librarian.owner = owner
     requires: not enabled or model_id != null
     requires: routine_hour >= 0 and routine_hour <= 23
@@ -61,12 +77,94 @@ rule OwnerConfiguresEmbeddedRuntime {
         endpoint: endpoint,
         secret_reference: secret_reference,
         permissions: permissions,
+        dialectic_enabled: dialectic_enabled,
         routine_enabled: routine_enabled,
         routine_hour: routine_hour,
         routine_timezone: routine_timezone,
         updated_by: owner,
         updated_at: now
     )
+}
+
+rule LibrarianOpensAFormativeThreshold {
+    when: OpenDialecticGate(librarian, configuration, request, practice, challenge)
+    requires: configuration.librarian = librarian
+    requires: configuration.enabled
+    requires: configuration.dialectic_enabled
+    requires: request.conversation.agent = librarian.librarian
+    requires: request.status = working
+    requires: delegates_formative_practice(request, practice)
+    requires: challenge != ""
+    requires: not exists LibrarianDialecticGate{conversation: request.conversation, status: open}
+    requires: not exists LibrarianDialecticGate{conversation: request.conversation, status: responding}
+    ensures:
+        request.status = answered
+        request.finished_at = now
+        conversations/AgentReply.created(
+            request: request,
+            answered_by: librarian.librarian,
+            text: challenge,
+            written_block: null,
+            created_at: now
+        )
+        LibrarianDialecticGate.created(
+            librarian: librarian,
+            conversation: request.conversation,
+            opening_request: request,
+            practice: practice,
+            challenge: challenge,
+            status: open,
+            closing_request: null,
+            opened_at: now,
+            closed_at: null
+        )
+}
+
+rule HumanContributesAcrossTheThreshold {
+    when: ContributeAcrossDialecticGate(human, gate, request)
+    requires: gate.conversation.human = human
+    requires: gate.status = open
+    requires: request.conversation = gate.conversation
+    requires: request.asked_by = human
+    requires: request.text != ""
+    ensures:
+        gate.status = responding
+        gate.closing_request = request
+}
+
+rule HumanExplicitlyBypassesTheThreshold {
+    when: BypassDialecticGate(human, gate, request)
+    requires: gate.conversation.human = human
+    requires: gate.status = open
+    requires: request.conversation = gate.conversation
+    requires: request.asked_by = human
+    ensures:
+        gate.status = responding
+        gate.closing_request = request
+}
+
+rule LibrarianCompletesTheDialectic {
+    when: CompleteDialecticGate(librarian, gate, final_reply, bypassed)
+    requires: gate.librarian = librarian
+    requires: gate.status = responding
+    requires: gate.closing_request != null
+    requires: final_reply.request = gate.closing_request
+    requires: final_reply.answered_by = librarian.librarian
+    ensures:
+        if bypassed:
+            gate.status = bypassed
+        else:
+            gate.status = fulfilled
+        gate.closed_at = now
+}
+
+rule FailedDialecticCompletionReopensTheThreshold {
+    when: ReopenDialecticGateAfterFailure(librarian, gate)
+    requires: gate.librarian = librarian
+    requires: gate.status = responding
+    ensures:
+        gate.status = open
+        gate.closing_request = null
 }
 
 rule EmbeddedRuntimeAnswersOneClaimedRequest {
@@ -133,6 +231,7 @@ surface LibrarianRuntimeAdministration {
         configuration.endpoint
         configuration.secret_reference
         configuration.permissions
+        configuration.dialectic_enabled
         configuration.routine_enabled
         configuration.routine_hour
         configuration.routine_timezone
@@ -146,7 +245,7 @@ surface LibrarianRuntimeAdministration {
             run.error
 
     provides:
-        ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, model_id, endpoint, secret_reference, permissions, routine_enabled, routine_hour, routine_timezone)
+        ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
         RunLibrarianRoutine(owner, configuration)
 
     @guarantee RuntimeIdentityIsTheConstitutedLibrarian
@@ -172,4 +271,39 @@ surface LibrarianRuntimeAdministration {
     @guarantee EveryRunLeavesPublicOperationalEvidence
         -- Vera conserva modelo, manifiesto, comienzo, término, estado, salida o
         -- error. No conserva razonamiento privado ni el valor del secreto.
+}
+
+actor LibrarianConversationHuman {
+    identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+surface LibrarianDialecticConversation {
+    facing human: LibrarianConversationHuman
+    context gate: LibrarianDialecticGate where conversation.human = human
+
+    exposes:
+        gate.practice
+        gate.challenge
+        gate.status
+        gate.opening_request
+        gate.closing_request
+
+    provides:
+        ContributeAcrossDialecticGate(human, gate, request) when gate.status = open
+        BypassDialecticGate(human, gate, request) when gate.status = open
+
+    @guarantee FinalAnswerWaitsForAContributionOrExplicitBypass
+        -- El desafío puede orientar o reducir la consigna, pero no contiene
+        -- subrepticiamente el trabajo final. El harness sólo permite completarlo
+        -- después de una tentativa humana o de un bypass visible y deliberado.
+
+    @guarantee OperationalRequestsRemainDirect
+        -- Recuperar, ordenar, transcribir, formatear o ejecutar una decisión ya
+        -- tomada no abre un umbral por defecto. La resistencia aparece cuando la
+        -- petición delega lectura, selección, interpretación, comparación,
+        -- síntesis o conclusión como práctica formativa central.
+
+    @guarantee OneOpenThresholdPerConversation
+        -- Una conversación no acumula exámenes ni bucles de desafíos. El turno
+        -- que responde a un umbral debe recibir una respuesta final.
 }

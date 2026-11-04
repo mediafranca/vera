@@ -150,11 +150,19 @@ import {
 import {
   LIBRARIAN_RUNTIME_ID,
   LIBRARIAN_RUNTIME_LABEL,
+  activeDialecticGate,
+  abandonDialecticGate,
   beginLibrarianRuntimeRun,
+  completeDialecticGate,
+  dialecticGateForRequest,
   finishLibrarianRuntimeRun,
   librarianRequestPrompt,
   librarianRuntimeConfiguration,
   librarianRuntimeRuns,
+  openDialecticGate,
+  readDialecticDecision,
+  reopenDialecticGate,
+  reserveDialecticGate,
   saveLibrarianRuntimeConfiguration,
   type LibrarianRuntimePermission,
   type LibrarianRuntimeStatus,
@@ -910,7 +918,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     void dispatchNextLibrarianRequest();
   }, 30_000);
   retryLibrarianDispatches.unref();
-  void dispatchNextLibrarianRequest();
+  // El runtime embebido se resuelve más abajo. Despachar antes de conocerlo
+  // permitiría que el puente externo reclamara una solicitud que corresponde
+  // a la bibliotecaria residente y eludiera su dialéctica.
 
   /*
    * El grafo en memoria se reconstruye del log al arrancar y responde las
@@ -1039,7 +1049,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         maxTokens: 1_200,
         timeoutMs: 300_000,
       };
-      const basePrompt = `${librarianRequestPrompt(store, config, claimed)}\n\n${librarianToolInstructions()}`;
+      const gate = dialecticGateForRequest(store, id);
+      const basePrompt = `${librarianRequestPrompt(store, config, claimed, gate)}\n\n${librarianToolInstructions()}`;
       let transcript = basePrompt;
       let final = '';
       for (let step = 0; step < 4; step += 1) {
@@ -1056,12 +1067,36 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           'Responde a la solicitud original o pide otra herramienta con el mismo formato.';
       }
       if (final === '') throw new Error('el runtime agotó el límite de herramientas sin responder');
-      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, final);
+      const decision = readDialecticDecision(final);
+      if (gate !== null && decision.mode === 'challenge') {
+        throw new Error('un umbral ya respondido no puede abrir otro desafío en el mismo turno');
+      }
+      if (decision.mode === 'challenge') {
+        openDialecticGate(store, {
+          conversation: claimed.conversationId,
+          openingRequest: claimed.id,
+          practice: decision.practice,
+          challenge: decision.text,
+        });
+        const answered = answerLibrarianRequest(store, {
+          id, answeredBy: config.agent as ParticipantId, text: decision.text,
+        });
+        if (answered === undefined) throw new Error('no se pudo dejar abierto el umbral formativo');
+        finishLibrarianRuntimeRun(store, run.id, { output: decision.text });
+        return;
+      }
+      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, decision.text);
       if (writeFailure !== null) throw new Error(writeFailure);
-      answerLibrarianRequest(store, { id, answeredBy: config.agent as ParticipantId, text: final });
-      finishLibrarianRuntimeRun(store, run.id, { output: final });
+      const answered = answerLibrarianRequest(store, {
+        id, answeredBy: config.agent as ParticipantId, text: decision.text,
+      });
+      if (answered === undefined) throw new Error('no se pudo guardar la respuesta final');
+      if (gate !== null) completeDialecticGate(store, id);
+      finishLibrarianRuntimeRun(store, run.id, { output: decision.text });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'el runtime no pudo responder';
+      abandonDialecticGate(store, id);
+      reopenDialecticGate(store, id);
       failLibrarianRequest(store, id, reason);
       finishLibrarianRuntimeRun(store, run.id, { error: reason });
     } finally {
@@ -2370,6 +2405,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
     const librarianRequestView = (turn: LibrarianRequest) => ({
         ...turn,
+        dialectic: dialecticGateForRequest(store, turn.id),
         recording: turn.recordingId === null ? null : recordingById(store, turn.recordingId),
         sourcePageTitle: turn.sourcePageId === null
           ? null
@@ -2616,6 +2652,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const binding = ensureOwnerLibrarian(store, graph, owner.id, requestedName || 'Lucienne');
         if (activeManifest(store, binding.agent) === null) {
           const defaults = [
+            { title: binding.name, role: 'identity' as ConstitutionRole },
             { title: 'VERA — Principios', role: 'purpose' as ConstitutionRole },
             { title: 'VERA: Gobierno', role: 'governance' as ConstitutionRole },
             { title: 'VERA — Conectar una inteligencia artificial', role: 'practice' as ConstitutionRole },
@@ -2633,6 +2670,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             updatedBy: owner.id, enabled: false, model: null, endpoint: null,
             secretReference: 'VERA_LIBRARIAN_API_KEY',
             permissions: ['read_request_context', 'reply', 'daily_round'],
+            dialectic: { enabled: true },
             routine: { enabled: false, hour: 9, timezone: 'local' },
           });
         }
@@ -2661,6 +2699,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           endpoint: typeof body['endpoint'] === 'string' ? body['endpoint'] : null,
           secretReference: typeof body['secretReference'] === 'string' ? body['secretReference'] : null,
           permissions,
+          dialectic: {
+            enabled: body['dialectic'] === null || typeof body['dialectic'] !== 'object'
+              ? true
+              : (body['dialectic'] as Record<string, unknown>)['enabled'] !== false,
+          },
           routine: {
             enabled: routine['enabled'] === true,
             hour: typeof routine['hour'] === 'number' ? routine['hour'] : 9,
@@ -2830,6 +2873,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const blockId = typeof body.blockId === 'string' ? body.blockId : null;
       const conversationId = typeof body.conversationId === 'string' ? body.conversationId : undefined;
       const recordingId = typeof body.recordingId === 'string' ? body.recordingId : null;
+      const dialecticBypass = body.dialecticBypass === true;
       const page = graph.page(pageId);
       const block = blockId === null ? undefined : graph.block(blockId);
       if (text === '') { send(response, 400, { error: 'el pedido no puede estar vacío' }); return; }
@@ -2839,6 +2883,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           selected.human !== conversationalHuman || selected.agent !== librarianAgent) {
           send(response, 409, { error: 'la conversación ya no está activa' }); return;
         }
+      }
+      const activeGate = conversationId === undefined ? null : activeDialecticGate(store, conversationId);
+      if (dialecticBypass && activeGate === null) {
+        send(response, 409, { error: 'no hay un umbral formativo que franquear' }); return;
+      }
+      if (activeGate?.status === 'responding') {
+        send(response, 409, { error: 'la bibliotecaria ya está respondiendo al umbral formativo' }); return;
       }
       if (recordingId !== null && recordingById(store, recordingId) === null) {
         send(response, 404, { error: 'la grabación no existe' }); return;
@@ -2881,6 +2932,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         ...(conversationId === undefined ? {} : { conversationId }),
         contextSnapshot: snapshot,
       });
+      try {
+        reserveDialecticGate(store, {
+          conversation: created.conversationId,
+          request: created.id,
+          bypass: dialecticBypass,
+        });
+      } catch (error) {
+        removeLibrarianRequest(store, created.id);
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
       await dispatchNextLibrarianRequest();
       const stored = librarianRequest(store, created.id);
       send(response, 201, stored === undefined ? stored : librarianRequestView(stored));
@@ -2925,7 +2987,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             error: publicAccess ? 'la solicitud no existe' : 'la solicitud pertenece a otra conversación',
           }); return;
         }
-        deliver(current, { surface: 'GET /librarian/requests/:id', subject: id, delivered: [id] });
+        deliver(librarianRequestView(current), {
+          surface: 'GET /librarian/requests/:id', subject: id, delivered: [id],
+        });
         return;
       }
       if (request.method === 'DELETE' && action === null) {
@@ -4543,7 +4607,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const parts = path.split('/');
         const agent = decodeURIComponent(parts[2] ?? '');
         const manifest = decodeURIComponent(parts[4] ?? '');
-        send(response, 200, { manifest: activateManifest(store, who.participant, agent, manifest) });
+        const activated = activateManifest(store, who.participant, agent, manifest);
+        if (activeOwnerLibrarian(store)?.agent === agent) refreshEmbeddedRuntime();
+        send(response, 200, { manifest: activated });
       } catch (error) {
         send(response, 409, { error: error instanceof Error ? error.message : String(error) });
       }

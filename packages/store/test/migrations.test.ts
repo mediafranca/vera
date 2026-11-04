@@ -401,4 +401,26 @@ describe('migraciones', () => {
     );
     store.close();
   });
+
+  it('activa la dialéctica por defecto al migrar un runtime anterior', () => {
+    const store = openStore({ path: ':memory:', graphName: 'mind' });
+    store.db.exec(`
+      DROP TABLE librarian_dialectic_gates;
+      CREATE TABLE librarian_runtime_configs_old AS
+        SELECT instance_id,librarian_id,agent_id,enabled,model_id,endpoint,secret_reference,
+          permissions_json,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at
+        FROM librarian_runtime_configs;
+      DROP TABLE librarian_runtime_configs;
+      ALTER TABLE librarian_runtime_configs_old RENAME TO librarian_runtime_configs;
+      PRAGMA user_version = 34;
+    `);
+
+    migrate(store.db, false);
+
+    assert.equal(version(store.db), SCHEMA_VERSION);
+    assert.ok((store.db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_dialectic_gates'").get()));
+    const columns = store.db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
+    assert.ok(columns.some((column) => column.name === 'dialectic_enabled'));
+    store.close();
+  });
 });

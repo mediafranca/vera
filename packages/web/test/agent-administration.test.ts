@@ -45,6 +45,12 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(styles, /\.territory-surface/);
   });
 
+  it('muestra la dialéctica como control operativo y no como prosa disfrazada de configuración', () => {
+    assert.match(administration, /Dialéctica bibliotecaria activa/);
+    assert.match(administration, /dialectic: \{ enabled: dialectic\.checked \}/);
+    assert.match(administration, /pide primero una tentativa/);
+  });
+
   it('mantiene blancos táctiles y una composición legible en móvil', () => {
     assert.match(styles, /\.agent-administration :is\(button, select, input\)[\s\S]*?min-height: 2\.75rem/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-source-row/);

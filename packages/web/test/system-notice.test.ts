@@ -53,6 +53,9 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.match(styles, /\.librarian-conversation-composer/);
     assert.match(styles, /\.librarian-conversation-composer-shell \.librarian-conversation-microphone/);
     assert.match(styles, /\.librarian-conversation-audio-meter\.recording \{ display: block; \}/);
+    assert.match(outliner, /Resolver directamente esta vez/);
+    assert.match(outliner, /dialecticBypass: true/);
+    assert.match(outliner, /request\.dialectic\?\.status === 'open'/);
   });
 
   it('deja las respuestas terminadas como bloques editables y no monta una copia auxiliar', () => {
