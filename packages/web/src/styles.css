@@ -1,5 +1,11 @@
 @import "reveal.js/reveal.css";
 
+:root {
+  --form-control-height: 2.75rem;
+  --form-control-radius: .35rem;
+  --form-control-padding-inline: .7rem;
+}
+
 /* Hoja de estilo de Vera.
  *
  * Los colores y las familias tipográficas no se escriben aquí: se leen de las
@@ -6307,7 +6313,68 @@ body.settings-open #text {
 }
 .settings-field > span { color: var(--text-dim); font-size: .78rem; }
 .settings-field select,
-.settings-field input { min-width: 0; width: 100%; box-sizing: border-box; }
+.settings-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
+  color: var(--text);
+  background-color: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  font: inherit;
+}
+
+/*
+ * El desplegable sigue siendo un select semántico —teclado, lector de pantalla
+ * y menú de opciones quedan a cargo de la plataforma—, pero su control cerrado
+ * pertenece a Vera. Neutralizar sólo esa carcasa evita el gris nativo que no
+ * cambia de tema y permite que select, input y botón compartan geometría.
+ * Las dos diagonales usan currentColor, así que la flecha también sigue la
+ * paleta sin incrustar otro color.
+ */
+.settings-field select,
+.sharing-field select,
+.sharing-publish select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 2rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - .88rem) 50%,
+    calc(100% - .62rem) 50%;
+  background-size: .27rem .27rem, .27rem .27rem;
+  background-repeat: no-repeat;
+}
+
+.settings-field :is(input, select):focus-visible,
+.sharing-field :is(input, select):focus-visible,
+.sharing-publish :is(input, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.appearance-design-actions button {
+  box-sizing: border-box;
+  min-height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  cursor: pointer;
+  font: inherit;
+}
+.appearance-design-actions button:is(:hover, :focus-visible) {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: 0;
+}
+.appearance-design-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .7rem; }
 
 .settings-destinations {
@@ -12000,19 +12067,36 @@ html[data-working-slow='true']::after {
 .sharing-space-body > a { color: var(--accent); }
 .sharing-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
 .sharing-field { display: grid; gap: .3rem; color: var(--text-dim); font-size: .85rem; }
-.sharing-field input, .sharing-invitation-result input { min-width: 0; padding: .55rem; color: var(--text); background: var(--bg); border: 1px solid var(--rule); border-radius: .25rem; font: inherit; }
-.sharing-field select, .sharing-publish select, .sharing-publish input { min-width: 0; padding: .55rem; color: var(--text); background: var(--bg); border: 1px solid var(--rule); border-radius: .25rem; font: inherit; }
+.sharing-field input,
+.sharing-invitation-result input,
+.sharing-field select,
+.sharing-publish select,
+.sharing-publish input {
+  box-sizing: border-box;
+  min-width: 0;
+  height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
+  color: var(--text);
+  background-color: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  font: inherit;
+}
+.sharing-field select,
+.sharing-publish select { padding-right: 2rem; }
 .sharing-form button, .sharing-form .settings-note { align-self: end; }
 .sharing-form button,
 .sharing-group > button,
 .sharing-list li button,
 .sharing-publish button,
 .sharing-issued-invitation button {
-  padding: .48rem .7rem;
+  box-sizing: border-box;
+  min-height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
   color: var(--accent);
   background: var(--bg);
   border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--rule));
-  border-radius: .35rem;
+  border-radius: var(--form-control-radius);
   cursor: pointer;
 }
 .sharing-form button:hover,
@@ -12132,12 +12216,14 @@ html[data-working-slow='true']::after {
   box-sizing: border-box;
   display: inline-grid;
   place-items: center;
-  flex: 0 0 2.25rem;
-  width: 2.25rem;
-  height: 2.25rem;
-  min-width: 2.25rem;
+  flex: 0 0 var(--form-control-height);
+  width: var(--form-control-height);
+  height: var(--form-control-height);
+  min-width: var(--form-control-height);
   padding: 0;
 }
+.page-sharing-controls button.page-sharing-action,
+.sharing-publish button.page-sharing-action { padding: 0; }
 .page-sharing-action svg { width: 1.05rem; height: 1.05rem; }
 .page-sharing-action.active { background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
 .page-sharing-public,
