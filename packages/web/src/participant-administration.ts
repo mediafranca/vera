@@ -240,6 +240,9 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
       }
 
       const actions = document.createElement('div'); actions.className = 'participant-directory-actions';
+      if (one.kind === 'agent') actions.append(action(one.id, 'configure', 'Constitución y territorio', () => {
+        window.location.href = `/agentes?participante=${encodeURIComponent(one.id)}`;
+      }));
       actions.append(action(one.id, 'rename', 'Renombrar', () => {
         const name = document.createElement('input'); name.value = one.name;
         participantDialog(`Renombrar ${one.name}`, [name], 'Guardar nombre', () => {

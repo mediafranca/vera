@@ -481,48 +481,27 @@ function drawMemory(host: HTMLElement): void {
       });
     }
 
-    const declared = found
-      // Las instrucciones constituyen al agente y tienen su superficie propia:
-      // volver a ofrecerlas en Gobierno convierte dos accesos en dos conceptos.
-      .filter((page) => page.kind !== 'activity' && page.kind !== 'publication' && page.kind !== 'instructions' && page.kind !== 'ontology')
-      .filter((page) => !ontologyKinds.has(page.kind))
-      .sort(
-      (a, b) => rank(a.kind) - rank(b.kind) || a.title.localeCompare(b.title, 'es'),
-      );
-
-    for (const page of declared) {
-      // Varias de una misma clase es normal y no un conflicto: un corpus puede
-      // hablar con dos servicios. Se dibujan las que haya, cada una con su
-      // título, que es lo que la distingue de la otra.
-      const known = KNOWN.find((one) => one.key === page.kind);
-      const item = row(
-        visibleTitle(page.title),
-        known === undefined ? `Clase de sistema no reconocida: ${page.kind}` : known.what,
-      );
-      item.addEventListener('click', () => {
-        closeSettings();
-        // Del menú: se llegó de fuera, sin que nada de lo leído lo explique.
-        void openPage(page.id, null, { gesture: 'opened_directly' });
-      });
-    }
-
     /*
-     * Y las que podrían gobernar y no gobiernan.
+     * Gobierno no es un índice de páginas: es un mapa de controles.
      *
-     * Que falte no es un error: lo que la página diría tiene un valor por
-     * defecto en el código —@invariant DefaultsLiveInTheCode—, y decirlo aquí es
-     * la única forma de que alguien sepa que ese sitio existe y está libre.
-     *
-     * `service` no se ofrece: un corpus sin ninguna conexión no tiene un
-     * servicio pendiente de escribir, tiene ninguno, y un renglón que invitara a
-     * escribirlo estaría pidiendo una decisión que nadie tomó.
+     * Conexiones, Publicación, Actividad y Bibliotecaria tienen superficies
+     * propias en sus secciones. Presentación e Instrucciones son documentación
+     * y no aparecen como si fueran ajustes. Lo que aún carece de un control
+     * explícito ocupa su lugar como Pendiente, sin abrir prosa para fingir que
+     * ya puede configurarse.
      */
-    for (const kind of KNOWN) {
-      if (kind.key === 'service' || kind.key === 'activity' || kind.key === 'publication' || kind.key === 'instructions') continue;
-      if (found.some((page) => page.kind === kind.key)) continue;
-      const item = row(kind.label, `Sin definir · ${kind.what}`);
-      item.title = `Todavía no hay una página del sistema para ${kind.label.toLowerCase()}.`;
+    const elsewhere = new Set(['connections', 'service', 'publication', 'activity', 'instructions', 'governance']);
+    const pendingKinds = KNOWN.filter((kind) =>
+      kind.mode !== 'documentación' &&
+      !ontologyKinds.has(kind.key) &&
+      !elsewhere.has(kind.key),
+    );
+    for (const kind of pendingKinds) {
+      const declared = found.find((page) => page.kind === kind.key);
+      const item = row(kind.label, `${declared === undefined ? 'Sin declarar' : visibleTitle(declared.title)} · ${kind.what}`);
       item.disabled = true;
+      item.classList.add('is-pending');
+      const state = document.createElement('small'); state.textContent = 'Pendiente'; item.append(state);
     }
   });
 }

@@ -11,14 +11,14 @@ describe('administración del bibliotecario embebido', () => {
   it('vive como superficie de sistema y no como página duplicada', () => {
     assert.match(main, /window\.location\.pathname === '\/agentes'/);
     assert.match(main, /classList\.add\('special-surface'\)/);
-    assert.match(settings, /label: 'Bibliotecario'/);
+    assert.match(settings, /label: 'Bibliotecaria'/);
   });
 
   it('compone una constitución desde páginas canónicas y no desde texto paralelo', () => {
     assert.match(administration, /api\.pages\(\)/);
     assert.match(administration, /setAgentConstitution/);
     assert.match(administration, /Páginas constitutivas/);
-    assert.match(administration, /archivos constitutivos/);
+    assert.match(administration, /Páginas canónicas y editables que constituyen/);
     assert.match(administration, /Abrir y editar/);
     assert.doesNotMatch(administration, /page\.visibility === 'private'/);
   });
@@ -36,10 +36,11 @@ describe('administración del bibliotecario embebido', () => {
   it('expone el catálogo del harness y gobierna territorios sin prometer autoridad nueva', () => {
     assert.match(administration, /Herramientas ·/);
     assert.match(administration, /no contiene herramientas destructivas/);
-    assert.match(administration, /Territorios y superficies/);
+    assert.match(administration, /Territorio de \$\{participantName\}/);
     assert.match(administration, /Una exclusión domina cualquier inclusión/);
     assert.match(administration, /api\.updateTerritory/);
     assert.match(administration, /Incluir páginas de la biblioteca general/);
+    assert.match(administration, /view\.policies\.filter\(\(policy\) => policy\.participant === participant\)/);
     assert.match(styles, /\.librarian-tool-catalogue/);
     assert.match(styles, /\.territory-surface/);
   });
@@ -50,9 +51,10 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-runtime-list li/);
   });
 
-  it('no multiplica todo el corpus por cada agente', () => {
-    assert.match(administration, /document\.createElement\('details'\)/);
-    assert.match(administration, /card\.addEventListener\('toggle'/);
+  it('resuelve una sola identidad y no convierte Bibliotecaria en directorio de agentes', () => {
+    assert.match(administration, /requested \?\? runtime\.librarian\?\.agent/);
+    assert.match(administration, /agents\.find\(\(one\) => one\.agent\.id === participant\)/);
+    assert.doesNotMatch(administration, /for \(const agent of agents\)/);
     assert.match(administration, /slice\(0, 12\)/);
     assert.doesNotMatch(administration, /for \(const page of choices\) \{/);
   });

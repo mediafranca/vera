@@ -43,6 +43,12 @@ contract OwnerLibrarianHarnessAdministration {
         -- Desktop may propose “Lucienne”. Renaming before constitution creates a
         -- differently named librarian without changing the role or guarantees.
 
+    @invariant TheLibrarianIsARoleNotAnAgentDirectory
+        -- The administration surface resolves the one active OwnerLibrarian and
+        -- names its participant. Other agent participants remain in the
+        -- participant directory even when they have manifests, tools or broad
+        -- territory of their own.
+
     @invariant TheHarnessAddsCapabilitiesNotTerritory
         -- The harness may expose privileged library tools unavailable to an
         -- ordinary agent runtime. It never widens the librarian participant's
@@ -233,6 +239,11 @@ surface LibrarianHarnessAdministration {
         -- invariant inspection, answering and an editorial proposal path.
         -- Applying a proposal requires a fresh human confirmation; deletion is
         -- absent rather than hidden behind a broad librarian role.
+
+    @guarantee TheCurrentLibrarianIsNamedBeforeItsMachinery
+        -- The surface heading shows the active participant name followed by the
+        -- singular office. Runtime, constitution, harness and territory are
+        -- sections of that one identity, not cards in a generic agent list.
 }
 
 ------------------------------------------------------------

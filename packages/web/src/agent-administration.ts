@@ -34,7 +34,7 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
   const section = document.createElement('section'); section.className = 'agent-constitution-sources';
   const heading = document.createElement('h3'); heading.textContent = 'Páginas constitutivas';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = 'Son los archivos constitutivos del bibliotecario: páginas canónicas y editables de Vera que conservan enlaces, autoría, visibilidad e historia.';
+  explanation.textContent = `Páginas canónicas y editables que constituyen a ${agent.agent.name}; conservan enlaces, autoría, visibilidad e historia.`;
   const rows = document.createElement('div'); rows.className = 'agent-source-rows';
   const selected = new Map(agent.sources.map((source) => [source.page, source.role]));
   const choices = [...pages].sort((a, b) => a.title.localeCompare(b.title, 'es'));
@@ -283,13 +283,19 @@ const TERRITORY_PERMISSIONS: Array<[TerritoryPermission, string]> = [
   ['publish', 'publicar'], ['administer', 'administrar'],
 ];
 
-function territoryPanel(view: TerritoryAdministrationView, refresh: () => Promise<void>): HTMLElement {
+function territoryPanel(
+  view: TerritoryAdministrationView,
+  refresh: () => Promise<void>,
+  participant: string,
+  participantName: string,
+): HTMLElement {
   const section = document.createElement('section'); section.className = 'territory-administration';
-  const heading = document.createElement('h2'); heading.textContent = 'Territorios y superficies';
+  const heading = document.createElement('h2'); heading.textContent = `Territorio de ${participantName}`;
   const note = document.createElement('p'); note.className = 'settings-note';
   note.textContent = 'El territorio se aplica por igual al sitio, la API y MCP. Una exclusión domina cualquier inclusión; la persona dueña conserva la custodia salvo que otra persona humana quede a cargo.';
   section.append(heading, note);
-  for (const policy of view.policies) {
+  const policies = view.policies.filter((policy) => policy.participant === participant);
+  for (const policy of policies) {
     const card = document.createElement('details'); card.className = 'territory-policy';
     card.id = `territorio-${policy.participant}`;
     if (policy.participantKind === 'agent') card.open = true;
@@ -358,6 +364,11 @@ function territoryPanel(view: TerritoryAdministrationView, refresh: () => Promis
     }, 'primary'));
     card.append(form); section.append(card);
   }
+  if (policies.length === 0) {
+    const pending = document.createElement('p'); pending.className = 'settings-note';
+    pending.textContent = 'Pendiente · este agente todavía no tiene una política territorial propia.';
+    section.append(pending);
+  }
   return section;
 }
 
@@ -365,55 +376,50 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
   host.replaceChildren();
   const root = document.createElement('article'); root.className = 'agent-administration';
   const header = document.createElement('header'); header.className = 'special-page-header';
-  const title = document.createElement('h1'); title.textContent = 'Bibliotecario';
+  const title = document.createElement('h1'); title.textContent = 'Bibliotecaria';
   header.append(title, control('← Volver', () => window.history.back()));
   const intro = document.createElement('p'); intro.className = 'agent-administration-intro';
-  intro.textContent = 'Cada bibliotecario tiene un principal humano. Su identidad y sus prácticas son páginas editables de Vera; el modelo y el runtime pueden cambiar sin reemplazarlo.';
-  const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo agentes…';
+  intro.textContent = 'La bibliotecaria es un oficio singular de esta Vera. Su identidad y sus prácticas son editables; el modelo y el runtime pueden cambiar sin reemplazarla.';
+  const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo configuración…';
   const body = document.createElement('div'); body.className = 'agent-administration-body';
   root.append(header, intro, status, body); host.append(root);
 
   const refresh = async (): Promise<void> => renderAgentAdministration(host);
   try {
-    const [{ agents }, directory, runtime, territories] = await Promise.all([
-      api.agentAdministration(), api.participants(), api.librarianRuntime(), api.territories(),
+    const [{ agents }, runtime, territories] = await Promise.all([
+      api.agentAdministration(), api.librarianRuntime(), api.territories(),
     ]);
-    body.append(await runtimeConfigurationPanel(runtime, refresh), territoryPanel(territories, refresh));
-    let pagesPromise: Promise<PageSummary[]> | null = null;
-    const pages = (): Promise<PageSummary[]> => pagesPromise ??= api.pages();
-    const humans = directory.participants.filter((one) => one.kind === 'human' && one.status === 'active');
-    status.textContent = `${agents.length} agentes · ${agents.filter((one) => one.human !== null).length} con principal humano`;
-    for (const agent of agents) {
-      const card = document.createElement('details'); card.className = 'agent-administration-card';
-      const summary = document.createElement('summary');
-      const heading = document.createElement('strong'); heading.textContent = agent.agent.name;
-      const principal = document.createElement('span'); principal.className = 'agent-principal';
-      principal.textContent = agent.human === null ? 'Sin principal humano' : `De ${agent.human.name}`;
-      summary.append(heading, principal); card.append(summary);
-      if (agent.human === null) {
-        const warning = document.createElement('p'); warning.className = 'participant-directory-retained';
-        warning.textContent = 'Un agente sin persona no puede recibir constitución ni manifiesto.'; card.append(warning);
-        const choice = document.createElement('select'); choice.setAttribute('aria-label', `Principal humano de ${agent.agent.name}`);
-        for (const human of humans) { const option = document.createElement('option'); option.value = human.id; option.textContent = human.name; choice.append(option); }
-        card.append(choice, control('Establecer principal', async () => {
-          await api.establishAgentPrincipal(agent.agent.id, choice.value); await refresh();
-        }, 'primary'));
-      } else {
-        let drawn = false;
-        card.addEventListener('toggle', () => {
-          if (!card.open || drawn) return;
-          drawn = true;
-          const waiting = document.createElement('p'); waiting.className = 'settings-note';
-          waiting.textContent = 'Leyendo páginas constitutivas…'; card.append(waiting);
-          void pages().then((available) => {
-            waiting.replaceWith(sourceEditor(agent, available, refresh), manifestHistory(agent, refresh), runtimeState(agent));
-          }).catch((error) => {
-            waiting.textContent = error instanceof Error ? error.message : 'No se pudieron leer las páginas.';
-          });
-        });
-      }
-      body.append(card);
+    const requested = new URL(window.location.href).searchParams.get('participante');
+    const participant = requested ?? runtime.librarian?.agent ?? null;
+    const agent = participant === null ? null : agents.find((one) => one.agent.id === participant) ?? null;
+    const librarianMode = requested === null;
+    const embeddedRuntime = librarianMode ? await runtimeConfigurationPanel(runtime, refresh) : null;
+
+    if (agent === null) {
+      status.textContent = librarianMode
+        ? 'La bibliotecaria aún no está constituida.'
+        : 'El agente solicitado no existe o ya no está activo.';
+      if (embeddedRuntime !== null) body.append(embeddedRuntime);
+      return;
     }
+
+    title.textContent = librarianMode ? `${agent.agent.name} · Bibliotecaria` : `${agent.agent.name} · Agente`;
+    intro.textContent = librarianMode
+      ? 'Constitución, harness, runtime y territorio de la única bibliotecaria activa de esta Vera.'
+      : 'Constitución y territorio de este participante agente. La bibliotecaria se administra en su panel singular.';
+    status.textContent = agent.human === null ? 'Sin principal humano' : `Principal humano · ${agent.human.name}`;
+    if (agent.human === null) {
+      const warning = document.createElement('p'); warning.className = 'participant-directory-retained';
+      warning.textContent = 'Pendiente · este agente necesita un principal humano antes de recibir constitución.';
+      body.append(warning);
+      if (embeddedRuntime !== null) body.append(embeddedRuntime);
+      body.append(territoryPanel(territories, refresh, agent.agent.id, agent.agent.name));
+      return;
+    }
+    const pages = await api.pages();
+    body.append(sourceEditor(agent, pages, refresh), manifestHistory(agent, refresh), runtimeState(agent));
+    if (embeddedRuntime !== null) body.append(embeddedRuntime);
+    body.append(territoryPanel(territories, refresh, agent.agent.id, agent.agent.name));
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : 'No se pudo leer la administración de agentes.';
   }
