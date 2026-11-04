@@ -130,7 +130,7 @@ describe('cómo se dice', () => {
 
   it('nombra la mano que escribió, sin el prefijo de la máquina', () => {
     const dicho = said(behind([op({ sequence: 10 })], { ...nada, openPage: 'page:1' }));
-    assert.match(dicho?.title ?? '', /el bibliotecario/);
+    assert.match(dicho?.title ?? '', /Cotito/);
     assert.doesNotMatch(dicho?.title ?? '', /participant:/);
   });
 });
@@ -152,7 +152,7 @@ describe('el desacuerdo', () => {
     assert.equal(found.length, 1);
     assert.equal(found[0]?.mine, 'lo que escribí aquí');
     assert.equal(found[0]?.theirs, 'lo que dice el corpus');
-    assert.equal(found[0]?.hand, 'el bibliotecario');
+    assert.equal(found[0]?.hand, 'Cotito');
   });
 
   it('si dicen lo mismo no hay desacuerdo', () => {
