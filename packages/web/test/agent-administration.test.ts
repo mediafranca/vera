@@ -11,7 +11,7 @@ describe('administración del bibliotecario embebido', () => {
   it('vive como superficie de sistema y no como página duplicada', () => {
     assert.match(main, /window\.location\.pathname === '\/agentes'/);
     assert.match(main, /classList\.add\('special-surface'\)/);
-    assert.match(settings, /label: 'Bibliotecaria'/);
+    assert.match(settings, /label: 'Agente de biblioteca'/);
   });
 
   it('compone una constitución desde páginas canónicas y no desde texto paralelo', () => {
@@ -48,7 +48,14 @@ describe('administración del bibliotecario embebido', () => {
   it('muestra la dialéctica como control operativo y no como prosa disfrazada de configuración', () => {
     assert.match(administration, /Dialéctica bibliotecaria activa/);
     assert.match(administration, /dialectic: \{ enabled: dialectic\.checked \}/);
-    assert.match(administration, /pide primero una tentativa/);
+    assert.match(administration, /view\.librarian\.name.*pide primero una tentativa/);
+  });
+
+  it('permite cambiar el nombre efectivo sin convertir una página en configuración', () => {
+    assert.match(administration, /participantName\.value = view\.librarian\.name/);
+    assert.match(administration, /api\.renameParticipant\(view\.librarian!\.agent/);
+    assert.match(administration, /Lucienne es sólo el nombre inicial/);
+    assert.match(administration, /conserva el oficio, la constitución, el harness, el territorio y la historia/);
   });
 
   it('mantiene blancos táctiles y una composición legible en móvil', () => {
@@ -57,7 +64,7 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-runtime-list li/);
   });
 
-  it('resuelve una sola identidad y no convierte Bibliotecaria en directorio de agentes', () => {
+  it('resuelve una sola identidad y no convierte el oficio en directorio de agentes', () => {
     assert.match(administration, /requested \?\? runtime\.librarian\?\.agent/);
     assert.match(administration, /agents\.find\(\(one\) => one\.agent\.id === participant\)/);
     assert.doesNotMatch(administration, /for \(const agent of agents\)/);

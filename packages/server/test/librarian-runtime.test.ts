@@ -42,13 +42,14 @@ describe('runtime embebido de la bibliotecaria', () => {
     initializeStarterMemory({ databasePath, owner, libraryName: 'Biblioteca de prueba', ownerLibrarianName: 'Lucienne' });
 
     let inferenceCalls = 0;
+    let inferencePrompt = '';
     const inference = createHttpServer(async (request, response) => {
       assert.equal(request.url, '/v1/responses');
       assert.equal(request.headers.authorization, 'Bearer test-secret');
-      for await (const _chunk of request) { /* consume body */ }
+      for await (const chunk of request) inferencePrompt += chunk.toString();
       inferenceCalls += 1;
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ output_text: 'Respuesta de Lucienne.' }));
+      response.end(JSON.stringify({ output_text: 'Respuesta de Aster.' }));
     });
     await new Promise<void>((resolve) => inference.listen(4399, '127.0.0.1', resolve));
     process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
@@ -66,6 +67,18 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal(constituted.status, 201, JSON.stringify(constituted.json));
       const librarian = constituted.json['librarian'] as Record<string, string>;
       assert.equal(librarian.name, 'Lucienne');
+      const librarianAgent = librarian.agent;
+      assert.ok(librarianAgent);
+
+      const renamed = await call(`/participants/${encodeURIComponent(librarianAgent)}`, {
+        method: 'PATCH', body: { name: 'Aster' },
+      });
+      assert.equal(renamed.status, 200, JSON.stringify(renamed.json));
+      const renamedRuntime = await call('/librarian/runtime');
+      assert.equal((renamedRuntime.json['librarian'] as Record<string, string>).name, 'Aster');
+      assert.equal((renamedRuntime.json['librarian'] as Record<string, string>).agent, librarianAgent);
+      const renamedConversation = await call('/librarian/conversation');
+      assert.equal((renamedConversation.json['agent'] as Record<string, string>).name, 'Aster');
 
       const configured = await call('/librarian/runtime', {
         method: 'PUT', body: {
@@ -87,7 +100,7 @@ describe('runtime embebido de la bibliotecaria', () => {
 
       const made = await call('/operations', { method: 'POST', body: {
         originId: 'runtime-test:page', participant: owner.id,
-        change: { kind: 'create_page', title: 'Consulta a Lucienne', visibility: 'private' },
+        change: { kind: 'create_page', title: 'Consulta a Aster', visibility: 'private' },
       } });
       assert.equal(made.status, 201, JSON.stringify(made.json));
       const page = made.json['subjectId'] as string;
@@ -103,10 +116,13 @@ describe('runtime embebido de la bibliotecaria', () => {
         if (current.json['status'] === 'answered') { answered = current.json; break; }
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      assert.ok(answered, 'Lucienne no respondió la solicitud');
-      assert.equal((answered['reply'] as Record<string, unknown>)['answeredBy'], librarian.agent);
+      assert.ok(answered, 'Aster no respondió la solicitud');
+      assert.equal((answered['reply'] as Record<string, unknown>)['answeredBy'], librarianAgent);
+      assert.ok((answered['events'] as Array<Record<string, string>>)
+        .some((event) => event.text === 'Aster leyó la solicitud'));
+      assert.match(inferencePrompt, /Eres Aster, agente de biblioteca de esta Vera/);
       const pageView = await call(`/pages/${encodeURIComponent(page)}`);
-      assert.match(JSON.stringify(pageView.json), /Respuesta de Lucienne/);
+      assert.match(JSON.stringify(pageView.json), /Respuesta de Aster/);
 
       const routine = await call('/librarian/runtime/routine', { method: 'POST' });
       assert.equal(routine.status, 202, JSON.stringify(routine.json));

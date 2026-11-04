@@ -834,10 +834,10 @@ export async function askLibrarian(
       text: instruction,
     });
     toast(request.dispatchStatus === 'failed'
-      ? 'pedido guardado; el bibliotecario está desconectado y podrá retomarlo'
+      ? 'pedido guardado; el agente de biblioteca está desconectado y podrá retomarlo'
       : request.dispatchStatus === 'pending'
-        ? 'pedido guardado en la cola del bibliotecario'
-        : 'pedido enviado al bibliotecario');
+        ? 'pedido guardado en la cola del agente de biblioteca'
+        : 'pedido enviado al agente de biblioteca');
     callbacks.onReload(null);
   } catch {
     toast('no se pudo guardar la solicitud');
@@ -1245,7 +1245,7 @@ function librarianInstruction(page: PageView, block: BlockView | null): Promise<
     dialog.className = 'librarian-dialog librarian-request-dialog';
 
     const header = librarianDialogHeader(
-      'Solicitar al bibliotecario',
+      'Solicitar al agente de biblioteca',
       block === null ? `Sobre «${page.title}»` : `Sobre un bloque de «${page.title}»`,
     );
     const form = document.createElement('form');
@@ -1310,7 +1310,7 @@ function librarianDialogHeader(title: string, context: string): HTMLElement {
   const words = document.createElement('div');
   const kicker = document.createElement('span');
   kicker.className = 'librarian-dialog-kicker';
-  kicker.textContent = 'Vera · bibliotecario';
+  kicker.textContent = 'Vera · agente de biblioteca';
   const heading = document.createElement('h2');
   heading.textContent = title;
   const scope = document.createElement('p');
@@ -1321,10 +1321,10 @@ function librarianDialogHeader(title: string, context: string): HTMLElement {
 }
 
 function librarianRequestState(request: LibrarianRequestView): string {
-  if (request.status === 'working') return 'El bibliotecario está trabajando';
+  if (request.status === 'working') return 'El agente de biblioteca está trabajando';
   if (request.dispatchStatus === 'failed') return 'Solicitud guardada; esperando reconexión';
   if (request.dispatchStatus === 'pending') return 'Solicitud guardada en la cola';
-  return 'Solicitud entregada; esperando al bibliotecario';
+  return 'Solicitud entregada; esperando al agente de biblioteca';
 }
 
 let activeLibrarianRequests: LibrarianRequestView[] = [];
@@ -5363,7 +5363,7 @@ export function renderOutliner(
     if (readOnly) {
       openBlockMenu(more, [[
         ...(callbacks.canAskLibrarian === true ? [{
-          label: 'Solicitar al bibliotecario',
+          label: 'Solicitar al agente de biblioteca',
           icon: 'message-square',
           run: () => void askLibrarian(page, null, callbacks),
         } satisfies MenuAction] : []),
@@ -5454,7 +5454,7 @@ export function renderOutliner(
         run: () => void renderPageSharing(page.id, page.title),
       },
       {
-        label: 'Solicitar al bibliotecario',
+        label: 'Solicitar al agente de biblioteca',
         icon: 'message-square',
         run: () => void askLibrarian(page, null, callbacks),
       },
@@ -6380,7 +6380,7 @@ export function renderOutliner(
       if (readOnly) {
         openBlockMenu(bullet, [[
           ...(callbacks.canAskLibrarian === true ? [{
-            label: 'Solicitar al bibliotecario',
+            label: 'Solicitar al agente de biblioteca',
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
           } satisfies MenuAction] : []),
@@ -6441,7 +6441,7 @@ export function renderOutliner(
            * lo que es: no lo escribió quien escribió el pedido.
            */
           {
-            label: 'Solicitar al bibliotecario',
+            label: 'Solicitar al agente de biblioteca',
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
           },

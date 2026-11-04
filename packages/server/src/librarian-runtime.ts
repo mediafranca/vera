@@ -3,9 +3,10 @@ import { randomUUID } from 'node:crypto';
 import type { Store } from '@vera/store';
 import { activeManifest } from './agent-manifests.ts';
 import { librarianRequest, type LibrarianRequest } from './librarian.ts';
+import { activeOwnerLibrarian } from './owner-librarian.ts';
 
 export const LIBRARIAN_RUNTIME_ID = 'vera:embedded-librarian';
-export const LIBRARIAN_RUNTIME_LABEL = 'Vera · bibliotecaria embebida';
+export const LIBRARIAN_RUNTIME_LABEL = 'Vera · agente de biblioteca embebido';
 
 export type LibrarianRuntimePermission = 'read_request_context' | 'reply' | 'daily_round';
 export type LibrarianRuntimeStatus = 'unconstituted' | 'stopped' | 'ready' | 'degraded' | 'working';
@@ -164,7 +165,7 @@ export function saveLibrarianRuntimeConfiguration(store: Store, input: {
   routine: { enabled: boolean; hour: number; timezone: string };
 }): LibrarianRuntimeConfiguration {
   const binding = activeBinding(store);
-  if (binding === null) throw new Error('esta Vera todavía no tiene bibliotecaria constituida');
+  if (binding === null) throw new Error('esta Vera todavía no tiene agente de biblioteca constituido');
   const instance = store.db.prepare('SELECT owner_id FROM instances WHERE id=?').get(binding.instance_id) as
     { owner_id: string } | undefined;
   if (instance?.owner_id !== input.updatedBy) throw new Error('sólo la persona dueña gobierna este runtime');
@@ -262,7 +263,7 @@ export function openDialecticGate(store: Store, input: {
   challenge: string;
 }): LibrarianDialecticGate {
   const binding = activeBinding(store);
-  if (binding === null) throw new Error('esta Vera todavía no tiene bibliotecaria constituida');
+  if (binding === null) throw new Error('esta Vera todavía no tiene agente de biblioteca constituido');
   if (!FORMATIVE_PRACTICES.has(input.practice)) throw new Error('la práctica formativa no es reconocible');
   const challenge = input.challenge.trim();
   if (challenge === '') throw new Error('el umbral formativo necesita un desafío explícito');
@@ -285,7 +286,7 @@ export function reserveDialecticGate(store: Store, input: {
     if (input.bypass) throw new Error('no hay un umbral formativo que franquear');
     return null;
   }
-  if (gate.status !== 'open') throw new Error('la bibliotecaria ya está respondiendo al umbral formativo');
+  if (gate.status !== 'open') throw new Error('el agente de biblioteca ya está respondiendo al umbral formativo');
   const mode = input.bypass ? 'bypass' : 'contribution';
   store.db.prepare(`UPDATE librarian_dialectic_gates SET status='responding',closing_request_id=?,closing_mode=?
     WHERE id=? AND status='open'`).run(input.request, mode, gate.id);
@@ -363,7 +364,7 @@ export function beginLibrarianRuntimeRun(store: Store, input: {
   model: string;
 }): LibrarianRuntimeRun {
   const binding = activeBinding(store);
-  if (binding === null) throw new Error('esta Vera todavía no tiene bibliotecaria constituida');
+  if (binding === null) throw new Error('esta Vera todavía no tiene agente de biblioteca constituido');
   const manifest = activeManifest(store, binding.agent_id)?.summary.id ?? null;
   const id = `librarian-runtime-run:${randomUUID()}`;
   const startedAt = Date.now();
@@ -392,17 +393,18 @@ export function finishLibrarianRuntimeRun(store: Store, id: string, outcome: {
 
 function manifestPrompt(store: Store, agent: string): string {
   const manifest = activeManifest(store, agent);
-  if (manifest === null) return 'No hay manifiesto constitutivo activo. Declara esta carencia y actúa sólo como bibliotecaria operativa.';
+  if (manifest === null) return 'No hay manifiesto constitutivo activo. Declara esta carencia y actúa sólo como agente de biblioteca operativo.';
   return `Manifiesto constitutivo activo (digest ${manifest.summary.digest}):\n${JSON.stringify(manifest.document)}`;
 }
 
 export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeConfiguration,
   request: LibrarianRequest, gate: LibrarianDialecticGate | null = null): string {
+  const librarianName = activeOwnerLibrarian(store)?.name ?? 'Agente de biblioteca';
   const opening = gate === null ? null : librarianRequest(store, gate.openingRequest);
   const requiredPractice = gate === null && config.dialectic.enabled ? formativePracticeFor(request.text) : null;
   const dialectic = gate === null
     ? (config.dialectic.enabled ? [
-        'Dialéctica bibliotecaria activa.',
+        'Dialéctica del agente de biblioteca activa.',
         ...(requiredPractice === null ? [] : [
           `El harness reconoce esta petición como delegación formativa de ${requiredPractice}. Debes abrir el umbral; no entregues la respuesta final.`,
         ]),
@@ -411,11 +413,11 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
         'El desafío pide una tentativa concreta y explica sobriamente qué gesto conserva; no adelanta la síntesis, selección, interpretación ni conclusión.',
         'Las búsquedas, recuperaciones, transcripciones, ordenamientos, formatos y ejecuciones de una decisión ya tomada son operativas: respóndelas directamente.',
         'Para una respuesta directa puedes devolver Markdown ordinario o JSON válido: {"dialectic":"answer","text":"respuesta final"}.',
-      ].join('\n') : 'Dialéctica bibliotecaria desactivada: responde directamente.')
+      ].join('\n') : 'Dialéctica del agente de biblioteca desactivada: responde directamente.')
     : [
         `Umbral formativo abierto para ${gate.practice}.`,
         `Petición original: ${opening?.text ?? '(no disponible)'}`,
-        `Desafío de la bibliotecaria: ${gate.challenge}`,
+        `Desafío del agente de biblioteca: ${gate.challenge}`,
         gate.closingMode === 'bypass'
           ? 'La persona franqueó explícitamente el umbral. Responde ahora de forma directa, sin reproche ni nuevo desafío.'
           : `La persona ya aportó su tentativa en este turno: ${request.text}`,
@@ -423,7 +425,7 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
         'Devuelve Markdown ordinario o JSON válido: {"dialectic":"answer","text":"respuesta final"}.',
       ].join('\n');
   return [
-    'Eres la bibliotecaria de esta biblioteca Vera. Responde en español claro, breve y afirmativo.',
+    `Eres ${librarianName}, agente de biblioteca de esta Vera. Responde en español claro, breve y afirmativo.`,
     'Tu principal es una persona. No inventes acciones ni herramientas. No reveles razonamiento privado.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
     manifestPrompt(store, config.agent),

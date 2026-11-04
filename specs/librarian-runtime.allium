@@ -5,7 +5,7 @@
 -- Includes: constitución, configuración de inferencia por referencia, ciclo de
 --   vida, solicitudes, ronda diaria, recibos y coexistencia con un puente externo.
 -- Excludes: custodia material del secreto, semántica de cada modelo y herramientas
---   mutantes distintas de la respuesta ordinaria del Bibliotecario.
+--   mutantes distintas de la respuesta ordinaria del agente de biblioteca.
 
 use "./core.allium" as core
 use "./agent-manifest.allium" as manifests

@@ -6611,6 +6611,12 @@ body.settings-open #text {
   background: var(--bg-raised);
 }
 .agent-runtime-configuration h2 { margin: 0 0 .55rem; font-size: 1rem; }
+.agent-runtime-identity { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--rule); }
+.agent-runtime-identity h3 { margin: 0 0 .35rem; font-size: .9rem; }
+.agent-runtime-identity-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .55rem; align-items: end; }
+.agent-runtime-identity-form label { display: grid; gap: .3rem; color: var(--text-dim); font-size: .78rem; }
+.agent-runtime-identity-form input { width: 100%; box-sizing: border-box; min-height: 2.75rem; padding: .55rem .65rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--text); }
+.agent-runtime-identity-form button { min-height: 2.75rem; }
 .agent-runtime-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem 1rem; margin-top: 1rem; }
 .agent-runtime-form > label { display: grid; gap: .3rem; color: var(--text-dim); font-size: .78rem; }
 .agent-runtime-form input:is([type='text'], [type='url'], [type='password'], [type='number']),
@@ -6675,6 +6681,7 @@ body.settings-open #text {
 .voice-installation .settings-note { flex-basis: 100%; margin: 0; }
 
 @media (max-width: 640px) {
+  .agent-runtime-identity-form { grid-template-columns: 1fr; }
   .librarian-boundary { grid-template-columns: 1fr; }
   .agent-runtime-form { grid-template-columns: 1fr; }
   .librarian-tool-catalogue ul { grid-template-columns: 1fr; }

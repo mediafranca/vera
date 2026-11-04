@@ -48,7 +48,7 @@ describe('configuración de voz', () => {
       });
       await assert.rejects(voice.speak('hola'), /habla está desactivada/);
       assert.deepEqual(await voice.transcribe(new Uint8Array([1])), {
-        error: 'la escucha está desactivada en Centro de Vera → Bibliotecario → Voz',
+        error: 'la escucha está desactivada en Centro de Vera → Agente de biblioteca → Voz',
       });
     } finally {
       voice.close();

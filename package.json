@@ -1,6 +1,6 @@
 {
   "name": "vera",
-  "version": "0.6.23",
+  "version": "0.6.24",
   "private": true,
   "type": "module",
   "description": "Biblioteca soberana: corpus versionado, editable, replicable y auditable",

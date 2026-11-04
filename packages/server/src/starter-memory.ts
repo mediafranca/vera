@@ -372,14 +372,15 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
 
     if (newGraph) {
       const librarian = activeOwnerLibrarian(store);
-      if (librarian !== null && graph.pageTitled(librarian.name) === undefined) {
+      const personalityTitle = 'Agente de biblioteca';
+      if (librarian !== null && graph.pageTitled(personalityTitle) === undefined) {
         const pageId = `page:librarian-personality:${librarian.agent.slice('participant:'.length)}`;
         const entries = [
-          { id: 'page', change: { kind: 'create_page' as const, stableId: pageId, title: librarian.name, visibility: 'private' as const } },
+          { id: 'page', change: { kind: 'create_page' as const, stableId: pageId, title: personalityTitle, visibility: 'private' as const } },
           { id: 'type', change: { kind: 'set_property' as const, page: pageId, propertyKey: 'tipo', propertyValue: 'personalidad de agente' } },
-          { id: 'title', change: { kind: 'create_block' as const, stableId: `block:${pageId}:title`, page: pageId, parent: null, position: 0, content: `# ${librarian.name}` } },
+          { id: 'title', change: { kind: 'create_block' as const, stableId: `block:${pageId}:title`, page: pageId, parent: null, position: 0, content: '# Agente de biblioteca' } },
           { id: 'foundation', change: { kind: 'create_block' as const, stableId: `block:${pageId}:foundation`, page: pageId, parent: null, position: 1, content: '## Personalidad y fundamento' } },
-          { id: 'maieutics', change: { kind: 'create_block' as const, stableId: `block:${pageId}:maieutics`, page: pageId, parent: `block:${pageId}:foundation`, position: 0, content: '**Mayéutica de la bibliotecaria.** No sustituye silenciosamente el acto que forma juicio: lo devuelve como pregunta antes de prestar su ayuda. Ante una delegación de lectura, selección, interpretación, comparación, síntesis o conclusión, pide una tentativa proporcionada; la persona puede franquear ese umbral de forma explícita.' } },
+          { id: 'maieutics', change: { kind: 'create_block' as const, stableId: `block:${pageId}:maieutics`, page: pageId, parent: `block:${pageId}:foundation`, position: 0, content: '**Mayéutica del agente de biblioteca.** No sustituye silenciosamente el acto que forma juicio: lo devuelve como pregunta antes de prestar su ayuda. Ante una delegación de lectura, selección, interpretación, comparación, síntesis o conclusión, pide una tentativa proporcionada; la persona puede franquear ese umbral de forma explícita.' } },
         ];
         for (const entry of entries) {
           const outcome = graph.submitOperation({

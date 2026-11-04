@@ -40,8 +40,15 @@ contract OwnerLibrarianHarnessAdministration {
         -- or replace the owner's responsibility for delegated action.
 
     @invariant LucienneIsAnEditableDefaultNotAProductIdentity
-        -- Desktop may propose “Lucienne”. Renaming before constitution creates a
-        -- differently named librarian without changing the role or guarantees.
+        -- Desktop may propose “Lucienne”. The owner can rename the participant
+        -- before or after constitution without changing the office, principal,
+        -- constitution, harness, territory or guarantees. The former name remains
+        -- in participant history; a constitutive page title is not the agent name.
+
+    @invariant TheOfficeDoesNotImposeGenderOnItsOccupant
+        -- Product navigation calls the singular office “Agente de biblioteca”.
+        -- It displays the participant's effective name instead of deriving a
+        -- gendered title or pronouns from the smart default.
 
     @invariant TheLibrarianIsARoleNotAnAgentDirectory
         -- The administration surface resolves the one active OwnerLibrarian and

@@ -10,7 +10,7 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Biblioteca', 'Participantes', 'Bibliotecaria', 'Conexiones', 'Gobierno', 'Apariencia', 'Sistema']) {
+    for (const label of ['Biblioteca', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Gobierno', 'Apariencia', 'Sistema']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
     assert.doesNotMatch(settings, /label: 'Ayuda'/);
@@ -70,7 +70,7 @@ describe('arquitectura de configuración', () => {
     assert.doesNotMatch(settings, /Dentro de su contexto/);
     assert.doesNotMatch(settings, /Fuera de su contexto/);
     assert.match(settings, /Configurar \$\{librarianName\}/);
-    assert.match(settings, /Leyendo la bibliotecaria activa…/);
+    assert.match(settings, /Leyendo el agente de biblioteca activo…/);
     assert.match(settings, /Bitácora de hoy/);
     const librarian = settings.match(/async function drawLibrarian[\s\S]*?async function drawConnections/)?.[0] ?? '';
     assert.doesNotMatch(librarian, /pendingDestination\('Dialéctica bibliotecaria'/);
@@ -119,7 +119,7 @@ describe('arquitectura de configuración', () => {
     assert.match(main, /const elsewhere = new Set/);
   });
 
-  it('reserva las instrucciones del agente para Bibliotecario', () => {
+  it('reserva las instrucciones del agente para su oficio singular', () => {
     assert.match(main, /'instructions'/);
     assert.match(settings, /Configurar \$\{librarianName\}/);
   });

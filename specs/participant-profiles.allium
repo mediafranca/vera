@@ -203,7 +203,7 @@ surface ParticipantDirectory {
 
     @guarantee AgentAdministrationBeginsFromItsParticipant
         -- Each agent row reaches that agent's constitution, credentials and
-        -- territory without passing through the singular Bibliotecario panel.
+        -- territory without passing through the singular library-agent panel.
         -- The same agent is never repeated as a second top-level configuration
         -- object.
 }
