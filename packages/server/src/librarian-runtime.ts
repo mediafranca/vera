@@ -52,6 +52,42 @@ const FORMATIVE_PRACTICES = new Set<FormativePractice>([
   'reading', 'selection', 'interpretation', 'comparison', 'synthesis', 'conclusion',
 ]);
 
+const folded = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/**
+ * Reconoce el borde deliberadamente estrecho de la dialéctica v1.
+ *
+ * El modelo compone el desafío; no decide si puede saltarse el umbral. Las
+ * primeras posiciones explícitas cuentan como contribución y siguen fluidas.
+ */
+export function formativePracticeFor(text: string): FormativePractice | null {
+  const said = folded(text);
+  if (/\b(mi lectura|mi interpretacion|mi conclusion|creo que|pienso que|para mi|yo veo|propongo que)\b/.test(said)) {
+    return null;
+  }
+  const patterns: ReadonlyArray<readonly [FormativePractice, RegExp]> = [
+    ['synthesis', /\b(sintetiza|sintesis|resume|resumen)\b/],
+    ['selection', /\b(elige|selecciona|escoge|pasajes? (?:mas )?(?:importantes|decisivos|centrales))\b/],
+    ['interpretation', /\b(interpreta|interpretacion|que significa|explica el sentido)\b/],
+    ['comparison', /\b(compara|comparacion|contrasta|contraste)\b/],
+    ['conclusion', /\b(concluye|conclusion|saca conclusiones)\b/],
+    ['reading', /\b(lee|lectura critica|haz una lectura)\b/],
+  ];
+  return patterns.find(([, pattern]) => pattern.test(said))?.[0] ?? null;
+}
+
+export function formativeChallenge(practice: FormativePractice): string {
+  const challenges: Record<FormativePractice, string> = {
+    reading: 'Antes, señala un pasaje que te parezca decisivo y formula una duda concreta. Luego leeré contigo.',
+    selection: 'Antes, elige tú dos pasajes decisivos y explica brevemente por qué. Después contrastaré tu selección.',
+    interpretation: 'Antes, escribe una interpretación provisional en una frase, aunque todavía dudes. Luego la pondré a prueba con el corpus.',
+    comparison: 'Antes, nombra una semejanza y una diferencia que ya veas. Después las contrastaré y ampliaré.',
+    synthesis: 'Antes, dime cuáles son para ti las tres ideas centrales, aunque todavía dudes. Luego contrastaré tu lectura y compondré la síntesis contigo.',
+    conclusion: 'Antes, formula una conclusión provisional en una frase. Después la contrastaré y ayudaré a precisarla.',
+  };
+  return challenges[practice];
+}
+
 export interface LibrarianRuntimeRun {
   id: string;
   kind: 'request' | 'routine';
@@ -362,9 +398,13 @@ function manifestPrompt(store: Store, agent: string): string {
 export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeConfiguration,
   request: LibrarianRequest, gate: LibrarianDialecticGate | null = null): string {
   const opening = gate === null ? null : librarianRequest(store, gate.openingRequest);
+  const requiredPractice = gate === null && config.dialectic.enabled ? formativePracticeFor(request.text) : null;
   const dialectic = gate === null
     ? (config.dialectic.enabled ? [
         'Dialéctica bibliotecaria activa.',
+        ...(requiredPractice === null ? [] : [
+          `El harness reconoce esta petición como delegación formativa de ${requiredPractice}. Debes abrir el umbral; no entregues la respuesta final.`,
+        ]),
         'Si la petición delega como práctica central leer, seleccionar, interpretar, comparar, sintetizar o concluir, y la persona todavía no aporta una primera posición, no entregues el trabajo final.',
         'En ese caso devuelve exclusivamente JSON válido: {"dialectic":"challenge","practice":"reading|selection|interpretation|comparison|synthesis|conclusion","text":"un desafío breve, proporcionado y realizable"}.',
         'El desafío pide una tentativa concreta y explica sobriamente qué gesto conserva; no adelanta la síntesis, selección, interpretación ni conclusión.',

@@ -7,8 +7,26 @@ import assert from 'node:assert/strict';
 
 import { initializeStarterMemory } from '../src/starter-memory.ts';
 import { listen } from '../src/server.ts';
+import { formativePracticeFor } from '../src/librarian-runtime.ts';
 
 const directories: string[] = [];
+
+describe('frontera formativa de la dialéctica', () => {
+  it('reconoce las seis prácticas y deja fluidas las tareas operativas', () => {
+    assert.equal(formativePracticeFor('Lee este texto por mí.'), 'reading');
+    assert.equal(formativePracticeFor('Elige los pasajes más importantes.'), 'selection');
+    assert.equal(formativePracticeFor('Interpreta este argumento.'), 'interpretation');
+    assert.equal(formativePracticeFor('Compara estas dos posiciones.'), 'comparison');
+    assert.equal(formativePracticeFor('Hazme una síntesis completa.'), 'synthesis');
+    assert.equal(formativePracticeFor('Saca una conclusión.'), 'conclusion');
+    assert.equal(formativePracticeFor('Ordena alfabéticamente estas referencias.'), null);
+  });
+
+  it('reconoce una primera posición explícita y permite contrastarla directamente', () => {
+    assert.equal(formativePracticeFor('Mi lectura es que la soberanía exige límites; contrástala.'), null);
+    assert.equal(formativePracticeFor('Creo que el texto concluye otra cosa. Compara mi hipótesis con el corpus.'), null);
+  });
+});
 
 afterEach(() => {
   delete process.env['VERA_TEST_LIBRARIAN_KEY'];
@@ -180,7 +198,7 @@ describe('runtime embebido de la bibliotecaria', () => {
     const owner = { id: 'participant:dialectic-owner', name: 'Dueña' };
     initializeStarterMemory({ databasePath, owner, ownerLibrarianName: 'Lucienne' });
     const outputs = [
-      JSON.stringify({ dialectic: 'challenge', practice: 'synthesis', text: 'Antes, dime tus tres ideas centrales.' }),
+      'Aquí tienes la síntesis completa que el harness no debe dejar pasar.',
       JSON.stringify({ dialectic: 'answer', text: 'Tu lectura distingue tres ideas; el corpus añade una cuarta tensión.' }),
       JSON.stringify({ dialectic: 'challenge', practice: 'selection', text: 'Elige primero dos pasajes decisivos.' }),
       JSON.stringify({ dialectic: 'answer', text: 'Selección directa preparada esta vez.' }),
@@ -226,6 +244,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       } });
       const challenge = await waitAnswered(opened.json.id);
       assert.match(challenge.reply.text, /tres ideas centrales/);
+      assert.doesNotMatch(challenge.reply.text, /Aquí tienes la síntesis/);
       assert.equal(challenge.dialectic.status, 'open');
       assert.equal(challenge.dialectic.practice, 'synthesis');
       const beforeContribution = await call(`/pages/${encodeURIComponent(page)}`);

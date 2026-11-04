@@ -156,6 +156,8 @@ import {
   completeDialecticGate,
   dialecticGateForRequest,
   finishLibrarianRuntimeRun,
+  formativeChallenge,
+  formativePracticeFor,
   librarianRequestPrompt,
   librarianRuntimeConfiguration,
   librarianRuntimeRuns,
@@ -1051,6 +1053,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         timeoutMs: 300_000,
       };
       const gate = dialecticGateForRequest(store, id);
+      const requiredPractice = gate === null && config.dialectic.enabled
+        ? formativePracticeFor(claimed.text)
+        : null;
       const basePrompt = `${librarianRequestPrompt(store, config, claimed, gate)}\n\n${librarianToolInstructions()}`;
       let transcript = basePrompt;
       let final = '';
@@ -1072,18 +1077,20 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (gate !== null && decision.mode === 'challenge') {
         throw new Error('un umbral ya respondido no puede abrir otro desafío en el mismo turno');
       }
-      if (decision.mode === 'challenge') {
+      if (decision.mode === 'challenge' || requiredPractice !== null) {
+        const practice = decision.mode === 'challenge' ? decision.practice : requiredPractice!;
+        const challenge = decision.mode === 'challenge' ? decision.text : formativeChallenge(practice);
         openDialecticGate(store, {
           conversation: claimed.conversationId,
           openingRequest: claimed.id,
-          practice: decision.practice,
-          challenge: decision.text,
+          practice,
+          challenge,
         });
         const answered = answerLibrarianRequest(store, {
-          id, answeredBy: config.agent as ParticipantId, text: decision.text,
+          id, answeredBy: config.agent as ParticipantId, text: challenge,
         });
         if (answered === undefined) throw new Error('no se pudo dejar abierto el umbral formativo');
-        finishLibrarianRuntimeRun(store, run.id, { output: decision.text });
+        finishLibrarianRuntimeRun(store, run.id, { output: challenge });
         return;
       }
       const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, decision.text);
