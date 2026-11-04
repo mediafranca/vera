@@ -1765,7 +1765,7 @@ surface VeraWorkspace {
 
     @guarantee TheCentreFollowsHumanPurposes
         -- El Centro de Vera abre en Biblioteca y agrupa sus destinos bajo
-        -- Biblioteca, Participantes, Bibliotecaria, Conexiones, Gobierno, Apariencia,
+        -- Biblioteca, Participantes, Agente de biblioteca, Conexiones, Gobierno, Apariencia,
         -- y Sistema. Cada pestaña presenta controles explícitos o botones
         -- grandes con una consecuencia legible. Los
         -- controles frecuentes aparecen primero; la identidad y el perfil de la
@@ -1793,12 +1793,13 @@ surface VeraWorkspace {
         -- el control que gobierna la decisión.
 
     @guarantee OneLibrarianRoleNamesItsCurrentOccupant
-        -- Bibliotecario es un oficio singular de la instancia y muestra el
-        -- nombre de quien lo ocupa, por defecto Lucienne. Su panel contiene sólo
-        -- su constitución, harness, runtime y territorio. Cotito y cualquier IA
-        -- conectada por MCP son agentes participantes y se administran desde
-        -- Personas, aunque una ficha individual pueda abrir sus propios
-        -- controles de constitución y alcance.
+        -- Agente de biblioteca es un oficio singular de la instancia y muestra
+        -- el nombre efectivo de quien lo ocupa, con Lucienne sólo como valor
+        -- inicial editable. El panel permite renombrar al participante sin
+        -- cambiar su oficio, constitución, harness, runtime ni territorio.
+        -- Cotito y cualquier IA conectada por MCP son agentes participantes y se
+        -- administran desde Personas, aunque una ficha individual pueda abrir
+        -- sus propios controles de constitución y alcance.
 
     @guarantee ConnectionsDeclareTheirDirection
         -- Conexiones distingue las salidas de Vera hacia otras aplicaciones,

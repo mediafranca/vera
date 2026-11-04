@@ -61,7 +61,7 @@ describe('memoria inicial distribuida', () => {
     assert.deepEqual(
       graph.pages().map((one) => one.title).sort(),
       [
-        'Aurelia',
+        'Agente de biblioteca',
         'Vera',
         'VERA — Acceder desde tus otros dispositivos',
         'VERA — Conectar una inteligencia artificial',
@@ -116,9 +116,9 @@ describe('memoria inicial distribuida', () => {
     assert.equal(authored.length, STARTER_CHANGES.length);
     assert.ok(authored.every((operation) => operation.submission.submittedBy === DISTRIBUTION_PARTICIPANT));
     assert.ok(authored.every((operation) => operation.submission.channel === 'agent_generation'));
-    const personality = graph.pageTitled('Aurelia');
+    const personality = graph.pageTitled('Agente de biblioteca');
     assert.ok(personality);
-    assert.ok(graph.blocksOf(personality.id).some((block) => /Mayéutica de la bibliotecaria/.test(block.content)));
+    assert.ok(graph.blocksOf(personality.id).some((block) => /Mayéutica del agente de biblioteca/.test(block.content)));
     const personalityOperations = graph.operations().filter((operation) =>
       operation.originId.startsWith('starter-memory:librarian-personality:')
     );

@@ -155,7 +155,7 @@ export class VoiceConfiguration {
   async transcribe(audio: Uint8Array): Promise<{ text: string } | { error: string }> {
     const state = await this.view();
     if (!state.switches.enabled || !state.switches.speechToText) {
-      return { error: 'la escucha está desactivada en Centro de Vera → Bibliotecario → Voz' };
+      return { error: 'la escucha está desactivada en Centro de Vera → Agente de biblioteca → Voz' };
     }
     if (!state.speechToText.ready) {
       return { error: `la escucha no está lista: falta ${state.speechToText.missing.join(', ')}` };
@@ -167,7 +167,7 @@ export class VoiceConfiguration {
   async speak(text: string, signal?: AbortSignal): Promise<SpokenAudio> {
     const state = await this.view();
     if (!state.switches.enabled || !state.switches.textToSpeech) {
-      throw new Error('el habla está desactivada en Centro de Vera → Bibliotecario → Voz');
+      throw new Error('el habla está desactivada en Centro de Vera → Agente de biblioteca → Voz');
     }
     if (!state.textToSpeech.ready) {
       throw new Error(`el habla no está lista: falta ${state.textToSpeech.missing.join(', ')}`);

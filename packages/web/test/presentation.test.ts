@@ -31,7 +31,7 @@ describe('páginas que se pueden presentar', () => {
     const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
     assert.doesNotMatch(outliner, /label: 'Procesar la página'/);
     assert.doesNotMatch(outliner, /label: 'Procesar el bloque'/);
-    assert.match(outliner, /label: 'Solicitar al bibliotecario'/);
+    assert.match(outliner, /label: 'Solicitar al agente de biblioteca'/);
   });
 
   it('da a cada lámina una dirección estable y vuelve a la fuente señalada', () => {

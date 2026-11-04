@@ -124,7 +124,7 @@ export function said(state: Behind): { message: string; title: string } | null {
 
 /** Los identificadores de participante se presentan como rótulos legibles. */
 function nameOf(participant: string): string {
-  if (participant === 'participant:cotito') return 'el bibliotecario';
+  if (participant === 'participant:cotito') return 'Cotito';
   const cut = participant.indexOf(':');
   return cut === -1 ? participant : participant.slice(cut + 1);
 }

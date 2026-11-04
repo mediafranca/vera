@@ -42,16 +42,16 @@ export function ensureOwnerLibrarian(
 ): OwnerLibrarianBinding {
   const held = activeOwnerLibrarian(store);
   if (held !== null) {
-    if (held.owner !== owner) throw new Error('la bibliotecaria activa pertenece a otra persona dueña');
+    if (held.owner !== owner) throw new Error('el agente de biblioteca activo pertenece a otra persona dueña');
     return held;
   }
 
   const name = requestedName.trim();
-  if (name === '') throw new Error('la bibliotecaria necesita un nombre');
+  if (name === '') throw new Error('el agente de biblioteca necesita un nombre');
   const instance = store.db.prepare('SELECT id,owner_id FROM instances WHERE graph_id=?')
     .get(store.graphId) as { id: string; owner_id: string } | undefined;
   if (instance === undefined || instance.owner_id !== owner) {
-    throw new Error('sólo la persona dueña puede constituir su bibliotecaria');
+    throw new Error('sólo la persona dueña puede constituir su agente de biblioteca');
   }
 
   const agent = `participant:${randomUUID()}`;

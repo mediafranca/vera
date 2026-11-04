@@ -1,4 +1,4 @@
-// Constitución y estado efectivo de los bibliotecarios de esta Vera.
+// Constitución y estado efectivo del agente de biblioteca de esta Vera.
 //
 // Esta superficie no edita una personalidad paralela: elige páginas reales del
 // corpus, construye una proyección versionada y decide qué revisión puede leer
@@ -157,10 +157,10 @@ function field(label: string, input: HTMLInputElement | HTMLSelectElement): HTML
 
 async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: () => Promise<void>): Promise<HTMLElement> {
   const section = document.createElement('section'); section.className = 'agent-runtime-configuration';
-  const heading = document.createElement('h2'); heading.textContent = 'Runtime de la bibliotecaria';
+  const heading = document.createElement('h2'); heading.textContent = 'Runtime del agente de biblioteca';
   const status = document.createElement('p'); status.className = `agent-runtime-badge is-${view.status}`;
   status.textContent = ({
-    unconstituted: 'Aún no constituida', stopped: 'Detenido', ready: 'Listo',
+    unconstituted: 'Sin constituir', stopped: 'Detenido', ready: 'Listo',
     degraded: 'Configuración incompleta', working: 'Trabajando',
   } as Record<LibrarianRuntimeView['status'], string>)[view.status];
   section.append(heading, status);
@@ -186,18 +186,33 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
 
   if (view.librarian === null) {
     const explanation = document.createElement('p'); explanation.className = 'settings-note';
-    explanation.textContent = 'Esta biblioteca precede al smart default. Constituirla crea el agente, su vínculo con la persona dueña, el harness y un manifiesto inicial editable.';
+    explanation.textContent = 'Esta biblioteca precede al nombre inicial. Constituir el oficio crea el agente, su vínculo con la persona dueña, el harness y un manifiesto inicial editable.';
     const name = document.createElement('input'); name.value = 'Lucienne'; name.required = true;
-    section.append(explanation, field('Nombre editable', name), control('Constituir bibliotecaria', async () => {
+    section.append(explanation, field('Nombre inicial', name), control('Constituir agente de biblioteca', async () => {
       await api.constituteLibrarianRuntime(name.value); await refresh();
     }, 'primary'));
     return section;
   }
 
+  const identity = document.createElement('section'); identity.className = 'agent-runtime-identity';
+  const identityHeading = document.createElement('h3'); identityHeading.textContent = 'Identidad';
+  const identityNote = document.createElement('p'); identityNote.className = 'settings-note';
+  identityNote.textContent = 'Lucienne es sólo el nombre inicial. Cambiarlo conserva el oficio, la constitución, el harness, el territorio y la historia del participante.';
+  const identityForm = document.createElement('form'); identityForm.className = 'agent-runtime-identity-form';
+  const participantName = document.createElement('input'); participantName.value = view.librarian.name;
+  participantName.required = true; participantName.minLength = 2; participantName.autocomplete = 'off';
+  const saveName = control('Guardar nombre', async () => {
+    await api.renameParticipant(view.librarian!.agent, participantName.value.trim()); await refresh();
+  }, 'primary');
+  identityForm.onsubmit = (event) => { event.preventDefault(); saveName.click(); };
+  identityForm.append(field('Nombre', participantName), saveName);
+  identity.append(identityHeading, identityNote, identityForm);
+  section.append(identity);
+
   const config = view.configuration;
   if (config === null) {
     const missing = document.createElement('p'); missing.className = 'settings-note';
-    missing.textContent = 'La bibliotecaria existe, pero su runtime aún no tiene configuración.';
+    missing.textContent = 'El agente de biblioteca existe, pero su runtime aún no tiene configuración.';
     section.append(missing); return section;
   }
   const modelCatalog = await api.processingModels().catch(() => ({ models: [] }));
@@ -242,7 +257,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const dialecticLabel = document.createElement('label');
   dialecticLabel.append(dialectic, document.createTextNode('Dialéctica bibliotecaria activa'));
   const dialecticNote = document.createElement('p'); dialecticNote.className = 'settings-note';
-  dialecticNote.textContent = 'Ante una delegación de lectura o juicio, Lucienne pide primero una tentativa. La persona puede franquear ese umbral de forma explícita.';
+  dialecticNote.textContent = `Ante una delegación de lectura o juicio, ${view.librarian.name} pide primero una tentativa. La persona puede franquear ese umbral de forma explícita.`;
   const routineLabel = document.createElement('label'); routineLabel.append(routine, document.createTextNode('Ronda diaria activa'));
   form.append(
     models, field('Modelo de inferencia', model), field('Endpoint compatible con OpenAI', endpoint),
@@ -382,10 +397,10 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
   host.replaceChildren();
   const root = document.createElement('article'); root.className = 'agent-administration';
   const header = document.createElement('header'); header.className = 'special-page-header';
-  const title = document.createElement('h1'); title.textContent = 'Bibliotecaria';
+  const title = document.createElement('h1'); title.textContent = 'Agente de biblioteca';
   header.append(title, control('← Volver', () => window.history.back()));
   const intro = document.createElement('p'); intro.className = 'agent-administration-intro';
-  intro.textContent = 'La bibliotecaria es un oficio singular de esta Vera. Su identidad y sus prácticas son editables; el modelo y el runtime pueden cambiar sin reemplazarla.';
+  intro.textContent = 'Agente de biblioteca es un oficio singular de esta Vera. Su nombre y sus prácticas son editables; el modelo y el runtime pueden cambiar sin reemplazar su identidad.';
   const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo configuración…';
   const body = document.createElement('div'); body.className = 'agent-administration-body';
   root.append(header, intro, status, body); host.append(root);
@@ -403,16 +418,16 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
 
     if (agent === null) {
       status.textContent = librarianMode
-        ? 'La bibliotecaria aún no está constituida.'
+        ? 'El agente de biblioteca aún no está constituido.'
         : 'El agente solicitado no existe o ya no está activo.';
       if (embeddedRuntime !== null) body.append(embeddedRuntime);
       return;
     }
 
-    title.textContent = librarianMode ? `${agent.agent.name} · Bibliotecaria` : `${agent.agent.name} · Agente`;
+    title.textContent = librarianMode ? `${agent.agent.name} · Agente de biblioteca` : `${agent.agent.name} · Agente`;
     intro.textContent = librarianMode
-      ? 'Constitución, harness, runtime y territorio de la única bibliotecaria activa de esta Vera.'
-      : 'Constitución y territorio de este participante agente. La bibliotecaria se administra en su panel singular.';
+      ? 'Identidad, constitución, harness, runtime y territorio del único agente de biblioteca activo de esta Vera.'
+      : 'Constitución y territorio de este participante agente. El agente de biblioteca se administra en su panel singular.';
     status.textContent = agent.human === null ? 'Sin principal humano' : `Principal humano · ${agent.human.name}`;
     if (agent.human === null) {
       const warning = document.createElement('p'); warning.className = 'participant-directory-retained';

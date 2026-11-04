@@ -1027,6 +1027,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   const executeEmbeddedRequest = async (id: string): Promise<void> => {
     const config = librarianRuntimeConfiguration(store);
     if (config === null || !config.enabled || config.model === null || embeddedLibrarianBusy) return;
+    const librarianName = graph.participant(config.agent)?.name ?? 'Agente de biblioteca';
     const turn = librarianRequest(store, id);
     const chat = turn === undefined ? undefined : librarianConversation(store, turn.conversationId);
     if (turn === undefined || chat?.agent !== config.agent) return;
@@ -1036,7 +1037,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     embeddedRuntimeStatus = 'working';
     const run = beginLibrarianRuntimeRun(store, { kind: 'request', request: id, model: config.model });
     addLibrarianProgress(store, {
-      requestId: id, kind: 'stage', text: `${LIBRARIAN_RUNTIME_LABEL} leyó la solicitud`, createdBy: config.agent,
+      requestId: id, kind: 'stage', text: `${librarianName} leyó la solicitud`, createdBy: config.agent,
     });
     try {
       if (claimed.sourcePageId !== null) {
@@ -1080,7 +1081,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const call = readLibrarianToolCall(answered.text);
         if (call === null) { final = answered.text; break; }
         addLibrarianProgress(store, {
-          requestId: id, kind: 'tool', text: `Lucienne usó ${call.name}`, createdBy: config.agent,
+          requestId: id, kind: 'tool', text: `${librarianName} usó ${call.name}`, createdBy: config.agent,
         });
         const observation = runLibrarianTool(store, graph, config.agent as ParticipantId, call);
         transcript = `${transcript}\n\nSolicitud de herramienta: ${JSON.stringify(call)}\n` +
@@ -2667,7 +2668,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'POST' && path === '/librarian/runtime/constitute') {
-      if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña constituye su bibliotecaria' }); return; }
+      if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña constituye su agente de biblioteca' }); return; }
       let body: Record<string, unknown> = {};
       try { body = await readSmallJson(); } catch { /* Lucienne es el smart default */ }
       try {
@@ -2747,7 +2748,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (config === null || !config.enabled || !config.permissions.includes('daily_round')) {
         send(response, 409, { error: 'el runtime y el permiso de ronda deben estar activos' }); return;
       }
-      if (embeddedLibrarianBusy) { send(response, 409, { error: 'Lucienne ya está trabajando' }); return; }
+      if (embeddedLibrarianBusy) {
+        send(response, 409, { error: `${activeOwnerLibrarian(store)?.name ?? 'El agente de biblioteca'} ya está trabajando` });
+        return;
+      }
       void executeLibrarianRoutine();
       send(response, 202, embeddedRuntimeView());
       return;
@@ -2844,7 +2848,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     if (request.method === 'GET' && path === '/librarian/conversation') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
-        send(response, 403, { error: 'sólo una persona puede leer su conversación con el bibliotecario' });
+        send(response, 403, { error: 'sólo una persona puede leer su conversación con el agente de biblioteca' });
         return;
       }
       const requestedConversation = url.searchParams.get('id');
@@ -2872,7 +2876,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         },
         agent: {
           id: librarianAgent,
-          name: graph.participant(librarianAgent)?.name ?? 'Bibliotecario',
+          name: graph.participant(librarianAgent)?.name ?? 'Agente de biblioteca',
         },
         turns,
       }, {
@@ -2885,7 +2889,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     if (request.method === 'POST' && path === '/librarian/requests') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
-        send(response, 403, { error: 'sólo una persona puede solicitar al bibliotecario' });
+        send(response, 403, { error: 'sólo una persona puede solicitar al agente de biblioteca' });
         return;
       }
       let body: Record<string, unknown>;
@@ -2912,7 +2916,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 409, { error: 'no hay un umbral formativo que franquear' }); return;
       }
       if (activeGate?.status === 'responding') {
-        send(response, 409, { error: 'la bibliotecaria ya está respondiendo al umbral formativo' }); return;
+        send(response, 409, { error: 'el agente de biblioteca ya está respondiendo al umbral formativo' }); return;
       }
       if (recordingId !== null && recordingById(store, recordingId) === null) {
         send(response, 404, { error: 'la grabación no existe' }); return;
@@ -2930,7 +2934,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (readerRefusal !== null) { send(response, 403, { error: readerRefusal }); return; }
         const librarianClearance = clearanceForPage(store, graph, librarianAgent, page.id, 'read');
         if (librarianClearance.outcome === 'refused') {
-          send(response, 409, { error: `la bibliotecaria no puede leer este contexto: ${librarianClearance.explanation}` });
+          send(response, 409, { error: `el agente de biblioteca no puede leer este contexto: ${librarianClearance.explanation}` });
           return;
         }
       }
@@ -3027,14 +3031,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
       if (request.method === 'POST' && action === 'claim') {
-        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
+        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del agente de biblioteca con escritura' }); return; }
         const claimed = claimLibrarianRequest(store, id);
         if (claimed?.status !== 'working') { send(response, 409, { error: 'la solicitud ya no está en cola' }); return; }
         send(response, 200, librarianRequestView(claimed));
         return;
       }
       if (request.method === 'POST' && action === 'progress') {
-        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
+        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del agente de biblioteca con escritura' }); return; }
         let body: Record<string, unknown>;
         try { body = await readSmallJson(); }
         catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
@@ -3049,7 +3053,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         return;
       }
       if (request.method === 'POST' && action === 'reply') {
-        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del bibliotecario con escritura' }); return; }
+        if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del agente de biblioteca con escritura' }); return; }
         if (current.sourcePageId !== null) {
           const refusal = pageActionRefusal(current.sourcePageId, current.modality === 'block' ? 'edit' : 'contribute');
           if (refusal !== null) { send(response, 403, { error: refusal }); return; }
@@ -3085,7 +3089,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const source = current.sourceBlockId === null ? undefined : graph.block(current.sourceBlockId);
           if (source === undefined || focus?.id !== source.stableId || focus.content !== source.content) {
             send(response, 409, {
-              error: 'el bloque cambió después del pedido; el bibliotecario no puede reemplazar una versión antigua',
+              error: 'el bloque cambió después del pedido; el agente de biblioteca no puede reemplazar una versión antigua',
             });
             return;
           }

@@ -89,7 +89,7 @@ export interface SettingsHandlers {
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'biblioteca', label: 'Biblioteca' },
   { id: 'personas', label: 'Participantes' },
-  { id: 'bibliotecario', label: 'Bibliotecaria' },
+  { id: 'bibliotecario', label: 'Agente de biblioteca' },
   { id: 'conexiones', label: 'Conexiones' },
   { id: 'gobierno', label: 'Gobierno' },
   { id: 'apariencia', label: 'Apariencia' },
@@ -107,7 +107,7 @@ type CentreDestination = {
 const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'biblioteca', label: 'Archivos', note: 'Imágenes, audios, documentos y adjuntos', open: (h) => h.onOpenFiles() },
   { section: 'personas', label: 'Directorio', note: 'Personas y agentes, autoridad, credenciales, sesiones y roles', open: (h) => h.onOpenPeople() },
-  { section: 'bibliotecario', label: 'Bibliotecaria', note: 'Identidad, personalidad, harness, runtime y territorio' },
+  { section: 'bibliotecario', label: 'Agente de biblioteca', note: 'Identidad, personalidad, harness, runtime y territorio' },
   { section: 'bibliotecario', label: 'Constitución y runtime', note: 'Fuentes editables, manifiesto, herramientas y ejecución', open: (h) => h.onOpenAgents() },
   { section: 'bibliotecario', label: 'Voz', note: 'Escuchar con STT y hablar con TTS local', terms: 'audio whisper kokoro micrófono transcripción' },
   { section: 'personas', label: 'Espacios compartidos', note: 'Superficies, invitaciones y permisos', open: (h) => h.onOpenSharing() },
@@ -1729,21 +1729,21 @@ function todayTitle(): string {
 async function drawLibrarian(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
   const loading = document.createElement('p');
   loading.className = 'settings-note';
-  loading.textContent = 'Leyendo la bibliotecaria activa…';
+  loading.textContent = 'Leyendo el agente de biblioteca activo…';
   host.append(loading);
   const runtime = await api.librarianRuntime().catch(() => null);
   host.replaceChildren();
-  const librarianName = runtime?.librarian?.name ?? 'Bibliotecaria';
+  const librarianName = runtime?.librarian?.name ?? 'Agente de biblioteca';
   heading(
     host,
-    runtime?.librarian === null ? 'Bibliotecaria aún no constituida' : `${librarianName} · bibliotecaria`,
+    runtime?.librarian === null ? 'Agente de biblioteca aún no constituido' : `${librarianName} · agente de biblioteca`,
     'Un oficio singular de esta Vera. Las demás inteligencias conectadas se administran como agentes dentro de Participantes.',
   );
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
   actions.append(
     destination(`Configurar ${librarianName}`, 'Constitución, manifiesto, harness, modelo, permisos y territorio', handlers.onOpenAgents),
-    destination('Bitácora de hoy', 'Lo que el bibliotecario hizo y decidió dentro del corpus', () =>
+    destination('Bitácora de hoy', `Lo que ${librarianName} hizo y decidió dentro del corpus`, () =>
       handlers.onOpenPage(todayTitle())),
     destination('Registro de actividad', 'Operaciones atribuidas, eliminaciones y restauraciones', handlers.onOpenActivity),
   );
@@ -1891,7 +1891,7 @@ async function drawVoiceConfiguration(host: HTMLElement): Promise<void> {
           pathField('textToSpeechPython', 'Python de TTS', 'Intérprete del entorno donde está instalado Kokoro.'),
           pathField('textToSpeechWorker', 'Worker de TTS', 'Programa versionado que conecta Vera con el motor.'),
           pathField('textToSpeechModelRoot', 'Modelos de TTS', 'Carpeta que contiene modelo, configuración y voces.'),
-          pathField('textToSpeechVoice', 'Voz', 'Nombre de la voz instalada que usará el bibliotecario.', false),
+          pathField('textToSpeechVoice', 'Voz', 'Nombre de la voz instalada que usará el agente de biblioteca.', false),
           pathField('textToSpeechCacheRoot', 'Caché de audio', 'Carpeta regenerable; en contenedores conviene ubicarla bajo /data.'),
         ),
       );

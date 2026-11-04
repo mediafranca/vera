@@ -484,7 +484,7 @@ function drawMemory(host: HTMLElement): void {
     /*
      * Gobierno no es un índice de páginas: es un mapa de controles.
      *
-     * Conexiones, Publicación, Actividad y Bibliotecaria tienen superficies
+     * Conexiones, Publicación, Actividad y Agente de biblioteca tienen superficies
      * propias en sus secciones. Presentación e Instrucciones son documentación
      * y no aparecen como si fueran ajustes. Lo que aún carece de un control
      * explícito ocupa su lugar como Pendiente, sin abrir prosa para fingir que
@@ -1949,7 +1949,7 @@ async function openParticipantsAdministration(push = false): Promise<void> {
 async function openAgentAdministration(push = false): Promise<void> {
   workspace.activePage = null;
   workspace.focusRoot = null;
-  nameWindow('Bibliotecarios y agentes');
+  nameWindow('Agente de biblioteca y agentes');
   if (push && window.location.pathname !== '/agentes') window.history.pushState({}, '', '/agentes');
   $('#vera-root').classList.add('special-surface');
   closeSettings();
@@ -3641,7 +3641,7 @@ function wireTheme(): void {
   const librarian = $<HTMLButtonElement>('#librarian');
   librarian.addEventListener('click', () => {
     if (openView === null || corpus?.canAskLibrarian !== true) {
-      notice('El bibliotecario estará disponible cuando esta Vera tenga uno conectado.');
+      notice('El agente de biblioteca estará disponible cuando esta Vera tenga uno conectado.');
       return;
     }
     void openLibrarianConversation(openView, callbacksFor(openView));
