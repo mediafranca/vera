@@ -5,6 +5,8 @@ import { type Change, VeraGraph } from '@vera/core';
 import { loadGraph, openStore, recordOperation, saveParticipant } from '@vera/store';
 import { ensureInstanceProfile, type InstanceProfile } from './instance-governance.ts';
 import { activeOwnerLibrarian, ensureOwnerLibrarian } from './owner-librarian.ts';
+import { activateManifest, buildManifest, chooseConstitutionSources, type ConstitutionRole } from './agent-manifests.ts';
+import { saveLibrarianRuntimeConfiguration } from './librarian-runtime.ts';
 import { createSharedSpace } from './shared-spaces.ts';
 import {
   STARTER_OBJECT_DEFINITIONS,
@@ -12,8 +14,18 @@ import {
   STARTER_RELATION_DEFINITIONS,
 } from './starter-governance.ts';
 
-export const STARTER_MEMORY_VERSION = 3;
+export const STARTER_MEMORY_VERSION = 4;
 export const DISTRIBUTION_PARTICIPANT = 'participant:vera-distribution';
+
+export type InstallationCapabilityOutcome = 'deferred' | 'configured' | 'unavailable' | 'failed';
+
+export interface StarterInstallationReceipt {
+  readonly inference: InstallationCapabilityOutcome;
+  readonly voice: InstallationCapabilityOutcome;
+  readonly inferenceEndpoint?: string;
+  readonly inferenceModel?: string;
+  readonly installedAt?: number;
+}
 
 interface StarterChange {
   readonly id: string;
@@ -273,6 +285,8 @@ export interface InitializeStarterMemoryOptions {
   readonly libraryName?: string;
   readonly ownerLibrarianName?: string;
   readonly initialCollectiveSurfaceName?: string;
+  /** Resultado observable del asistente; nunca contiene claves ni otros secretos. */
+  readonly installation?: StarterInstallationReceipt;
 }
 
 export interface StarterMemoryReport {
@@ -301,6 +315,21 @@ function surfaceSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return slug || 'superficie-colectiva';
 }
+
+const localDay = (at: number): string => {
+  const date = new Date(at);
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const capabilityLabel = (outcome: InstallationCapabilityOutcome): string => ({
+  deferred: 'se dejó para más adelante',
+  configured: 'quedó configurada',
+  unavailable: 'no estaba disponible en este equipo',
+  failed: 'se intentó preparar y falló',
+})[outcome];
 
 export function initializeStarterMemory(options: InitializeStarterMemoryOptions): StarterMemoryReport {
   if (options.databasePath !== ':memory:') mkdirSync(dirname(options.databasePath), { recursive: true });
@@ -351,6 +380,38 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
 
     let applied = 0;
     let duplicates = 0;
+    if (newGraph) {
+      const installedAt = options.installation?.installedAt ?? Date.now();
+      const day = localDay(installedAt);
+      const librarian = activeOwnerLibrarian(store);
+      const libraryName = store.db.prepare('SELECT library_name FROM instances LIMIT 1').get() as
+        { library_name: string } | undefined;
+      const inference = options.installation?.inference ?? 'deferred';
+      const voice = options.installation?.voice ?? 'deferred';
+      const entries = [
+        { id: 'page', change: { kind: 'create_page' as const, stableId: 'page:starter-installation-day', title: day, visibility: 'private' as const } },
+        { id: 'type', change: { kind: 'set_property' as const, page: 'page:starter-installation-day', propertyKey: 'tipo', propertyValue: 'bitácora' } },
+        { id: 'root', change: { kind: 'create_block' as const, stableId: 'block:starter-installation-root', page: 'page:starter-installation-day', parent: null, position: 0, content: '**Instalación de Vera:** esta bitácora registra cómo quedó constituida la biblioteca.' } },
+        { id: 'identity', change: { kind: 'create_block' as const, stableId: 'block:starter-installation-identity', page: 'page:starter-installation-day', parent: 'block:starter-installation-root', position: 0, content: `Se constituyó **${libraryName?.library_name ?? 'Vera'}** como biblioteca ${profile === 'collective' ? 'colectiva' : 'personal'} y se vinculó [[Agente de biblioteca]] como bibliotecaria de su persona fundadora.` } },
+        { id: 'capabilities', change: { kind: 'create_block' as const, stableId: 'block:starter-installation-capabilities', page: 'page:starter-installation-day', parent: 'block:starter-installation-root', position: 1, content: `Inferencia: ${capabilityLabel(inference)}. Voz local: ${capabilityLabel(voice)}. Ninguna clave se escribió en el corpus.` } },
+        { id: 'settings', change: { kind: 'create_block' as const, stableId: 'block:starter-installation-settings', page: 'page:starter-installation-day', parent: 'block:starter-installation-root', position: 2, content: 'La constitución y las capacidades efectivas pueden revisarse en [[VERA: Gobierno]], [[VERA: Conexiones]] y [[Agente de biblioteca]].' } },
+      ];
+      if (librarian === null) throw new Error('la instalación no constituyó una bibliotecaria activa');
+      for (const entry of entries) {
+        const outcome = graph.submitOperation({
+          originId: `starter-memory:installation:${owner}:${entry.id}`,
+          participant: DISTRIBUTION_PARTICIPANT,
+          channel: 'agent_generation',
+          change: entry.change,
+          submittedAt: installedAt,
+        });
+        if (outcome.status === 'rejected') throw new Error(`no se pudo registrar la instalación: ${outcome.reason}`);
+        if (outcome.status === 'applied') {
+          recordOperation(store, graph, outcome.operation);
+          applied += 1;
+        } else duplicates += 1;
+      }
+    }
     for (const source of STARTER_CHANGES) {
       const entry = forProfile(source, profile);
       const outcome = graph.submitOperation({
@@ -397,6 +458,33 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
             duplicates += 1;
           }
         }
+      }
+      if (librarian !== null) {
+        const sources = [
+          { title: 'Agente de biblioteca', role: 'identity' as ConstitutionRole },
+          { title: 'VERA — Principios', role: 'purpose' as ConstitutionRole },
+          { title: 'VERA: Gobierno', role: 'governance' as ConstitutionRole },
+          { title: 'VERA — Conectar una inteligencia artificial', role: 'practice' as ConstitutionRole },
+        ].map((source) => {
+          const sourcePage = graph.pageTitled(source.title);
+          if (sourcePage === undefined) throw new Error(`falta la página rectora ${source.title}`);
+          return { page: sourcePage.id, role: source.role };
+        });
+        chooseConstitutionSources(store, graph, owner, librarian.agent, sources);
+        const draft = buildManifest(store, graph, owner, librarian.agent);
+        activateManifest(store, owner, librarian.agent, draft.id);
+        const remote = options.installation?.inference === 'configured';
+        const requestedModel = options.installation?.inferenceModel?.trim();
+        saveLibrarianRuntimeConfiguration(store, {
+          updatedBy: owner,
+          enabled: remote,
+          model: remote ? `openai:${requestedModel || 'gpt-5.6-luna'}` : null,
+          endpoint: remote ? options.installation?.inferenceEndpoint ?? null : null,
+          secretReference: 'VERA_LIBRARIAN_API_KEY',
+          permissions: ['read_request_context', 'reply', 'daily_round'],
+          dialectic: { enabled: true },
+          routine: { enabled: false, hour: 9, timezone: 'local' },
+        });
       }
     }
 

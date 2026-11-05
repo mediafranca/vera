@@ -4,8 +4,9 @@
 -- Scope: First-run constitution of one new Vera library in Vera Desktop
 -- Includes: Human owner name, configurable library name, explicit personal or
 --   collective profile choice, a required initial collective surface, smart
---   defaults, the owner's initial librarian agent, atomic creation and the
---   founder's initial territorial policy
+--   defaults, the owner's initial librarian agent, optional inference and voice
+--   preparation, an installation receipt, atomic creation and the founder's
+--   initial territorial policy
 -- Excludes:
 --   - Program installation, signing and updates
 --     (see desktop-distribution.allium)
@@ -78,6 +79,23 @@ contract DesktopLibraryConstitution {
         -- Failure before completion leaves no half-constituted library that
         -- appears ready. Retrying presents the draft again or opens the single
         -- completed instance; it never creates a second owner, library or surface.
+
+    @invariant SecretsStayOutsideTheCorpus
+        -- A remote inference key may be supplied during first run only when the
+        -- host offers secure secret storage. The key is never written to a page,
+        -- operation, receipt or database belonging to the corpus.
+
+    @invariant CapabilityReadinessIsObserved
+        -- Choosing inference or voice preparation records intention separately
+        -- from the observed outcome. A missing runtime, failed installation or
+        -- unavailable secure store remains visibly deferred or failed; Desktop
+        -- never calls a requested capability ready merely because it was chosen.
+
+    @invariant InstallationExplainsItself
+        -- The constituted library contains a private first-day bitácora that
+        -- names the library profile, owner librarian and effective outcome of
+        -- each optional capability. It links to the pages where those settings
+        -- can later be inspected or changed, without copying secrets.
 }
 
 ------------------------------------------------------------
@@ -85,6 +103,8 @@ contract DesktopLibraryConstitution {
 ------------------------------------------------------------
 
 enum OnboardingStatus { drafting | constituted }
+enum CapabilityChoice { later | configure | install }
+enum CapabilityOutcome { deferred | configured | unavailable | failed }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -96,12 +116,26 @@ entity OnboardingDraft {
     profile: profiles/InstanceProfile
     initial_collective_surface_name: String?
     owner_librarian_name: String
+    inference_choice: CapabilityChoice
+    inference_endpoint: String?
+    inference_model: String?
+    inference_key_present: Boolean
+    voice_choice: CapabilityChoice
     status: OnboardingStatus
 
     transitions status {
         drafting -> constituted
         terminal: constituted
     }
+}
+
+entity InstallationReceipt {
+    library: identity/VeraInstance
+    librarian: core/Participant
+    profile: profiles/InstanceProfile
+    inference: CapabilityOutcome
+    voice: CapabilityOutcome
+    recorded_at: Timestamp
 }
 
 ------------------------------------------------------------
@@ -119,12 +153,36 @@ rule DesktopSuggestsSeparateHumanNames {
         profile: personal,
         initial_collective_surface_name: null,
         owner_librarian_name: "Lucienne",
+        inference_choice: later,
+        inference_endpoint: null,
+        inference_model: null,
+        inference_key_present: false,
+        voice_choice: later,
         status: drafting
     )
 
     @guidance
         -- The visible smart default is “Biblioteca de <persona>”. It is an
         -- editable proposal, never a derivation performed after constitution.
+}
+
+rule FounderChoosesOptionalCapabilities {
+    when: ConfigureOptionalCapabilities(draft, inference, endpoint, model, key_present, voice)
+
+    requires: draft.status = drafting
+    requires: inference = later or inference = configure
+    requires: voice = later or voice = install
+
+    ensures:
+        draft.inference_choice = inference
+        draft.inference_endpoint = endpoint
+        draft.inference_model = model
+        draft.inference_key_present = key_present
+        draft.voice_choice = voice
+
+    @guidance
+        -- A configure choice with no secure secret store cannot be constituted;
+        -- the first-run surface explains the boundary and preserves the draft.
 }
 
 rule ChoosingCollectiveSuggestsItsFirstSurface {
@@ -203,6 +261,14 @@ rule PersonConstitutesPersonalLibrary {
             include_general: true,
             changed_by: owner,
             changed_at: now
+        )
+        InstallationReceipt.created(
+            library: instance,
+            librarian: librarian,
+            profile: personal,
+            inference: capability_outcome(draft.inference_choice),
+            voice: capability_outcome(draft.voice_choice),
+            recorded_at: now
         )
         draft.status = constituted
 }
@@ -292,6 +358,14 @@ rule PersonConstitutesCollectiveLibrary {
             changed_by: custodian,
             changed_at: now
         )
+        InstallationReceipt.created(
+            library: instance,
+            librarian: librarian,
+            profile: collective,
+            inference: capability_outcome(draft.inference_choice),
+            voice: capability_outcome(draft.voice_choice),
+            recorded_at: now
+        )
         draft.status = constituted
 }
 
@@ -315,10 +389,16 @@ surface DesktopFirstRun {
         draft.profile
         draft.initial_collective_surface_name
         draft.owner_librarian_name
+        draft.inference_choice
+        draft.inference_endpoint
+        draft.inference_model
+        draft.inference_key_present
+        draft.voice_choice
 
     provides:
         ChooseOnboardingProfile(draft, personal)
         ChooseOnboardingProfile(draft, collective)
+        ConfigureOptionalCapabilities(draft, inference, endpoint, model, key_present, voice)
         ConstituteDesktopLibrary(draft)
 
     contracts:
@@ -335,3 +415,5 @@ surface DesktopFirstRun {
 ------------------------------------------------------------
 
 open question "¿Debe la primera ejecución colectiva constituir inmediatamente otra persona administradora, o basta con que la custodia inicial sea también la primera administradora?"
+
+open question "¿Qué instalador local de voz puede prometer Vera en Windows sin depender de Bash, compiladores o privilegios administrativos ajenos al instalador?"

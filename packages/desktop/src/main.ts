@@ -12,6 +12,9 @@ import {
   type DesktopExternalEditInput,
 } from './external-editing.ts';
 import { createMCPHandler } from '../../mcp/src/http.ts';
+import { VoiceConfiguration, type VoiceRuntimePaths } from '../../server/src/voice-configuration.ts';
+import { transcribeAudio, transcriberDiagnosis } from '../../server/src/transcribe.ts';
+import { createLocalSpeech, speechDiagnosis, type SpeechSynthesizer } from '../../server/src/speech.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../..');
@@ -36,6 +39,9 @@ const setupPage = join(HERE, 'setup.html');
 const preload = join(HERE, 'preload.cjs');
 const conectaSecretPath = join(dataRoot, 'secrets', 'vera-conecta.bin');
 const librarianSecretPath = join(dataRoot, 'secrets', 'vera-librarian.bin');
+const voiceConfigurationPath = join(dataRoot, 'data', 'voice.json');
+const voiceRuntimeRoot = join(dataRoot, 'voice');
+const voiceSetupRoot = app.isPackaged ? join(process.resourcesPath, 'voice-setup') : join(ROOT, 'scripts');
 const externalEditsRoot = join(dataRoot, 'external-edits');
 const externalEditorsPath = join(dataRoot, 'external-editors.json');
 
@@ -135,6 +141,66 @@ interface LibrarianSecretState {
   model: string;
 }
 
+const secureSecretStorageAvailable = (): boolean =>
+  safeStorage.isEncryptionAvailable() &&
+  (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text');
+
+const writeLibrarianSecret = (state: LibrarianSecretState): void => {
+  if (!secureSecretStorageAvailable()) {
+    throw new Error('este equipo no ofrece un almacén seguro para la clave de inferencia');
+  }
+  mkdirSync(dirname(librarianSecretPath), { recursive: true });
+  writeFileSync(librarianSecretPath, safeStorage.encryptString(JSON.stringify(state)), { mode: 0o600 });
+};
+
+const desktopVoicePaths = (): VoiceRuntimePaths => {
+  const kokoro = join(voiceRuntimeRoot, 'kokoro');
+  return {
+    ffmpeg: '',
+    speechToTextEngine: join(voiceRuntimeRoot, 'whisper/source/build/bin/whisper-cli'),
+    speechToTextModel: join(voiceRuntimeRoot, 'whisper/ggml-small.bin'),
+    speechToTextLanguage: 'es',
+    textToSpeechPython: join(kokoro, 'venv/bin/python'),
+    textToSpeechWorker: join(voiceSetupRoot, 'tts-worker.py'),
+    textToSpeechModelRoot: join(kokoro, 'model'),
+    textToSpeechVoice: 'em_alex',
+    textToSpeechCacheRoot: join(kokoro, 'cache'),
+  };
+};
+
+const writeInitialVoiceConfiguration = (prepared: boolean): void => {
+  mkdirSync(dirname(voiceConfigurationPath), { recursive: true });
+  writeFileSync(voiceConfigurationPath, `${JSON.stringify({
+    enabled: prepared,
+    speechToText: prepared,
+    textToSpeech: prepared,
+    paths: desktopVoicePaths(),
+  }, null, 2)}\n`, { mode: 0o600 });
+};
+
+const prepareLocalVoice = (): Promise<void> => new Promise((resolve, reject) => {
+  if (process.platform === 'win32') {
+    reject(new Error('la preparación automática de voz todavía no está disponible en Windows'));
+    return;
+  }
+  const script = join(voiceSetupRoot, 'setup-local-voice.sh');
+  if (!existsSync(script)) {
+    reject(new Error('esta edición no contiene el preparador de voz local'));
+    return;
+  }
+  const child = spawn('/usr/bin/env', ['bash', script, voiceRuntimeRoot], {
+    env: { ...process.env, VERA_TTS_RUNTIME: join(voiceRuntimeRoot, 'kokoro') },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let error = '';
+  child.stderr?.on('data', (chunk: Buffer) => { error = `${error}${chunk.toString('utf8')}`.slice(-8_000); });
+  child.once('error', reject);
+  child.once('exit', (code) => {
+    if (code === 0) resolve();
+    else reject(new Error(error.trim() || `el preparador de voz terminó con código ${String(code)}`));
+  });
+});
+
 const readLibrarianSecret = (): LibrarianSecretState | null => {
   if (!existsSync(librarianSecretPath) || !safeStorage.isEncryptionAvailable()) return null;
   try {
@@ -162,7 +228,70 @@ const applyLibrarianSecret = (state: LibrarianSecretState | null): void => {
 
 const databaseExists = (): boolean => existsSync(databasePath) && statSync(databasePath).size > 0;
 
-async function startVera(): Promise<void> {
+const desktopVoiceConfiguration = (): VoiceConfiguration => {
+  let speech: SpeechSynthesizer | null = null;
+  let speechIdentity = '';
+  const speechOptions = (paths: VoiceRuntimePaths) => ({
+    cacheRoot: paths.textToSpeechCacheRoot,
+    python: paths.textToSpeechPython,
+    worker: paths.textToSpeechWorker,
+    modelRoot: paths.textToSpeechModelRoot,
+    voice: paths.textToSpeechVoice,
+  });
+  return new VoiceConfiguration({
+    path: voiceConfigurationPath,
+    defaults: { enabled: false, speechToText: false, textToSpeech: false },
+    defaultPaths: desktopVoicePaths(),
+    diagnoseSpeechToText: async (paths) => {
+      const found = await transcriberDiagnosis({
+        ...(paths.ffmpeg === '' ? {} : { ffmpeg: paths.ffmpeg }),
+        ...(paths.speechToTextEngine === '' ? {} : { command: paths.speechToTextEngine }),
+        model: paths.speechToTextModel,
+        language: paths.speechToTextLanguage,
+      });
+      return {
+        ready: found.ready,
+        engine: 'whisper.cpp',
+        language: paths.speechToTextLanguage,
+        paths: { ffmpeg: found.ffmpeg, engine: found.whisper, model: found.model },
+        missing: [
+          ...(found.ffmpeg === null ? ['ffmpeg'] : []),
+          ...(found.whisper === null ? ['whisper.cpp'] : []),
+          ...(found.model === null ? ['modelo'] : []),
+        ],
+      };
+    },
+    diagnoseTextToSpeech: (paths) => {
+      const found = speechDiagnosis(speechOptions(paths));
+      return {
+        ready: found.ready,
+        engine: 'Kokoro',
+        voice: found.voice,
+        paths: { python: found.python, worker: found.worker, model: found.modelRoot },
+        missing: found.missing,
+      };
+    },
+    transcribe: (audio, paths) => transcribeAudio(audio, {
+      ...(paths.ffmpeg === '' ? {} : { ffmpeg: paths.ffmpeg }),
+      ...(paths.speechToTextEngine === '' ? {} : { command: paths.speechToTextEngine }),
+      model: paths.speechToTextModel,
+      language: paths.speechToTextLanguage,
+    }),
+    speak: (text, paths, signal) => {
+      const options = speechOptions(paths);
+      const identity = JSON.stringify(options);
+      if (speech === null || speechIdentity !== identity) {
+        speech?.close();
+        speech = createLocalSpeech(options);
+        speechIdentity = identity;
+      }
+      return speech.speak(text, signal);
+    },
+    close: () => { speech?.close(); speech = null; speechIdentity = ''; },
+  });
+};
+
+async function startVera(initialPath = '/'): Promise<void> {
   if (running === null) {
     applyLibrarianSecret(readLibrarianSecret());
     // El starter es un registro versionado e idempotente. Al abrir una memoria
@@ -179,6 +308,7 @@ async function startVera(): Promise<void> {
       databasePath,
       objectsRoot,
       webRoot,
+      voiceConfiguration: desktopVoiceConfiguration(),
       localMcpHandler: createMCPHandler(`http://127.0.0.1:${PORT}`),
     });
   }
@@ -188,7 +318,7 @@ async function startVera(): Promise<void> {
     });
     conecta.start();
   }
-  await window?.loadURL(`http://127.0.0.1:${PORT}`);
+  await window?.loadURL(`http://127.0.0.1:${PORT}${initialPath}`);
 }
 
 async function closeVera(): Promise<void> {
@@ -327,7 +457,44 @@ ipcMain.handle('vera:initialize', async (_event, rawInput: unknown) => {
       input.initialCollectiveSurfaceName.trim().length < 2)) {
     throw new Error('La biblioteca colectiva necesita una primera superficie compartida.');
   }
+  if (input.inferenceChoice !== 'later' && input.inferenceChoice !== 'configure') {
+    throw new Error('Elige si configurarás ahora la inferencia de la bibliotecaria.');
+  }
+  if (input.voiceChoice !== 'later' && input.voiceChoice !== 'install') {
+    throw new Error('Elige si prepararás ahora la voz local.');
+  }
   if (databaseExists()) throw new Error('Esta memoria ya fue inicializada.');
+  let inference: 'deferred' | 'configured' = 'deferred';
+  let inferenceEndpoint = '';
+  let inferenceModel = '';
+  if (input.inferenceChoice === 'configure') {
+    if (input.librarianRuntime === null || typeof input.librarianRuntime !== 'object') {
+      throw new Error('La configuración remota de la bibliotecaria está incompleta.');
+    }
+    const runtime = input.librarianRuntime as Record<string, unknown>;
+    const apiKey = typeof runtime.apiKey === 'string' ? runtime.apiKey.trim() : '';
+    const endpoint = typeof runtime.endpoint === 'string' ? runtime.endpoint.trim() : '';
+    const model = typeof runtime.model === 'string' ? runtime.model.trim() : '';
+    if (apiKey === '') throw new Error('La clave de inferencia está vacía.');
+    writeLibrarianSecret({ apiKey, endpoint, model });
+    inference = 'configured';
+    inferenceEndpoint = endpoint;
+    inferenceModel = model;
+  }
+  let voice: 'deferred' | 'configured' | 'unavailable' | 'failed' = 'deferred';
+  if (input.voiceChoice === 'install') {
+    if (process.platform === 'win32') voice = 'unavailable';
+    else {
+      try {
+        await prepareLocalVoice();
+        voice = 'configured';
+      } catch (error) {
+        console.error('No se pudo preparar la voz local durante la instalación:', error);
+        voice = 'failed';
+      }
+    }
+  }
+  writeInitialVoiceConfiguration(voice === 'configured');
   const name = input.personName.trim();
   const { initializeStarterMemory } = await import('../../server/src/starter-memory.ts');
   initializeStarterMemory({
@@ -339,12 +506,18 @@ ipcMain.handle('vera:initialize', async (_event, rawInput: unknown) => {
     ...(input.profile === 'collective'
       ? { initialCollectiveSurfaceName: (input.initialCollectiveSurfaceName as string).trim() }
       : {}),
+    installation: { inference, voice, inferenceEndpoint, inferenceModel },
   });
-  await startVera();
+  await startVera('/p/page:starter-installation-day');
   return { ok: true };
 });
 
 ipcMain.handle('vera:system-name', () => userInfo().username);
+ipcMain.handle('vera:setup-capabilities', () => ({
+  secureStorage: secureSecretStorageAvailable(),
+  localVoiceInstaller: process.platform !== 'win32' && existsSync(join(voiceSetupRoot, 'setup-local-voice.sh')),
+  platform: process.platform,
+}));
 ipcMain.handle('vera-conecta:status', () => conecta?.status() ?? {
   status: 'desactivado', installationId: null, secureStorage: false,
 });
@@ -373,14 +546,9 @@ ipcMain.handle('vera-conecta:revoke-client', async (_event, principalId: unknown
 
 ipcMain.handle('vera-librarian-secret:status', () => ({
   available: readLibrarianSecret() !== null,
-  secureStorage: safeStorage.isEncryptionAvailable() &&
-    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+  secureStorage: secureSecretStorageAvailable(),
 }));
 ipcMain.handle('vera-librarian-secret:save', (_event, raw: unknown) => {
-  if (!safeStorage.isEncryptionAvailable() ||
-    (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
-    throw new Error('este equipo no ofrece un almacén seguro para la clave de inferencia');
-  }
   if (raw === null || typeof raw !== 'object') throw new Error('la configuración del secreto está incompleta');
   const input = raw as Record<string, unknown>;
   const apiKey = typeof input.apiKey === 'string' ? input.apiKey.trim() : '';
@@ -388,8 +556,7 @@ ipcMain.handle('vera-librarian-secret:save', (_event, raw: unknown) => {
   const model = typeof input.model === 'string' ? input.model.trim() : '';
   if (apiKey === '') throw new Error('la clave de inferencia está vacía');
   const state = { apiKey, endpoint, model };
-  mkdirSync(dirname(librarianSecretPath), { recursive: true });
-  writeFileSync(librarianSecretPath, safeStorage.encryptString(JSON.stringify(state)), { mode: 0o600 });
+  writeLibrarianSecret(state);
   applyLibrarianSecret(state);
   return { available: true, secureStorage: true };
 });

@@ -7,12 +7,13 @@
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f1efe9; color: #24231f; }
-    main { width: min(34rem, calc(100vw - 3rem)); }
+    main { width: min(42rem, calc(100vw - 3rem)); padding: 3rem 0; }
     h1 { font: 400 3rem/1.05 Georgia, serif; margin: 0 0 1rem; }
     p { line-height: 1.55; }
     label, legend { display: block; font-weight: 650; margin-top: 1.4rem; }
     input { box-sizing: border-box; width: 100%; margin: .5rem 0 1rem; padding: .8rem; font: inherit; border: 1px solid #858177; border-radius: .35rem; background: #fff; color: #24231f; }
     fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
+    fieldset.capability { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #c8c4bb; }
     .profiles { display: flex; gap: 1.5rem; margin-top: .65rem; }
     .profiles label { display: flex; gap: .45rem; align-items: center; margin: 0; font-weight: 500; }
     .profiles input { width: auto; margin: 0; }
@@ -21,11 +22,17 @@
     button[disabled] { opacity: .55; cursor: wait; }
     #error { min-height: 1.5rem; color: #a1261f; }
     small { display: block; margin-top: 2rem; line-height: 1.45; color: #615e56; }
+    .note { margin: .35rem 0 1rem; color: #615e56; line-height: 1.45; }
+    .receipt { margin: 2rem 0; padding: 1rem 1.2rem; border-radius: .45rem; background: #e6e2d9; }
+    .receipt strong { display: block; margin-bottom: .35rem; }
     @media (prefers-color-scheme: dark) {
       body { background: #20201d; color: #efede7; }
       input { background: #292925; color: #efede7; border-color: #77736a; }
       button { background: #efede7; color: #20201d; }
       small { color: #aaa69d; }
+      fieldset.capability { border-color: #514f49; }
+      .note { color: #aaa69d; }
+      .receipt { background: #292925; }
     }
   </style>
 </head>
@@ -56,6 +63,38 @@
       <label for="librarian">Nombre de tu bibliotecaria</label>
       <input id="librarian" name="librarian" value="Lucienne" required minlength="2">
 
+      <fieldset class="capability">
+        <legend>Inferencia de la bibliotecaria</legend>
+        <div class="profiles">
+          <label><input type="radio" name="inference" value="later" checked> Configurar después</label>
+          <label><input type="radio" name="inference" value="configure"> Usar un proveedor remoto</label>
+        </div>
+        <p id="inference-note" class="note">La bibliotecaria queda constituida aunque todavía no tenga modelo. También podrá descubrir un modelo local después.</p>
+        <div id="remote-inference" hidden>
+          <label for="endpoint">Endpoint compatible con OpenAI</label>
+          <input id="endpoint" name="endpoint" inputmode="url" placeholder="https://api.openai.com/v1">
+          <label for="model">Modelo</label>
+          <input id="model" name="model" placeholder="gpt-5-mini">
+          <label for="api-key">Clave de acceso</label>
+          <input id="api-key" name="api-key" type="password" autocomplete="new-password">
+          <p class="note">La clave se cifra en el almacén seguro del sistema. Nunca se escribe en la base ni en la bitácora.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="capability">
+        <legend>Escuchar y hablar</legend>
+        <div class="profiles">
+          <label><input type="radio" name="voice" value="later" checked> Configurar después</label>
+          <label><input id="install-voice" type="radio" name="voice" value="install"> Preparar voz local ahora</label>
+        </div>
+        <p id="voice-note" class="note">Vera comprobará lo que realmente quedó instalado antes de activar escucha o habla.</p>
+      </fieldset>
+
+      <section class="receipt">
+        <strong>Qué recibirá la biblioteca</strong>
+        Ontología editable, manual, primeros pasos, página de ejemplo, gobierno, conexiones, bibliotecaria y una bitácora privada de hoy que registra esta instalación sin copiar secretos.
+      </section>
+
       <button id="submit" type="submit">Crear biblioteca</button>
       <p id="error" role="alert"></p>
     </form>
@@ -70,6 +109,13 @@
     const collectiveFields = document.querySelector('#collective-fields');
     const submit = document.querySelector('#submit');
     const error = document.querySelector('#error');
+    const remoteInference = document.querySelector('#remote-inference');
+    const apiKey = document.querySelector('#api-key');
+    const endpoint = document.querySelector('#endpoint');
+    const model = document.querySelector('#model');
+    const inferenceNote = document.querySelector('#inference-note');
+    const installVoice = document.querySelector('#install-voice');
+    const voiceNote = document.querySelector('#voice-note');
     let libraryEdited = false;
     const suggestedLibrary = () => `Biblioteca de ${person.value.trim() || 'ti'}`;
     const updateSuggestedLibrary = () => { if (!libraryEdited) library.value = suggestedLibrary(); };
@@ -83,6 +129,26 @@
         surface.required = !collectiveFields.hidden;
       });
     });
+    document.querySelectorAll('input[name="inference"]').forEach((choice) => {
+      choice.addEventListener('change', () => {
+        const configure = choice.checked && choice.value === 'configure';
+        if (choice.checked) remoteInference.hidden = !configure;
+        apiKey.required = configure;
+      });
+    });
+    window.veraSetup.capabilities().then((capabilities) => {
+      const remote = document.querySelector('input[name="inference"][value="configure"]');
+      if (!capabilities.secureStorage) {
+        remote.disabled = true;
+        inferenceNote.textContent = 'Este equipo no ofrece almacenamiento seguro para una clave remota. La bibliotecaria puede configurarse después con un runtime local.';
+      }
+      installVoice.disabled = !capabilities.localVoiceInstaller;
+      if (!capabilities.localVoiceInstaller) {
+        voiceNote.textContent = capabilities.platform === 'win32'
+          ? 'Windows todavía no dispone de un preparador local confiable. La voz queda pendiente y Vera lo registrará así.'
+          : 'Esta edición no contiene el preparador de voz. Podrás indicar runtimes existentes desde el Centro de Vera.';
+      }
+    });
     window.veraSetup.systemName().then((value) => {
       if (!person.value) person.value = value;
       updateSuggestedLibrary();
@@ -92,18 +158,29 @@
       error.textContent = '';
       submit.disabled = true;
       const profile = document.querySelector('input[name="profile"]:checked').value;
+      const inferenceChoice = document.querySelector('input[name="inference"]:checked').value;
+      const voiceChoice = document.querySelector('input[name="voice"]:checked').value;
       try {
+        submit.textContent = voiceChoice === 'install' ? 'Preparando voz y creando biblioteca…' : 'Creando biblioteca…';
         await window.veraSetup.initialize({
           personName: person.value,
           libraryName: library.value,
           profile,
           ownerLibrarianName: librarian.value,
           initialCollectiveSurfaceName: profile === 'collective' ? surface.value : null,
+          inferenceChoice,
+          librarianRuntime: inferenceChoice === 'configure' ? {
+            apiKey: apiKey.value,
+            endpoint: endpoint.value,
+            model: model.value,
+          } : null,
+          voiceChoice,
         });
       }
       catch (cause) {
         error.textContent = cause && cause.message ? cause.message : 'No fue posible crear la memoria.';
         submit.disabled = false;
+        submit.textContent = 'Crear biblioteca';
       }
     });
   </script>

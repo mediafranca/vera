@@ -28,11 +28,18 @@ describe('memoria inicial distribuida', () => {
       owner,
       libraryName: 'Biblioteca de prueba',
       ownerLibrarianName: 'Aurelia',
+      installation: {
+        inference: 'configured',
+        voice: 'failed',
+        inferenceEndpoint: 'https://models.example/v1',
+        inferenceModel: 'test-model',
+        installedAt: new Date(2026, 10, 5, 12, 0, 0).getTime(),
+      },
     });
     assert.equal(first.version, STARTER_MEMORY_VERSION);
-    assert.equal(first.applied, STARTER_CHANGES.length + 5);
+    assert.equal(first.applied, STARTER_CHANGES.length + 5 + 6);
     assert.equal(first.duplicates, 0);
-    assert.equal(first.pages, 14);
+    assert.equal(first.pages, 15);
     assert.ok(first.blocks > 90);
 
     const store = openStore({ path: databasePath, graphName: 'mind' });
@@ -52,6 +59,16 @@ describe('memoria inicial distribuida', () => {
     assert.equal(librarian.owner_id, owner.id);
     assert.equal(librarian.name, 'Aurelia');
     assert.equal(librarian.version, 'vera-librarian-harness:2');
+    const runtime = store.db.prepare(`SELECT enabled,model_id,endpoint,secret_reference
+      FROM librarian_runtime_configs`).get() as any;
+    assert.deepEqual({ ...runtime }, {
+      enabled: 1,
+      model_id: 'openai:test-model',
+      endpoint: 'https://models.example/v1',
+      secret_reference: 'VERA_LIBRARIAN_API_KEY',
+    });
+    assert.equal(Number((store.db.prepare("SELECT COUNT(*) AS n FROM agent_manifests WHERE status='active'")
+      .get() as any).n), 1);
     assert.deepEqual(
       { ...(store.db.prepare("SELECT human_id,status FROM agent_principals WHERE agent_id=?")
         .get(librarian.agent_id) as any) },
@@ -62,6 +79,7 @@ describe('memoria inicial distribuida', () => {
       graph.pages().map((one) => one.title).sort(),
       [
         'Agente de biblioteca',
+        '2026-11-05',
         'Vera',
         'VERA — Acceder desde tus otros dispositivos',
         'VERA — Conectar una inteligencia artificial',
@@ -77,6 +95,24 @@ describe('memoria inicial distribuida', () => {
         'VERA: Relaciones',
       ].sort(),
     );
+    const installation = graph.pageTitled('2026-11-05');
+    assert.ok(installation);
+    assert.ok(graph.propertiesOf(installation.id).some((property) =>
+      property.key === 'tipo' && property.value === 'bitácora'
+    ));
+    const installationText = graph.blocksOf(installation.id).map((block) => block.content).join('\n');
+    assert.match(installationText, /Biblioteca de prueba/);
+    assert.match(installationText, /Inferencia: quedó configurada/);
+    assert.match(installationText, /Voz local: se intentó preparar y falló/);
+    assert.match(installationText, /Ninguna clave se escribió en el corpus/);
+    const installationOperations = graph.operations().filter((operation) =>
+      operation.originId.startsWith('starter-memory:installation:')
+    );
+    assert.equal(installationOperations.length, 6);
+    assert.ok(installationOperations.every((operation) =>
+      operation.submission.submittedBy === DISTRIBUTION_PARTICIPANT &&
+      operation.submission.channel === 'agent_generation'
+    ));
     const connections = graph.pages().find((page) => page.title === 'VERA: Conexiones');
     assert.ok(connections);
     assert.ok(graph.propertiesOf(connections.id).some((property) =>
@@ -199,6 +235,10 @@ describe('memoria inicial distribuida', () => {
       name: 'Lucienne',
       owner_id: 'participant:custodia',
       human_id: 'participant:custodia',
+    });
+    assert.deepEqual({ ...(store.db.prepare('SELECT enabled,model_id FROM librarian_runtime_configs').get() as any) }, {
+      enabled: 0,
+      model_id: null,
     });
     store.close();
   });
