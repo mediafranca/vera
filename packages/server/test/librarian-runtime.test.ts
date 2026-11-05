@@ -7,7 +7,12 @@ import assert from 'node:assert/strict';
 
 import { initializeStarterMemory } from '../src/starter-memory.ts';
 import { listen } from '../src/server.ts';
-import { formativePracticeFor } from '../src/librarian-runtime.ts';
+import {
+  compactLibrarianManifestDocument,
+  compactLibrarianPromptContext,
+  formativePracticeFor,
+  librarianRequestDispositionFor,
+} from '../src/librarian-runtime.ts';
 
 const directories: string[] = [];
 
@@ -25,6 +30,63 @@ describe('frontera formativa de la dialéctica', () => {
   it('reconoce una primera posición explícita y permite contrastarla directamente', () => {
     assert.equal(formativePracticeFor('Mi lectura es que la soberanía exige límites; contrástala.'), null);
     assert.equal(formativePracticeFor('Creo que el texto concluye otra cosa. Compara mi hipótesis con el corpus.'), null);
+  });
+
+  it('sirve directamente una fuente identificable, una tarea mixta y una insistencia', () => {
+    const source = 'Busca la fuente de “Remember, remember the fifth of November” y completa la referencia.';
+    assert.deepEqual(librarianRequestDispositionFor(source), { mode: 'answer', reason: 'contribution' });
+    assert.equal(formativePracticeFor(source), null);
+    assert.deepEqual(librarianRequestDispositionFor('Busca las fuentes y sintetiza sus fechas.'),
+      { mode: 'answer', reason: 'mixed' });
+    assert.deepEqual(librarianRequestDispositionFor('Esta vez necesito que sintetices directamente.'),
+      { mode: 'answer', reason: 'explicit_direct' });
+  });
+
+  it('acota una página grande sin perder el bloque pertinente ni mutilar el recibo', () => {
+    const snapshot = JSON.stringify({
+      page: { id: 'page:markdown', title: 'Markdown' },
+      focus: null,
+      blocks: Array.from({ length: 80 }, (_, index) => ({
+        id: `block:${index}`, parent: null, position: index,
+        content: index === 79 ? 'La grafía e[ad] necesita tratamiento sintáctico.' : `Contenido de relleno ${index} `.repeat(30),
+      })),
+    });
+    const compacted = compactLibrarianPromptContext(snapshot,
+      '¿cómo resolvemos el problema de sintaxis al escribir e[ad] en Markdown?', 4_000);
+    assert.ok(compacted.length <= 4_000);
+    assert.match(compacted, /e\[ad\]/);
+    assert.equal(JSON.parse(compacted).compacted, true);
+    assert.ok(JSON.parse(compacted).omittedBlocks > 0);
+    assert.match(snapshot, /block:79/);
+  });
+
+  it('acota un manifiesto grande conservando identidad, gobierno y reglas pertinentes', () => {
+    const manifest = {
+      schemaVersion: 1 as const, source: 'vera' as const, graph: 'graph:1',
+      agent: { id: 'participant:lucienne', name: 'Lucienne', human: { id: 'participant:herbert', name: 'Herbert' } },
+      generatedAt: 1,
+      constitution: [{
+        page: 'page:lucienne', title: 'Lucienne', role: 'identity' as const, revision: 'op:1', properties: [],
+        blocks: [
+          { id: 'principle', parent: null, position: 0, content: '**Servicio directo.** Resuelve búsquedas y problemas de Markdown.' },
+          ...Array.from({ length: 70 }, (_, index) => ({
+            id: `filler:${index}`, parent: null, position: index + 1, content: `Relleno constitucional ${index} `.repeat(30),
+          })),
+        ],
+      }],
+      guarantees: { secrets: 'references-only' as const, authority: 'human-principal' as const,
+        history: 'append-only-manifests' as const, writing: { representation: 'ordered-stable-block-tree' as const,
+          mutation: 'minimal-block-operations' as const, foreignWords: 'proposal' as const, flattening: 'rejected' as const } },
+    };
+    const compacted = compactLibrarianManifestDocument(manifest, '¿Cómo escribir e[ad] en Markdown?', 4_000);
+    assert.ok(compacted.length <= 4_000);
+    const parsed = JSON.parse(compacted) as { agent: { name: string }; compacted: boolean; omittedBlocks: number;
+      guarantees: { authority: string }; constitution: Array<{ blocks: Array<{ id: string }> }> };
+    assert.equal(parsed.agent.name, 'Lucienne');
+    assert.equal(parsed.guarantees.authority, 'human-principal');
+    assert.equal(parsed.compacted, true);
+    assert.ok(parsed.omittedBlocks > 0);
+    assert.ok(parsed.constitution[0]!.blocks.some((block) => block.id === 'principle'));
   });
 });
 
@@ -305,6 +367,8 @@ describe('runtime embebido de la bibliotecaria', () => {
     const outputs = [
       JSON.stringify({ dialectic: 'answer', text: 'Tu lectura distingue tres ideas; el corpus añade una cuarta tensión.' }),
       JSON.stringify({ dialectic: 'answer', text: 'Selección directa preparada esta vez.' }),
+      JSON.stringify({ dialectic: 'challenge', practice: 'reading', text: 'Dime primero qué fuente buscarías.' }),
+      'Localicé la fuente identificada y completé la referencia.',
       'Ordené las referencias alfabéticamente.',
     ];
     const inference = createHttpServer(async (_request, response) => {
@@ -375,6 +439,14 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.match(bypassed.reply.text, /Selección directa/);
       assert.equal(bypassed.dialectic.status, 'bypassed');
       assert.equal(bypassed.dialectic.closingMode, 'bypass');
+
+      const source = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, conversationId: challenge.conversationId,
+        text: 'Busca la fuente de “Remember, remember the fifth of November” y completa la referencia.',
+      } });
+      const sourced = await waitAnswered(source.json.id);
+      assert.match(sourced.reply.text, /Localicé la fuente/);
+      assert.equal(sourced.dialectic, null);
 
       const operational = await call('/librarian/requests', { method: 'POST', body: {
         pageId: page, conversationId: challenge.conversationId, text: 'Ordena alfabéticamente estas referencias.',

@@ -271,6 +271,16 @@ La ronda operacional es cerrada sobre evidencia: si los invariantes ejecutables
 no encuentran una falta devuelve `SIN_NOVEDAD`; nunca pide al modelo que infiera
 problemas a partir de simples conteos de páginas o bloques.
 
+La solicitud conserva una instantánea completa de la página para procedencia y
+revisión, y el manifiesto activo conserva íntegro su digest. El runtime entrega
+al modelo proyecciones acotadas de ambos: prioriza identidad, gobierno, reglas
+bibliotecarias, el bloque enfocado, encabezados y pasajes relacionados con la
+pregunta, y registra cuántos bloques omitió. Una página o constitución grande no
+puede convertir una pregunta breve en un error de contexto; compactar la
+inferencia nunca mutila los recibos durables. Los fallos del proceso local
+conservan sólo un diagnóstico acotado: nunca persisten la línea de comandos que
+contiene el prompt.
+
 El *clearance* territorial es una política persistida por participante. Puede
 abarcar la biblioteca general, superficies seleccionadas o todo el corpus; una
 exclusión siempre domina una inclusión. La decisión se aplica en el servidor
@@ -292,13 +302,22 @@ herramienta destructiva en este harness. El catálogo añade repertorio, nunca
 territorio: cada llamada vuelve a evaluar la política vigente.
 
 La personalidad visible funda también una dialéctica bibliotecaria operativa.
-Cuando una petición delega leer, seleccionar, interpretar, comparar, sintetizar
-o concluir, el runtime puede abrir un umbral formativo: devuelve un desafío
-breve, espera una tentativa de la persona y sólo entonces escribe la respuesta
-final. La persona puede franquear el umbral de forma explícita; el recibo
-distingue contribución de bypass. Las tareas instrumentales siguen directas.
-El puente externo sólo se despacha cuando el runtime residente no está listo,
-de modo que no pueda competir con Lucienne ni eludir este protocolo.
+El harness sirve primero y abre un umbral sólo cuando la petición sustituiría
+un juicio que corresponde formar o conservar en la persona. Buscar, citar,
+verificar, transcribir, enlazar, completar metadatos y recuperar una fuente
+identificable son trabajo determinado y siguen directos. Una pista, hipótesis,
+fuente o criterio ya aportado cuenta como contribución suficiente. En una tarea
+mixta, Lucienne completa primero la parte determinada y pregunta sólo por la
+decisión personal pendiente. Una insistencia en la ejecución directa cierra la
+mayéutica sin exigir una fórmula especial: es una oferta de participación, no
+una condición de acceso al trabajo bibliotecario.
+
+Cuando queda una delegación de juicio todavía vacía —seleccionar, interpretar,
+comparar, sintetizar o concluir como práctica central—, el runtime devuelve un
+único desafío breve, espera una tentativa de la persona y entonces escribe la
+respuesta final. El recibo distingue contribución de bypass. El puente externo
+sólo se despacha cuando el runtime residente no está listo, de modo que no pueda
+competir con Lucienne ni eludir este protocolo.
 
 Ninguna superficie activa puede quedar bajo custodia exclusiva de agentes:
 siempre debe conservar al menos una persona con lectura y administración

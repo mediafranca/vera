@@ -193,13 +193,20 @@ async function availableMemory(): Promise<number | null> {
 function runLocalModel(binary: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let hard: ReturnType<typeof setTimeout> | null = null;
-    const child = execFile(binary, args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+    let timedOut = false;
+    const child = execFile(binary, args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
       clearTimeout(soft);
       if (hard !== null) clearTimeout(hard);
-      if (error !== null) reject(error);
+      if (error !== null) {
+        const detail = timedOut
+          ? `agotó el límite de ${Math.ceil(timeoutMs / 1_000)} s`
+          : (stderr.trim().slice(-2_000) || `terminó con código ${String(error.code ?? 'desconocido')}`);
+        reject(new Error(detail));
+      }
       else resolve(stdout);
     });
     const soft = setTimeout(() => {
+      timedOut = true;
       child.kill('SIGTERM');
       hard = setTimeout(() => child.kill('SIGKILL'), LOCAL_MODEL_KILL_GRACE_MS);
       hard.unref();
@@ -318,6 +325,9 @@ export async function ask(
     return readLocalModelOutput(stdout, prompt);
   } catch (error) {
     const why = error instanceof Error ? error.message : 'error desconocido';
+    if (/request \(\d+ tokens\) exceeds the available context size/i.test(why)) {
+      return { error: `el modelo local rechazó el contexto: ${why}`, fatal: true };
+    }
     return { error: `el modelo no pudo leer la página: ${why}` };
   } finally {
     localModelBusy = false;

@@ -118,7 +118,10 @@ describe('memoria inicial distribuida', () => {
     assert.ok(authored.every((operation) => operation.submission.channel === 'agent_generation'));
     const personality = graph.pageTitled('Agente de biblioteca');
     assert.ok(personality);
-    assert.ok(graph.blocksOf(personality.id).some((block) => /Mayéutica del agente de biblioteca/.test(block.content)));
+    assert.ok(graph.blocksOf(personality.id).some((block) =>
+      /Servicio primero y mayéutica del agente de biblioteca/.test(block.content) &&
+      /oferta formativa, no una condición de acceso/.test(block.content)
+    ));
     const personalityOperations = graph.operations().filter((operation) =>
       operation.originId.startsWith('starter-memory:librarian-personality:')
     );
