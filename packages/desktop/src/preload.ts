@@ -7,8 +7,12 @@ contextBridge.exposeInMainWorld('veraSetup', {
     profile: 'personal' | 'collective';
     ownerLibrarianName: string;
     initialCollectiveSurfaceName: string | null;
+    inferenceChoice: 'later' | 'configure';
+    librarianRuntime: { apiKey: string; endpoint: string; model: string } | null;
+    voiceChoice: 'later' | 'install';
   }) => ipcRenderer.invoke('vera:initialize', input),
   systemName: () => ipcRenderer.invoke('vera:system-name'),
+  capabilities: () => ipcRenderer.invoke('vera:setup-capabilities'),
 });
 
 contextBridge.exposeInMainWorld('veraConecta', {

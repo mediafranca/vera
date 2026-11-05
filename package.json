@@ -1,6 +1,6 @@
 {
   "name": "vera",
-  "version": "0.6.25",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Biblioteca soberana: corpus versionado, editable, replicable y auditable",
@@ -84,6 +84,16 @@
       {
         "from": "node_modules/p5/lib/p5.min.js",
         "to": "p5.min.js"
+      },
+      {
+        "from": "scripts",
+        "to": "voice-setup",
+        "filter": [
+          "setup-local-voice.sh",
+          "setup-local-stt.sh",
+          "setup-local-tts.sh",
+          "tts-worker.py"
+        ]
       }
     ],
     "win": {
