@@ -6,6 +6,7 @@
 
 import { api, type ParticipantIdentityView } from './api.ts';
 import { participantProfilePath } from './activity-page.ts';
+import { createConfigurationSurface } from './configuration-surface.ts';
 
 type ParticipantKind = ParticipantIdentityView['kind'];
 
@@ -55,19 +56,17 @@ const copyDirectory = (people: ParticipantIdentityView[]): ParticipantIdentityVi
   structuredClone(people);
 
 export async function renderParticipantAdministration(host: HTMLElement): Promise<void> {
-  host.replaceChildren();
-  const root = document.createElement('article'); root.className = 'participant-administration';
-  const header = document.createElement('header'); header.className = 'special-page-header';
-  const title = document.createElement('h1'); title.textContent = 'Participantes';
-  const back = button('← Volver', () => window.history.back()); header.append(title, back);
-  const introduction = document.createElement('p'); introduction.className = 'participant-administration-intro';
-  introduction.textContent = 'Las personas gobiernan su presencia y su trabajo. Cada agente depende de una persona principal, que define su constitución, sus alcances y su continuidad.';
+  const { body } = createConfigurationSurface(host, {
+    title: 'Participantes',
+    introduction: 'Las personas gobiernan su presencia y su trabajo. Cada agente depende de una persona principal, que define su constitución, sus alcances y su continuidad.',
+    className: 'participant-administration',
+  });
   const roleAdministration = document.createElement('p'); roleAdministration.className = 'participant-administration-related';
   const roleLink = document.createElement('a'); roleLink.href = '/personas'; roleLink.textContent = 'Administrar roles e invitaciones de la instancia';
   roleAdministration.append(roleLink);
   const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo el padrón…';
-  const body = document.createElement('div'); body.className = 'participant-administration-body';
-  root.append(header, introduction, roleAdministration, status, body); host.append(root);
+  const directory = document.createElement('div'); directory.className = 'participant-administration-body';
+  body.append(roleAdministration, status, directory);
 
   let people: ParticipantIdentityView[];
   try { people = (await api.participants()).participants; }
@@ -82,7 +81,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
   const declare = button('', () => openDeclaration(), 'primary');
   tools.append(search, declare);
   const list = document.createElement('div'); list.className = 'participant-directory';
-  body.append(facets, tools, list);
+  directory.append(facets, tools, list);
 
   const redraw = (focusParticipant?: string, focusAction?: string): void => {
     const scroll = document.scrollingElement?.scrollTop ?? 0;

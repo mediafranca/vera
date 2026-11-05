@@ -5,6 +5,9 @@ import { describe, it } from 'node:test';
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
+const configuration = readFileSync(new URL('../src/configuration-surface.ts', import.meta.url), 'utf8');
+const participants = readFileSync(new URL('../src/participant-administration.ts', import.meta.url), 'utf8');
+const agents = readFileSync(new URL('../src/agent-administration.ts', import.meta.url), 'utf8');
 const mcp = readFileSync(new URL('../src/mcp-page.ts', import.meta.url), 'utf8');
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
 const governance = readFileSync(new URL('../src/governance-page.ts', import.meta.url), 'utf8');
@@ -16,11 +19,25 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const memorySurface = main.slice(main.indexOf('function drawMemory'), main.indexOf('function applyLayout'));
 
 describe('superficies especiales', () => {
-  it('reemplazan las áreas del mapa y ocupan la columna completa', () => {
+  it('reservan el lienzo para una administración sin página focal ni mapa sin ancla', () => {
     const rule = styles.match(/#vera-root\.special-surface\s*\{([^}]+)\}/)?.[1] ?? '';
     assert.match(rule, /grid-template-columns:\s*1fr/);
     assert.match(rule, /grid-template-areas:\s*'bar'\s*'text'/);
     assert.match(styles, /#vera-root\.special-surface #view-switch \{ display: none; \}/);
+    assert.match(configuration, /Administración operativa/);
+    assert.match(configuration, /Las páginas del corpus conservan su mapa, procedencia e historia/);
+    assert.match(styles, /\.configuration-surface[\s\S]*?width: min\(72rem, calc\(100% - 2rem\)\)/);
+  });
+
+  it('comparte el mismo marco y declara la autoridad de los campos', () => {
+    assert.match(participants, /createConfigurationSurface/);
+    assert.match(agents, /createConfigurationSurface/);
+    assert.match(settings, /createConfigurationSurface/);
+    assert.match(configuration, /'effective' \| 'derived' \| 'pending'/);
+    assert.match(configuration, /configuration-field-state/);
+    assert.match(settings, /configurationField\('Descripción', description, 'effective'\)/);
+    assert.match(settings, /configurationField\(label, input, 'effective'\)/);
+    assert.match(agents, /configurationField\(label, input, 'effective'\)/);
   });
 
   it('administra los espacios compartidos en una ruta completa desde configuración', () => {

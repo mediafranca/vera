@@ -111,6 +111,19 @@ contract SelfDescription {
         -- shows its place and marks it Pendiente. Opening an explanatory page is
         -- not treated as implementing the setting.
 
+    @invariant AdministrativeSurfacesNameTheirBoundary
+        -- A projection that administers operational state without a focal
+        -- corpus page uses the common configuration frame and identifies
+        -- itself as administration. It does not draw an unanchored map. A
+        -- `VERA:` page remains an ordinary page and therefore keeps the normal
+        -- text-and-map composition, provenance and history.
+
+    @invariant ConfigurationFieldsExposeTheirAuthority
+        -- Every field in an administrative surface names whether its value is
+        -- effective, derived or pending. A placeholder may offer an example;
+        -- it never substitutes for a visible label or for the field's relation
+        -- to operational state.
+
     @invariant SpecialPagesArePermanentGovernance
         -- A page declared as `tipo=página especial` cannot be deleted. Its
         -- blocks remain ordinarily editable and every revision remains in the
