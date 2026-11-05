@@ -172,9 +172,15 @@ describe('proyección pública', () => {
 
     const index = readFileSync(join(target, 'index.html'), 'utf8');
     assert.match(index, /rel="manifest" href="\/site\.webmanifest"/);
+    assert.match(index, /name="theme-color" content="#202224"/);
     assert.match(index, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
     assert.match(index, /property="og:image" content="https:\/\/vera\.mediafranca\.net\/icon-512\.png"/);
     assert.equal(readFileSync(join(target, 'icon-512.png'), 'utf8'), 'icon-512.png');
+    const manifest = JSON.parse(readFileSync(join(target, 'site.webmanifest'), 'utf8')) as {
+      background_color: string; theme_color: string;
+    };
+    assert.equal(manifest.background_color, '#202224');
+    assert.equal(manifest.theme_color, '#202224');
   });
 
   it('proyecta la portada persistida en la raíz del sitio', () => {

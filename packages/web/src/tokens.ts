@@ -695,6 +695,11 @@ export function applyTokens(tokens: DesignToken[], scheme: ColourScheme): void {
     root.style.setProperty(token.name, scheme === 'dark' ? token.dark : token.light);
   }
   root.dataset['scheme'] = scheme;
+  const background = tokens.find((token) => token.name === '--bg');
+  const browserTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (background !== undefined && browserTheme !== null) {
+    browserTheme.content = scheme === 'dark' ? background.dark : background.light;
+  }
 }
 
 /**
