@@ -16,7 +16,7 @@ describe('actualizaciones de la PWA', () => {
     const assets = worker.match(/const ASSETS = \[([\s\S]*?)\];/)?.[1] ?? '';
     assert.doesNotMatch(assets, /['"]\/index\.html['"]/);
     assert.match(assets, /['"]\/map-frame\.html['"]/);
-    assert.match(worker, /const SHELL = ['"]vera-shell-v11['"]/);
+    assert.match(worker, /const SHELL = ['"]vera-shell-v12['"]/);
     assert.match(worker, /url\.pathname === ['"]\/map-frame\.html['"] \? ['"]\/map-frame\.html['"] : ['"]\/index\.html['"]/);
   });
 });

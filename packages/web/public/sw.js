@@ -35,7 +35,10 @@
 // v11 separa el documento del mapa incrustado del armazón principal. Guardarlo
 // bajo `/index.html` haría que abrir un mapa reemplazara la copia de arranque de
 // Vera por el iframe, y una caída posterior arrancaría sólo ese mapa.
-const SHELL = 'vera-shell-v11';
+// v12 retira el morado histórico del manifiesto instalable. Sin una generación
+// nueva, las instalaciones existentes conservarían ese manifiesto en el shell
+// aunque el tema activo ya proyectara otro fondo dentro de Vera.
+const SHELL = 'vera-shell-v12';
 const ASSETS = [
   '/',
   '/map-frame.html',

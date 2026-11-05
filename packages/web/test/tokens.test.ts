@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import {
   DEFAULT_TOKENS,
   TOKEN_LABELS,
+  applyTokens,
   createDesign,
   importDesign,
   clearTokenImportBackup,
@@ -117,6 +118,33 @@ describe('rotación automática del mapa 3D', () => {
 });
 
 describe('superficies del sistema de diseño', () => {
+  it('proyecta el fondo efectivo del tema al chrome del navegador', () => {
+    const prior = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    const properties = new Map<string, string>();
+    const meta = { content: '#202224' };
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        documentElement: {
+          dataset: {},
+          style: { setProperty: (name: string, value: string) => properties.set(name, value) },
+        },
+        querySelector: (selector: string) => selector === 'meta[name="theme-color"]' ? meta : null,
+      },
+    });
+    try {
+      const background = { name: '--bg', light: '#e6ebe9', dark: '#17191a' };
+      applyTokens([background], 'dark');
+      assert.equal(properties.get('--bg'), '#17191a');
+      assert.equal(meta.content, '#17191a');
+      applyTokens([background], 'light');
+      assert.equal(meta.content, '#e6ebe9');
+    } finally {
+      if (prior === undefined) delete (globalThis as { document?: Document }).document;
+      else Object.defineProperty(globalThis, 'document', prior);
+    }
+  });
+
   it('cada token canónico explica su función con un nombre humano', () => {
     assert.deepEqual(
       Object.keys(TOKEN_LABELS).sort(),
