@@ -272,11 +272,14 @@ no encuentran una falta devuelve `SIN_NOVEDAD`; nunca pide al modelo que infiera
 problemas a partir de simples conteos de páginas o bloques.
 
 La solicitud conserva una instantánea completa de la página para procedencia y
-revisión, pero el runtime entrega al modelo una proyección acotada a su ventana:
-prioriza el bloque enfocado, encabezados y pasajes relacionados con la pregunta,
-y registra cuántos bloques omitió. Una página grande no puede convertir una
-pregunta breve en un error de contexto; compactar la inferencia nunca mutila el
-recibo durable.
+revisión, y el manifiesto activo conserva íntegro su digest. El runtime entrega
+al modelo proyecciones acotadas de ambos: prioriza identidad, gobierno, reglas
+bibliotecarias, el bloque enfocado, encabezados y pasajes relacionados con la
+pregunta, y registra cuántos bloques omitió. Una página o constitución grande no
+puede convertir una pregunta breve en un error de contexto; compactar la
+inferencia nunca mutila los recibos durables. Los fallos del proceso local
+conservan sólo un diagnóstico acotado: nunca persisten la línea de comandos que
+contiene el prompt.
 
 El *clearance* territorial es una política persistida por participante. Puede
 abarcar la biblioteca general, superficies seleccionadas o todo el corpus; una

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Store } from '@vera/store';
-import { activeManifest } from './agent-manifests.ts';
+import { activeManifest, type AgentManifestDocument } from './agent-manifests.ts';
 import { librarianRequest, type LibrarianRequest } from './librarian.ts';
 import { activeOwnerLibrarian } from './owner-librarian.ts';
 
@@ -58,6 +58,9 @@ const FORMATIVE_PRACTICES = new Set<FormativePractice>([
 ]);
 
 const folded = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const insignificantTerms = new Set(['como', 'para', 'este', 'esta', 'esto', 'texto', 'pagina', 'puede', 'podemos', 'problema']);
+const significantTerms = (text: string): string[] => [...new Set((folded(text)
+  .match(/[\p{L}\p{N}\[\]-]{2,}/gu) ?? []).filter((term) => !insignificantTerms.has(term)))];
 
 const formativePracticeMentioned = (said: string): FormativePractice | null => {
   const patterns: ReadonlyArray<readonly [FormativePractice, RegExp]> = [
@@ -431,13 +434,48 @@ export function finishLibrarianRuntimeRun(store: Store, id: string, outcome: {
   return found;
 }
 
-function manifestPrompt(store: Store, agent: string): string {
-  const manifest = activeManifest(store, agent);
-  if (manifest === null) return 'No hay manifiesto constitutivo activo. Declara esta carencia y actúa sólo como agente de biblioteca operativo.';
-  return `Manifiesto constitutivo activo (digest ${manifest.summary.digest}):\n${JSON.stringify(manifest.document)}`;
+const PROMPT_MANIFEST_CHARACTERS = 7_000;
+
+/** Proyecta la constitución al turno sin alterar el manifiesto durable ni su digest. */
+export function compactLibrarianManifestDocument(document: AgentManifestDocument, requestText: string,
+  maximum = PROMPT_MANIFEST_CHARACTERS): string {
+  const complete = JSON.stringify(document);
+  if (complete.length <= maximum) return complete;
+  const terms = significantTerms(requestText);
+  const pages = document.constitution.map((page) => ({ ...page, blocks: [] as typeof page.blocks }));
+  const candidates = document.constitution.flatMap((page, pageIndex) => page.blocks.map((block, blockIndex) => {
+    const content = folded(block.content);
+    const score = terms.reduce((total, term) => total + (content.includes(term) ? term.length : 0), 0) +
+      (/^#{1,6}\s/.test(block.content) ? 4 : 0) +
+      (/mayeutica|servicio directo|bibliotec|principio|proposito|respuesta/.test(content) ? 40 : 0) +
+      (page.role === 'identity' ? 3 : 0) + (blockIndex < 2 ? 2 : 0);
+    return { pageIndex, blockIndex, block, score };
+  })).sort((a, b) => b.score - a.score || a.pageIndex - b.pageIndex || a.blockIndex - b.blockIndex);
+  const render = (): string => JSON.stringify({
+    ...document,
+    constitution: pages,
+    compacted: true,
+    omittedBlocks: document.constitution.reduce((total, page) => total + page.blocks.length, 0) -
+      pages.reduce((total, page) => total + page.blocks.length, 0),
+  });
+  for (const candidate of candidates) {
+    pages[candidate.pageIndex]!.blocks.push(candidate.block);
+    pages[candidate.pageIndex]!.blocks.sort((a, b) => a.position - b.position);
+    if (render().length > maximum) {
+      pages[candidate.pageIndex]!.blocks.splice(pages[candidate.pageIndex]!.blocks.indexOf(candidate.block), 1);
+    }
+  }
+  return render();
 }
 
-const PROMPT_CONTEXT_CHARACTERS = 16_000;
+function manifestPrompt(store: Store, agent: string, requestText: string): string {
+  const manifest = activeManifest(store, agent);
+  if (manifest === null) return 'No hay manifiesto constitutivo activo. Declara esta carencia y actúa sólo como agente de biblioteca operativo.';
+  return `Manifiesto constitutivo activo (digest ${manifest.summary.digest}):\n` +
+    compactLibrarianManifestDocument(manifest.document, requestText);
+}
+
+const PROMPT_CONTEXT_CHARACTERS = 6_000;
 
 /** Conserva la instantánea íntegra en el recibo y acota sólo su proyección al modelo. */
 export function compactLibrarianPromptContext(snapshot: string, requestText: string,
@@ -456,9 +494,7 @@ export function compactLibrarianPromptContext(snapshot: string, requestText: str
         : `${parsed.focus.content.slice(0, 3_000)}…${parsed.focus.content.slice(-3_000)}`,
     };
     const blocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
-    const terms = [...new Set((requestText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-      .match(/[\p{L}\p{N}\[\]-]{2,}/gu) ?? [])
-      .filter((term) => !new Set(['como', 'para', 'este', 'esta', 'esto', 'texto', 'pagina', 'puede', 'podemos', 'problema']).has(term)))];
+    const terms = significantTerms(requestText);
     const indexed = blocks.map((block, index) => {
       const content = typeof block.content === 'string' ? block.content : '';
       const foldedContent = folded(content);
@@ -521,7 +557,7 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
     `Eres ${librarianName}, agente de biblioteca de esta Vera. Responde en español claro, breve y afirmativo.`,
     'Tu principal es una persona. No inventes acciones ni herramientas. No reveles razonamiento privado.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
-    manifestPrompt(store, config.agent),
+    manifestPrompt(store, config.agent, request.text),
     dialectic,
     `Solicitud: ${request.text}`,
     `Contexto solicitado: ${compactLibrarianPromptContext(request.contextSnapshot, request.text)}`,

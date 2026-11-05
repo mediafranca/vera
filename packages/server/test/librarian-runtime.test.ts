@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { initializeStarterMemory } from '../src/starter-memory.ts';
 import { listen } from '../src/server.ts';
 import {
+  compactLibrarianManifestDocument,
   compactLibrarianPromptContext,
   formativePracticeFor,
   librarianRequestDispositionFor,
@@ -57,6 +58,35 @@ describe('frontera formativa de la dialéctica', () => {
     assert.equal(JSON.parse(compacted).compacted, true);
     assert.ok(JSON.parse(compacted).omittedBlocks > 0);
     assert.match(snapshot, /block:79/);
+  });
+
+  it('acota un manifiesto grande conservando identidad, gobierno y reglas pertinentes', () => {
+    const manifest = {
+      schemaVersion: 1 as const, source: 'vera' as const, graph: 'graph:1',
+      agent: { id: 'participant:lucienne', name: 'Lucienne', human: { id: 'participant:herbert', name: 'Herbert' } },
+      generatedAt: 1,
+      constitution: [{
+        page: 'page:lucienne', title: 'Lucienne', role: 'identity' as const, revision: 'op:1', properties: [],
+        blocks: [
+          { id: 'principle', parent: null, position: 0, content: '**Servicio directo.** Resuelve búsquedas y problemas de Markdown.' },
+          ...Array.from({ length: 70 }, (_, index) => ({
+            id: `filler:${index}`, parent: null, position: index + 1, content: `Relleno constitucional ${index} `.repeat(30),
+          })),
+        ],
+      }],
+      guarantees: { secrets: 'references-only' as const, authority: 'human-principal' as const,
+        history: 'append-only-manifests' as const, writing: { representation: 'ordered-stable-block-tree' as const,
+          mutation: 'minimal-block-operations' as const, foreignWords: 'proposal' as const, flattening: 'rejected' as const } },
+    };
+    const compacted = compactLibrarianManifestDocument(manifest, '¿Cómo escribir e[ad] en Markdown?', 4_000);
+    assert.ok(compacted.length <= 4_000);
+    const parsed = JSON.parse(compacted) as { agent: { name: string }; compacted: boolean; omittedBlocks: number;
+      guarantees: { authority: string }; constitution: Array<{ blocks: Array<{ id: string }> }> };
+    assert.equal(parsed.agent.name, 'Lucienne');
+    assert.equal(parsed.guarantees.authority, 'human-principal');
+    assert.equal(parsed.compacted, true);
+    assert.ok(parsed.omittedBlocks > 0);
+    assert.ok(parsed.constitution[0]!.blocks.some((block) => block.id === 'principle'));
   });
 });
 

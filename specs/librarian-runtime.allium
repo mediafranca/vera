@@ -263,10 +263,15 @@ surface LibrarianRuntimeAdministration {
     @guarantee RoutinesBeginDisabled
         -- Una ronda automática nace apagada y también puede ejecutarse a mano.
 
-    @guarantee LargePagesDoNotOverflowTheModelContext
-        -- La solicitud conserva la instantánea íntegra como recibo durable, pero
-        -- el prompt recibe una proyección acotada que prioriza foco, estructura y
-        -- pasajes pertinentes. Una página grande no hace fallar una pregunta breve.
+    @guarantee LargePagesAndManifestsDoNotOverflowTheModelContext
+        -- La solicitud y el manifiesto permanecen íntegros como recibos durables,
+        -- pero el prompt recibe proyecciones acotadas que priorizan identidad,
+        -- gobierno, foco, estructura y pasajes pertinentes. Una página o
+        -- constitución grande no hace fallar una pregunta breve.
+
+    @guarantee ModelFailuresDoNotPersistThePrompt
+        -- Un fallo local registra un diagnóstico acotado. La línea de comandos,
+        -- que contiene el prompt y su contexto privado, nunca queda en el recibo.
 
     @guarantee RoutinesOnlyReportOperationalEvidence
         -- Una ronda no encarga al modelo inventar diagnósticos a partir de

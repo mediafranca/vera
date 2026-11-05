@@ -1077,7 +1077,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
         ...(resolvedRuntimeSecret(config.secretReference) === undefined
           ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
-        maxTokens: 1_200,
+        maxTokens: 500,
         contextTokens: 12_288,
         timeoutMs: 300_000,
       };
