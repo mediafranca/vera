@@ -263,6 +263,11 @@ surface LibrarianRuntimeAdministration {
     @guarantee RoutinesBeginDisabled
         -- Una ronda automática nace apagada y también puede ejecutarse a mano.
 
+    @guarantee LargePagesDoNotOverflowTheModelContext
+        -- La solicitud conserva la instantánea íntegra como recibo durable, pero
+        -- el prompt recibe una proyección acotada que prioriza foco, estructura y
+        -- pasajes pertinentes. Una página grande no hace fallar una pregunta breve.
+
     @guarantee RoutinesOnlyReportOperationalEvidence
         -- Una ronda no encarga al modelo inventar diagnósticos a partir de
         -- conteos. Sin violaciones observadas responde SIN_NOVEDAD; con ellas
@@ -298,10 +303,25 @@ surface LibrarianDialecticConversation {
         -- después de una tentativa humana o de un bypass visible y deliberado.
 
     @guarantee OperationalRequestsRemainDirect
-        -- Recuperar, ordenar, transcribir, formatear o ejecutar una decisión ya
-        -- tomada no abre un umbral por defecto. La resistencia aparece cuando la
-        -- petición delega lectura, selección, interpretación, comparación,
-        -- síntesis o conclusión como práctica formativa central.
+        -- Buscar, citar, verificar, recuperar, ordenar, transcribir, enlazar,
+        -- completar metadatos, formatear o ejecutar una decisión ya tomada no
+        -- abre un umbral. Una fuente identificable tampoco debe quedar detrás de
+        -- una pregunta formativa.
+
+    @guarantee AClueCountsAsContribution
+        -- Una pista, hipótesis, fuente o criterio ya aportado basta para ayudar
+        -- directamente. La persona no tiene que repetir esa contribución en la
+        -- forma que prefiera el agente.
+
+    @guarantee DeterminedWorkComesBeforeAQuestion
+        -- Si una solicitud mezcla recuperación factual y juicio, el agente
+        -- completa primero la parte determinada. Puede formular como máximo una
+        -- pregunta breve sobre la decisión personal restante, sin retener lo ya
+        -- encontrado.
+
+    @guarantee MayeuticsIsAnOfferNotAnAccessCondition
+        -- Una petición explícita de ejecución directa o la insistencia posterior
+        -- cierran la resistencia sin contraseña social, reproche ni otro desafío.
 
     @guarantee OneOpenThresholdPerConversation
         -- Una conversación no acumula exámenes ni bucles de desafíos. El turno

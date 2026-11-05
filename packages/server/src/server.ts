@@ -163,7 +163,7 @@ import {
   dialecticGateForRequest,
   finishLibrarianRuntimeRun,
   formativeChallenge,
-  formativePracticeFor,
+  librarianRequestDispositionFor,
   librarianRequestPrompt,
   librarianRuntimeConfiguration,
   librarianRuntimeRuns,
@@ -1051,8 +1051,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (clearance.outcome === 'refused') throw new Error(clearance.explanation);
       }
       const gate = dialecticGateForRequest(store, id);
-      const requiredPractice = gate === null && config.dialectic.enabled
-        ? formativePracticeFor(claimed.text)
+      const disposition = config.dialectic.enabled
+        ? librarianRequestDispositionFor(claimed.text)
+        : { mode: 'answer' as const, reason: 'ordinary' as const };
+      const requiredPractice = gate === null && disposition.mode === 'challenge'
+        ? disposition.practice
         : null;
       if (requiredPractice !== null) {
         const challenge = formativeChallenge(requiredPractice);
@@ -1085,7 +1088,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const answered = await ask(transcript, modelOptions);
         if ('error' in answered) throw new Error(answered.error);
         const call = readLibrarianToolCall(answered.text);
-        if (call === null) { final = answered.text; break; }
+        if (call === null) {
+          const provisional = readDialecticDecision(answered.text);
+          if (gate === null && disposition.mode === 'answer' && provisional.mode === 'challenge') {
+            transcript = `${transcript}\n\nLa respuesta anterior intentó abrir un umbral que el harness descartó ` +
+              `porque esta solicitud es ${disposition.reason}. Responde directamente, realiza el trabajo y no devuelvas otro desafío.`;
+            continue;
+          }
+          final = answered.text;
+          break;
+        }
         addLibrarianProgress(store, {
           requestId: id, kind: 'tool', text: `${librarianName} usó ${call.name}`, createdBy: config.agent,
         });

@@ -49,24 +49,17 @@ export type LibrarianDialecticDecision =
   | { mode: 'answer'; text: string }
   | { mode: 'challenge'; practice: FormativePractice; text: string };
 
+export type LibrarianRequestDisposition =
+  | { mode: 'answer'; reason: 'ordinary' | 'determined' | 'mixed' | 'contribution' | 'explicit_direct' }
+  | { mode: 'challenge'; practice: FormativePractice };
+
 const FORMATIVE_PRACTICES = new Set<FormativePractice>([
   'reading', 'selection', 'interpretation', 'comparison', 'synthesis', 'conclusion',
 ]);
 
 const folded = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-/**
- * Reconoce el borde deliberadamente estrecho de la dialéctica v1.
- *
- * El harness compone el desafío; el modelo no decide si puede saltarse el
- * umbral. Las primeras posiciones explícitas cuentan como contribución y
- * siguen fluidas.
- */
-export function formativePracticeFor(text: string): FormativePractice | null {
-  const said = folded(text);
-  if (/\b(mi lectura|mi interpretacion|mi conclusion|creo que|pienso que|para mi|yo veo|propongo que)\b/.test(said)) {
-    return null;
-  }
+const formativePracticeMentioned = (said: string): FormativePractice | null => {
   const patterns: ReadonlyArray<readonly [FormativePractice, RegExp]> = [
     ['synthesis', /\b(sintetiza|sintesis|resume|resumen)\b/],
     ['selection', /\b(elige|selecciona|escoge|pasajes? (?:mas )?(?:importantes|decisivos|centrales))\b/],
@@ -76,6 +69,46 @@ export function formativePracticeFor(text: string): FormativePractice | null {
     ['reading', /\b(lee|lectura critica|haz una lectura)\b/],
   ];
   return patterns.find(([, pattern]) => pattern.test(said))?.[0] ?? null;
+};
+
+/**
+ * Decide si la mayéutica aporta formación o sólo interpone un peaje.
+ *
+ * Buscar, verificar, citar, transcribir, enlazar y completar una referencia
+ * son trabajo bibliotecario determinado. Una pista, fuente, hipótesis o
+ * criterio ya expresado cuenta como contribución. En ambos casos Lucienne
+ * sirve directamente; sólo una delegación de juicio todavía vacía abre el
+ * umbral.
+ */
+export function librarianRequestDispositionFor(text: string): LibrarianRequestDisposition {
+  const said = folded(text);
+  const practice = formativePracticeMentioned(said);
+  const explicitDirect = /\b(directamente|sin preguntas|sin mayeutica|hazlo|procede|resuelvelo|esta vez necesito|necesito que (?:lo )?(?:hagas|resuelvas))\b/.test(said);
+  const contribution = /\b(mi lectura|mi interpretacion|mi conclusion|mi hipotesis|mi criterio|creo que|pienso que|para mi|yo veo|propongo que)\b/.test(said) ||
+    /https?:\/\//i.test(text) || /["“«][^"”»]{3,}["”»]/.test(text) ||
+    /\b(esta fuente|este pasaje|esta cita|esta referencia|a partir de|basandote en|usando)\b/.test(said);
+  const determined = /\b(busca|encuentra|localiza|recupera|rastrea|cita|verifica|comprueba|transcribe|copia|enlaza|vincula|ordena|formatea|normaliza)\b/.test(said) ||
+    /\bcompleta (?:la |el |los |las )?(?:fuente|cita|referencia|ficha|metadatos|pagina|entrada)\b/.test(said);
+
+  if (explicitDirect) return { mode: 'answer', reason: 'explicit_direct' };
+  if (contribution) return { mode: 'answer', reason: 'contribution' };
+  if (determined && practice !== null) return { mode: 'answer', reason: 'mixed' };
+  if (determined) return { mode: 'answer', reason: 'determined' };
+  return practice === null
+    ? { mode: 'answer', reason: 'ordinary' }
+    : { mode: 'challenge', practice };
+}
+
+/**
+ * Reconoce el borde deliberadamente estrecho de la dialéctica v1.
+ *
+ * El harness compone el desafío; el modelo no decide si puede saltarse el
+ * umbral. Las primeras posiciones explícitas cuentan como contribución y
+ * siguen fluidas.
+ */
+export function formativePracticeFor(text: string): FormativePractice | null {
+  const disposition = librarianRequestDispositionFor(text);
+  return disposition.mode === 'challenge' ? disposition.practice : null;
 }
 
 export function formativeChallenge(practice: FormativePractice): string {
@@ -404,22 +437,75 @@ function manifestPrompt(store: Store, agent: string): string {
   return `Manifiesto constitutivo activo (digest ${manifest.summary.digest}):\n${JSON.stringify(manifest.document)}`;
 }
 
+const PROMPT_CONTEXT_CHARACTERS = 16_000;
+
+/** Conserva la instantánea íntegra en el recibo y acota sólo su proyección al modelo. */
+export function compactLibrarianPromptContext(snapshot: string, requestText: string,
+  maximum = PROMPT_CONTEXT_CHARACTERS): string {
+  if (snapshot.length <= maximum) return snapshot;
+  try {
+    const parsed = JSON.parse(snapshot) as {
+      page?: unknown;
+      focus?: { id?: string; content?: string; parent?: string | null } | null;
+      blocks?: Array<{ id?: string; parent?: string | null; position?: number; content?: string }>;
+    };
+    const focus = parsed.focus === null || parsed.focus === undefined ? null : {
+      ...parsed.focus,
+      content: typeof parsed.focus.content !== 'string' || parsed.focus.content.length <= 6_000
+        ? parsed.focus.content
+        : `${parsed.focus.content.slice(0, 3_000)}…${parsed.focus.content.slice(-3_000)}`,
+    };
+    const blocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
+    const terms = [...new Set((requestText.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .match(/[\p{L}\p{N}\[\]-]{2,}/gu) ?? [])
+      .filter((term) => !new Set(['como', 'para', 'este', 'esta', 'esto', 'texto', 'pagina', 'puede', 'podemos', 'problema']).has(term)))];
+    const indexed = blocks.map((block, index) => {
+      const content = typeof block.content === 'string' ? block.content : '';
+      const foldedContent = folded(content);
+      const score = terms.reduce((total, term) => total + (foldedContent.includes(term) ? term.length : 0), 0) +
+        (block.id === focus?.id ? 10_000 : 0) +
+        (block.parent === null || /^#{1,6}\s/.test(content) ? 1 : 0);
+      const firstMatch = terms.map((term) => foldedContent.indexOf(term)).filter((at) => at >= 0).sort((a, b) => a - b)[0] ?? 0;
+      const start = content.length <= 6_000 ? 0 : Math.max(0, firstMatch - 1_000);
+      const excerpt = content.length <= 6_000 ? content
+        : `${start > 0 ? '…' : ''}${content.slice(start, start + 6_000)}${start + 6_000 < content.length ? '…' : ''}`;
+      return { block: { ...block, content: excerpt }, index, score };
+    });
+    const candidates = [...indexed].sort((a, b) => b.score - a.score || a.index - b.index);
+    const selected = new Map<number, (typeof indexed)[number]>();
+    const render = (): string => JSON.stringify({
+      page: parsed.page,
+      focus,
+      blocks: [...selected.values()].sort((a, b) => a.index - b.index).map((one) => one.block),
+      compacted: true,
+      omittedBlocks: Math.max(0, blocks.length - selected.size),
+    });
+    for (const candidate of candidates) {
+      selected.set(candidate.index, candidate);
+      if (render().length > maximum) selected.delete(candidate.index);
+    }
+    return render();
+  } catch {
+    return `${snapshot.slice(0, Math.max(0, maximum - 80))}\n… contexto acotado por el harness …`;
+  }
+}
+
 export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeConfiguration,
   request: LibrarianRequest, gate: LibrarianDialecticGate | null = null): string {
   const librarianName = activeOwnerLibrarian(store)?.name ?? 'Agente de biblioteca';
   const opening = gate === null ? null : librarianRequest(store, gate.openingRequest);
-  const requiredPractice = gate === null && config.dialectic.enabled ? formativePracticeFor(request.text) : null;
+  const disposition = librarianRequestDispositionFor(request.text);
   const dialectic = gate === null
     ? (config.dialectic.enabled ? [
         'Dialéctica del agente de biblioteca activa.',
-        ...(requiredPractice === null ? [] : [
-          `El harness reconoce esta petición como delegación formativa de ${requiredPractice}. Debes abrir el umbral; no entregues la respuesta final.`,
-        ]),
-        'Si la petición delega como práctica central leer, seleccionar, interpretar, comparar, sintetizar o concluir, y la persona todavía no aporta una primera posición, no entregues el trabajo final.',
-        'En ese caso devuelve exclusivamente JSON válido: {"dialectic":"challenge","practice":"reading|selection|interpretation|comparison|synthesis|conclusion","text":"un desafío breve, proporcionado y realizable"}.',
-        'El desafío pide una tentativa concreta y explica sobriamente qué gesto conserva; no adelanta la síntesis, selección, interpretación ni conclusión.',
-        'Las búsquedas, recuperaciones, transcripciones, ordenamientos, formatos y ejecuciones de una decisión ya tomada son operativas: respóndelas directamente.',
-        'Para una respuesta directa puedes devolver Markdown ordinario o JSON válido: {"dialectic":"answer","text":"respuesta final"}.',
+        'El harness no abrió un umbral en este turno: responde directamente y no devuelvas un desafío dialéctico.',
+        'Buscar, citar, verificar, transcribir, enlazar, completar metadatos o recuperar una fuente identificable son trabajo bibliotecario determinado: ejecútalo sin pedir una tentativa.',
+        'Una pista, hipótesis, fuente o criterio ya aportado cuenta como contribución suficiente.',
+        'Si la tarea mezcla trabajo determinado y juicio, completa primero todo lo determinado y formula al final, como máximo, una pregunta breve sólo sobre la decisión personal todavía abierta. No retengas el resultado ya obtenido.',
+        'Si la persona pide ejecución directa o insiste, procede sin exigir una fórmula especial ni moralizar.',
+        'La mayéutica es una oferta de participación, no una condición de acceso al trabajo bibliotecario.',
+        `Clasificación del harness: respuesta directa (${disposition.mode === 'answer' ? disposition.reason : 'umbral ya resuelto por el servidor'}).`,
+        'Devuelve Markdown ordinario o JSON válido: {"dialectic":"answer","text":"respuesta final"}.',
       ].join('\n') : 'Dialéctica del agente de biblioteca desactivada: responde directamente.')
     : [
         `Umbral formativo abierto para ${gate.practice}.`,
@@ -438,7 +524,7 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
     manifestPrompt(store, config.agent),
     dialectic,
     `Solicitud: ${request.text}`,
-    `Contexto solicitado: ${request.contextSnapshot}`,
+    `Contexto solicitado: ${compactLibrarianPromptContext(request.contextSnapshot, request.text)}`,
     'Devuelve sólo la respuesta que leerá la persona, en Markdown.',
   ].join('\n\n');
 }
