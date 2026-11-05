@@ -14,6 +14,7 @@ import {
   type TerritoryAdministrationView,
   type TerritoryPermission,
 } from './api.ts';
+import { configurationField, createConfigurationSurface } from './configuration-surface.ts';
 
 const ROLE_LABELS: Record<ConstitutionRole, string> = {
   identity: 'Identidad', purpose: 'Propósito', practice: 'Práctica', memory: 'Memoria', governance: 'Gobierno',
@@ -150,9 +151,7 @@ interface DesktopLibrarianSecretBridge {
 }
 
 function field(label: string, input: HTMLInputElement | HTMLSelectElement): HTMLLabelElement {
-  const held = document.createElement('label');
-  const name = document.createElement('span'); name.textContent = label;
-  held.append(name, input); return held;
+  return configurationField(label, input, 'effective');
 }
 
 async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: () => Promise<void>): Promise<HTMLElement> {
@@ -434,16 +433,13 @@ function territoryPanel(
 }
 
 export async function renderAgentAdministration(host: HTMLElement): Promise<void> {
-  host.replaceChildren();
-  const root = document.createElement('article'); root.className = 'agent-administration';
-  const header = document.createElement('header'); header.className = 'special-page-header';
-  const title = document.createElement('h1'); title.textContent = 'Agente de biblioteca';
-  header.append(title, control('← Volver', () => window.history.back()));
-  const intro = document.createElement('p'); intro.className = 'agent-administration-intro';
-  intro.textContent = 'Agente de biblioteca es un oficio singular de esta Vera. Su nombre y sus prácticas son editables; el modelo y el runtime pueden cambiar sin reemplazar su identidad.';
+  const { title, introduction, body } = createConfigurationSurface(host, {
+    title: 'Agente de biblioteca',
+    introduction: 'Agente de biblioteca es un oficio singular de esta Vera. Su nombre y sus prácticas son editables; el modelo y el runtime pueden cambiar sin reemplazar su identidad.',
+    className: 'agent-administration',
+  });
   const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo configuración…';
-  const body = document.createElement('div'); body.className = 'agent-administration-body';
-  root.append(header, intro, status, body); host.append(root);
+  body.classList.add('agent-administration-body'); body.append(status);
 
   const refresh = async (): Promise<void> => renderAgentAdministration(host);
   try {
@@ -465,7 +461,7 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
     }
 
     title.textContent = librarianMode ? `${agent.agent.name} · Agente de biblioteca` : `${agent.agent.name} · Agente`;
-    intro.textContent = librarianMode
+    introduction.textContent = librarianMode
       ? 'Identidad, constitución, harness, runtime y territorio del único agente de biblioteca activo de esta Vera.'
       : 'Constitución y territorio de este participante agente. El agente de biblioteca se administra en su panel singular.';
     status.textContent = agent.human === null ? 'Sin principal humano' : `Principal humano · ${agent.human.name}`;

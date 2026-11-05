@@ -19,6 +19,7 @@ import {
 } from './api.ts';
 import { icon, type IconName } from './icons.ts';
 import { openMediaDetails } from './media-dialog.ts';
+import { configurationField, createConfigurationSurface } from './configuration-surface.ts';
 import {
   createServiceStatusIndicator,
   createServiceStatusViewer,
@@ -518,10 +519,9 @@ async function sharingRequest(path: string, method = 'GET', body?: unknown): Pro
 }
 
 const field = (label: string, value: string, placeholder = ''): { label: HTMLLabelElement; input: HTMLInputElement } => {
-  const held = document.createElement('label'); held.className = 'sharing-field';
-  const name = document.createElement('span'); name.textContent = label;
   const input = document.createElement('input'); input.value = value; input.placeholder = placeholder;
-  held.append(name, input); return { label: held, input };
+  const held = configurationField(label, input, 'effective'); held.classList.add('sharing-field');
+  return { label: held, input };
 };
 
 /**
@@ -571,22 +571,12 @@ export async function drawSharing(host: HTMLElement): Promise<void> {
 
 /** Compartir tiene suficiente profundidad para ser una página, no una pestaña. */
 export async function renderSharingAdministration(host: HTMLElement): Promise<void> {
-  host.innerHTML = '';
-  const page = document.createElement('article');
-  page.className = 'sharing-administration';
-  const head = document.createElement('header');
-  head.className = 'special-page-header';
-  const title = document.createElement('h1');
-  title.textContent = 'Espacios compartidos';
-  const back = document.createElement('button');
-  back.type = 'button';
-  back.textContent = '← Volver';
-  back.addEventListener('click', () => window.history.back());
-  head.append(title, back);
-  const body = document.createElement('div');
-  body.className = 'sharing-administration-body';
-  page.append(head, body);
-  host.append(page);
+  const { body } = createConfigurationSurface(host, {
+    title: 'Espacios compartidos',
+    introduction: 'Gobierna la publicación y los espacios con acceso autenticado desde una sola superficie.',
+    className: 'sharing-administration',
+  });
+  body.classList.add('sharing-administration-body');
   await drawSharing(body);
   // En la página completa las acciones no deben quedar escondidas detrás del
   // resumen del espacio: la invitación y su botón se ven al llegar.
@@ -595,14 +585,12 @@ export async function renderSharingAdministration(host: HTMLElement): Promise<vo
 
 /** Gobierno humano de la instancia: identidad primero; subgrafos después. */
 export async function renderCollectiveAdministration(host: HTMLElement): Promise<void> {
-  host.innerHTML = '';
-  const page = document.createElement('article'); page.className = 'sharing-administration';
-  const head = document.createElement('header'); head.className = 'special-page-header';
-  const title = document.createElement('h1'); title.textContent = 'Personas e identidad';
-  const back = document.createElement('button'); back.type = 'button'; back.textContent = '← Volver';
-  back.onclick = () => window.history.back(); head.append(title, back);
-  const body = document.createElement('div'); body.className = 'sharing-administration-body';
-  page.append(head, body); host.append(page);
+  const { body } = createConfigurationSurface(host, {
+    title: 'Personas e identidad',
+    introduction: 'Administra identidades humanas, roles, sesiones e invitaciones de la instancia.',
+    className: 'sharing-administration',
+  });
+  body.classList.add('sharing-administration-body');
   await drawCollectiveAdministration(body);
 }
 
@@ -1504,17 +1492,10 @@ const readableSize = (bytes: number): string =>
 
 /** La página persistente del almacén: encontrar, describir, usar y limpiar. */
 export async function renderFilesAdministration(host: HTMLElement): Promise<void> {
-  host.innerHTML = '';
-  const head = document.createElement('header');
-  head.className = 'page-header';
-  const title = document.createElement('h1');
-  title.className = 'page-title';
-  title.textContent = 'Administración de archivos';
-  head.append(title);
-  host.append(head);
-  const intro = document.createElement('p');
-  intro.className = 'settings-note';
-  intro.textContent = 'Los archivos guardados en Vera. Puedes renombrarlos, reemplazarlos o eliminarlos; Vera mantiene juntas sus referencias en las páginas.';
+  const { body } = createConfigurationSurface(host, {
+    title: 'Administración de archivos',
+    introduction: 'Los archivos guardados en Vera. Puedes describirlos, reemplazarlos o eliminarlos; Vera mantiene juntas sus referencias en las páginas.',
+  });
   const search = document.createElement('input');
   search.type = 'search';
   search.className = 'media-search';
@@ -1530,7 +1511,7 @@ export async function renderFilesAdministration(host: HTMLElement): Promise<void
   const list = document.createElement('tbody');
   table.append(list);
   scroll.append(table);
-  host.append(intro, search, status, scroll);
+  body.append(search, status, scroll);
 
   let files: CatalogAsset[];
   try {
@@ -1600,7 +1581,10 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
   alt.placeholder = 'Texto alternativo';
   alt.value = file.alternativeText ?? '';
   alt.hidden = !file.mediaType.startsWith('image/');
-  metadata.append(description, alt);
+  const descriptionField = configurationField('Descripción', description, 'effective');
+  const alternativeField = configurationField('Texto alternativo', alt, 'effective');
+  alternativeField.hidden = alt.hidden;
+  metadata.append(descriptionField, alternativeField);
 
   const usageCell = document.createElement('td');
   usageCell.className = 'media-usages';
