@@ -1257,10 +1257,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     while (unresolved.length > 0 && guard <= blocks.length) {
       guard += 1;
       let progressed = false;
-      for (let at = unresolved.length - 1; at >= 0; at -= 1) {
+      for (let at = 0; at < unresolved.length;) {
         const block = unresolved[at]!;
         const localParent = block.parent === undefined ? undefined : written.get(block.parent);
-        if (block.parent !== undefined && keys.has(block.parent) && localParent === undefined) continue;
+        if (block.parent !== undefined && keys.has(block.parent) && localParent === undefined) {
+          at += 1;
+          continue;
+        }
         let parent: string | null = localParent?.id ?? block.parent ?? null;
         let pageId = localParent?.page ?? null;
         if (parent !== null && localParent === undefined) {
