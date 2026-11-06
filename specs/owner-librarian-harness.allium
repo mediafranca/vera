@@ -101,6 +101,11 @@ contract OwnerLibrarianHarnessAdministration {
         -- operation as the librarian participant. Authorship, revision fences,
         -- clearance, restrictions and the activity log remain effective.
 
+    @invariant DestructiveWorkRequiresDoubleDeclaration
+        -- Harness v4 may apply removals throughout the governed Vera. A removal
+        -- is unavailable unless its exact subject and reason appear in the
+        -- conversational receipt and in the librarian's daily ledger.
+
     @invariant TheResidentKeepsTheirOwnDailyLedger
         -- A material intervention is summarized on the private page for that
         -- day, below one root named "Bitácora de <effective agent name>". The
@@ -287,9 +292,9 @@ invariant HarnessNeverOverridesSurfaceExclusion {
                 not harness_can_read_content(harness, surface_rule.surface)
 }
 
-invariant DestructiveCapabilityIsAbsentFromTheInitialHarness {
+invariant DestructiveCapabilityRequiresTheNativeV4Harness {
     for capability in HarnessCapabilities where status = active:
-        capability.harness.version = "vera-librarian-harness:3" implies not capability.destructive
+        capability.destructive implies capability.harness.version = "vera-librarian-harness:4"
 }
 
 ------------------------------------------------------------

@@ -218,22 +218,60 @@ export const TOOLS: readonly VeraTool[] = [
     name: 'vera_responder_solicitud_bibliotecaria',
     title: 'Responder una solicitud bibliotecaria',
     readOnly: false,
+    destructive: true,
     description:
-      'Deposita la respuesta final de la bibliotecaria residente en la conversación y, cuando corresponde, ' +
-      'en su destino de Vera con autoría agent_generation. Las ediciones adicionales viajan como propuestas separadas.',
+      'Cierra una solicitud con un recibo breve para el chat y una inscripción estructurada en Vera. Cada unidad ' +
+      'semántica viaja como bloque y la jerarquía se expresa con padre, nunca con un outline Markdown dentro de texto. ' +
+      'Puede intervenir páginas gobernadas; todo retiro exige motivo y queda declarado también en su bitácora diaria.',
     inputSchema: {
       type: 'object', properties: {
         solicitud: { type: 'string', minLength: 1 },
-        texto: { type: 'string', minLength: 1 },
+        texto: { type: 'string', minLength: 1, maxLength: 1200, description: 'Recibo breve para la conversación.' },
+        bloques: { type: 'array', default: [], items: {
+          type: 'object', additionalProperties: false, properties: {
+            clave: { type: 'string', minLength: 1 },
+            pagina: { type: 'string', minLength: 1,
+              description: 'Página por id o título; bitacora_hoy deposita bajo la raíz diaria propia.' },
+            padre: { type: 'string', minLength: 1,
+              description: 'Clave de otro bloque del lote o id de un bloque existente.' },
+            posicion: { type: 'integer', minimum: 0 },
+            contenido: { type: 'string', minLength: 1 },
+          }, required: ['clave', 'contenido'],
+        } },
         cambios: { type: 'array', items: { type: 'object' }, default: [] },
+        revisiones: { type: 'object', additionalProperties: { type: 'string' }, default: {} },
+        retiros: { type: 'array', default: [], items: {
+          type: 'object', additionalProperties: false, properties: {
+            sujeto: { type: 'string', minLength: 1 },
+            motivo: { type: 'string', minLength: 1 },
+          }, required: ['sujeto', 'motivo'],
+        } },
       }, required: ['solicitud', 'texto'], additionalProperties: false,
     },
     async run(args, _ask, _write, _batch, _query, _propose, action) {
       if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
       const id = say(args.solicitud).trim(); const text = say(args.texto).trim();
       if (id === '' || text === '') return 'La solicitud y la respuesta no pueden quedar vacías.';
+      const blocks = Array.isArray(args.bloques) ? args.bloques.map((one) => {
+        const input = one as Record<string, unknown>;
+        return {
+          key: input['clave'],
+          ...(input['pagina'] === undefined ? {} : { page: input['pagina'] }),
+          ...(input['padre'] === undefined ? {} : { parent: input['padre'] }),
+          ...(input['posicion'] === undefined ? {} : { position: input['posicion'] }),
+          content: input['contenido'],
+        };
+      }) : [];
       const changes = Array.isArray(args.cambios) ? args.cambios : [];
-      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/reply`, { text, changes });
+      const ifRevisions = args.revisiones !== null && typeof args.revisiones === 'object' && !Array.isArray(args.revisiones)
+        ? args.revisiones : {};
+      const removals = Array.isArray(args.retiros) ? args.retiros.map((one) => {
+        const input = one as Record<string, unknown>;
+        return { subject: input['sujeto'], reason: input['motivo'] };
+      }) : [];
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/reply`, {
+        text, blocks, changes, ifRevisions, removals,
+      });
       if (failed(result)) return `No pude responder: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
       return `Respuesta final depositada en ${id} por la identidad efectiva de esta conexión.`;
     },

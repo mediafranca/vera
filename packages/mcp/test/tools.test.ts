@@ -54,6 +54,7 @@ describe('el catálogo', () => {
       'vera_descartar',
     ]);
     assert.deepEqual(TOOLS.filter((tool) => tool.destructive === true).map((tool) => tool.name), [
+      'vera_responder_solicitud_bibliotecaria',
       'vera_descartar',
     ]);
     assert.deepEqual(
@@ -106,7 +107,12 @@ describe('ciclo de la bibliotecaria residente', () => {
       solicitud: 'agent-request:1', tipo: 'tool', texto: 'Leí la ontología',
     }, ask, undefined, undefined, undefined, action), /registrado/);
     assert.match(await run('vera_responder_solicitud_bibliotecaria', {
-      solicitud: 'agent-request:1', texto: 'Síntesis fundada', cambios: [],
+      solicitud: 'agent-request:1', texto: 'Síntesis fundada',
+      bloques: [
+        { clave: 'sintesis', pagina: 'bitacora_hoy', contenido: 'PICTOS articula doctorado y talleres.' },
+        { clave: 'talleres', padre: 'sintesis', contenido: 'Los talleres organizan tres frentes.' },
+      ],
+      cambios: [], revisiones: {}, retiros: [],
     }, ask, undefined, undefined, undefined, action), /depositada/);
     assert.equal(asked[0]?.path, '/librarian/requests/agent-request%3A1');
     assert.deepEqual(actions.map((one) => one.path), [
@@ -114,6 +120,14 @@ describe('ciclo de la bibliotecaria residente', () => {
       '/librarian/requests/agent-request%3A1/progress',
       '/librarian/requests/agent-request%3A1/reply',
     ]);
+    assert.deepEqual(actions.at(-1)?.body, {
+      text: 'Síntesis fundada',
+      blocks: [
+        { key: 'sintesis', page: 'bitacora_hoy', content: 'PICTOS articula doctorado y talleres.' },
+        { key: 'talleres', parent: 'sintesis', content: 'Los talleres organizan tres frentes.' },
+      ],
+      changes: [], ifRevisions: {}, removals: [],
+    });
   });
 });
 

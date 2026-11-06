@@ -306,9 +306,12 @@ describe('solicitudes al bibliotecario', () => {
     });
     assert.equal(answered.status, 201, JSON.stringify(answered.json));
 
-    const blockId = `block:librarian-reply:${pageRequest.slice('agent-request:'.length)}`;
     let pageView = await call(`/pages/${encodeURIComponent(page)}`);
     assert.match(JSON.stringify(pageView.json), /Respuesta extensa del bibliotecario\./);
+    const written = (pageView.json['blocks'] as Array<Record<string, unknown>>)
+      .find((block) => block['content'] === 'Respuesta extensa del bibliotecario.');
+    assert.ok(written);
+    const blockId = written['stableId'] as string;
     const authorship = pageView.json['authorship'] as Record<string, Record<string, unknown>>;
     assert.equal(authorship[blockId]?.['participant'], COTITO);
     assert.equal(authorship[blockId]?.['channel'], 'agent_generation');
