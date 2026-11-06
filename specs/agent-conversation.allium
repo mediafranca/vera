@@ -38,9 +38,21 @@ contract ConversationWithAgent {
         -- grants the whole corpus merely because the agent could read it.
 
     @invariant APageReplyUsesOrdinaryWriting
-        -- A reply made from a page enters that page as an ordinary editable block,
-        -- attributed to the answering agent through the usual operation history.
+        -- A reply destined for a page enters its explicit destination as an
+        -- ordinary editable block, attributed to the answering agent through the
+        -- usual operation history. The page from which the conversation opened
+        -- is context, not an implicit destination that overrides the instruction.
         -- Any other proposed graph operations remain separate and unapplied.
+
+    @invariant EveryTurnCarriesItsConversation
+        -- The worker receives the bounded chronological thread and the open
+        -- instruction, not only the latest request. An answer about progress or
+        -- a clarification cannot erase the task it refers to.
+
+    @invariant RuntimeProtocolIsNotAVisibleTurn
+        -- Tool calls and parser envelopes are operational records. They may be
+        -- represented as progress events, but never as AgentReply text or page
+        -- content.
 
     @invariant EveryTurnNamesItsHandAndDoor
         -- Every request and reply names who produced it and the modality by which
@@ -490,12 +502,14 @@ rule LibrarianAnswersOnAPage {
     requires: request.source_page != null
     requires: text != ""
 
+    let destination = requested_destination(request) ?? request.source_page
+
     ensures:
         request.status = answered
         request.finished_at = now
         let written = core/Block.created(
             stable_id: stable_reply_id(request),
-            page: request.source_page,
+            page: destination,
             crossing_id: null,
             parent: null,
             position: 0,
@@ -524,6 +538,8 @@ rule LibrarianAnswersOnAPage {
         -- The block is created through the same agent_generation operation boundary
         -- as any other librarian writing. It carries no special read-only chrome:
         -- editing is ordinary editing, while its origin remains visible in history.
+        -- If the explicit destination is today's journal, the written block is a
+        -- child of the one root named for this librarian's own bitácora.
 }
 
 rule LibrarianAnswersAwayFromAPage {
@@ -820,6 +836,12 @@ surface LibrarianConversationWorker {
         -- The agent receives the request and its explicit snapshot. Additional
         -- graph reading requires ordinary agent permission and is not smuggled
         -- into the conversation merely because the worker runs beside Vera.
+
+    @guarantee TheWorkerReceivesThreadContinuity
+        -- Alongside the frozen context of the current request, the worker sees a
+        -- bounded chronological projection of prior requests and replies and the
+        -- unresolved original instruction. Compaction reports omission instead
+        -- of silently changing the task.
 }
 
 ------------------------------------------------------------

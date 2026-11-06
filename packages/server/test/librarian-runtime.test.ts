@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import { initializeStarterMemory } from '../src/starter-memory.ts';
 import { listen } from '../src/server.ts';
+import { readLibrarianToolCall } from '../src/librarian-tools.ts';
 import {
   compactLibrarianManifestDocument,
   compactLibrarianPromptContext,
@@ -54,6 +55,15 @@ describe('frontera formativa de la dialéctica', () => {
       { mode: 'answer', reason: 'mixed' });
     assert.deepEqual(librarianRequestDispositionFor('Esta vez necesito que sintetices directamente.'),
       { mode: 'answer', reason: 'explicit_direct' });
+    assert.deepEqual(librarianRequestDispositionFor(
+      'Quiero que en la Bitácora de hoy me expliques todas las páginas de PICTOS en el contexto de mi doctorado y de los talleres de diseño participativo; sintetiza los proyectos y tareas y propón su reordenamiento y etiquetado.'),
+    { mode: 'answer', reason: 'mixed' });
+  });
+
+  it('reconoce una llamada de herramienta aunque el modelo la cerque como JSON', () => {
+    assert.deepEqual(readLibrarianToolCall('```json\n{"tool":"read_page","arguments":{"page":"PICTOS"}}\n```'), {
+      name: 'read_page', arguments: { page: 'PICTOS' },
+    });
   });
 
   it('acota una página grande sin perder el bloque pertinente ni mutilar el recibo', () => {
@@ -170,10 +180,11 @@ describe('runtime embebido de la bibliotecaria', () => {
       });
       assert.equal(configured.status, 200, JSON.stringify(configured.json));
       assert.equal(configured.json['status'], 'ready');
-      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:2');
+      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:3');
       assert.deepEqual((configured.json['harness'] as any).capabilities.map((one: any) => one.name), [
-        'search_memory', 'read_page', 'query_graph', 'inspect_relations', 'check_invariants',
-        'reply_to_request', 'propose_edit', 'apply_approved_edit',
+        'search_memory', 'survey_topic', 'read_page', 'query_graph', 'inspect_relations',
+        'inspect_ontology', 'inspect_page_schema', 'check_invariants', 'reply_to_request',
+        'propose_edit', 'propose_page_properties', 'apply_approved_edit',
       ]);
 
       const made = await call('/operations', { method: 'POST', body: {
@@ -198,7 +209,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal((answered['reply'] as Record<string, unknown>)['answeredBy'], librarianAgent);
       assert.ok((answered['events'] as Array<Record<string, string>>)
         .some((event) => event.text === 'Aster leyó la solicitud'));
-      assert.match(inferencePrompt, /Eres Aster, agente de biblioteca de esta Vera/);
+      assert.match(inferencePrompt, /Eres Aster, agente de biblioteca residente de esta Vera/);
       const pageView = await call(`/pages/${encodeURIComponent(page)}`);
       assert.match(JSON.stringify(pageView.json), /Respuesta de Aster/);
 
@@ -324,7 +335,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       prompts.push(body);
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ output_text: prompts.length === 1
-        ? '{"tool":"search_memory","arguments":{"query":"aguja bibliográfica"}}'
+        ? '```json\n{"tool":"search_memory","arguments":{"query":"aguja bibliográfica"}}\n```'
         : 'Encontré la aguja bibliográfica en la página consultada.' }));
     });
     await new Promise<void>((resolve) => inference.listen(4394, '127.0.0.1', resolve));
@@ -366,6 +377,108 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.match(prompts[1] ?? '', /Observación:.*Aguja/s);
       assert.ok(answered.events.some((one: any) => one.kind === 'tool' && /search_memory/.test(one.text)));
       assert.match(answered.reply.text, /Encontré la aguja bibliográfica/);
+    } finally {
+      await running.close();
+      await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  });
+
+  it('investiga PICTOS antes de responder y escribe en su propia bitácora diaria', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-pictos-'));
+    directories.push(directory);
+    const databasePath = join(directory, 'vera.sqlite');
+    const owner = { id: 'participant:pictos-owner', name: 'Herbert' };
+    initializeStarterMemory({ databasePath, owner, ownerLibrarianName: 'Lucienne' });
+    const prompts: string[] = [];
+    const inference = createHttpServer(async (request, response) => {
+      let body = '';
+      for await (const chunk of request) body += chunk.toString();
+      prompts.push(body);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      const outputs = [
+        'No se encuentran páginas de PICTOS ni datos de los talleres.',
+        'No hay evidencia de páginas PICTOS vinculadas con el doctorado.',
+        '```json\n{"tool":"propose_page_properties","arguments":{"page":"PICTOS","properties":{"concepto":"[[PICTOS]]"},"purpose":"normalizar la referencia temática"}}\n```',
+        'Preparé una propuesta revisable para normalizar el concepto de PICTOS.',
+      ];
+      response.end(JSON.stringify({ output_text: outputs[prompts.length - 1] ?? 'Respuesta inesperada.' }));
+    });
+    await new Promise<void>((resolve) => inference.listen(4388, '127.0.0.1', resolve));
+    process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
+    const running = listen({ port: 4387, databasePath });
+    const call = async (path: string, options: { method?: string; body?: unknown } = {}) => {
+      const response = await fetch(`http://127.0.0.1:4387${path}`, {
+        method: options.method ?? 'GET', headers: { 'content-type': 'application/json' },
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      });
+      return { status: response.status, json: await response.json() as Record<string, any> };
+    };
+    const createPage = async (originId: string, title: string, content: string): Promise<string> => {
+      const made = await call('/operations', { method: 'POST', body: {
+        originId: `${originId}:page`, change: { kind: 'create_page', title, visibility: 'private' },
+      } });
+      const page = made.json.subjectId as string;
+      await call('/operations', { method: 'POST', body: {
+        originId: `${originId}:block`, change: { kind: 'create_block', page, parent: null, position: 0, content },
+      } });
+      return page;
+    };
+    try {
+      await call('/librarian/runtime/constitute', { method: 'POST', body: {} });
+      await call('/librarian/runtime', { method: 'PUT', body: {
+        enabled: true, model: 'openai:test', endpoint: 'http://127.0.0.1:4388/v1',
+        secretReference: 'VERA_TEST_LIBRARIAN_KEY', permissions: ['read_request_context', 'reply'],
+        dialectic: { enabled: true }, routine: { enabled: false, hour: 9, timezone: 'local' },
+      } });
+      const source = await createPage('pictos-test:source', 'Consulta PICTOS', 'Prueba del oficio bibliotecario.');
+      const pictos = await createPage('pictos-test:main', 'PICTOS', 'Proyecto de pictogramas y participación.');
+      await createPage('pictos-test:workshops', 'PICTOS — Talleres participativos',
+        'Convocatoria de participantes, guion de taller, materiales y coordinación logística.');
+      await createPage('pictos-test:thesis', 'PICTOS y doctorado',
+        'El proyecto PICTOS forma parte del doctorado y produce tareas y jornadas de diseño participativo.');
+      const requested = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: source,
+        text: 'Quiero que en la Bitácora de hoy me expliques todas las páginas de PICTOS en el contexto de mi doctorado y, en específico, de los talleres de diseño participativo. Los proyectos y tareas derivados y me hagas una síntesis, así como una propuesta de reordenamiento y etiquetado de las páginas.',
+      } });
+      let answered: Record<string, any> | null = null;
+      for (let attempt = 0; attempt < 150; attempt += 1) {
+        const current = await call(`/librarian/requests/${encodeURIComponent(requested.json.id)}`);
+        if (current.json.status === 'answered') { answered = current.json; break; }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(answered, 'Lucienne no resolvió el encargo PICTOS');
+      assert.equal(prompts.length, 2, 'la falsa ausencia debe forzar una respuesta corregida');
+      assert.match(prompts[0] ?? '', /PICTOS — Talleres participativos/);
+      assert.doesNotMatch(answered.reply.text, /No se encuentran|No hay evidencia/);
+      assert.match(answered.reply.text, /Síntesis del levantamiento/);
+      assert.ok(answered.events.some((one: any) => one.kind === 'tool' && /survey_topic/.test(one.text)));
+      assert.match(prompts[0] ?? '', /inspect_ontology: Leer la ontología y gramática vigentes/);
+      const daily = running.vera.graph.pages().find((page) =>
+        running.vera.graph.blocksOf(page.id).some((block) => block.content === '**Bitácora de Lucienne:**'));
+      assert.ok(daily, 'Lucienne no creó su apartado diario');
+      assert.ok(running.vera.graph.propertiesOf(daily.id)
+        .some((property) => property.key === 'tipo' && property.value === 'bitácora'));
+      const root = running.vera.graph.blocksOf(daily.id)
+        .find((block) => block.content === '**Bitácora de Lucienne:**')!;
+      assert.ok(running.vera.graph.blocksOf(daily.id)
+        .some((block) => block.parent === root.stableId && /Síntesis del levantamiento/.test(block.content)));
+
+      const proposalRequest = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: pictos, conversationId: answered.conversationId,
+        text: 'Corrige los metadatos de la página PICTOS y deja una propuesta revisable.',
+      } });
+      let proposed: Record<string, any> | null = null;
+      for (let attempt = 0; attempt < 150; attempt += 1) {
+        const current = await call(`/librarian/requests/${encodeURIComponent(proposalRequest.json.id)}`);
+        if (current.json.status === 'answered') { proposed = current.json; break; }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(proposed?.reply.proposal, 'la corrección semántica no quedó como propuesta revisable');
+      assert.deepEqual(proposed.reply.proposal.changes, [{
+        kind: 'set_property', page: pictos, propertyKey: 'concepto', propertyValue: 'PICTOS',
+      }]);
+      assert.equal(prompts.length, 4);
+      assert.match(prompts[2] ?? '', /Historial efectivo de la conversación:[\s\S]*Bitácora de hoy/);
     } finally {
       await running.close();
       await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));

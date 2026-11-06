@@ -1395,6 +1395,20 @@ const addContributionLineage: Migration = {
   },
 };
 
+/** 37 — harness residente: continuidad, ontología, investigación y bitácora propia. */
+const upgradeResidentLibrarianHarness: Migration = {
+  version: 37,
+  name: 'harness bibliotecario residente v3',
+  apply(db) {
+    const harnesses = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_harnesses'",
+    ).get();
+    if (harnesses === undefined) return;
+    db.exec(`UPDATE librarian_harnesses SET version='vera-librarian-harness:3'
+      WHERE status='active' AND version='vera-librarian-harness:2'`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1432,6 +1446,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addTerritorialClearanceAndLibrarianHarnessV2,
   addLibrarianDialectic,
   addContributionLineage,
+  upgradeResidentLibrarianHarness,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

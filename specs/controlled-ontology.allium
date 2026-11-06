@@ -14,6 +14,37 @@ use "./core.allium" as core
 use "./agent-participation.allium" as agent
 
 ------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract OntologyAwareCorpusWriting {
+    inspect_page: (ontology: Ontology, page: core/Page) -> Set<PropertyDefinition>
+    validate_property: (ontology: Ontology, page: core/Page, name: String, value: String) -> Boolean
+
+    @invariant MetadataIsAPropertyAssignmentNotDecorativeText
+        -- A page header/frontmatter is a projection of structured property
+        -- assignments. An agent never simulates it by inserting `key:: value`
+        -- lines into prose when the intended act is set_property.
+
+    @invariant PageReferencesStoreCanonicalTargets
+        -- A property whose value kind is page_reference stores the canonical
+        -- target title. Wiki-link brackets and display labels belong to rendered
+        -- prose; values such as `[[PICTOS]]` or `[[PICTOS|proyecto]]` are rejected
+        -- or normalised before a proposal is made.
+
+    @invariant SemanticTypeAndTopicRemainDifferentQuestions
+        -- `tipo` answers what a page is; `concepto` answers what it discusses.
+        -- Classification and tagging do not exchange these roles merely because
+        -- the same word would look plausible in both places.
+
+    @invariant AgentDraftsUseTheCurrentCorpusVocabulary
+        -- An agent proposal resolves effective property names, roles, value
+        -- kinds, object requirements and relation definitions from the governing
+        -- pages of this Vera. Unknown keys and invalid closed values are named as
+        -- validation failures, not silently introduced as new ontology.
+}
+
+------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
 
@@ -771,6 +802,9 @@ surface OntologyCuration {
         ConfirmTypeAssignment(participant, assignment) when assignment.ontology = ontology
         RejectTypeAssignment(participant, assignment) when assignment.ontology = ontology
         CorrectTypeAssignment(participant, assignment, status) when assignment.ontology = ontology
+
+    contracts:
+        fulfils OntologyAwareCorpusWriting
 
     @guarantee SuggestionsAreNotSilentAssignments
         -- Automated classification creates a visible pending suggestion.

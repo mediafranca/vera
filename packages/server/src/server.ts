@@ -152,6 +152,7 @@ import {
   LIBRARIAN_CAPABILITIES,
   librarianToolInstructions,
   readLibrarianToolCall,
+  resemblesLibrarianToolCall,
   runLibrarianTool,
 } from './librarian-tools.ts';
 import {
@@ -165,6 +166,7 @@ import {
   finishLibrarianRuntimeRun,
   formativeChallenge,
   librarianContributionLineageFor,
+  librarianResearchQueryFor,
   librarianRequestDispositionFor,
   librarianRequestPrompt,
   librarianRuntimeConfiguration,
@@ -1042,20 +1044,79 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     return 'ready';
   };
 
-  const writeEmbeddedReply = (turn: LibrarianRequest, agent: ParticipantId, text: string): string | null => {
-    if (turn.modality === 'block' || turn.sourcePageId === null) return null;
-    const page = graph.page(turn.sourcePageId);
+  const writeEmbeddedReply = (turn: LibrarianRequest, agent: ParticipantId, text: string,
+    instruction = turn.text): string | null => {
+    if (turn.modality === 'block') return null;
+    const targetsDaily = /\bbit[aá]cora\s+de\s+hoy\b/i.test(instruction);
+    const day = calendarDay(Date.now());
+    let requestedDaily = targetsDaily ? graph.pageTitled(day) : undefined;
+    if (targetsDaily && requestedDaily === undefined) {
+      const pageId = `page:daily:${day}`;
+      const created = graph.submitOperation({
+        originId: `librarian-runtime:${turn.id}:daily-page`,
+        participant: agent,
+        channel: 'agent_generation',
+        lineage: librarianContributionLineageFor(turn),
+        change: { kind: 'create_page', stableId: pageId, title: day, visibility: 'private' },
+      });
+      if (created.status === 'rejected') return created.reason;
+      if (created.status === 'applied') {
+        const failure = persist(created.operation);
+        if (failure !== null) return failure;
+      }
+      requestedDaily = graph.pageTitled(day);
+      if (requestedDaily === undefined) return 'no se pudo crear la bitácora de hoy';
+      const typed = graph.submitOperation({
+        originId: `librarian-runtime:${turn.id}:daily-type`,
+        participant: agent,
+        channel: 'agent_generation',
+        lineage: librarianContributionLineageFor(turn),
+        change: { kind: 'set_property', page: requestedDaily.id, propertyKey: 'tipo', propertyValue: 'bitácora' },
+      });
+      if (typed.status === 'rejected') return typed.reason;
+      if (typed.status === 'applied') {
+        const failure = persist(typed.operation);
+        if (failure !== null) return failure;
+      }
+    }
+    const page = requestedDaily ?? (turn.sourcePageId === null ? undefined : graph.page(turn.sourcePageId));
     if (page === undefined) return 'la página de la solicitud ya no existe';
     const clearance = clearanceForPage(store, graph, agent, page.id, 'contribute');
     if (clearance.outcome === 'refused') return clearance.explanation;
     const stableId = `block:librarian-reply:${turn.id.slice('agent-request:'.length)}`;
     const roots = graph.blocksOf(page.id).filter((block) => block.parent === null);
+    let parent: string | null = null;
+    let position = roots.length;
+    if (targetsDaily) {
+      const librarianName = graph.participant(agent)?.name ?? 'Agente de biblioteca';
+      const heading = `**Bitácora de ${librarianName}:**`;
+      let root = roots.find((block) => block.content.trim() === heading);
+      if (root === undefined) {
+        const rootId = `block:librarian-daily:${day}:${agent.slice('participant:'.length)}`;
+        const created = graph.submitOperation({
+          originId: `librarian-runtime:${turn.id}:daily-root`,
+          participant: agent,
+          channel: 'agent_generation',
+          lineage: librarianContributionLineageFor(turn),
+          change: { kind: 'create_block', stableId: rootId, page: page.id, parent: null, position: roots.length, content: heading },
+        });
+        if (created.status === 'rejected') return created.reason;
+        if (created.status === 'applied') {
+          const failure = persist(created.operation);
+          if (failure !== null) return failure;
+        }
+        root = graph.block(rootId);
+      }
+      if (root === undefined) return 'no se pudo crear la bitácora propia del agente';
+      parent = root.stableId;
+      position = graph.blocksOf(page.id).filter((block) => block.parent === parent).length;
+    }
     const outcome = graph.submitOperation({
       originId: `librarian-runtime:${turn.id}:page-reply`,
       participant: agent,
       channel: 'agent_generation',
       lineage: librarianContributionLineageFor(turn),
-      change: { kind: 'create_block', stableId, page: page.id, parent: null, position: roots.length, content: text },
+      change: { kind: 'create_block', stableId, page: page.id, parent, position, content: text },
     });
     if (outcome.status === 'rejected') return outcome.reason;
     if (outcome.status === 'applied') return persist(outcome.operation);
@@ -1109,34 +1170,138 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
         ...(resolvedRuntimeSecret(config.secretReference) === undefined
           ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
-        maxTokens: 500,
-        contextTokens: 12_288,
+        maxTokens: 450,
+        contextTokens: 6_144,
         timeoutMs: 300_000,
       };
       const basePrompt = `${librarianRequestPrompt(store, config, claimed, gate)}\n\n${librarianToolInstructions()}`;
       let transcript = basePrompt;
       let final = '';
-      for (let step = 0; step < 4; step += 1) {
+      const proposedChanges: Change[] = [];
+      let relevantEvidence = 0;
+      let surveyObservation: string | null = null;
+      let contradictoryAbsences = 0;
+      const original = gate === null ? claimed : librarianRequest(store, gate.openingRequest) ?? claimed;
+      const evidenceGroundedSurveyReply = (): string => {
+        if (surveyObservation === null) return 'La inspección encontró evidencia positiva, pero no pudo componer el inventario.';
+        try {
+          const survey = JSON.parse(surveyObservation) as {
+            query: string; count: number; titleMatches: number; catalogue: string[];
+            pages: Array<{ title: string; properties: string[]; excerpts: string[]; tasks: string[]; backlinks: number }>;
+            omitted: number;
+          };
+          const usefulTasks = [...new Set(survey.pages.flatMap((page) => page.tasks)
+            .filter((task) => task.trim().length > 12 && !/^(todo|con todo esto)/i.test(task.trim())))];
+          const groups = [
+            ['Participación, convocatoria y difusión', /encuesta|invitaci|difusi|contactos/i],
+            ['Talleres, guiones y materiales', /taller|gui[oó]n|capacitaci|onboarding|tableros/i],
+            ['Infraestructura y producción', /infraestructura|integraci|proceso generativo|vertex|admin|\bdev\b/i],
+          ] as const;
+          const lines = [
+            '## Síntesis del levantamiento',
+            '',
+            `Vera encontró **${survey.count} coincidencias** para el tema y **${survey.titleMatches} páginas cuyo título nombra PICTOS**. ` +
+              `La síntesis siguiente describe las ${survey.pages.length} páginas más pertinentes y usa el catálogo de títulos para ordenar el conjunto; ` +
+              `quedan ${survey.omitted} coincidencias fuera de la lectura detallada, por lo que esto es un inventario fundamentado y no la ficción de haber leído cada bloque.`,
+            '',
+            'El núcleo doctoral aparece en tres capas: **PICTOS** formula la transferencia de accesibilidad cognitiva; ' +
+              '**Talleres PICTOS.net** lleva esa hipótesis al codiseño y a la intervención de profesionales en el pipeline; ' +
+              'las páginas de doctorado sitúan esos talleres como producción de conocimiento con participantes y, en algunos casos, como entrevistas reflexivas mediadas por prototipos.',
+            '',
+            '## Páginas centrales',
+          ];
+          for (const page of survey.pages) {
+            lines.push('', `### [[${page.title}]]`);
+            const excerpt = page.excerpts.find((one) => !/^#/.test(one.trim()));
+            if (excerpt !== undefined) lines.push(excerpt);
+            if (page.properties.length > 0) lines.push(`Metadatos observados: ${page.properties.join('; ')}.`);
+            lines.push(`Conectividad observada: ${page.backlinks} enlace(s) entrante(s).`);
+          }
+          lines.push('', '## Proyectos y tareas derivados');
+          if (usefulTasks.length === 0) lines.push('El dossier no expuso tareas atómicas suficientes; conviene levantarlas desde las páginas de taller antes de reordenar.');
+          else for (const task of usefulTasks.slice(0, 8)) lines.push(`- ${task}`);
+          lines.push('', 'El trabajo se puede ordenar en los tres frentes ya formulados en la conversación: ' +
+            '**reclutamiento y difusión**, **guion y producción de materiales**, y **planificación de jornadas y coordinación logística**.');
+          lines.push('', '## Propuesta de reordenamiento');
+          for (const [title, pattern] of groups) {
+            const titles = survey.catalogue.filter((page) => pattern.test(page)).slice(0, 8);
+            if (titles.length > 0) lines.push(`- **${title}:** ${titles.map((page) => `[[${page}]]`).join(', ')}.`);
+          }
+          lines.push('- **Núcleo de investigación:** usar [[PICTOS]] como portada; enlazar desde allí el marco doctoral, [[Talleres PICTOS.net]] y los tres frentes operativos.');
+          lines.push('- **Duplicados:** revisar `footnotes-fixed-Talleres PICTOS.net` frente a [[Talleres PICTOS.net]] y conservar una página canónica con la procedencia de la otra.');
+          lines.push('', '## Propuesta de etiquetado');
+          lines.push('- `tipo` expresa qué es cada página: `Proyecto` para los núcleos de trabajo, `Nota` para análisis y `Tarea` para acciones atómicas.');
+          lines.push('- `concepto` expresa de qué trata: PICTOS, talleres, doctorado, AAC y diseño participativo, usando títulos canónicos sin `[[corchetes]]` en el valor de la propiedad.');
+          lines.push('- `estado` distingue borrador, trabajo vigente y material consolidado; no debe suplirse con sufijos como “fixed” o “dev” en el título.');
+          lines.push('', 'La propuesta es deliberadamente revisable: primero se resuelve la duplicación y luego se presentan cambios de propiedades página por página, sin reescribir el corpus en bloque.');
+          return lines.join('\n');
+        } catch {
+          return 'La inspección encontró evidencia positiva, pero el dossier no pudo interpretarse como inventario estructurado.';
+        }
+      };
+      const observe = (call: Parameters<typeof runLibrarianTool>[3]): void => {
+        addLibrarianProgress(store, {
+          requestId: id, kind: 'tool', text: `${librarianName} usó ${call.name}`, createdBy: config.agent,
+        });
+        const observation = runLibrarianTool(store, graph, config.agent as ParticipantId, call);
+        if (observation.ok) {
+          if (call.name === 'survey_topic') surveyObservation = observation.result;
+          if (['search_memory', 'survey_topic', 'read_page', 'query_graph', 'inspect_relations'].includes(call.name)) {
+            relevantEvidence += observation.evidenceCount ?? 0;
+          }
+          for (const change of observation.proposedChanges ?? []) {
+            if (!proposedChanges.some((existing) => JSON.stringify(existing) === JSON.stringify(change))) {
+              proposedChanges.push(change);
+            }
+          }
+        }
+        transcript = `${transcript}\n\nSolicitud de herramienta: ${JSON.stringify(call)}\n` +
+          `Observación: ${observation.ok ? observation.result : `ERROR: ${observation.error}`}\n\n` +
+          (observation.ok && call.name === 'survey_topic' && (observation.evidenceCount ?? 0) > 0
+            ? `La inspección encontró ${observation.evidenceCount} coincidencia(s): existe evidencia positiva y no puedes concluir ausencia. `
+            : '') +
+          'Responde al encargo original o pide otra herramienta con el mismo formato.';
+      };
+      const researchQuery = librarianResearchQueryFor(original.text);
+      if (researchQuery !== null) {
+        observe({ name: 'survey_topic', arguments: { query: researchQuery, limit: 5 } });
+      }
+      for (let step = 0; step < 8; step += 1) {
         const answered = await ask(transcript, modelOptions);
         if ('error' in answered) throw new Error(answered.error);
         const call = readLibrarianToolCall(answered.text);
         if (call === null) {
+          if (resemblesLibrarianToolCall(answered.text)) {
+            transcript = `${transcript}\n\nLa salida anterior parece una llamada de herramienta, pero no es válida. ` +
+              'Emite solamente el objeto JSON correcto, con o sin un cerco Markdown, o responde en prosa final.';
+            continue;
+          }
           const provisional = readDialecticDecision(answered.text);
           if (gate === null && disposition.mode === 'answer' && provisional.mode === 'challenge') {
             transcript = `${transcript}\n\nLa respuesta anterior intentó abrir un umbral que el harness descartó ` +
               `porque esta solicitud es ${disposition.reason}. Responde directamente, realiza el trabajo y no devuelvas otro desafío.`;
             continue;
           }
+          const claimsAbsence = /\b(no (?:se )?(?:encuentran?|hallan?|localizan?)|no hay|no existen?|ninguna? (?:p[aá]gina|dato|proyecto|tarea))\b/i.test(provisional.text);
+          if (claimsAbsence && relevantEvidence === 0) {
+            transcript = `${transcript}\n\nLa respuesta anterior afirma una ausencia sin evidencia de biblioteca. ` +
+              'Usa search_memory, survey_topic, query_graph o read_page antes de concluir.';
+            continue;
+          }
+          if (claimsAbsence && relevantEvidence > 0) {
+            contradictoryAbsences += 1;
+            if (contradictoryAbsences >= 2 && surveyObservation !== null) {
+              final = evidenceGroundedSurveyReply();
+              break;
+            }
+            transcript = `${transcript}\n\nLa respuesta anterior afirma una ausencia, pero las herramientas devolvieron ` +
+              `${relevantEvidence} coincidencia(s) o lecturas pertinentes. Corrige la conclusión y responde desde esa evidencia.`;
+            continue;
+          }
           final = answered.text;
           break;
         }
-        addLibrarianProgress(store, {
-          requestId: id, kind: 'tool', text: `${librarianName} usó ${call.name}`, createdBy: config.agent,
-        });
-        const observation = runLibrarianTool(store, graph, config.agent as ParticipantId, call);
-        transcript = `${transcript}\n\nSolicitud de herramienta: ${JSON.stringify(call)}\n` +
-          `Observación: ${observation.ok ? observation.result : `ERROR: ${observation.error}`}\n\n` +
-          'Responde a la solicitud original o pide otra herramienta con el mismo formato.';
+        observe(call);
       }
       if (final === '') throw new Error('el runtime agotó el límite de herramientas sin responder');
       const decision = readDialecticDecision(final);
@@ -1159,11 +1324,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         finishLibrarianRuntimeRun(store, run.id, { output: challenge });
         return;
       }
-      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, decision.text);
+      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, decision.text, original.text);
       if (writeFailure !== null) throw new Error(writeFailure);
       const answered = answerLibrarianRequest(store, {
         id, answeredBy: config.agent as ParticipantId, text: decision.text,
         lineage: librarianContributionLineageFor(claimed),
+        changes: proposedChanges,
       });
       if (answered === undefined) throw new Error('no se pudo guardar la respuesta final');
       if (gate !== null) completeDialecticGate(store, id);
