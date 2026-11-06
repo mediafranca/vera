@@ -123,6 +123,89 @@ function orderedOutline(blocks: readonly Page['blocks'][number][]): {
   return ordered;
 }
 
+const librarianChangeSchema: Record<string, unknown> = {
+  oneOf: [
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'crear_pagina' }, id: { type: 'string' }, titulo: { type: 'string', minLength: 1 },
+      visibilidad: { enum: ['privada', 'publica'] },
+    }, required: ['tipo', 'titulo', 'visibilidad'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'recuperar_origen_pagina' }, pagina: { type: 'string' }, origen_creado_en: { type: 'integer' },
+    }, required: ['tipo', 'pagina', 'origen_creado_en'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'renombrar_pagina' }, pagina: { type: 'string' }, titulo: { type: 'string', minLength: 1 },
+    }, required: ['tipo', 'pagina', 'titulo'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'definir_visibilidad' }, pagina: { type: 'string' }, visibilidad: { enum: ['privada', 'publica'] },
+    }, required: ['tipo', 'pagina', 'visibilidad'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'retirar_pagina' }, pagina: { type: 'string' },
+    }, required: ['tipo', 'pagina'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'crear_bloque' }, id: { type: 'string' }, pagina: { type: 'string' },
+      padre: { type: ['string', 'null'] }, posicion: { type: 'integer', minimum: 0 }, contenido: { type: 'string' },
+    }, required: ['tipo', 'pagina', 'padre', 'posicion', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'editar_bloque' }, bloque: { type: 'string' }, contenido: { type: 'string' },
+    }, required: ['tipo', 'bloque', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'mover_bloque' }, bloque: { type: 'string' }, pagina: { type: 'string' },
+      padre: { type: ['string', 'null'] }, posicion: { type: 'integer', minimum: 0 },
+    }, required: ['tipo', 'bloque', 'pagina', 'padre', 'posicion'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'retirar_bloque' }, bloque: { type: 'string' },
+    }, required: ['tipo', 'bloque'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'glosar_bloque' }, bloque: { type: 'string' }, contenido: { type: 'string' },
+    }, required: ['tipo', 'bloque', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'crear_conectiva' }, id: { type: 'string' }, desde_pagina: { type: 'string' },
+      hacia_pagina: { type: 'string' }, contenido: { type: 'string' }, termino: { type: ['string', 'null'] },
+    }, required: ['tipo', 'desde_pagina', 'hacia_pagina', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'editar_conectiva' }, conectiva: { type: 'string' }, contenido: { type: 'string' },
+      termino: { type: ['string', 'null'] },
+    }, required: ['tipo', 'conectiva', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'definir_propiedad' }, pagina: { type: 'string' }, bloque: { type: 'string' },
+      propiedad: { type: 'string' }, valor: { type: 'string' },
+    }, required: ['tipo', 'propiedad', 'valor'], oneOf: [{ required: ['pagina'] }, { required: ['bloque'] }] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'retirar_propiedad' }, pagina: { type: 'string' }, bloque: { type: 'string' },
+      propiedad: { type: 'string' },
+    }, required: ['tipo', 'propiedad'], oneOf: [{ required: ['pagina'] }, { required: ['bloque'] }] },
+  ],
+};
+
+function librarianChange(input: Record<string, unknown>): Record<string, unknown> | null {
+  const visibility = (value: unknown): string => value === 'publica' ? 'public' : 'private';
+  const subject = (): Record<string, unknown> => input['pagina'] === undefined
+    ? { block: input['bloque'] }
+    : { page: input['pagina'] };
+  switch (input['tipo']) {
+    case 'crear_pagina': return { kind: 'create_page', title: input['titulo'], visibility: visibility(input['visibilidad']),
+      ...(input['id'] === undefined ? {} : { stableId: input['id'] }) };
+    case 'recuperar_origen_pagina': return { kind: 'recover_page_origin', page: input['pagina'], originCreatedAt: input['origen_creado_en'] };
+    case 'renombrar_pagina': return { kind: 'rename_page', page: input['pagina'], title: input['titulo'] };
+    case 'definir_visibilidad': return { kind: 'set_page_visibility', page: input['pagina'], visibility: visibility(input['visibilidad']) };
+    case 'retirar_pagina': return { kind: 'remove_page', page: input['pagina'] };
+    case 'crear_bloque': return { kind: 'create_block', page: input['pagina'], parent: input['padre'], position: input['posicion'],
+      content: input['contenido'], ...(input['id'] === undefined ? {} : { stableId: input['id'] }) };
+    case 'editar_bloque': return { kind: 'edit_block', block: input['bloque'], content: input['contenido'] };
+    case 'mover_bloque': return { kind: 'move_block', block: input['bloque'], page: input['pagina'], parent: input['padre'], position: input['posicion'] };
+    case 'retirar_bloque': return { kind: 'remove_block', block: input['bloque'] };
+    case 'glosar_bloque': return { kind: 'set_block_gloss', block: input['bloque'], content: input['contenido'] };
+    case 'crear_conectiva': return { kind: 'create_crossing', fromPage: input['desde_pagina'], toPage: input['hacia_pagina'],
+      content: input['contenido'], ...(input['termino'] === undefined ? {} : { term: input['termino'] }),
+      ...(input['id'] === undefined ? {} : { stableId: input['id'] }) };
+    case 'editar_conectiva': return { kind: 'edit_crossing', crossing: input['conectiva'], content: input['contenido'],
+      ...(input['termino'] === undefined ? {} : { term: input['termino'] }) };
+    case 'definir_propiedad': return { kind: 'set_property', ...subject(), propertyKey: input['propiedad'], propertyValue: input['valor'] };
+    case 'retirar_propiedad': return { kind: 'remove_property', ...subject(), propertyKey: input['propiedad'] };
+    default: return null;
+  }
+}
+
 /** Los bloques de una página, con su sangría, en el orden en que se leen. */
 export function outline(
   blocks: readonly Page['blocks'][number][],
@@ -238,7 +321,8 @@ export const TOOLS: readonly VeraTool[] = [
             contenido: { type: 'string', minLength: 1 },
           }, required: ['clave', 'contenido'],
         } },
-        cambios: { type: 'array', items: { type: 'object' }, default: [] },
+        cambios: { type: 'array', items: librarianChangeSchema, default: [],
+          description: 'Operaciones estructurales y curatoriales tipadas. Mover, editar o retirar exige su revisión vigente en revisiones.' },
         revisiones: { type: 'object', additionalProperties: { type: 'string' }, default: {} },
         retiros: { type: 'array', default: [], items: {
           type: 'object', additionalProperties: false, properties: {
@@ -262,7 +346,15 @@ export const TOOLS: readonly VeraTool[] = [
           content: input['contenido'],
         };
       }) : [];
-      const changes = Array.isArray(args.cambios) ? args.cambios : [];
+      const changes: Record<string, unknown>[] = [];
+      if (Array.isArray(args.cambios)) {
+        for (const one of args.cambios) {
+          const translated = one !== null && typeof one === 'object' && !Array.isArray(one)
+            ? librarianChange(one as Record<string, unknown>) : null;
+          if (translated === null) return 'Cada cambio debe usar uno de los tipos explícitos publicados por la herramienta.';
+          changes.push(translated);
+        }
+      }
       const ifRevisions = args.revisiones !== null && typeof args.revisiones === 'object' && !Array.isArray(args.revisiones)
         ? args.revisiones : {};
       const removals = Array.isArray(args.retiros) ? args.retiros.map((one) => {
