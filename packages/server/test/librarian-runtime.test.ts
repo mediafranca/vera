@@ -696,8 +696,10 @@ describe('runtime embebido de la bibliotecaria', () => {
           text: 'Organicé la respuesta en la Bitácora de Lucienne.',
           blocks: [
             { key: 'respuesta', page: 'bitacora_hoy', content: 'PICTOS en el doctorado' },
-            { key: 'talleres', parent: 'respuesta', content: 'Talleres de diseño participativo' },
+            { key: 'cobertura', parent: 'respuesta', position: 0, content: 'Cobertura investigada' },
+            { key: 'talleres', parent: 'respuesta', position: 1, content: 'Talleres de diseño participativo' },
             { key: 'logistica', parent: 'talleres', content: 'Planificación y coordinación logística' },
+            { key: 'conclusion', parent: 'respuesta', position: 2, content: 'Conclusión' },
           ],
           changes: [], ifRevisions: {}, removals: [],
         },
@@ -716,6 +718,14 @@ describe('runtime embebido de la bibliotecaria', () => {
       const workshops = running.vera.graph.blocksOf(daily.id).find((block) =>
         block.parent === response.stableId && block.content === 'Talleres de diseño participativo');
       assert.ok(workshops, 'la salida perdió su segundo nivel jerárquico');
+      assert.deepEqual(
+        running.vera.graph.blocksOf(daily.id)
+          .filter((block) => block.parent === response.stableId)
+          .sort((a, b) => a.position - b.position)
+          .map((block) => block.content),
+        ['Cobertura investigada', 'Talleres de diseño participativo', 'Conclusión'],
+        'la inscripción perdió el orden semántico declarado por el agente',
+      );
       assert.ok(running.vera.graph.blocksOf(daily.id).some((block) =>
         block.parent === workshops.stableId && block.content === 'Planificación y coordinación logística'));
       assert.equal((answered.json['reply'] as Record<string, unknown>)['text'],
