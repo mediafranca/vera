@@ -31,12 +31,31 @@ value PageReference {
     label: String
 }
 
+-- Cómo se relaciona la mano que inscribe una revisión con otra voz humana o
+-- agente que intervino en aquello que la revisión dice. No reemplaza la mano,
+-- el canal ni el origen auditable: los enlaza sin aplanarlos.
+value ContributionLineage {
+    relation: ContributionRelation
+    related_participant: Participant?
+    source_kind: LineageSourceKind?
+    source_reference: String?
+}
+
 ------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
 
 enum ParticipantKind { human | agent }
 enum ParticipantStatus { active | suspended }
+-- `direct` nombra una contribución cuya formulación y juicio pertenecen a la
+-- misma mano que la inscribe. En las otras relaciones, related_participant
+-- cumple un papel preciso y la lectura humana conserva el orden acordado:
+--
+-- - mediated: Herbert por Lucienne
+-- - derived: Lucienne a partir de Herbert
+-- - coauthored: Herbert con Lucienne
+enum ContributionRelation { direct | mediated | derived | coauthored }
+enum LineageSourceKind { conversation | recording | page | block | document | external }
 -- Por qué vía llegó a Vera lo que un participante produjo.
 --
 -- `walked` es el cuarto y el que menos se parece a los otros tres: no se tecleó,
@@ -214,6 +233,7 @@ entity Submission {
     change: Change
     channel: ContributionChannel
     evidence: OriginEvidence?
+    lineage: ContributionLineage
     submitted_at: Timestamp
     status: SubmissionStatus
     rejection_reason: String?
@@ -228,6 +248,7 @@ entity Revision {
     authored_by: Participant
     channel: ContributionChannel
     evidence: OriginEvidence?
+    lineage: ContributionLineage
     recorded_at: Timestamp
 
     origin_is_canonical: channel = authenticated_voice and evidence != null
@@ -267,7 +288,7 @@ entity Publication {
 ------------------------------------------------------------
 
 rule AcceptParticipantSubmission {
-    when: ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+    when: ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?, lineage)
 
     let membership = Membership{graph, participant}
 
@@ -284,6 +305,7 @@ rule AcceptParticipantSubmission {
             change: change,
             channel: channel,
             evidence: evidence,
+            lineage: lineage,
             submitted_at: now,
             status: accepted,
             rejection_reason: null
@@ -298,6 +320,7 @@ rule AcceptParticipantSubmission {
             authored_by: participant,
             channel: channel,
             evidence: evidence,
+            lineage: lineage,
             recorded_at: now
         )
         SubmissionAccepted(submission: submission)
@@ -377,6 +400,37 @@ invariant PublicationPathIsUniqueWithinSite {
 invariant RevisionParticipantBelongsToGraph {
     for revision in Revisions:
         exists Membership{graph: revision.graph, participant: revision.authored_by}
+}
+
+invariant DirectLineageNamesNoSecondParticipant {
+    for revision in Revisions:
+        revision.lineage.relation = direct implies
+            revision.lineage.related_participant = null
+}
+
+invariant RelationalLineageNamesAnotherParticipantAndItsSource {
+    for revision in Revisions:
+        revision.lineage.relation != direct implies
+            revision.lineage.related_participant != null and
+            revision.lineage.related_participant != revision.authored_by and
+            revision.lineage.source_kind != null and
+            revision.lineage.source_reference != null
+}
+
+invariant LineageSourceIsCompleteOrAbsent {
+    for revision in Revisions:
+        (revision.lineage.source_kind = null and revision.lineage.source_reference = null)
+        or
+        (revision.lineage.source_kind != null and revision.lineage.source_reference != null)
+}
+
+invariant LineageParticipantBelongsToGraph {
+    for revision in Revisions:
+        revision.lineage.related_participant != null implies
+            exists Membership{
+                graph: revision.graph,
+                participant: revision.lineage.related_participant
+            }
 }
 
 invariant EveryBlockHasExactlyOneOutlineOwner {
@@ -466,7 +520,7 @@ surface GraphParticipation {
         graph.pages
 
     provides:
-        ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+        ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?, lineage)
 
     @guarantee IdempotentSubmission
         -- The submitting participant names each change with an origin_id. Resubmitting
@@ -478,7 +532,9 @@ surface GraphParticipation {
 
     @guarantee AttributedHistory
         -- Every accepted change produces a revision attributed to its participant
-        -- and contribution channel.
+        -- and contribution channel. The revision also keeps whether that hand
+        -- speaks directly, mediates another voice, derives from it or writes
+        -- with it, plus the causal source when another participant is involved.
 }
 
 surface PersonalSitePublication {
@@ -530,7 +586,9 @@ deferred BlockGloss.annotate             -- see: block-gloss.allium
 -- ontology assignment are change kinds or separate submission paths.
 open question "Are attaching media and assigning a semantic type change kinds, or do they reach the graph by their own paths?"
 open question "Which participant and which precondition produce a rejected submission, given that no rule sets that status today?"
-open question "Can a participant revise another participant's contribution without preserving both voices visibly?"
+-- Resuelta: una revisión conserva la mano que formuló sus palabras y, cuando
+-- corresponde, el segundo participante como voz mediada, fuente o coautor. Una
+-- edición posterior crea otro linaje; nunca reescribe el de la revisión previa.
 open question "When the exceptional case occurs and two devices changed the same block offline, which changes may Vera merge automatically and which require explicit human resolution?"
 open question "Are pages and blocks sufficient as Vera's canonical content model, or are typed nodes needed?"
 open question "Which historical metadata and asset behaviours from herbertspencer.net must Vera preserve exactly?"

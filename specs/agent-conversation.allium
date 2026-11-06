@@ -118,6 +118,19 @@ contract ConversationWithAgent {
         -- and pending work while the agent proceeds. It never exposes hidden
         -- chain-of-thought or presents an invented stream of internal reasoning
         -- as evidence of progress.
+
+    @invariant AReplyClassifiesItsRelationToTheHumanContribution
+        -- Before a reply enters the graph, the librarian distinguishes its own
+        -- judgment from mediated human voice, a derivation from human material
+        -- and substantive coauthorship. An audio transcript, source block or
+        -- conversation request remains named as the causal source.
+
+    @invariant IncoherenceIsNamedBeforeItIsInscribed
+        -- When the requested answer would contradict its supplied source,
+        -- attribute a voice falsely or entail incompatible claims, the librarian
+        -- identifies that contradiction. It may answer under a coherent reading
+        -- or ask for a material decision; it does not claim a personal right to
+        -- silence and does not hide the conflict behind a fabricated attribution.
 }
 
 ------------------------------------------------------------
@@ -200,6 +213,7 @@ entity AgentReply {
     request: ConversationRequest
     answered_by: core/Participant
     text: String
+    lineage: core/ContributionLineage
     written_block: core/Block?
     created_at: Timestamp
     proposal: OperationProposal with reply = this
@@ -468,7 +482,7 @@ rule VeraRecordsDispatchFailure {
 }
 
 rule LibrarianAnswersOnAPage {
-    when: AnswerAgentRequest(agent, request, text, changes)
+    when: AnswerAgentRequest(agent, request, text, changes, lineage)
 
     requires: request.conversation.agent = agent
     requires: request.status = working
@@ -491,6 +505,7 @@ rule LibrarianAnswersOnAPage {
             request: request,
             answered_by: agent,
             text: text,
+            lineage: lineage,
             written_block: written,
             created_at: now
         )
@@ -512,7 +527,7 @@ rule LibrarianAnswersOnAPage {
 }
 
 rule LibrarianAnswersAwayFromAPage {
-    when: AnswerAgentRequest(agent, request, text, changes)
+    when: AnswerAgentRequest(agent, request, text, changes, lineage)
 
     requires: request.conversation.agent = agent
     requires: request.status = working
@@ -527,6 +542,7 @@ rule LibrarianAnswersAwayFromAPage {
             request: request,
             answered_by: agent,
             text: text,
+            lineage: lineage,
             written_block: null,
             created_at: now
         )
@@ -543,7 +559,7 @@ rule LibrarianAnswersAwayFromAPage {
 }
 
 rule LibrarianAnswersFromABlock {
-    when: AnswerAgentRequest(agent, request, text, changes)
+    when: AnswerAgentRequest(agent, request, text, changes, lineage)
 
     requires: request.conversation.agent = agent
     requires: request.status = working
@@ -555,7 +571,7 @@ rule LibrarianAnswersFromABlock {
     requires: changes.first.block = request.source_block
 
     ensures:
-        changes.first is applied as agent_generation by agent
+        changes.first is applied as agent_generation by agent with lineage
         request.status = answered
         request.finished_at = now
 
@@ -793,7 +809,7 @@ surface LibrarianConversationWorker {
         FailAgentDispatch(request, reason)
             when request.status = queued and request.dispatch_status in {pending, failed}
         BeginAgentRequest(agent, request, interpretation) when request.status = queued
-        AnswerAgentRequest(agent, request, text, changes) when request.status = working
+        AnswerAgentRequest(agent, request, text, changes, lineage) when request.status = working
         FailAgentRequest(agent, request, reason)
             when request.status in {queued, working}
 

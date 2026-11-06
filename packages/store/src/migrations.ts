@@ -1371,6 +1371,30 @@ const addLibrarianDialectic: Migration = {
   },
 };
 
+/** 36 — linaje relacional por revisión y respuesta bibliotecaria. */
+const addContributionLineage: Migration = {
+  version: 36,
+  name: 'procedencia relacional por revisión',
+  apply(db) {
+    const add = (table: string, column: string, definition: string): void => {
+      const present = (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(
+        (one) => one.name === column,
+      );
+      if (!present) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    };
+    for (const table of ['operations', 'revisions', 'agent_replies']) {
+      const exists = db.prepare(
+        "SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?",
+      ).get(table);
+      if (exists === undefined) continue;
+      add(table, 'lineage_relation', "TEXT NOT NULL DEFAULT 'direct' CHECK (lineage_relation IN ('direct','mediated','derived','coauthored'))");
+      add(table, 'lineage_participant_id', 'TEXT REFERENCES participants (id)');
+      add(table, 'lineage_source_kind', "TEXT CHECK (lineage_source_kind IN ('conversation','recording','page','block','document','external'))");
+      add(table, 'lineage_source_reference', 'TEXT');
+    }
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1407,6 +1431,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addEmbeddedLibrarianRuntime,
   addTerritorialClearanceAndLibrarianHarnessV2,
   addLibrarianDialectic,
+  addContributionLineage,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

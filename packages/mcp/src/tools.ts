@@ -457,15 +457,29 @@ export const TOOLS: readonly VeraTool[] = [
         block: string;
         alive: boolean;
         now: string | null;
-        states: { sequence: number; at: number; by: string; channel: string; what: string; content: string | null }[];
+        states: { sequence: number; at: number; by: string; channel: string; what: string; content: string | null;
+          lineage?: { relation: 'direct' | 'mediated' | 'derived' | 'coauthored'; relatedName: string | null;
+            sourceKind: string | null; sourceReference: string | null } }[];
       }>(`/blocks/${encodeURIComponent(id)}/history`);
       if (failed(history)) return trouble(history);
       if (history.states.length === 0) return `No hay historia de ${id}: puede que no exista.`;
-      const lines = history.states.map(
-        (state) =>
-          `${when(state.at)} · ${state.by} · ${state.channel} · ${state.what}` +
-          (state.content === null ? '' : `\n    ${state.content.split('\n').join('\n    ')}`),
-      );
+      const lines = history.states.map((state) => {
+        const lineage = state.lineage ?? {
+          relation: 'direct' as const, relatedName: null, sourceKind: null, sourceReference: null,
+        };
+        const related = lineage.relatedName;
+        const hand = lineage.relation === 'mediated' && related !== null
+          ? `${related} por ${state.by}`
+          : lineage.relation === 'derived' && related !== null
+            ? `${state.by} a partir de ${related}`
+            : lineage.relation === 'coauthored' && related !== null
+              ? `${related} con ${state.by}`
+              : state.by;
+        const source = lineage.sourceKind === null || lineage.sourceReference === null
+          ? '' : ` · fuente ${lineage.sourceKind} ${lineage.sourceReference}`;
+        return `${when(state.at)} · ${hand} · ${state.channel}${source} · ${state.what}` +
+          (state.content === null ? '' : `\n    ${state.content.split('\n').join('\n    ')}`);
+      });
       return cut(
         `${id} ${history.alive ? 'sigue vivo' : 'está borrado'}, ${history.states.length} estados:\n\n` +
           lines.join('\n\n'),

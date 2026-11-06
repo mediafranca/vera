@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Change, ParticipantId } from '@vera/core';
+import type { Change, ContributionLineage, ParticipantId } from '@vera/core';
 import type { Store } from '@vera/store';
 
 export type LibrarianRequestStatus = 'queued' | 'working' | 'answered' | 'failed' | 'cancelled';
@@ -34,6 +34,7 @@ export interface LibrarianRequest {
     id: string;
     answeredBy: ParticipantId;
     text: string;
+    lineage: ContributionLineage;
     createdAt: number;
     proposal: null | {
       id: string;
@@ -74,6 +75,10 @@ interface RequestRow {
   answered_by: ParticipantId | null;
   reply_text: string | null;
   reply_created_at: number | null;
+  lineage_relation: ContributionLineage['relation'] | null;
+  lineage_participant_id: string | null;
+  lineage_source_kind: ContributionLineage['sourceKind'] | null;
+  lineage_source_reference: string | null;
   proposal_id: string | null;
   changes_json: string | null;
   proposal_status: 'proposed' | 'accepted' | 'rejected' | null;
@@ -196,6 +201,7 @@ export function createLibrarianRequest(store: Store, input: {
 
 const SELECT_REQUEST = `SELECT r.*,
   a.id AS reply_id, a.answered_by, a.text AS reply_text, a.created_at AS reply_created_at,
+  a.lineage_relation, a.lineage_participant_id, a.lineage_source_kind, a.lineage_source_reference,
   p.id AS proposal_id, p.changes_json, p.status AS proposal_status
   FROM agent_requests r
   LEFT JOIN agent_replies a ON a.request_id=r.id
@@ -264,6 +270,12 @@ function fromRow(store: Store, row: RequestRow): LibrarianRequest {
       id: row.reply_id,
       answeredBy: row.answered_by!,
       text: row.reply_text!,
+      lineage: {
+        relation: row.lineage_relation ?? 'direct',
+        ...(row.lineage_participant_id === null ? {} : { relatedParticipant: row.lineage_participant_id }),
+        ...(row.lineage_source_kind === null ? {} : { sourceKind: row.lineage_source_kind }),
+        ...(row.lineage_source_reference === null ? {} : { sourceReference: row.lineage_source_reference }),
+      },
       createdAt: row.reply_created_at!,
       proposal: row.proposal_id === null ? null : {
         id: row.proposal_id,
@@ -381,6 +393,7 @@ export function answerLibrarianRequest(store: Store, input: {
   id: string;
   answeredBy: ParticipantId;
   text: string;
+  lineage?: ContributionLineage;
   changes?: Change[];
   now?: number;
 }): LibrarianRequest | undefined {
@@ -388,10 +401,16 @@ export function answerLibrarianRequest(store: Store, input: {
   if (current === undefined || current.status !== 'working' || current.reply !== null) return undefined;
   const now = input.now ?? Date.now();
   const reply = `agent-reply:${randomUUID()}`;
+  const lineage = input.lineage ?? { relation: 'direct' as const };
   store.db.exec('BEGIN');
   try {
-    store.db.prepare(`INSERT INTO agent_replies (id, request_id, answered_by, text, created_at)
-      VALUES (?, ?, ?, ?, ?)`).run(reply, input.id, input.answeredBy, input.text, now);
+    store.db.prepare(`INSERT INTO agent_replies (id, request_id, answered_by, text,
+      lineage_relation, lineage_participant_id, lineage_source_kind, lineage_source_reference, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      reply, input.id, input.answeredBy, input.text,
+      lineage.relation, lineage.relatedParticipant ?? null, lineage.sourceKind ?? null,
+      lineage.sourceReference ?? null, now,
+    );
     if ((input.changes?.length ?? 0) > 0) {
       store.db.prepare(`INSERT INTO agent_operation_proposals
         (id, reply_id, proposed_by, changes_json, status, proposed_at)

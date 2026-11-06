@@ -18,6 +18,9 @@ import { fileURLToPath } from 'node:url';
 import { VeraGraph, titleKey } from '@vera/core';
 import type {
   Change,
+  ContributionLineage,
+  ContributionRelation,
+  LineageSourceKind,
   Operation,
   ParticipantId,
   ParticipantKind,
@@ -141,8 +144,10 @@ export function recordOperation(store: Store, graph: VeraGraph, operation: Opera
     db.prepare(
       `INSERT INTO operations (
          id, graph_id, origin_id, sequence, participant_id, change_kind, change_payload,
-         subject_id, channel, evidence_reference, evidence_captured_at, submitted_at, applied_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         subject_id, channel, evidence_reference, evidence_captured_at,
+         lineage_relation, lineage_participant_id, lineage_source_kind, lineage_source_reference,
+         submitted_at, applied_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       operation.id,
       store.graphId,
@@ -155,6 +160,10 @@ export function recordOperation(store: Store, graph: VeraGraph, operation: Opera
       submission.channel,
       submission.evidence?.reference ?? null,
       submission.evidence?.capturedAt ?? null,
+      submission.lineage.relation,
+      submission.lineage.relatedParticipant ?? null,
+      submission.lineage.sourceKind ?? null,
+      submission.lineage.sourceReference ?? null,
       submission.submittedAt,
       operation.appliedAt,
     );
@@ -175,8 +184,9 @@ export function recordOperation(store: Store, graph: VeraGraph, operation: Opera
     const revision = graph.revisions()[graph.operations().findIndex((one) => one.id === operation.id)];
     if (revision !== undefined) {
       db.prepare(
-        `INSERT INTO revisions (id, operation_id, graph_id, page_id, block_id, crossing_id, authored_by, channel, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO revisions (id, operation_id, graph_id, page_id, block_id, crossing_id, authored_by, channel,
+           lineage_relation, lineage_participant_id, lineage_source_kind, lineage_source_reference, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         `rev:${operation.sequence}`,
         operation.id,
@@ -186,6 +196,10 @@ export function recordOperation(store: Store, graph: VeraGraph, operation: Opera
         revision.crossing,
         revision.authoredBy,
         revision.channel,
+        revision.lineage.relation,
+        revision.lineage.relatedParticipant ?? null,
+        revision.lineage.sourceKind ?? null,
+        revision.lineage.sourceReference ?? null,
         revision.recordedAt,
       );
     }
@@ -217,12 +231,15 @@ export function recordAllOperations(store: Store, graph: VeraGraph): void {
     const insertOperation = db.prepare(
       `INSERT INTO operations (
          id, graph_id, origin_id, sequence, participant_id, change_kind, change_payload,
-         subject_id, channel, evidence_reference, evidence_captured_at, submitted_at, applied_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         subject_id, channel, evidence_reference, evidence_captured_at,
+         lineage_relation, lineage_participant_id, lineage_source_kind, lineage_source_reference,
+         submitted_at, applied_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertRevision = db.prepare(
-      `INSERT INTO revisions (id, operation_id, graph_id, page_id, block_id, crossing_id, authored_by, channel, recorded_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO revisions (id, operation_id, graph_id, page_id, block_id, crossing_id, authored_by, channel,
+         lineage_relation, lineage_participant_id, lineage_source_kind, lineage_source_reference, recorded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
     const revisions = graph.revisions();
@@ -242,6 +259,10 @@ export function recordAllOperations(store: Store, graph: VeraGraph): void {
         submission.channel,
         submission.evidence?.reference ?? null,
         submission.evidence?.capturedAt ?? null,
+        submission.lineage.relation,
+        submission.lineage.relatedParticipant ?? null,
+        submission.lineage.sourceKind ?? null,
+        submission.lineage.sourceReference ?? null,
         submission.submittedAt,
         operation.appliedAt,
       );
@@ -256,6 +277,10 @@ export function recordAllOperations(store: Store, graph: VeraGraph): void {
           revision.crossing,
           revision.authoredBy,
           revision.channel,
+          revision.lineage.relation,
+          revision.lineage.relatedParticipant ?? null,
+          revision.lineage.sourceKind ?? null,
+          revision.lineage.sourceReference ?? null,
           revision.recordedAt,
         );
       }
@@ -754,6 +779,10 @@ interface OperationRow {
   channel: string;
   evidence_reference: string | null;
   evidence_captured_at: number | null;
+  lineage_relation: ContributionRelation;
+  lineage_participant_id: string | null;
+  lineage_source_kind: LineageSourceKind | null;
+  lineage_source_reference: string | null;
   submitted_at: number;
 }
 
@@ -776,7 +805,8 @@ export function loadGraph(store: Store, graphName = 'mind'): VeraGraph {
   const rows = store.db
     .prepare(
       `SELECT id, origin_id, sequence, participant_id, change_payload, subject_id, channel,
-              evidence_reference, evidence_captured_at, submitted_at
+              evidence_reference, evidence_captured_at, lineage_relation, lineage_participant_id,
+              lineage_source_kind, lineage_source_reference, submitted_at
        FROM operations WHERE graph_id = ? ORDER BY sequence`,
     )
     .all(store.graphId) as unknown as OperationRow[];
@@ -796,6 +826,12 @@ export function loadGraph(store: Store, graphName = 'mind'): VeraGraph {
           | 'agent_generation'
           | 'import',
         change: JSON.parse(row.change_payload) as Change,
+        lineage: {
+          relation: row.lineage_relation,
+          ...(row.lineage_participant_id === null ? {} : { relatedParticipant: row.lineage_participant_id }),
+          ...(row.lineage_source_kind === null ? {} : { sourceKind: row.lineage_source_kind }),
+          ...(row.lineage_source_reference === null ? {} : { sourceReference: row.lineage_source_reference }),
+        } satisfies ContributionLineage,
         submittedAt: row.submitted_at,
         // El número y la identidad de la operación salen del registro, como el
         // sujeto y por la misma razón: reproducir es rehacer lo que ocurrió, no

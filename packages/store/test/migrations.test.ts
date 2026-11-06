@@ -147,7 +147,15 @@ describe('migraciones', () => {
       const before = db.prepare('SELECT * FROM operations ORDER BY sequence').all();
       migrate(db, false);
       const after = db.prepare('SELECT * FROM operations ORDER BY sequence').all();
-      assert.deepEqual(after, before);
+      assert.deepEqual(after.map((row) => {
+        const copy = { ...(row as Record<string, unknown>) };
+        delete copy.lineage_relation;
+        delete copy.lineage_participant_id;
+        delete copy.lineage_source_kind;
+        delete copy.lineage_source_reference;
+        return copy;
+      }), before.map((row) => ({ ...(row as Record<string, unknown>) })));
+      assert.ok(after.every((row) => (row as Record<string, unknown>).lineage_relation === 'direct'));
       assert.equal(count(db, 'operations'), 3);
       assert.equal(count(db, 'block_authorship'), 2);
       db.close();

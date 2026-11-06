@@ -47,6 +47,27 @@ export const CONTRIBUTION_CHANNELS = [
 ] as const;
 export type ContributionChannel = (typeof CONTRIBUTION_CHANNELS)[number];
 
+export const CONTRIBUTION_RELATIONS = ['direct', 'mediated', 'derived', 'coauthored'] as const;
+export type ContributionRelation = (typeof CONTRIBUTION_RELATIONS)[number];
+
+export const LINEAGE_SOURCE_KINDS = [
+  'conversation',
+  'recording',
+  'page',
+  'block',
+  'document',
+  'external',
+] as const;
+export type LineageSourceKind = (typeof LINEAGE_SOURCE_KINDS)[number];
+
+/** Relación de la mano que inscribe con otra voz y con su fuente causal. */
+export interface ContributionLineage {
+  readonly relation: ContributionRelation;
+  readonly relatedParticipant?: ParticipantId | undefined;
+  readonly sourceKind?: LineageSourceKind | undefined;
+  readonly sourceReference?: string | undefined;
+}
+
 export const VISIBILITIES = ['private', 'public'] as const;
 export type Visibility = (typeof VISIBILITIES)[number];
 
@@ -209,6 +230,7 @@ export interface Submission {
   readonly change: Change;
   readonly channel: ContributionChannel;
   readonly evidence?: OriginEvidence | undefined;
+  readonly lineage: ContributionLineage;
   readonly submittedAt: number;
   readonly status: 'submitted' | 'accepted' | 'rejected';
 }
@@ -230,6 +252,7 @@ export interface Revision {
   readonly authoredBy: ParticipantId;
   readonly channel: ContributionChannel;
   readonly evidence?: OriginEvidence | undefined;
+  readonly lineage: ContributionLineage;
   readonly recordedAt: number;
   readonly changeKind: ChangeKind;
   /** La voz autenticada prueba autoría, no verdad factual. */
@@ -276,6 +299,7 @@ export interface OperationInput {
   readonly change: Change;
   readonly channel?: ContributionChannel | undefined;
   readonly evidence?: OriginEvidence | undefined;
+  readonly lineage?: ContributionLineage | undefined;
   readonly submittedAt?: number | undefined;
   /**
    * Sobre qué recae, cuando ya se sabe.
