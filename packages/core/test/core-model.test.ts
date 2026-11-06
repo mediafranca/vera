@@ -536,4 +536,25 @@ describe('the invariant checker itself', () => {
     const violations = checkInvariants(graph);
     assert.ok(violations.some((v) => v.invariant === 'BlockStableIdentityIsUnique'));
   });
+
+  it('detects a daily librarian root whose heading was turned into faux hierarchy', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, '2026-11-06');
+    const created = submit(graph, {
+      kind: 'create_block',
+      stableId: 'block:librarian-daily:2026-11-06:cotito',
+      page,
+      parent: null,
+      position: 0,
+      content: '**Bitácora de Cotito:**',
+    });
+    assert.equal(created.status, 'applied');
+    submit(graph, {
+      kind: 'edit_block',
+      block: 'block:librarian-daily:2026-11-06:cotito',
+      content: '**Bitácora de Cotito:**\n\tRectificación falsa',
+    });
+
+    assert.ok(checkInvariants(graph).some((one) => one.invariant === 'TheDailyRootIsReservedStructure'));
+  });
 });

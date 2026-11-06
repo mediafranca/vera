@@ -485,6 +485,19 @@ interface SubmitBatchBody {
   ifRevisions?: unknown;
 }
 
+interface LibrarianOutputBlockInput {
+  key: string;
+  page?: string;
+  parent?: string;
+  position?: number;
+  content: string;
+}
+
+interface LibrarianRemovalInput {
+  subject: string;
+  reason: string;
+}
+
 const MAX_BATCH_CHANGES = 1_000;
 const MAX_BATCH_BYTES = 2 * 1024 * 1024;
 
@@ -621,6 +634,17 @@ function agentMutationPrecondition(
   expected: unknown,
   ownOnly: boolean,
 ): { status: number; reason: string; current?: { revision: string | null; content: string } } | null {
+  if (
+    (change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block') &&
+    who.credential !== null &&
+    graph.participant(who.participant)?.kind === 'agent' &&
+    change.block.startsWith('block:librarian-daily:')
+  ) {
+    return {
+      status: 403,
+      reason: 'la raíz diaria de una bitácora de agente es infraestructura reservada; sólo se intervienen sus descendientes',
+    };
+  }
   if (
     (change.kind !== 'edit_block' && change.kind !== 'move_block') ||
     who.credential === null ||
@@ -802,6 +826,11 @@ export function pageTouchedBy(
 
 function clearanceRefusalForChange(store: Store, graph: VeraGraph, participant: string,
   change: Change): string | null {
+  if (
+    graph.participant(participant)?.kind === 'agent' &&
+    change.kind === 'remove_page' &&
+    graph.blocksOf(change.page).some((block) => block.stableId.startsWith('block:librarian-daily:'))
+  ) return 'una identidad agente no puede retirar una página que contiene una raíz diaria reservada';
   if (change.kind === 'create_page') {
     const decision = clearanceForGeneral(store, participant, 'contribute');
     return decision.outcome === 'granted' ? null : decision.explanation;
@@ -1048,83 +1077,325 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     return 'ready';
   };
 
-  const writeEmbeddedReply = (turn: LibrarianRequest, agent: ParticipantId, text: string,
-    instruction = turn.text): string | null => {
-    if (turn.modality === 'block') return null;
-    const targetsDaily = /\bbit[aá]cora\s+de\s+hoy\b/i.test(instruction);
-    const day = calendarDay(Date.now());
-    let requestedDaily = targetsDaily ? graph.pageTitled(day) : undefined;
-    if (targetsDaily && requestedDaily === undefined) {
-      const pageId = `page:daily:${day}`;
-      const created = graph.submitOperation({
-        originId: `librarian-runtime:${turn.id}:daily-page`,
-        participant: agent,
-        channel: 'agent_generation',
-        lineage: librarianContributionLineageFor(turn),
-        change: { kind: 'create_page', stableId: pageId, title: day, visibility: 'private' },
-      });
-      if (created.status === 'rejected') return created.reason;
-      if (created.status === 'applied') {
-        const failure = persist(created.operation);
-        if (failure !== null) return failure;
+  const writeLibrarianInscription = (
+    turn: LibrarianRequest,
+    agent: ParticipantId,
+    summary: string,
+    blocks: readonly LibrarianOutputBlockInput[],
+    changes: readonly Change[],
+    ifRevisions: Readonly<Record<string, unknown>>,
+    removals: readonly LibrarianRemovalInput[],
+    credential: Credential | null,
+    instruction = turn.text,
+  ): string | null => {
+    if (summary.length > 1_200) return 'el recibo del chat debe ser breve (máximo 1200 caracteres)';
+    if (blocks.length > 500 || changes.length > 500) return 'la inscripción excede 500 bloques u operaciones';
+    if (!changes.every((change) => change !== null && typeof change === 'object' &&
+      CORE_CHANGE_KINDS.includes((change as { kind?: string }).kind as never))) {
+      return 'la inscripción contiene una operación desconocida';
+    }
+    if (!removals.every((one) => one !== null && typeof one === 'object' &&
+      typeof one.subject === 'string' && one.subject.trim() !== '' &&
+      typeof one.reason === 'string' && one.reason.trim() !== '')) {
+      return 'cada retiro necesita sujeto y motivo';
+    }
+
+    const removalSubject = (change: Change): string | null => {
+      if (change.kind === 'remove_block') return change.block;
+      if (change.kind === 'remove_page') return change.page;
+      if (change.kind === 'remove_property') {
+        const holder = change.page ?? change.block;
+        return holder === undefined ? null : `${holder}::${change.propertyKey}`;
       }
-      requestedDaily = graph.pageTitled(day);
-      if (requestedDaily === undefined) return 'no se pudo crear la bitácora de hoy';
-      const typed = graph.submitOperation({
-        originId: `librarian-runtime:${turn.id}:daily-type`,
-        participant: agent,
-        channel: 'agent_generation',
-        lineage: librarianContributionLineageFor(turn),
-        change: { kind: 'set_property', page: requestedDaily.id, propertyKey: 'tipo', propertyValue: 'bitácora' },
-      });
-      if (typed.status === 'rejected') return typed.reason;
-      if (typed.status === 'applied') {
-        const failure = persist(typed.operation);
-        if (failure !== null) return failure;
+      return null;
+    };
+    const destructive = changes.map(removalSubject).filter((subject): subject is string => subject !== null);
+    for (const subject of destructive) {
+      const declaration = removals.find((one) => one.subject === subject);
+      if (declaration === undefined) return `el retiro de ${subject} no tiene declaración`;
+      if (!summary.includes(subject) || !summary.includes(declaration.reason)) {
+        return `el chat debe declarar el retiro de ${subject} y su motivo`;
       }
     }
-    const page = requestedDaily ?? (turn.sourcePageId === null ? undefined : graph.page(turn.sourcePageId));
-    if (page === undefined) return 'la página de la solicitud ya no existe';
-    const clearance = clearanceForPage(store, graph, agent, page.id, 'contribute');
-    if (clearance.outcome === 'refused') return clearance.explanation;
-    const stableId = `block:librarian-reply:${turn.id.slice('agent-request:'.length)}`;
-    const roots = graph.blocksOf(page.id).filter((block) => block.parent === null);
-    let parent: string | null = null;
-    let position = roots.length;
-    if (targetsDaily) {
-      const librarianName = graph.participant(agent)?.name ?? 'Agente de biblioteca';
-      const heading = `**Bitácora de ${librarianName}:**`;
-      let root = roots.find((block) => block.content.trim() === heading);
-      if (root === undefined) {
-        const rootId = `block:librarian-daily:${day}:${agent.slice('participant:'.length)}`;
-        const created = graph.submitOperation({
-          originId: `librarian-runtime:${turn.id}:daily-root`,
-          participant: agent,
-          channel: 'agent_generation',
-          lineage: librarianContributionLineageFor(turn),
-          change: { kind: 'create_block', stableId: rootId, page: page.id, parent: null, position: roots.length, content: heading },
-        });
-        if (created.status === 'rejected') return created.reason;
-        if (created.status === 'applied') {
-          const failure = persist(created.operation);
-          if (failure !== null) return failure;
+    for (const declaration of removals) {
+      if (!destructive.includes(declaration.subject)) {
+        return `la declaración de retiro ${declaration.subject} no corresponde a una operación destructiva`;
+      }
+    }
+
+    const trial = graph.replayFromLog();
+    const applied: Operation[] = [];
+    const lineage = librarianContributionLineageFor(turn);
+    const fence = credential === null ? null : confinementOf(store, credential.id);
+    const apply = (change: Change, origin: string): string | null => {
+      const known = trial.operations().find((operation) => operation.originId === origin);
+      if (known !== undefined) {
+        return known.submission.submittedBy === agent &&
+          known.submission.channel === 'agent_generation' &&
+          JSON.stringify(known.submission.change) === JSON.stringify(change)
+          ? null
+          : `el origen ${origin} ya nombra otra operación`;
+      }
+      if (credential !== null) {
+        const scope = scopeRefusal(credential, change.kind);
+        if (scope !== null) return scope;
+      }
+      const territorial = clearanceRefusalForChange(store, trial, agent, change);
+      if (territorial !== null) return territorial;
+      const structural = agentStructureRefusal(trial, { participant: agent, credential, channel: 'agent_generation' }, change);
+      if (structural !== null) return structural;
+      if (
+        (change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block') &&
+        change.block.startsWith('block:librarian-daily:')
+      ) return 'la raíz diaria propia es infraestructura reservada y no se puede alterar';
+      const expected = change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block'
+        ? ifRevisions[change.block]
+        : undefined;
+      if (change.kind === 'remove_block') {
+        if (typeof expected !== 'string' || expected.trim() === '') {
+          return `retirar ${change.block} exige su revisión vigente`;
         }
-        root = graph.block(rootId);
+        const revision = latestBlockRevision(trial, change.block);
+        if (revision !== expected) return `conflicto de revisión: ${change.block} está en ${revision ?? 'ninguna revisión'}`;
       }
-      if (root === undefined) return 'no se pudo crear la bitácora propia del agente';
-      parent = root.stableId;
-      position = graph.blocksOf(page.id).filter((block) => block.parent === parent).length;
+      const precondition = agentMutationPrecondition(
+        trial,
+        { participant: agent, credential, channel: 'agent_generation' },
+        change,
+        expected,
+        false,
+      );
+      if (precondition !== null) return precondition.reason;
+      if (fence !== null) {
+        const refusal = fenceRefusal(store, fence, agent, change, (block) => trial.block(block)?.page ?? null);
+        if (refusal !== null) return refusal.error;
+      }
+      const outcome = trial.submitOperation({
+        originId: origin,
+        participant: agent,
+        channel: 'agent_generation',
+        lineage,
+        change,
+      });
+      if (outcome.status === 'rejected') return outcome.reason;
+      if (outcome.status === 'duplicate') return 'una operación de la inscripción ya existe con otro estado';
+      applied.push(outcome.operation);
+      return null;
+    };
+
+    const day = calendarDay(Date.now());
+    const librarianName = trial.participant(agent)?.name ?? 'Agente de biblioteca';
+    const dailyHeading = `**Bitácora de ${librarianName}:**`;
+    let dailyPage: string | null = null;
+    let dailyRoot: string | null = null;
+    const ensureDaily = (): string | null => {
+      if (dailyPage !== null && dailyRoot !== null) return null;
+      let page = trial.pageTitled(day);
+      if (page === undefined) {
+        const pageId = `page:daily:${day}`;
+        const failure = apply(
+          { kind: 'create_page', stableId: pageId, title: day, visibility: 'private' },
+          `librarian:${turn.id}:daily-page`,
+        );
+        if (failure !== null) return failure;
+        page = trial.page(pageId);
+        if (page === undefined) return 'no se pudo crear la bitácora de hoy';
+        const typed = apply(
+          { kind: 'set_property', page: page.id, propertyKey: 'tipo', propertyValue: 'bitácora' },
+          `librarian:${turn.id}:daily-type`,
+        );
+        if (typed !== null) return typed;
+      }
+      const rootId = `block:librarian-daily:${day}:${agent.slice('participant:'.length)}`;
+      let root = trial.block(rootId);
+      if (root !== undefined && (root.page !== page.id || root.parent !== null || root.content.trim() !== dailyHeading)) {
+        return 'la raíz diaria propia fue alterada y debe repararse antes de seguir escribiendo';
+      }
+      if (root === undefined) {
+        root = trial.blocksOf(page.id).find((block) => block.parent === null && block.content.trim() === dailyHeading);
+      }
+      if (root === undefined) {
+        const position = trial.blocksOf(page.id).filter((block) => block.parent === null).length;
+        const failure = apply(
+          { kind: 'create_block', stableId: rootId, page: page.id, parent: null, position, content: dailyHeading },
+          `librarian:${turn.id}:daily-root`,
+        );
+        if (failure !== null) return failure;
+        root = trial.block(rootId);
+      }
+      if (root === undefined) return 'no se pudo crear la raíz diaria propia';
+      dailyPage = page.id;
+      dailyRoot = root.stableId;
+      return null;
+    };
+
+    const keys = new Set<string>();
+    for (const block of blocks) {
+      if (block === null || typeof block !== 'object' || typeof block.key !== 'string' ||
+        typeof block.content !== 'string' || block.key.trim() === '' || block.content.trim() === '') {
+        return 'cada bloque necesita clave y contenido';
+      }
+      if (block.page !== undefined && typeof block.page !== 'string') return `la página de ${block.key} no es válida`;
+      if (block.parent !== undefined && typeof block.parent !== 'string') return `el padre de ${block.key} no es válido`;
+      if (keys.has(block.key)) return `la clave de bloque ${block.key} está repetida`;
+      if (flattenedAgentOutline(block.content)) return `el bloque ${block.key} contiene un outline aplanado`;
+      keys.add(block.key);
     }
-    const outcome = graph.submitOperation({
-      originId: `librarian-runtime:${turn.id}:page-reply`,
-      participant: agent,
-      channel: 'agent_generation',
-      lineage: librarianContributionLineageFor(turn),
-      change: { kind: 'create_block', stableId, page: page.id, parent, position, content: text },
-    });
-    if (outcome.status === 'rejected') return outcome.reason;
-    if (outcome.status === 'applied') return persist(outcome.operation);
-    return null;
+    const unresolved = [...blocks];
+    const written = new Map<string, { id: string; page: string }>();
+    let guard = 0;
+    while (unresolved.length > 0 && guard <= blocks.length) {
+      guard += 1;
+      let progressed = false;
+      for (let at = unresolved.length - 1; at >= 0; at -= 1) {
+        const block = unresolved[at]!;
+        const localParent = block.parent === undefined ? undefined : written.get(block.parent);
+        if (block.parent !== undefined && keys.has(block.parent) && localParent === undefined) continue;
+        let parent: string | null = localParent?.id ?? block.parent ?? null;
+        let pageId = localParent?.page ?? null;
+        if (parent !== null && localParent === undefined) {
+          const existing = trial.block(parent);
+          if (existing === undefined) return `el padre ${parent} no existe`;
+          pageId = existing.page;
+        }
+        if (block.page === 'bitacora_hoy') {
+          const failure = ensureDaily();
+          if (failure !== null) return failure;
+          if (pageId !== null && pageId !== dailyPage) return `el bloque ${block.key} cruza páginas mediante su padre`;
+          pageId = dailyPage;
+          if (parent === null) parent = dailyRoot;
+        } else if (block.page !== undefined) {
+          const page = trial.page(block.page) ?? trial.pageTitled(block.page);
+          if (page === undefined) return `la página ${block.page} no existe`;
+          if (pageId !== null && pageId !== page.id) return `el bloque ${block.key} cruza páginas mediante su padre`;
+          pageId = page.id;
+        }
+        if (pageId === null) {
+          if (parent === null && /\bbit[aá]cora\s+de\s+hoy\b/i.test(instruction)) {
+            const failure = ensureDaily();
+            if (failure !== null) return failure;
+            pageId = dailyPage;
+            parent = dailyRoot;
+          } else if (turn.sourcePageId !== null) pageId = turn.sourcePageId;
+        }
+        if (pageId === null || trial.page(pageId) === undefined) return `el bloque ${block.key} no tiene una página válida`;
+        const position = block.position ?? trial.blocksOf(pageId).filter((one) => one.parent === parent).length;
+        if (!Number.isSafeInteger(position) || position < 0) return `la posición de ${block.key} no es válida`;
+        const suffix = createHash('sha256').update(block.key).digest('hex').slice(0, 16);
+        const stableId = `block:librarian-output:${turn.id.slice('agent-request:'.length)}:${suffix}`;
+        const failure = apply(
+          { kind: 'create_block', stableId, page: pageId, parent, position, content: block.content.trim() },
+          `librarian:${turn.id}:block:${suffix}`,
+        );
+        if (failure !== null) return failure;
+        written.set(block.key, { id: stableId, page: pageId });
+        unresolved.splice(at, 1);
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
+    if (unresolved.length > 0) return `la jerarquía contiene padres cíclicos o desconocidos: ${unresolved.map((one) => one.key).join(', ')}`;
+
+    if (removals.length > 0) {
+      const failure = ensureDaily();
+      if (failure !== null) return failure;
+      for (const [at, removal] of removals.entries()) {
+        const content = `Retiro declarado: ${removal.subject} — ${removal.reason}.`;
+        const suffix = createHash('sha256').update(`${removal.subject}:${at}`).digest('hex').slice(0, 16);
+        const position = trial.blocksOf(dailyPage!).filter((block) => block.parent === dailyRoot).length;
+        const declared = apply(
+          { kind: 'create_block', stableId: `block:librarian-removal:${turn.id.slice('agent-request:'.length)}:${suffix}`,
+            page: dailyPage!, parent: dailyRoot, position, content },
+          `librarian:${turn.id}:removal-declaration:${suffix}`,
+        );
+        if (declared !== null) return declared;
+      }
+    }
+    for (const [at, change] of changes.entries()) {
+      const failure = apply(change, `librarian:${turn.id}:change:${at}`);
+      if (failure !== null) return failure;
+    }
+
+    if (applied.length === 0) return null;
+    store.db.exec('BEGIN');
+    try {
+      for (const operation of applied) recordOperation(store, trial, operation);
+      store.db.exec('COMMIT');
+      graph = trial;
+      return null;
+    } catch (error) {
+      store.db.exec('ROLLBACK');
+      return error instanceof Error ? error.message : 'no se pudo persistir la inscripción bibliotecaria';
+    }
+  };
+
+  /**
+   * Red de seguridad para motores que todavía devuelven Markdown.
+   *
+   * El oficio nativo pide bloques estructurados. Un proveedor embebido que no
+   * pueda emitir el contrato no obtiene permiso para guardar el chorizo: Vera
+   * separa títulos, ítems y párrafos y materializa relaciones padre reales.
+   */
+  const structuredBlocksFromMarkdown = (text: string, page: string): LibrarianOutputBlockInput[] => {
+    const blocks: LibrarianOutputBlockInput[] = [];
+    const headingParents = new Map<number, string>();
+    let paragraph: string[] = [];
+    let paragraphParent: string | undefined;
+    let serial = 0;
+    const nextKey = (kind: string): string => `${kind}-${serial += 1}`;
+    const currentHeading = (): string | undefined => [...headingParents.entries()]
+      .sort((a, b) => b[0] - a[0])[0]?.[1];
+    const flush = (): void => {
+      const content = paragraph.join('\n').trim();
+      if (content !== '') blocks.push({ key: nextKey('texto'), page, ...(paragraphParent === undefined ? {} : { parent: paragraphParent }), content });
+      paragraph = [];
+      paragraphParent = undefined;
+    };
+    let fenced = false;
+    for (const raw of text.split(/\r?\n/)) {
+      if (/^\s*```/.test(raw)) {
+        if (paragraph.length === 0) paragraphParent = currentHeading();
+        paragraph.push(raw);
+        fenced = !fenced;
+        continue;
+      }
+      if (!fenced) {
+        const heading = /^\s{0,3}(#{1,6})\s+(.+)$/.exec(raw);
+        if (heading !== null) {
+          flush();
+          const level = heading[1]!.length;
+          for (const held of [...headingParents.keys()]) if (held >= level) headingParents.delete(held);
+          const parent = [...headingParents.entries()].filter(([held]) => held < level)
+            .sort((a, b) => b[0] - a[0])[0]?.[1];
+          const key = nextKey('seccion');
+          blocks.push({ key, page, ...(parent === undefined ? {} : { parent }), content: `**${heading[2]!.trim()}**` });
+          headingParents.set(level, key);
+          continue;
+        }
+        const item = /^(\s*)(?:[-+*]|\d+[.)])\s+(.+)$/.exec(raw);
+        if (item !== null) {
+          flush();
+          const parent = currentHeading();
+          blocks.push({ key: nextKey('item'), page, ...(parent === undefined ? {} : { parent }), content: item[2]!.trim() });
+          continue;
+        }
+        if (raw.trim() === '') { flush(); continue; }
+      }
+      if (paragraph.length === 0) paragraphParent = currentHeading();
+      paragraph.push(raw);
+    }
+    flush();
+    return blocks;
+  };
+
+  const briefLibrarianSummary = (text: string, count: number): string => {
+    if (text.length <= 1_200 && !flattenedAgentOutline(text)) return text.trim();
+    const title = text.split(/\r?\n/).map((line) => line.trim())
+      .find((line) => /^#{1,6}\s+\S/.test(line))?.replace(/^#{1,6}\s+/, '').trim();
+    const first = text.split(/\n\s*\n/).map((part) => part.replace(/^#{1,6}\s+/gm, '').replace(/\s+/g, ' ').trim())
+      .find((part) => part !== '' && !/^(?:[-+*]|\d+[.)])\s+/.test(part));
+    const core = (first ?? 'Trabajo bibliotecario completado').slice(0, 760).trimEnd();
+    return `${title === undefined ? '' : `${title}: `}${core} La inscripción completa quedó organizada en ${count} bloques.`;
   };
 
   const executeEmbeddedRequest = async (id: string): Promise<void> => {
@@ -1328,16 +1599,31 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         finishLibrarianRuntimeRun(store, run.id, { output: challenge });
         return;
       }
-      const writeFailure = writeEmbeddedReply(claimed, config.agent as ParticipantId, decision.text, original.text);
+      const target = /\bbit[aá]cora\s+de\s+hoy\b/i.test(original.text)
+        ? 'bitacora_hoy'
+        : claimed.sourcePageId ?? 'bitacora_hoy';
+      const structured = structuredBlocksFromMarkdown(decision.text, target);
+      const summary = briefLibrarianSummary(decision.text, structured.length);
+      const writeFailure = writeLibrarianInscription(
+        claimed,
+        config.agent as ParticipantId,
+        summary,
+        structured,
+        [],
+        {},
+        [],
+        null,
+        original.text,
+      );
       if (writeFailure !== null) throw new Error(writeFailure);
       const answered = answerLibrarianRequest(store, {
-        id, answeredBy: config.agent as ParticipantId, text: decision.text,
+        id, answeredBy: config.agent as ParticipantId, text: summary,
         lineage: librarianContributionLineageFor(claimed),
         changes: proposedChanges,
       });
       if (answered === undefined) throw new Error('no se pudo guardar la respuesta final');
       if (gate !== null) completeDialecticGate(store, id);
-      finishLibrarianRuntimeRun(store, run.id, { output: decision.text });
+      finishLibrarianRuntimeRun(store, run.id, { output: summary });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'el runtime no pudo responder';
       abandonDialecticGate(store, id);
@@ -3325,8 +3611,20 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         const changes = Array.isArray(body.changes) ? body.changes as Change[] : [];
+        const ifRevisions = body.ifRevisions !== null && typeof body.ifRevisions === 'object' && !Array.isArray(body.ifRevisions)
+          ? body.ifRevisions as Record<string, unknown>
+          : {};
+        const removals = Array.isArray(body.removals) ? body.removals as LibrarianRemovalInput[] : [];
+        let blocks: LibrarianOutputBlockInput[];
+        if (Array.isArray(body.blocks)) blocks = body.blocks as LibrarianOutputBlockInput[];
+        else {
+          const target = /\bbit[aá]cora\s+de\s+hoy\b/i.test(current.text)
+            ? 'bitacora_hoy'
+            : current.sourcePageId ?? 'bitacora_hoy';
+          blocks = structuredBlocksFromMarkdown(text, target);
+        }
         if (text === '') { send(response, 400, { error: 'la respuesta no puede estar vacía' }); return; }
-        if (current.modality === 'block') {
+        if (current.modality === 'block' && body.blocks === undefined && body.removals === undefined && body.ifRevisions === undefined) {
           const replacement = changes.length === 1 ? changes[0] : undefined;
           if (
             replacement?.kind !== 'edit_block' ||
@@ -3383,10 +3681,19 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * sin duplicar el texto, y el historial conserva mano y canal como en toda
          * escritura del bibliotecario.
          */
-        const writingFailure = writeEmbeddedReply(current, who.participant, text);
+        const writingFailure = writeLibrarianInscription(
+          current,
+          who.participant,
+          text,
+          blocks,
+          changes,
+          ifRevisions,
+          removals,
+          who.credential === null ? null : credentialById(store, who.credential),
+        );
         if (writingFailure !== null) { send(response, 422, { error: writingFailure }); return; }
         const answered = answerLibrarianRequest(store, {
-          id, answeredBy: who.participant, text, changes,
+          id, answeredBy: who.participant, text, changes: [],
           lineage: librarianContributionLineageFor(current),
         });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
@@ -3540,7 +3847,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             trial,
             who,
             input.change,
-            input.change.kind === 'edit_block' || input.change.kind === 'move_block'
+            input.change.kind === 'edit_block' || input.change.kind === 'move_block' || input.change.kind === 'remove_block'
               ? ifRevisions[input.change.block]
               : undefined,
             fence !== null,

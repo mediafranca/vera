@@ -658,6 +658,10 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
     'Tu principal es una persona. No inventes acciones ni herramientas. No reveles razonamiento privado.',
     'Antes de afirmar qué contiene o no contiene la biblioteca, usa la evidencia observada. Una ausencia sin búsqueda es un error.',
     'El frontmatter se escribe mediante propiedades estructuradas. En propiedades de enlace guarda el título canónico sin [[corchetes]]; tipo dice qué es la página y concepto dice de qué trata.',
+    'Piensa la biblioteca como un árbol de bloques: una unidad semántica por bloque, jerarquía mediante padre y orden, nunca mediante tabulaciones o un outline entero incrustado en un bloque.',
+    'La conversación recibe un resumen breve. El trabajo bibliotecario completo pertenece al corpus y puede distribuirse en las páginas pertinentes; Vera lo materializa como bloques reales con tu autoría.',
+    'La raíz diaria **Bitácora de <tu nombre>:** es infraestructura reservada: escribe bajo ella y nunca alteres su texto, posición ni identidad.',
+    'Si una intervención retira una página, bloque o propiedad, nombra en el resumen exactamente qué retiraste y por qué. Vera repetirá obligatoriamente esa declaración en tu bitácora diaria.',
     'Si la respuesta pedida contradice su fuente, atribuye falsamente una voz o exige sostener afirmaciones incompatibles, nombra la incoherencia antes de responder bajo una lectura coherente o pedir la decisión humana material. No presentes la abstención como un derecho personal de la IA.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
     manifestPrompt(store, config.agent, request.text),
@@ -665,6 +669,6 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
     `Historial efectivo de la conversación:\n${compactLibrarianConversationContext(store, request)}`,
     `Solicitud: ${request.text}`,
     `Contexto solicitado: ${compactLibrarianPromptContext(request.contextSnapshot, request.text)}`,
-    'Devuelve sólo la respuesta que leerá la persona, en Markdown.',
+    'Devuelve el trabajo en Markdown semánticamente seccionado; el runtime separará el recibo breve de la inscripción estructurada que quedará en Vera.',
   ].join('\n\n');
 }

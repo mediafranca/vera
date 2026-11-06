@@ -180,7 +180,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       });
       assert.equal(configured.status, 200, JSON.stringify(configured.json));
       assert.equal(configured.json['status'], 'ready');
-      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:3');
+      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:4');
       assert.deepEqual((configured.json['harness'] as any).capabilities.map((one: any) => one.name), [
         'search_memory', 'survey_topic', 'read_page', 'query_graph', 'inspect_relations',
         'inspect_ontology', 'inspect_page_schema', 'check_invariants', 'reply_to_request',
@@ -460,8 +460,15 @@ describe('runtime embebido de la bibliotecaria', () => {
         .some((property) => property.key === 'tipo' && property.value === 'bitácora'));
       const root = running.vera.graph.blocksOf(daily.id)
         .find((block) => block.content === '**Bitácora de Lucienne:**')!;
+      const inscription = running.vera.graph.blocksOf(daily.id)
+        .find((block) => block.parent === root.stableId && /Síntesis del levantamiento/.test(block.content));
+      assert.ok(inscription);
       assert.ok(running.vera.graph.blocksOf(daily.id)
-        .some((block) => block.parent === root.stableId && /Síntesis del levantamiento/.test(block.content)));
+        .some((block) => block.parent === inscription.stableId), 'la síntesis volvió a quedar como un bloque único');
+      assert.ok(running.vera.graph.blocksOf(daily.id)
+        .filter((block) => block.stableId.startsWith('block:librarian-output:'))
+        .every((block) => !/\n\s*(?:#{1,6}\s|[-+*]\s|\d+[.)]\s)/m.test(block.content)),
+      'un bloque de la inscripción escondió nuevamente un outline Markdown');
 
       const proposalRequest = await call('/librarian/requests', { method: 'POST', body: {
         pageId: pictos, conversationId: answered.conversationId,
@@ -655,7 +662,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       const constituted = await call('/librarian/runtime/constitute', { method: 'POST', body: {} });
       const lucienne = (constituted.json['librarian'] as Record<string, string>).agent;
       const issued = await call('/agents/credentials', {
-        method: 'POST', body: { participant: lucienne, scopes: ['read', 'write'], label: 'runtime externo' },
+        method: 'POST', body: { participant: lucienne, scopes: ['read', 'write', 'discard'], label: 'runtime externo' },
       });
       const secret = issued.json['secret'] as string;
       const external = await call('/librarian/runtime', { method: 'PUT', body: {
@@ -685,7 +692,15 @@ describe('runtime embebido de la bibliotecaria', () => {
         method: 'POST', secret,
       })).status, 200);
       const answered = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
-        method: 'POST', secret, body: { text: 'Respondió Lucienne mediante Codex.', changes: [] },
+        method: 'POST', secret, body: {
+          text: 'Organicé la respuesta en la Bitácora de Lucienne.',
+          blocks: [
+            { key: 'respuesta', page: 'bitacora_hoy', content: 'PICTOS en el doctorado' },
+            { key: 'talleres', parent: 'respuesta', content: 'Talleres de diseño participativo' },
+            { key: 'logistica', parent: 'talleres', content: 'Planificación y coordinación logística' },
+          ],
+          changes: [], ifRevisions: {}, removals: [],
+        },
       });
       assert.equal(answered.status, 201, JSON.stringify(answered.json));
       assert.equal((answered.json['reply'] as Record<string, unknown>)['answeredBy'], lucienne);
@@ -695,8 +710,60 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.ok(daily, 'el runtime externo no creó el apartado diario de Lucienne');
       const root = running.vera.graph.blocksOf(daily.id)
         .find((block) => block.content === '**Bitácora de Lucienne:**')!;
+      const response = running.vera.graph.blocksOf(daily.id).find((block) =>
+        block.parent === root.stableId && block.content === 'PICTOS en el doctorado');
+      assert.ok(response, 'la salida no quedó como hija de la bitácora de Lucienne');
+      const workshops = running.vera.graph.blocksOf(daily.id).find((block) =>
+        block.parent === response.stableId && block.content === 'Talleres de diseño participativo');
+      assert.ok(workshops, 'la salida perdió su segundo nivel jerárquico');
       assert.ok(running.vera.graph.blocksOf(daily.id).some((block) =>
-        block.parent === root.stableId && /Respondió Lucienne mediante Codex/.test(block.content)));
+        block.parent === workshops.stableId && block.content === 'Planificación y coordinación logística'));
+      assert.equal((answered.json['reply'] as Record<string, unknown>)['text'],
+        'Organicé la respuesta en la Bitácora de Lucienne.');
+
+      const rootRevision = running.vera.graph.operations().filter((operation) => operation.subjectId === root.stableId).at(-1)?.id;
+      const protectedRoot = await call('/operations', { method: 'POST', secret, body: {
+        originId: 'bridge-test:mutate-daily-root',
+        ifRevision: rootRevision,
+        change: { kind: 'edit_block', block: root.stableId, content: '**Bitácora alterada:**' },
+      } });
+      assert.equal(protectedRoot.status, 403, JSON.stringify(protectedRoot.json));
+
+      const disposable = await call('/operations', { method: 'POST', body: {
+        originId: 'bridge-test:disposable', participant: owner.id,
+        change: { kind: 'create_block', page, parent: null, position: 0, content: 'Bloque descartable' },
+      } });
+      const disposableBlock = disposable.json['subjectId'] as string;
+      const deletion = await call('/librarian/requests', { method: 'POST', body: {
+        pageId: page, conversationId: answered.json['conversationId'],
+        text: 'Retira el bloque descartable y deja constancia.',
+      } });
+      const deletionId = deletion.json['id'] as string;
+      assert.equal((await call(`/librarian/requests/${encodeURIComponent(deletionId)}/claim`, {
+        method: 'POST', secret,
+      })).status, 200);
+      const silentRemoval = await call(`/librarian/requests/${encodeURIComponent(deletionId)}/reply`, {
+        method: 'POST', secret, body: {
+          text: 'Listo.', blocks: [],
+          changes: [{ kind: 'remove_block', block: disposableBlock }],
+          ifRevisions: {}, removals: [],
+        },
+      });
+      assert.equal(silentRemoval.status, 422, JSON.stringify(silentRemoval.json));
+      assert.ok(running.vera.graph.block(disposableBlock), 'el retiro silencioso alcanzó a borrar el bloque');
+      const revision = running.vera.graph.operations().filter((operation) => operation.subjectId === disposableBlock).at(-1)?.id;
+      const declaredRemoval = await call(`/librarian/requests/${encodeURIComponent(deletionId)}/reply`, {
+        method: 'POST', secret, body: {
+          text: `Retiré ${disposableBlock}: era un bloque descartable de prueba.`, blocks: [],
+          changes: [{ kind: 'remove_block', block: disposableBlock }],
+          ifRevisions: { [disposableBlock]: revision },
+          removals: [{ subject: disposableBlock, reason: 'era un bloque descartable de prueba' }],
+        },
+      });
+      assert.equal(declaredRemoval.status, 201, JSON.stringify(declaredRemoval.json));
+      assert.equal(running.vera.graph.block(disposableBlock), undefined);
+      assert.ok(running.vera.graph.blocksOf(daily.id).some((block) =>
+        block.parent === root.stableId && block.content.includes(`Retiro declarado: ${disposableBlock}`)));
       const conversation = await call('/librarian/conversation');
       assert.equal((conversation.json['agent'] as Record<string, unknown>)['id'], lucienne);
 

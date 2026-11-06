@@ -535,11 +535,10 @@ rule LibrarianAnswersOnAPage {
             )
 
     @guidance
-        -- The block is created through the same agent_generation operation boundary
-        -- as any other librarian writing. It carries no special read-only chrome:
-        -- editing is ordinary editing, while its origin remains visible in history.
-        -- If the explicit destination is today's journal, the written block is a
-        -- child of the one root named for this librarian's own bitácora.
+        -- This is the narrow one-block form for a genuinely atomic answer. A
+        -- multi-part bibliographic result uses the resident runtime's structured
+        -- inscription contract instead of flattening an outline into text. The
+        -- chat keeps the short receipt while Vera receives the actual block tree.
 }
 
 rule LibrarianAnswersAwayFromAPage {
@@ -592,8 +591,9 @@ rule LibrarianAnswersFromABlock {
         request.finished_at = now
 
     @guidance
-        -- The visible result is the rewritten block. The request, the original
-        -- content and the librarian's authorship remain inspectable in the record.
+        -- The visible result is the rewritten block. Structural corrections that
+        -- split, move or retire nodes use the resident runtime's atomic structured
+        -- inscription contract; they are not forced through one edit_block.
 }
 
 rule LibrarianReportsARequestFailure {
