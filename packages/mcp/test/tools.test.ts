@@ -91,6 +91,17 @@ describe('el catálogo', () => {
       assert.equal(tool.inputSchema.additionalProperties, false);
     }
   });
+
+  it('publica la gramática completa de cambios bibliotecarios en vez de Array<object>', () => {
+    const tool = toolNamed('vera_responder_solicitud_bibliotecaria')!;
+    const properties = tool.inputSchema['properties'] as Record<string, Record<string, unknown>>;
+    const changes = properties['cambios']!;
+    const variants = (changes['items'] as Record<string, unknown>)['oneOf'] as unknown[];
+    assert.equal(variants.length, 14);
+    assert.match(JSON.stringify(variants), /mover_bloque/);
+    assert.match(JSON.stringify(variants), /definir_propiedad/);
+    assert.match(JSON.stringify(variants), /crear_conectiva/);
+  });
 });
 
 describe('ciclo de la bibliotecaria residente', () => {
@@ -112,7 +123,10 @@ describe('ciclo de la bibliotecaria residente', () => {
         { clave: 'sintesis', pagina: 'bitacora_hoy', contenido: 'PICTOS articula doctorado y talleres.' },
         { clave: 'talleres', padre: 'sintesis', contenido: 'Los talleres organizan tres frentes.' },
       ],
-      cambios: [], revisiones: {}, retiros: [],
+      cambios: [
+        { tipo: 'mover_bloque', bloque: 'block:uno', pagina: 'page:uno', padre: null, posicion: 3 },
+      ],
+      revisiones: { 'block:uno': 'op:vigente' }, retiros: [],
     }, ask, undefined, undefined, undefined, action), /depositada/);
     assert.equal(asked[0]?.path, '/librarian/requests/agent-request%3A1');
     assert.deepEqual(actions.map((one) => one.path), [
@@ -126,7 +140,10 @@ describe('ciclo de la bibliotecaria residente', () => {
         { key: 'sintesis', page: 'bitacora_hoy', content: 'PICTOS articula doctorado y talleres.' },
         { key: 'talleres', parent: 'sintesis', content: 'Los talleres organizan tres frentes.' },
       ],
-      changes: [], ifRevisions: {}, removals: [],
+      changes: [
+        { kind: 'move_block', block: 'block:uno', page: 'page:uno', parent: null, position: 3 },
+      ],
+      ifRevisions: { 'block:uno': 'op:vigente' }, removals: [],
     });
   });
 });

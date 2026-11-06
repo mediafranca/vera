@@ -76,9 +76,13 @@ before(async () => {
   };
 
   PAGE = await write({ kind: 'create_page', title: 'La bitácora', visibility: 'private' });
-  const first = await write({ kind: 'create_block', page: PAGE, parent: null, content: 'Un pensamiento' });
+  const first = await write({
+    kind: 'create_block', page: PAGE, parent: null, position: 0, content: 'Un pensamiento',
+  });
   OWNER_BLOCK = first;
-  OWNER_CHILD = await write({ kind: 'create_block', page: PAGE, parent: first, content: 'Y su matiz' });
+  OWNER_CHILD = await write({
+    kind: 'create_block', page: PAGE, parent: first, position: 0, content: 'Y su matiz',
+  });
 
   const agent = await fetch(`http://127.0.0.1:${PORT}/agents`, {
     method: 'POST',
