@@ -729,6 +729,25 @@ describe('runtime embebido de la bibliotecaria', () => {
       } });
       assert.equal(protectedRoot.status, 403, JSON.stringify(protectedRoot.json));
 
+      const corruptedRoot = await call('/operations', { method: 'POST', body: {
+        originId: 'bridge-test:corrupt-daily-root', participant: owner.id,
+        ifRevision: rootRevision,
+        change: {
+          kind: 'edit_block', block: root.stableId,
+          content: '**Bitácora de Lucienne:**\n\tTexto que no pertenece al encabezado',
+        },
+      } });
+      assert.equal(corruptedRoot.status, 201, JSON.stringify(corruptedRoot.json));
+      const corruptedRevision = running.vera.graph.operations()
+        .filter((operation) => operation.subjectId === root.stableId).at(-1)?.id;
+      const restoredRoot = await call('/operations', { method: 'POST', secret, body: {
+        originId: 'bridge-test:restore-own-daily-root',
+        ifRevision: corruptedRevision,
+        change: { kind: 'edit_block', block: root.stableId, content: '**Bitácora de Lucienne:**' },
+      } });
+      assert.equal(restoredRoot.status, 201, JSON.stringify(restoredRoot.json));
+      assert.equal(running.vera.graph.block(root.stableId)?.content, '**Bitácora de Lucienne:**');
+
       const disposable = await call('/operations', { method: 'POST', body: {
         originId: 'bridge-test:disposable', participant: owner.id,
         change: { kind: 'create_block', page, parent: null, position: 0, content: 'Bloque descartable' },
