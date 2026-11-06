@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Store } from '@vera/store';
 import type { ContributionLineage } from '@vera/core';
 import { activeManifest, type AgentManifestDocument } from './agent-manifests.ts';
-import { librarianRequest, type LibrarianRequest } from './librarian.ts';
+import { librarianRequest, librarianRequestsInConversation, type LibrarianRequest } from './librarian.ts';
 import { activeOwnerLibrarian } from './owner-librarian.ts';
 
 export const LIBRARIAN_RUNTIME_ID = 'vera:embedded-librarian';
@@ -91,8 +91,10 @@ export function librarianRequestDispositionFor(text: string): LibrarianRequestDi
   const contribution = /\b(mi lectura|mi interpretacion|mi conclusion|mi hipotesis|mi criterio|creo que|pienso que|para mi|yo veo|propongo que)\b/.test(said) ||
     /https?:\/\//i.test(text) || /["“«][^"”»]{3,}["”»]/.test(text) ||
     /\b(esta fuente|este pasaje|esta cita|esta referencia|a partir de|basandote en|usando)\b/.test(said);
-  const determined = /\b(busca|encuentra|localiza|recupera|rastrea|cita|verifica|comprueba|transcribe|copia|enlaza|vincula|ordena|formatea|normaliza)\b/.test(said) ||
-    /\bcompleta (?:la |el |los |las )?(?:fuente|cita|referencia|ficha|metadatos|pagina|entrada)\b/.test(said);
+  const libraryScope = /\b(biblioteca|corpus|paginas?|proyectos?|tareas?|frontmatter|metadatos|ontologia|relaciones?|bitacora|doctorado|talleres?)\b/.test(said);
+  const determined = /\b(busca|encuentra|localiza|recupera|rastrea|cita|verifica|comprueba|transcribe|copia|enlaza|vincula|ordena|reordena|formatea|normaliza|clasifica|etiqueta|cataloga|inventaria)\b/.test(said) ||
+    /\bcompleta (?:la |el |los |las )?(?:fuente|cita|referencia|ficha|metadatos|pagina|entrada)\b/.test(said) ||
+    (libraryScope && /\b(explica|resume|sintetiza|sintesis|propone|revisa|analiza|relaciona)\b/.test(said));
 
   if (explicitDirect) return { mode: 'answer', reason: 'explicit_direct' };
   if (contribution) return { mode: 'answer', reason: 'contribution' };
@@ -101,6 +103,30 @@ export function librarianRequestDispositionFor(text: string): LibrarianRequestDi
   return practice === null
     ? { mode: 'answer', reason: 'ordinary' }
     : { mode: 'challenge', practice };
+}
+
+/** Una investigación amplia del corpus no puede depender de que el modelo decida buscar. */
+export function librarianResearchQueryFor(text: string): string | null {
+  const said = folded(text);
+  if (!/\b(biblioteca|corpus|paginas?|proyectos?|tareas?|frontmatter|metadatos|ontologia|relaciones?|bitacora|doctorado|talleres?)\b/.test(said)) return null;
+  const linked = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/.exec(text)?.[1]?.trim();
+  if (linked !== undefined && linked !== '') return linked;
+  const capital = text.match(/\b[\p{Lu}][\p{Lu}\p{N}._-]{2,}\b/u)?.[0];
+  const quoted = /[“«"]([^”»"]{3,})[”»"]/.exec(text)?.[1]?.trim();
+  if (quoted !== undefined && quoted !== '') return quoted;
+  const ignored = new Set([
+    'biblioteca', 'corpus', 'pagina', 'paginas', 'metadatos', 'ontologia', 'relaciones', 'bitacora',
+    'explica', 'resume', 'sintesis', 'propuesta', 'reordenamiento', 'etiquetado', 'todas', 'todos',
+    'contexto', 'derivados', 'quiero', 'hagas', 'especifico',
+  ]);
+  const capitalKey = capital === undefined ? null : folded(capital);
+  const terms = significantTerms(text).filter((term) => !ignored.has(term) && term !== capitalKey);
+  if (capital !== undefined) {
+    const contextual = ['doctorado', 'talleres', 'taller', 'diseño', 'diseno', 'participativos', 'participativo',
+      'proyectos', 'proyecto', 'tareas', 'tarea'].filter((term) => new RegExp(`\\b${term}\\b`).test(said));
+    return [capital, ...contextual.slice(0, 4)].join(' ');
+  }
+  return terms.length === 0 ? null : terms.slice(0, 4).join(' ');
 }
 
 /**
@@ -459,7 +485,7 @@ export function finishLibrarianRuntimeRun(store: Store, id: string, outcome: {
   return found;
 }
 
-const PROMPT_MANIFEST_CHARACTERS = 7_000;
+const PROMPT_MANIFEST_CHARACTERS = 1_800;
 
 /** Proyecta la constitución al turno sin alterar el manifiesto durable ni su digest. */
 export function compactLibrarianManifestDocument(document: AgentManifestDocument, requestText: string,
@@ -500,7 +526,35 @@ function manifestPrompt(store: Store, agent: string, requestText: string): strin
     compactLibrarianManifestDocument(manifest.document, requestText);
 }
 
-const PROMPT_CONTEXT_CHARACTERS = 6_000;
+const PROMPT_CONTEXT_CHARACTERS = 1_000;
+const PROMPT_CONVERSATION_CHARACTERS = 1_600;
+
+/**
+ * La conversación durable es contexto efectivo, no sólo una vista de interfaz.
+ * Conserva siempre el comienzo y la cola; cuando omite el medio lo declara.
+ */
+export function compactLibrarianConversationContext(store: Store, request: LibrarianRequest,
+  maximum = PROMPT_CONVERSATION_CHARACTERS): string {
+  const turns = librarianRequestsInConversation(store, request.conversationId)
+    .filter((turn) => turn.createdAt <= request.createdAt && turn.id !== request.id)
+    .map((turn) => [
+      `Persona: ${turn.text}`,
+      turn.reply === null ? `Agente: (${turn.status})` : `Agente: ${turn.reply.text}`,
+    ].join('\n'));
+  if (turns.length === 0) return '(primer turno de esta conversación)';
+  const whole = turns.join('\n\n');
+  if (whole.length <= maximum) return whole;
+  const kept: string[] = [turns[0]!];
+  let used = kept[0]!.length;
+  for (let index = turns.length - 1; index > 0; index -= 1) {
+    const turn = turns[index]!;
+    if (used + turn.length + 80 > maximum) break;
+    kept.splice(1, 0, turn);
+    used += turn.length;
+  }
+  const omitted = Math.max(0, turns.length - kept.length);
+  return `${kept[0]}\n\n… ${omitted} turno(s) intermedio(s) omitidos por el harness …\n\n${kept.slice(1).join('\n\n')}`;
+}
 
 /** Conserva la instantánea íntegra en el recibo y acota sólo su proyección al modelo. */
 export function compactLibrarianPromptContext(snapshot: string, requestText: string,
@@ -579,12 +633,16 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
         'Devuelve Markdown ordinario o JSON válido: {"dialectic":"answer","text":"respuesta final"}.',
       ].join('\n');
   return [
-    `Eres ${librarianName}, agente de biblioteca de esta Vera. Responde en español claro, breve y afirmativo.`,
+    `Eres ${librarianName}, agente de biblioteca residente de esta Vera. Responde en español claro, preciso y afirmativo.`,
+    'No eres un agente externo conectado por MCP: ocupas el oficio bibliotecario dentro de Vera. El harness te entrega su conversación, gobierno, ontología, gramática y herramientas de inspección.',
     'Tu principal es una persona. No inventes acciones ni herramientas. No reveles razonamiento privado.',
+    'Antes de afirmar qué contiene o no contiene la biblioteca, usa la evidencia observada. Una ausencia sin búsqueda es un error.',
+    'El frontmatter se escribe mediante propiedades estructuradas. En propiedades de enlace guarda el título canónico sin [[corchetes]]; tipo dice qué es la página y concepto dice de qué trata.',
     'Si la respuesta pedida contradice su fuente, atribuye falsamente una voz o exige sostener afirmaciones incompatibles, nombra la incoherencia antes de responder bajo una lectura coherente o pedir la decisión humana material. No presentes la abstención como un derecho personal de la IA.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
     manifestPrompt(store, config.agent, request.text),
     dialectic,
+    `Historial efectivo de la conversación:\n${compactLibrarianConversationContext(store, request)}`,
     `Solicitud: ${request.text}`,
     `Contexto solicitado: ${compactLibrarianPromptContext(request.contextSnapshot, request.text)}`,
     'Devuelve sólo la respuesta que leerá la persona, en Markdown.',

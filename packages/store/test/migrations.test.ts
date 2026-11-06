@@ -363,7 +363,7 @@ describe('migraciones', () => {
     db.close();
   });
 
-  it('preserva el alcance existente al añadir territorios y lleva el harness a v2', () => {
+  it('preserva el alcance existente al añadir territorios y lleva el harness residente a v3', () => {
     const store = openStore({ path: ':memory:', graphName: 'mind' });
     saveParticipant(store, { id: 'participant:owner', name: 'Dueña', kind: 'human' });
     saveParticipant(store, { id: 'participant:lucienne', name: 'Lucienne', kind: 'agent' });
@@ -400,7 +400,7 @@ describe('migraciones', () => {
     );
     assert.equal(
       (store.db.prepare('SELECT version FROM librarian_harnesses WHERE id=?').get('harness:1') as any).version,
-      'vera-librarian-harness:2',
+      'vera-librarian-harness:3',
     );
     assert.deepEqual(
       store.db.prepare(`SELECT surface_kind,surface_id,human_id FROM surface_stewards`).all()

@@ -168,7 +168,7 @@ export function ensureOwnerLibrarian(
       VALUES (?,?,?,?,'active',?)`).run(librarian, instance.id, owner, agent, now);
     store.db.prepare(`INSERT INTO librarian_harnesses
       (id,instance_id,librarian_id,version,status,attached_by,attached_at)
-      VALUES (?,?,?,'vera-librarian-harness:2','active',?,?)`)
+      VALUES (?,?,?,'vera-librarian-harness:3','active',?,?)`)
       .run(harness, instance.id, librarian, owner, now);
     store.db.exec('COMMIT');
   } catch (error) {

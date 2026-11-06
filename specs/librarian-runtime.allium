@@ -12,6 +12,47 @@ use "./agent-manifest.allium" as manifests
 use "./agent-conversation.allium" as conversations
 use "./owner-librarian-harness.allium" as harnesses
 
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract ResidentLibrarianExecution {
+    answer_request: (configuration: LibrarianRuntimeConfiguration, request: conversations/ConversationRequest) -> conversations/AgentReply
+
+    @invariant ConversationContinuityIsEffectiveContext
+        -- Every inference receives a bounded chronological projection of the
+        -- conversation, including the original unresolved instruction, human
+        -- contributions, prior replies and the current turn. A new turn never
+        -- reduces the task to its last sentence.
+
+    @invariant GovernanceAndOntologyAreResidentContext
+        -- The effective property vocabulary, semantic objects, relation
+        -- definitions, special pages and corpus-writing grammar travel with the
+        -- task or are available through built-in tools. They are part of the
+        -- resident office, not optional MCP lore.
+
+    @invariant ToolProtocolNeverBecomesLibraryContent
+        -- A valid or malformed tool request is protocol, never a final reply and
+        -- never a block. Markdown fences around structured calls do not turn
+        -- them into prose; rejected calls remain recoverable runtime failures.
+
+    @invariant NegativeFindingsRequireRecordedEvidence
+        -- The librarian cannot claim that pages, projects, tasks or relations do
+        -- not exist without at least one successful relevant corpus inspection.
+        -- Contradictory positive hits force another answer instead of inscription.
+
+    @invariant DraftsAreValidatedBeforeTheyBecomeProposals
+        -- Page properties and block edits are checked against current identity,
+        -- revisions, ontology, target subject and value grammar before they can
+        -- accompany a reply as reviewable changes.
+
+    @invariant DailyWritingUsesTheLibrariansOwnSection
+        -- When a request explicitly targets today's journal, the visible reply
+        -- is a child of the single daily root "Bitácora de <agent name>". Vera
+        -- creates the private journal and its bitácora type on first use when
+        -- necessary, preserving ordinary agent_generation authorship.
+}
+
 enum LibrarianRunKind { request | routine }
 enum LibrarianRunState { running | completed | failed }
 enum LibrarianRuntimePermission { read_request_context | reply | daily_round }
@@ -248,6 +289,9 @@ surface LibrarianRuntimeAdministration {
         ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
         RunLibrarianRoutine(owner, configuration)
 
+    contracts:
+        fulfils ResidentLibrarianExecution
+
     @guarantee RuntimeIdentityIsTheConstitutedLibrarian
         -- La bibliotecaria responde con su participante. Cotito puede seguir
         -- operando por el puente externo, pero nunca firma como Lucienne.
@@ -281,6 +325,16 @@ surface LibrarianRuntimeAdministration {
     @guarantee EveryRunLeavesPublicOperationalEvidence
         -- Vera conserva modelo, manifiesto, comienzo, término, estado, salida o
         -- error. No conserva razonamiento privado ni el valor del secreto.
+
+    @guarantee BroadLibraryQuestionsBeginWithARecordedSurvey
+        -- Una petición sobre conjuntos de páginas, proyectos, tareas o relaciones
+        -- comienza por una inspección gobernada del corpus. El modelo puede pedir
+        -- lecturas posteriores, pero no decidir que buscar era innecesario.
+
+    @guarantee TheOriginalTaskSurvivesEveryFollowUp
+        -- Aclaraciones, aportes mayéuticos, preguntas sobre progreso y bypasses
+        -- conservan el encargo abierto. La respuesta final resuelve ese encargo,
+        -- no sólo la frase más reciente.
 }
 
 actor LibrarianConversationHuman {
@@ -309,9 +363,10 @@ surface LibrarianDialecticConversation {
 
     @guarantee OperationalRequestsRemainDirect
         -- Buscar, citar, verificar, recuperar, ordenar, transcribir, enlazar,
-        -- completar metadatos, formatear o ejecutar una decisión ya tomada no
-        -- abre un umbral. Una fuente identificable tampoco debe quedar detrás de
-        -- una pregunta formativa.
+        -- completar metadatos, clasificar, etiquetar, reordenar, explicar el
+        -- corpus, formatear o ejecutar una decisión ya tomada no abre un umbral.
+        -- Una fuente identificable tampoco debe quedar detrás de una pregunta
+        -- formativa.
 
     @guarantee AClueCountsAsContribution
         -- Una pista, hipótesis, fuente o criterio ya aportado basta para ayudar
@@ -323,6 +378,11 @@ surface LibrarianDialecticConversation {
         -- completa primero la parte determinada. Puede formular como máximo una
         -- pregunta breve sobre la decisión personal restante, sin retener lo ya
         -- encontrado.
+
+    @guarantee ResearchPrecedesAnyFormativeQuestion
+        -- La palabra «síntesis» no convierte una investigación bibliotecaria en
+        -- un examen. Cuando hay corpus que recuperar, clasificar o relacionar,
+        -- toda esa labor se completa antes de ofrecer una pregunta de juicio.
 
     @guarantee MayeuticsIsAnOfferNotAnAccessCondition
         -- Una petición explícita de ejecución directa o la insistencia posterior

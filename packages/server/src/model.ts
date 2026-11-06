@@ -297,6 +297,10 @@ export async function ask(
         // Cuatro núcleos físicos: usar los ocho hilos dejaba SSH compitiendo con
         // la inferencia y no mejoraba proporcionalmente el tiempo de respuesta.
         '-t', '4',
+        // La evaluación del dossier es el tramo dominante. Los ocho hilos
+        // lógicos se usan sólo para el batch del prompt; la generación sigue
+        // limitada a cuatro para no volver torpe al resto de Alexei.
+        '-tb', '8',
         '-c', String(Math.max(4_096, Math.min(32_768, Math.trunc(options.contextTokens ?? 4_096)))),
         '-n', String(options.maxTokens ?? 200),
         '--temp', String(options.temperature ?? 0),
