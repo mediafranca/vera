@@ -29,6 +29,7 @@ describe('arquitectura de configuración', () => {
     assert.doesNotMatch(system, /Registro de actividad/);
     assert.match(settings, /section: 'conexiones', label: 'Zotero'/);
     assert.match(settings, /service\.access === 'read-write'/);
+    assert.match(settings, /service\.title\.replace\(\/\^VERA\\s\*:\\s\*\/i, ''\)/);
   });
 
   it('mantiene tema, bibliotecario y Centro en la barra cotidiana', () => {
