@@ -45,6 +45,11 @@ export type Propose = (input: {
   purpose: string;
 }) => Promise<{ status: 'awaiting_review' | 'duplicate'; proposal: string; page: string; block: string } | Failure>;
 
+export type Action = (
+  path: string,
+  body?: Record<string, unknown>,
+) => Promise<Record<string, unknown> | Failure>;
+
 export interface VeraTool {
   name: string;
   title: string;
@@ -61,6 +66,7 @@ export interface VeraTool {
     writeBatch?: WriteBatch,
     query?: Query,
     propose?: Propose,
+    action?: Action,
   ): Promise<string | ToolRunResult>;
 }
 
@@ -143,6 +149,96 @@ const when = (at: number | null | undefined): string =>
   at === null || at === undefined ? 'nunca' : new Date(at).toISOString().slice(0, 16).replace('T', ' ');
 
 export const TOOLS: readonly VeraTool[] = [
+  {
+    name: 'vera_solicitud_bibliotecaria',
+    title: 'Leer una solicitud para la bibliotecaria residente',
+    description:
+      'Lee una solicitud durable de Vera por su identificador, incluidos el encargo, la conversación, ' +
+      'el destino y el contexto registrado. Úsala al despertar desde el hook antes de reclamar trabajo.',
+    inputSchema: {
+      type: 'object', properties: { solicitud: { type: 'string', minLength: 1 } },
+      required: ['solicitud'], additionalProperties: false,
+    },
+    async run(args, ask) {
+      const id = say(args.solicitud).trim();
+      if (id === '') return 'Falta `solicitud`.';
+      const request = await ask<Record<string, unknown>>(`/librarian/requests/${encodeURIComponent(id)}`);
+      if (failed(request)) return trouble(request);
+      return cut(JSON.stringify(request, null, 2));
+    },
+  },
+
+  {
+    name: 'vera_reclamar_solicitud_bibliotecaria',
+    title: 'Reclamar una solicitud bibliotecaria',
+    readOnly: false,
+    description:
+      'Marca una solicitud durable como trabajo de la bibliotecaria que porta esta credencial. ' +
+      'Sólo se usa después de leerla y comprobar identidad y constitución.',
+    inputSchema: {
+      type: 'object', properties: { solicitud: { type: 'string', minLength: 1 } },
+      required: ['solicitud'], additionalProperties: false,
+    },
+    async run(args, _ask, _write, _batch, _query, _propose, action) {
+      if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
+      const id = say(args.solicitud).trim();
+      if (id === '') return 'Falta `solicitud`.';
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/claim`);
+      if (failed(result)) return `No pude reclamarla: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `Solicitud ${id} reclamada por la identidad efectiva de esta conexión.`;
+    },
+  },
+
+  {
+    name: 'vera_progreso_solicitud_bibliotecaria',
+    title: 'Registrar progreso bibliotecario',
+    readOnly: false,
+    description:
+      'Publica un hito breve y verificable de una solicitud en curso. Registra etapa, herramienta o espera; ' +
+      'nunca razonamiento privado.',
+    inputSchema: {
+      type: 'object', properties: {
+        solicitud: { type: 'string', minLength: 1 },
+        tipo: { type: 'string', enum: ['stage', 'tool', 'pending'] },
+        texto: { type: 'string', minLength: 1 },
+      }, required: ['solicitud', 'tipo', 'texto'], additionalProperties: false,
+    },
+    async run(args, _ask, _write, _batch, _query, _propose, action) {
+      if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
+      const id = say(args.solicitud).trim(); const text = say(args.texto).trim();
+      const kind = say(args.tipo).trim();
+      if (id === '' || text === '' || !['stage', 'tool', 'pending'].includes(kind)) return 'La solicitud, el tipo y el texto deben ser válidos.';
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/progress`, { kind, text });
+      if (failed(result)) return `No pude registrar el progreso: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `Progreso registrado en ${id}.`;
+    },
+  },
+
+  {
+    name: 'vera_responder_solicitud_bibliotecaria',
+    title: 'Responder una solicitud bibliotecaria',
+    readOnly: false,
+    description:
+      'Deposita la respuesta final de la bibliotecaria residente en la conversación y, cuando corresponde, ' +
+      'en su destino de Vera con autoría agent_generation. Las ediciones adicionales viajan como propuestas separadas.',
+    inputSchema: {
+      type: 'object', properties: {
+        solicitud: { type: 'string', minLength: 1 },
+        texto: { type: 'string', minLength: 1 },
+        cambios: { type: 'array', items: { type: 'object' }, default: [] },
+      }, required: ['solicitud', 'texto'], additionalProperties: false,
+    },
+    async run(args, _ask, _write, _batch, _query, _propose, action) {
+      if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
+      const id = say(args.solicitud).trim(); const text = say(args.texto).trim();
+      if (id === '' || text === '') return 'La solicitud y la respuesta no pueden quedar vacías.';
+      const changes = Array.isArray(args.cambios) ? args.cambios : [];
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/reply`, { text, changes });
+      if (failed(result)) return `No pude responder: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `Respuesta final depositada en ${id} por la identidad efectiva de esta conexión.`;
+    },
+  },
+
   {
     name: 'vera_quien_soy',
     title: 'Quién soy en esta memoria',

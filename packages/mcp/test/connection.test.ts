@@ -123,7 +123,7 @@ after(async () => {
 describe('vera-mcp por stdio', () => {
   it('arranca y ofrece su catálogo', async () => {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 16);
+    assert.equal(tools.length, 20);
     assert.ok(tools.some((tool) => tool.name === 'vera_mi_constitucion'));
     assert.ok(tools.some((tool) => tool.name === 'vera_preparar_escritura'));
     assert.ok(tools.some((tool) => tool.name === 'vera_consultar'));
@@ -138,6 +138,8 @@ describe('vera-mcp por stdio', () => {
         .filter((tool) => ![
           'vera_escribir', 'vera_escribir_lote', 'vera_editar_bloque_propio',
           'vera_mover_bloque_propio', 'vera_proponer_edicion', 'vera_descartar',
+          'vera_reclamar_solicitud_bibliotecaria', 'vera_progreso_solicitud_bibliotecaria',
+          'vera_responder_solicitud_bibliotecaria',
         ].includes(tool.name))
         .every((tool) => tool.annotations?.readOnlyHint === true),
     );

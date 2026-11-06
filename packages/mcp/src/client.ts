@@ -208,6 +208,34 @@ export async function propose(
   return body as ProposalResult;
 }
 
+/** Acciones del ciclo residente que no son operaciones del grafo. */
+export async function act(
+  connection: Connection,
+  path: string,
+  body: Record<string, unknown> = {},
+): Promise<Record<string, unknown> | Failure> {
+  if (connection.token === null) {
+    return { status: 403, error: 'esta acción exige la credencial explícita del agente de biblioteca' };
+  }
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'x-vera-client': connection.client,
+    authorization: `Bearer ${connection.token}`,
+  };
+  try {
+    const response = await fetch(new URL(path, connection.url), {
+      method: 'POST', headers, body: JSON.stringify(body),
+    });
+    const reply = await response.json().catch(async () => ({ error: await response.text().catch(() => '') })) as
+      Record<string, unknown>;
+    if (!response.ok) return { status: response.status, error: String(reply['error'] ?? response.statusText) };
+    return reply;
+  } catch (trouble) {
+    return { status: 0, error: `no hay nadie escuchando en ${connection.url} (${String(trouble)})` };
+  }
+}
+
 /** Envía muchos cambios en una sola transacción canónica. */
 export async function submitBatch(
   connection: Connection,
