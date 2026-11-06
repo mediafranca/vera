@@ -6493,12 +6493,13 @@ body.settings-open #text {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 2.65rem;
-  padding: .5rem .6rem;
+  height: var(--form-control-height);
+  min-height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--rule);
-  border-radius: 4px;
+  border-radius: var(--form-control-radius);
   font: inherit;
 }
 .instance-configuration :is(input, select):disabled { opacity: .72; }
@@ -9958,6 +9959,23 @@ html[data-working-slow='true']::after {
 
 .service-result.bad {
   color: var(--warning);
+}
+
+.service-access {
+  box-sizing: border-box;
+  height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  font: inherit;
+}
+
+.service-access-note {
+  flex-basis: 100%;
+  color: var(--text-dim);
+  line-height: 1.35;
 }
 
 /*

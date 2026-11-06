@@ -21,6 +21,14 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /'Archivos',[\s\S]*handlers\.onOpenFiles/);
     assert.match(settings, /'Registro de actividad',[\s\S]*handlers\.onOpenActivity/);
     assert.match(settings, /'Importar documentos',[\s\S]*handlers\.onImportDocuments/);
+    const library = settings.match(/function drawLibrary[\s\S]*?function drawPeople/)?.[0] ?? '';
+    const librarian = settings.match(/async function drawLibrarian[\s\S]*?async function drawConnections/)?.[0] ?? '';
+    const system = settings.match(/async function drawSystem[\s\S]*?async function drawInstanceConfiguration/)?.[0] ?? '';
+    assert.match(library, /Registro de actividad/);
+    assert.doesNotMatch(librarian, /Registro de actividad/);
+    assert.doesNotMatch(system, /Registro de actividad/);
+    assert.match(settings, /section: 'conexiones', label: 'Zotero'/);
+    assert.match(settings, /service\.access === 'read-write'/);
   });
 
   it('mantiene tema, bibliotecario y Centro en la barra cotidiana', () => {
@@ -109,6 +117,7 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /function drawSystem[\s\S]*drawInstanceConfiguration[\s\S]*drawPortability/);
     assert.match(settings, /Nombre de esta Vera · Pendiente/);
     assert.match(settings, /settings-backup/);
+    assert.match(styles, /\.instance-configuration :is\(input, select\)[\s\S]*height:\s*var\(--form-control-height\)/);
   });
 
   it('reúne el gobierno ontológico en un destino y conserva Gobierno como inventario', () => {

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BIBLIOGRAPHY_NAMES, blocksFor, propertiesFor, titleFor } from '../src/services.ts';
+import { VeraGraph, type Change } from '@vera/core';
+import { BIBLIOGRAPHY_NAMES, blocksFor, propertiesFor, servicePages, titleFor } from '../src/services.ts';
 import { readItem } from '../src/zotero.ts';
 
 const item = {
@@ -19,6 +20,38 @@ const item = {
   abstract: 'Sobre por qué las puertas se empujan cuando había que tirar.',
   tags: ['diseño'],
 };
+
+describe('servicePages', () => {
+  const connection = (access?: string) => {
+    const graph = VeraGraph.create({ name: 'mind', id: 'graph:services' });
+    graph.addParticipant({ id: 'participant:herbert', name: 'Herbert', kind: 'human' });
+    graph.admit('participant:herbert');
+    let sequence = 0;
+    const write = (change: Change): string => {
+      const done = graph.submitOperation({
+        originId: `service:${sequence += 1}`,
+        participant: 'participant:herbert',
+        channel: 'typed_text',
+        change,
+      });
+      assert.equal(done.status, 'applied');
+      return done.subjectId;
+    };
+    const page = write({ kind: 'create_page', title: 'Zotero', visibility: 'private' });
+    write({ kind: 'set_property', page, propertyKey: 'special-kind', propertyValue: 'service' });
+    write({ kind: 'set_property', page, propertyKey: 'servicio', propertyValue: 'zotero' });
+    if (access !== undefined) write({ kind: 'set_property', page, propertyKey: 'acceso', propertyValue: access });
+    return servicePages(graph, 'special-kind')[0]!;
+  };
+
+  it('es sólo lectura mientras la página no conceda escritura', () => {
+    assert.equal(connection().access, 'read');
+  });
+
+  it('separa la autorización local de la capacidad de la clave', () => {
+    assert.equal(connection('lectura y escritura').access, 'read-write');
+  });
+});
 
 describe('readItem', () => {
   it('lee un ítem de Zotero y deja lo que a Vera le sirve', () => {
