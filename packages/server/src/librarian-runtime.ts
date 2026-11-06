@@ -10,6 +10,7 @@ export const LIBRARIAN_RUNTIME_ID = 'vera:embedded-librarian';
 export const LIBRARIAN_RUNTIME_LABEL = 'Vera · agente de biblioteca embebido';
 
 export type LibrarianRuntimePermission = 'read_request_context' | 'reply' | 'daily_round';
+export type LibrarianExecutionAdapter = 'embedded_model' | 'external_agent';
 export type LibrarianRuntimeStatus = 'unconstituted' | 'stopped' | 'ready' | 'degraded' | 'working';
 export type FormativePractice = 'reading' | 'selection' | 'interpretation' | 'comparison' | 'synthesis' | 'conclusion';
 export type LibrarianDialecticGateStatus = 'open' | 'responding' | 'fulfilled' | 'bypassed';
@@ -23,6 +24,8 @@ export interface LibrarianRuntimeConfiguration {
   librarian: string;
   agent: string;
   enabled: boolean;
+  adapter: LibrarianExecutionAdapter;
+  externalAgent: string | null;
   model: string | null;
   endpoint: string | null;
   secretReference: string | null;
@@ -218,10 +221,11 @@ function parsePermissions(value: string): LibrarianRuntimePermission[] {
 export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeConfiguration | null {
   const binding = activeBinding(store);
   if (binding === null) return null;
-  const row = store.db.prepare(`SELECT enabled,model_id,endpoint,secret_reference,permissions_json,
+  const row = store.db.prepare(`SELECT enabled,execution_adapter,external_agent_id,model_id,endpoint,secret_reference,permissions_json,
       dialectic_enabled,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at
     FROM librarian_runtime_configs WHERE instance_id=?`).get(binding.instance_id) as {
-      enabled: number; model_id: string | null; endpoint: string | null; secret_reference: string | null;
+      enabled: number; execution_adapter: LibrarianExecutionAdapter; external_agent_id: string | null;
+      model_id: string | null; endpoint: string | null; secret_reference: string | null;
       permissions_json: string; dialectic_enabled: number; routine_enabled: number; routine_hour: number; routine_timezone: string;
       updated_by: string; updated_at: number;
     } | undefined;
@@ -231,6 +235,8 @@ export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeCon
     librarian: binding.librarian_id,
     agent: binding.agent_id,
     enabled: row.enabled === 1,
+    adapter: row.execution_adapter,
+    externalAgent: row.external_agent_id,
     model: row.model_id,
     endpoint: row.endpoint,
     secretReference: row.secret_reference,
@@ -245,6 +251,8 @@ export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeCon
 export function saveLibrarianRuntimeConfiguration(store: Store, input: {
   updatedBy: string;
   enabled: boolean;
+  adapter?: LibrarianExecutionAdapter;
+  externalAgent?: string | null;
   model: string | null;
   endpoint: string | null;
   secretReference: string | null;
@@ -281,17 +289,29 @@ export function saveLibrarianRuntimeConfiguration(store: Store, input: {
     throw new Error('activar la ronda exige el permiso daily_round');
   }
   const now = Date.now();
+  const adapter = input.adapter ?? 'embedded_model';
+  if (!['embedded_model', 'external_agent'].includes(adapter)) {
+    throw new Error('el adaptador del runtime no es reconocible');
+  }
+  if (adapter === 'external_agent' && input.routine.enabled) {
+    throw new Error('la ronda programada todavía requiere el runtime embebido');
+  }
+  const externalAgent = input.externalAgent?.trim() || null;
+  if (input.enabled && adapter === 'external_agent' && externalAgent === null) {
+    throw new Error('elige el agente que ejecutará el runtime externo');
+  }
   store.db.prepare(`INSERT INTO librarian_runtime_configs
-    (instance_id,librarian_id,agent_id,enabled,model_id,endpoint,secret_reference,permissions_json,
+    (instance_id,librarian_id,agent_id,enabled,execution_adapter,external_agent_id,model_id,endpoint,secret_reference,permissions_json,
       dialectic_enabled,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(instance_id) DO UPDATE SET librarian_id=excluded.librarian_id,agent_id=excluded.agent_id,
-      enabled=excluded.enabled,model_id=excluded.model_id,endpoint=excluded.endpoint,
+      enabled=excluded.enabled,execution_adapter=excluded.execution_adapter,external_agent_id=excluded.external_agent_id,
+      model_id=excluded.model_id,endpoint=excluded.endpoint,
       secret_reference=excluded.secret_reference,permissions_json=excluded.permissions_json,
       dialectic_enabled=excluded.dialectic_enabled,
       routine_enabled=excluded.routine_enabled,routine_hour=excluded.routine_hour,
       routine_timezone=excluded.routine_timezone,updated_by=excluded.updated_by,updated_at=excluded.updated_at`).run(
-        binding.instance_id, binding.librarian_id, binding.agent_id, input.enabled ? 1 : 0, model,
+        binding.instance_id, binding.librarian_id, binding.agent_id, input.enabled ? 1 : 0, adapter, externalAgent, model,
         endpoint, secretReference, JSON.stringify(permissions), input.dialectic.enabled ? 1 : 0, input.routine.enabled ? 1 : 0,
         input.routine.hour, input.routine.timezone.trim() || 'local', input.updatedBy, now,
       );

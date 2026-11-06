@@ -1409,6 +1409,25 @@ const upgradeResidentLibrarianHarness: Migration = {
   },
 };
 
+/** 38 — el oficio no queda amarrado a un motor: embebido o agente externo. */
+const addConfigurableLibrarianExecutionAdapter: Migration = {
+  version: 38,
+  name: 'adaptador configurable del agente de biblioteca',
+  apply(db) {
+    const table = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_runtime_configs'",
+    ).get();
+    if (table === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'execution_adapter')) {
+      db.exec("ALTER TABLE librarian_runtime_configs ADD COLUMN execution_adapter TEXT NOT NULL DEFAULT 'embedded_model' CHECK (execution_adapter IN ('embedded_model','external_agent'))");
+    }
+    if (!columns.some((column) => column.name === 'external_agent_id')) {
+      db.exec('ALTER TABLE librarian_runtime_configs ADD COLUMN external_agent_id TEXT');
+    }
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1447,6 +1466,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addLibrarianDialectic,
   addContributionLineage,
   upgradeResidentLibrarianHarness,
+  addConfigurableLibrarianExecutionAdapter,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

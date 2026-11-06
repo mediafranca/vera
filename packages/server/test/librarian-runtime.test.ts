@@ -616,7 +616,7 @@ describe('runtime embebido de la bibliotecaria', () => {
     }
   });
 
-  it('coexiste con Cotito sin prestarle la identidad de Lucienne', async () => {
+  it('usa un agente externo con identidad propia y puede volver al runtime embebido', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-runtime-bridge-'));
     directories.push(directory);
     const databasePath = join(directory, 'vera.sqlite');
@@ -654,20 +654,27 @@ describe('runtime embebido de la bibliotecaria', () => {
     try {
       const constituted = await call('/librarian/runtime/constitute', { method: 'POST', body: {} });
       const lucienne = (constituted.json['librarian'] as Record<string, string>).agent;
-      assert.equal((await call('/agents', {
-        method: 'POST', body: { id: 'participant:cotito', name: 'Cotito' },
-      })).status, 201);
       const issued = await call('/agents/credentials', {
-        method: 'POST', body: { participant: 'participant:cotito', scopes: ['read', 'write'], label: 'puente' },
+        method: 'POST', body: { participant: lucienne, scopes: ['read', 'write'], label: 'runtime externo' },
       });
       const secret = issued.json['secret'] as string;
+      const external = await call('/librarian/runtime', { method: 'PUT', body: {
+        enabled: true, adapter: 'external_agent', externalAgent: 'lucienne',
+        model: 'openai:gpt-5.6-sol', endpoint: null,
+        secretReference: null, permissions: ['read_request_context', 'reply'],
+        dialectic: { enabled: true }, routine: { enabled: false, hour: 9, timezone: 'local' },
+      } });
+      assert.equal(external.status, 200, JSON.stringify(external.json));
+      assert.equal((external.json['configuration'] as Record<string, unknown>)['adapter'], 'external_agent');
+      assert.equal((external.json['configuration'] as Record<string, unknown>)['externalAgent'], 'lucienne');
+      assert.equal((external.json['configuration'] as Record<string, unknown>)['model'], 'openai:gpt-5.6-sol');
       const made = await call('/operations', { method: 'POST', body: {
         originId: 'bridge-test:page', participant: owner.id,
         change: { kind: 'create_page', title: 'Puente transparente', visibility: 'private' },
       } });
       const page = made.json['subjectId'] as string;
       const requested = await call('/librarian/requests', { method: 'POST', body: {
-        pageId: page, text: 'Responde por el puente',
+        pageId: page, text: 'Responde por el puente y escribe el resultado en la Bitácora de hoy.',
       } });
       const requestId = requested.json['id'] as string;
       for (let attempt = 0; attempt < 50 && wake === ''; attempt += 1) {
@@ -678,15 +685,23 @@ describe('runtime embebido de la bibliotecaria', () => {
         method: 'POST', secret,
       })).status, 200);
       const answered = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
-        method: 'POST', secret, body: { text: 'Respondió Cotito como puente.', changes: [] },
+        method: 'POST', secret, body: { text: 'Respondió Lucienne mediante Codex.', changes: [] },
       });
       assert.equal(answered.status, 201, JSON.stringify(answered.json));
-      assert.equal((answered.json['reply'] as Record<string, unknown>)['answeredBy'], 'participant:cotito');
+      assert.equal((answered.json['reply'] as Record<string, unknown>)['answeredBy'], lucienne);
+      const daily = running.vera.graph.pages().find((candidate) =>
+        running.vera.graph.blocksOf(candidate.id)
+          .some((block) => block.content === '**Bitácora de Lucienne:**'));
+      assert.ok(daily, 'el runtime externo no creó el apartado diario de Lucienne');
+      const root = running.vera.graph.blocksOf(daily.id)
+        .find((block) => block.content === '**Bitácora de Lucienne:**')!;
+      assert.ok(running.vera.graph.blocksOf(daily.id).some((block) =>
+        block.parent === root.stableId && /Respondió Lucienne mediante Codex/.test(block.content)));
       const conversation = await call('/librarian/conversation');
       assert.equal((conversation.json['agent'] as Record<string, unknown>)['id'], lucienne);
 
       const configured = await call('/librarian/runtime', { method: 'PUT', body: {
-        enabled: true, model: 'openai:test', endpoint: 'http://127.0.0.1:4389/v1',
+        enabled: true, adapter: 'embedded_model', model: 'openai:test', endpoint: 'http://127.0.0.1:4389/v1',
         secretReference: 'VERA_TEST_LIBRARIAN_KEY', permissions: ['read_request_context', 'reply'],
         dialectic: { enabled: true }, routine: { enabled: false, hour: 9, timezone: 'local' },
       } });

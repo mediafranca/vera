@@ -429,6 +429,8 @@ describe('migraciones', () => {
     assert.ok((store.db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_dialectic_gates'").get()));
     const columns = store.db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
     assert.ok(columns.some((column) => column.name === 'dialectic_enabled'));
+    assert.ok(columns.some((column) => column.name === 'execution_adapter'));
+    assert.ok(columns.some((column) => column.name === 'external_agent_id'));
     store.close();
   });
 });

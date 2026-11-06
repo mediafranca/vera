@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS librarian_runtime_configs (
     librarian_id      TEXT NOT NULL REFERENCES owner_librarians (id),
     agent_id          TEXT NOT NULL REFERENCES participants (id),
     enabled           INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    execution_adapter TEXT NOT NULL DEFAULT 'embedded_model' CHECK (execution_adapter IN ('embedded_model','external_agent')),
+    external_agent_id TEXT,
     model_id          TEXT,
     endpoint          TEXT,
     secret_reference TEXT,

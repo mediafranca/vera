@@ -176,6 +176,7 @@ import {
   reopenDialecticGate,
   reserveDialecticGate,
   saveLibrarianRuntimeConfiguration,
+  type LibrarianExecutionAdapter,
   type LibrarianRuntimePermission,
   type LibrarianRuntimeStatus,
 } from './librarian-runtime.ts';
@@ -1038,6 +1039,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (!config.enabled) return 'stopped';
     if (embeddedLibrarianBusy) return 'working';
     if (config.model === null || activeManifest(store, config.agent) === null) return 'degraded';
+    if (config.adapter === 'external_agent') {
+      return options.librarianHook === undefined ? 'degraded' : 'ready';
+    }
     if (config.model.startsWith('openai:') && (resolvedRuntimeSecret(config.secretReference) ?? '').trim() === '') {
       return 'degraded';
     }
@@ -1377,6 +1381,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const config = librarianRuntimeConfiguration(store);
     if (config === null || !config.enabled || embeddedRuntimeStatus === 'degraded') {
       wakeEmbeddedLibrarian = null;
+      return;
+    }
+    if (config.adapter === 'external_agent') {
+      wakeEmbeddedLibrarian = null;
+      const manifest = activeManifest(store, config.agent);
+      if (manifest !== null) {
+        reportRuntimeReceipt(store, config.agent,
+          { id: 'vera:external-librarian', label: 'Vera · agente de biblioteca externo' },
+          manifest.summary.id, manifest.summary.digest, 'ready',
+          `OpenClaw · agente ${config.externalAgent ?? 'sin configurar'} · harness Codex · ${config.model ?? 'sin modelo'}`);
+      }
+      void dispatchNextLibrarianRequest();
       return;
     }
     wakeEmbeddedLibrarian = (id) => {
@@ -2910,7 +2926,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         if (librarianRuntimeConfiguration(store) === null) {
           saveLibrarianRuntimeConfiguration(store, {
-            updatedBy: owner.id, enabled: false, model: null, endpoint: null,
+            updatedBy: owner.id, enabled: false, adapter: 'embedded_model', externalAgent: null,
+            model: null, endpoint: null,
             secretReference: 'VERA_LIBRARIAN_API_KEY',
             permissions: ['read_request_context', 'reply', 'daily_round'],
             dialectic: { enabled: true },
@@ -2959,6 +2976,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         saveLibrarianRuntimeConfiguration(store, {
           updatedBy: owner.id,
           enabled: body['enabled'] === true,
+          adapter: (body['adapter'] === 'external_agent' ? 'external_agent' : 'embedded_model') as LibrarianExecutionAdapter,
+          externalAgent: typeof body['externalAgent'] === 'string' ? body['externalAgent'] : null,
           model: typeof body['model'] === 'string' ? body['model'] : null,
           endpoint: typeof body['endpoint'] === 'string' ? body['endpoint'] : null,
           secretReference: typeof body['secretReference'] === 'string' ? body['secretReference'] : null,
@@ -3364,33 +3383,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * sin duplicar el texto, y el historial conserva mano y canal como en toda
          * escritura del bibliotecario.
          */
-        if (current.sourcePageId === null) {
-          send(response, 409, { error: 'la solicitud no conserva la página donde debe escribirse la respuesta' });
-          return;
-        }
-        const replyBlock = `block:librarian-reply:${current.id.slice('agent-request:'.length)}`;
-        const roots = graph.blocksOf(current.sourcePageId).filter((block) => block.parent === null);
-        const outcome = graph.submitOperation({
-          originId: `librarian:${current.id}:page-reply`,
-          participant: who.participant,
-          channel: 'agent_generation',
-          lineage: librarianContributionLineageFor(current),
-          change: {
-            kind: 'create_block',
-            stableId: replyBlock,
-            page: current.sourcePageId,
-            parent: null,
-            position: roots.length,
-            content: text,
-          },
-        });
-        if (outcome.status === 'rejected') {
-          send(response, 422, { error: outcome.reason }); return;
-        }
-        if (outcome.status === 'applied') {
-          const failure = persist(outcome.operation);
-          if (failure !== null) { send(response, 500, { error: failure }); return; }
-        }
+        const writingFailure = writeEmbeddedReply(current, who.participant, text);
+        if (writingFailure !== null) { send(response, 422, { error: writingFailure }); return; }
         const answered = answerLibrarianRequest(store, {
           id, answeredBy: who.participant, text, changes,
           lineage: librarianContributionLineageFor(current),

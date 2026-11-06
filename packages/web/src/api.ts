@@ -714,6 +714,8 @@ export interface LibrarianRuntimeView {
     librarian: string;
     agent: string;
     enabled: boolean;
+    adapter: 'embedded_model' | 'external_agent';
+    externalAgent: string | null;
     model: string | null;
     endpoint: string | null;
     secretReference: string | null;
@@ -1653,7 +1655,8 @@ export const api = {
   }),
 
   configureLibrarianRuntime: (configuration: {
-    enabled: boolean; model: string | null; endpoint: string | null; secretReference: string | null;
+    enabled: boolean; adapter: 'embedded_model' | 'external_agent'; externalAgent: string | null;
+    model: string | null; endpoint: string | null; secretReference: string | null;
     permissions: LibrarianRuntimePermission[];
     dialectic: { enabled: boolean };
     routine: { enabled: boolean; hour: number; timezone: string };

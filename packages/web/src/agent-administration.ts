@@ -256,8 +256,18 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   }
   const modelCatalog = await api.processingModels().catch(() => ({ models: [] }));
   const form = document.createElement('form'); form.className = 'agent-runtime-form';
+  const adapter = document.createElement('select');
+  for (const [value, label] of [
+    ['external_agent', 'OpenClaw · harness Codex'],
+    ['embedded_model', 'Vera · modelo embebido'],
+  ] as const) {
+    const option = document.createElement('option'); option.value = value; option.textContent = label;
+    option.selected = config.adapter === value; adapter.append(option);
+  }
+  const externalAgent = document.createElement('input'); externalAgent.value = config.externalAgent ?? '';
+  externalAgent.placeholder = 'lucienne';
   const model = document.createElement('input'); model.value = config.model ?? '';
-  model.placeholder = 'openai:gpt-5.6-luna o local:…'; model.setAttribute('list', 'librarian-models');
+  model.placeholder = 'openai:gpt-5.6-sol, anthropic:… o google:…'; model.setAttribute('list', 'librarian-models');
   const models = document.createElement('datalist'); models.id = 'librarian-models';
   for (const offered of modelCatalog.models) {
     const option = document.createElement('option'); option.value = offered.id;
@@ -298,17 +308,32 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const dialecticNote = document.createElement('p'); dialecticNote.className = 'settings-note';
   dialecticNote.textContent = `Ante una delegación de lectura o juicio, ${view.librarian.name} pide primero una tentativa. La persona puede franquear ese umbral de forma explícita.`;
   const routineLabel = document.createElement('label'); routineLabel.append(routine, document.createTextNode('Ronda diaria activa'));
+  const effective = document.createElement('p'); effective.className = 'settings-note agent-runtime-effective';
+  const describeEffectiveRuntime = (): void => {
+    const target = adapter.value === 'external_agent'
+      ? `OpenClaw · agente ${externalAgent.value.trim() || 'sin elegir'} · harness Codex`
+      : 'Vera · inferencia embebida';
+    effective.textContent = `Configuración efectiva: ${target} · proveedor/modelo ${model.value.trim() || 'sin elegir'}. No existe fallback implícito.`;
+    externalAgent.closest('label')?.toggleAttribute('hidden', adapter.value !== 'external_agent');
+  };
+  adapter.addEventListener('change', describeEffectiveRuntime);
+  externalAgent.addEventListener('input', describeEffectiveRuntime);
+  model.addEventListener('input', describeEffectiveRuntime);
   form.append(
-    models, field('Modelo de inferencia', model), field('Endpoint compatible con OpenAI', endpoint),
+    models, field('Runtime de ejecución', adapter), field('Agente de OpenClaw', externalAgent),
+    field('Proveedor y modelo', model), field('Endpoint de inferencia (sólo modo embebido)', endpoint),
     field('Referencia del secreto', reference), field('Clave (sólo Desktop)', key),
-    permissionList, activeLabel, dialecticLabel, dialecticNote, routineLabel, field('Hora local de la ronda', hour),
+    effective, permissionList, activeLabel, dialecticLabel, dialecticNote, routineLabel, field('Hora local de la ronda', hour),
   );
+  describeEffectiveRuntime();
   form.append(control('Guardar configuración', async () => {
     if (desktop !== undefined && key.value.trim() !== '') {
       await desktop.save({ apiKey: key.value, endpoint: endpoint.value, model: model.value });
     }
     await api.configureLibrarianRuntime({
       enabled: enabled.checked,
+      adapter: adapter.value === 'external_agent' ? 'external_agent' : 'embedded_model',
+      externalAgent: adapter.value === 'external_agent' ? externalAgent.value.trim() || null : null,
       model: model.value.trim() || null,
       endpoint: endpoint.value.trim() || null,
       secretReference: reference.value.trim() || null,

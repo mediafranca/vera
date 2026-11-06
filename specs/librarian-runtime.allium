@@ -51,10 +51,23 @@ contract ResidentLibrarianExecution {
         -- is a child of the single daily root "Bitácora de <agent name>". Vera
         -- creates the private journal and its bitácora type on first use when
         -- necessary, preserving ordinary agent_generation authorship.
+
+    @invariant IdentitySurvivesRuntimeAndProviderChanges
+        -- Lucienne's participant, office, conversations, harness, authorship and
+        -- history do not belong to Qwen, Codex, OpenClaw or any other runtime or
+        -- model provider. The owner may replace either execution adapter or
+        -- provider without replacing the librarian.
+
+    @invariant TheConfiguredRuntimeIsTheOnlyRuntime
+        -- A request is dispatched only through the execution adapter and model
+        -- chosen by the owner. Failure leaves the durable request recoverable;
+        -- Vera never falls back silently from Codex to a local model, from one
+        -- provider to another, or from an external agent to embedded inference.
 }
 
 enum LibrarianRunKind { request | routine }
 enum LibrarianRunState { running | completed | failed }
+enum LibrarianExecutionAdapter { embedded_model | external_agent }
 enum LibrarianRuntimePermission { read_request_context | reply | daily_round }
 enum FormativePractice { reading | selection | interpretation | comparison | synthesis | conclusion }
 enum DialecticGateStatus { open | responding | fulfilled | bypassed }
@@ -62,6 +75,8 @@ enum DialecticGateStatus { open | responding | fulfilled | bypassed }
 entity LibrarianRuntimeConfiguration {
     librarian: harnesses/OwnerLibrarian
     enabled: Boolean
+    adapter: LibrarianExecutionAdapter
+    external_agent_id: String?
     model_id: String?
     endpoint: String?
     secret_reference: String?
@@ -104,16 +119,19 @@ actor LibrarianOwner {
     identified_by: core/Participant where this.kind = human and this.status = active
 }
 
-rule OwnerConfiguresEmbeddedRuntime {
-    when: ConfigureLibrarianRuntime(owner, librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
+rule OwnerConfiguresResidentRuntime {
+    when: ConfigureLibrarianRuntime(owner, librarian, enabled, adapter, external_agent_id, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
     requires: librarian.owner = owner
     requires: not enabled or model_id != null
+    requires: not enabled or adapter != external_agent or external_agent_id != null
     requires: routine_hour >= 0 and routine_hour <= 23
     requires: not enabled or (permissions.contains(read_request_context) and permissions.contains(reply))
     requires: not routine_enabled or permissions.contains(daily_round)
     ensures: LibrarianRuntimeConfiguration.created(
         librarian: librarian,
         enabled: enabled,
+        adapter: adapter,
+        external_agent_id: external_agent_id,
         model_id: model_id,
         endpoint: endpoint,
         secret_reference: secret_reference,
