@@ -459,6 +459,8 @@ export interface ServiceView {
   service: string;
   library: string | null;
   collections: string[];
+  /** Política local de la conexión; la capacidad de la clave se observa aparte. */
+  access: 'read' | 'read-write';
   secrets: ServiceSecret[];
   /** Cuántas páginas del corpus vinieron de ahí. Se cuenta, no se guarda. */
   pages: number;

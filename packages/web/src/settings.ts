@@ -107,17 +107,18 @@ type CentreDestination = {
 
 const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'biblioteca', label: 'Archivos', note: 'Imágenes, audios, documentos y adjuntos', open: (h) => h.onOpenFiles() },
+  { section: 'biblioteca', label: 'Registro de actividad', note: 'Cambios, eliminaciones y restauraciones', open: (h) => h.onOpenActivity() },
   { section: 'personas', label: 'Directorio', note: 'Personas y agentes, autoridad, credenciales, sesiones y roles', open: (h) => h.onOpenPeople() },
   { section: 'bibliotecario', label: 'Agente de biblioteca', note: 'Identidad, personalidad, harness, runtime y territorio' },
   { section: 'bibliotecario', label: 'Constitución y runtime', note: 'Fuentes editables, manifiesto, herramientas y ejecución', open: (h) => h.onOpenAgents() },
   { section: 'bibliotecario', label: 'Voz', note: 'Escuchar con STT y hablar con TTS local', terms: 'audio whisper kokoro micrófono transcripción' },
   { section: 'personas', label: 'Espacios compartidos', note: 'Superficies, invitaciones y permisos', open: (h) => h.onOpenSharing() },
   { section: 'conexiones', label: 'Agentes y clientes MCP', note: 'Identidad, alcance, estado y revocación', terms: 'mcp inteligencia credencial', open: (h) => h.onOpenPage('VERA: Conexiones') },
+  { section: 'conexiones', label: 'Zotero', note: 'Biblioteca, credencial y acceso de lectura o escritura', terms: 'bibliografía citas servicio' },
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
   { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
   { section: 'sistema', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
-  { section: 'sistema', label: 'Registro de actividad', note: 'Cambios, eliminaciones y restauraciones', open: (h) => h.onOpenActivity() },
   { section: 'sistema', label: 'Esta Vera', note: 'Nombre, perfil y ubicación de datos', terms: 'instancia identidad' },
 ];
 
@@ -1679,6 +1680,11 @@ function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
       destination('Importar una biblioteca', 'Incorporar páginas y archivos desde un respaldo .vera', () => drawPortability(host)),
     );
   }
+  actions.append(destination(
+    'Registro de actividad',
+    'Cambios atribuidos, eliminaciones y restauraciones de la biblioteca',
+    handlers.onOpenActivity,
+  ));
   host.append(actions);
 }
 
@@ -1729,7 +1735,6 @@ async function drawLibrarian(host: HTMLElement, handlers: SettingsHandlers): Pro
     destination(`Configurar ${librarianName}`, 'Constitución, manifiesto, harness, modelo, permisos y territorio', handlers.onOpenAgents),
     destination('Bitácora de hoy', `Lo que ${librarianName} hizo y decidió dentro del corpus`, () =>
       handlers.onOpenPage(todayTitle())),
-    destination('Registro de actividad', 'Operaciones atribuidas, eliminaciones y restauraciones', handlers.onOpenActivity),
   );
   host.append(actions);
 
@@ -1745,6 +1750,15 @@ async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): P
     pendingDestination('Captura web', 'La extensión funciona, pero falta reunir aquí su estado y autorización'),
     pendingDestination('Canales', 'Chat interno, Telegram y futuras puertas aún no comparten un panel'),
   );
+  const services = await api.services().catch(() => null);
+  for (const service of services ?? []) {
+    const policy = service.access === 'read-write' ? 'lectura y escritura' : 'sólo lectura';
+    actions.prepend(destination(
+      service.title,
+      `${service.service === 'zotero' ? 'Bibliografía' : service.service} · ${policy} · credencial ${service.secrets.length === 0 ? 'pendiente' : 'guardada'}`,
+      () => handlers.onOpenPage(service.title),
+    ));
+  }
   host.append(actions);
   heading(host, 'Vera hacia afuera', 'Aplicaciones que abren o procesan los materiales.');
   await drawExternalEditors(host);
@@ -1948,13 +1962,7 @@ function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {
 }
 
 async function drawSystem(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
-  heading(host, 'Sistema', 'Continuidad, actividad e identidad de esta instancia.');
-  const actions = document.createElement('div');
-  actions.className = 'settings-destinations';
-  actions.append(
-    destination('Registro de actividad', 'Cambios, eliminaciones y restauraciones', handlers.onOpenActivity),
-  );
-  host.append(actions);
+  heading(host, 'Sistema', 'Identidad y continuidad de esta instancia.');
   await drawInstanceConfiguration(host);
   drawPortability(host);
 }

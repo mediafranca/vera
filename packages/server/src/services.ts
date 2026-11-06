@@ -43,6 +43,8 @@ export interface ServicePage {
   library: string | null;
   /** Lo que la página dice traer. Hoy se anota y no filtra. */
   collections: string[];
+  /** La autoridad saliente que el dueño concede a Vera, además de la de la clave. */
+  access: 'read' | 'read-write';
 }
 
 const valueOf = (
@@ -72,6 +74,9 @@ export function servicePages(graph: VeraGraph, specialKey: string): ServicePage[
           .split(',')
           .map((one) => one.trim())
           .filter((one) => one !== ''),
+        access: ['escritura', 'lectura y escritura', 'read-write', 'write'].includes(
+          (valueOf(properties, 'acceso') ?? '').toLowerCase(),
+        ) ? 'read-write' : 'read',
       };
     })
     .filter((one): one is ServicePage => one !== null);
