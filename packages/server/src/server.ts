@@ -48,6 +48,7 @@ import {
 import type {
   Change,
   ContributionChannel,
+  ContributionLineage,
   DeclaredBlock,
   Operation,
   OriginEvidence,
@@ -163,6 +164,7 @@ import {
   dialecticGateForRequest,
   finishLibrarianRuntimeRun,
   formativeChallenge,
+  librarianContributionLineageFor,
   librarianRequestDispositionFor,
   librarianRequestPrompt,
   librarianRuntimeConfiguration,
@@ -452,6 +454,7 @@ interface SubmitBody {
   participant?: unknown;
   channel?: unknown;
   evidence?: unknown;
+  lineage?: unknown;
   /** Última revisión del bloque observada por quien intenta reescribirlo. */
   ifRevision?: unknown;
   /** La herramienta estrecha puede pedir un límite adicional aunque la credencial sea amplia. */
@@ -473,6 +476,8 @@ interface SubmitBatchBody {
   expectedSequence?: unknown;
   /** Canal paralelo a cada cambio. Ausente conserva el lote antiguo: todo tecleado. */
   channels?: unknown;
+  /** Linaje paralelo a cada cambio. Ausente conserva autoría directa. */
+  lineages?: unknown;
   /** Precondiciones por bloque para las ediciones incluidas en el lote. */
   ifRevisions?: unknown;
 }
@@ -831,6 +836,7 @@ function readOperation(body: SubmitBody): { error: string } | {
   originId: string;
   channel: ContributionChannel;
   evidence?: OriginEvidence;
+  lineage?: ContributionLineage;
   change: Change;
 } {
   if (typeof body.originId !== 'string' || body.originId === '') {
@@ -875,11 +881,36 @@ function readOperation(body: SubmitBody): { error: string } | {
     evidence = { reference: raw.reference, capturedAt: raw.capturedAt };
   }
 
+  let lineage: ContributionLineage | undefined;
+  if (body.lineage !== undefined && body.lineage !== null) {
+    if (typeof body.lineage !== 'object') return { error: 'lineage must be an object' };
+    const raw = body.lineage as Record<string, unknown>;
+    if (!['direct', 'mediated', 'derived', 'coauthored'].includes(String(raw.relation))) {
+      return { error: 'lineage.relation must be direct, mediated, derived or coauthored' };
+    }
+    if (raw.relatedParticipant !== undefined && typeof raw.relatedParticipant !== 'string') {
+      return { error: 'lineage.relatedParticipant must be a string' };
+    }
+    if (raw.sourceKind !== undefined && !['conversation', 'recording', 'page', 'block', 'document', 'external'].includes(String(raw.sourceKind))) {
+      return { error: 'lineage.sourceKind is not recognised' };
+    }
+    if (raw.sourceReference !== undefined && typeof raw.sourceReference !== 'string') {
+      return { error: 'lineage.sourceReference must be a string' };
+    }
+    lineage = {
+      relation: raw.relation as ContributionLineage['relation'],
+      ...(raw.relatedParticipant === undefined ? {} : { relatedParticipant: raw.relatedParticipant as string }),
+      ...(raw.sourceKind === undefined ? {} : { sourceKind: raw.sourceKind as NonNullable<ContributionLineage['sourceKind']> }),
+      ...(raw.sourceReference === undefined ? {} : { sourceReference: raw.sourceReference as string }),
+    };
+  }
+
   return {
     originId: body.originId,
     channel: channel as ContributionChannel,
     change: change as Change,
     ...(evidence === undefined ? {} : { evidence }),
+    ...(lineage === undefined ? {} : { lineage }),
   };
 }
 
@@ -1023,6 +1054,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       originId: `librarian-runtime:${turn.id}:page-reply`,
       participant: agent,
       channel: 'agent_generation',
+      lineage: librarianContributionLineageFor(turn),
       change: { kind: 'create_block', stableId, page: page.id, parent: null, position: roots.length, content: text },
     });
     if (outcome.status === 'rejected') return outcome.reason;
@@ -1131,6 +1163,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (writeFailure !== null) throw new Error(writeFailure);
       const answered = answerLibrarianRequest(store, {
         id, answeredBy: config.agent as ParticipantId, text: decision.text,
+        lineage: librarianContributionLineageFor(claimed),
       });
       if (answered === undefined) throw new Error('no se pudo guardar la respuesta final');
       if (gate !== null) completeDialecticGate(store, id);
@@ -3138,6 +3171,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             originId: `librarian:${current.id}:replacement`,
             participant: who.participant,
             channel: 'agent_generation',
+            lineage: librarianContributionLineageFor(current),
             change: replacement,
           });
           if (outcome.status === 'rejected') {
@@ -3147,7 +3181,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             const failure = persist(outcome.operation);
             if (failure !== null) { send(response, 500, { error: failure }); return; }
           }
-          const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes: [] });
+          const answered = answerLibrarianRequest(store, {
+            id, answeredBy: who.participant, text, changes: [],
+            lineage: librarianContributionLineageFor(current),
+          });
           if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
           send(response, 201, answered);
           void dispatchNextLibrarianRequest();
@@ -3171,6 +3208,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           originId: `librarian:${current.id}:page-reply`,
           participant: who.participant,
           channel: 'agent_generation',
+          lineage: librarianContributionLineageFor(current),
           change: {
             kind: 'create_block',
             stableId: replyBlock,
@@ -3187,7 +3225,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const failure = persist(outcome.operation);
           if (failure !== null) { send(response, 500, { error: failure }); return; }
         }
-        const answered = answerLibrarianRequest(store, { id, answeredBy: who.participant, text, changes });
+        const answered = answerLibrarianRequest(store, {
+          id, answeredBy: who.participant, text, changes,
+          lineage: librarianContributionLineageFor(current),
+        });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
         send(response, 201, answered);
         void dispatchNextLibrarianRequest();
@@ -3237,6 +3278,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
         if (
+          body.lineages !== undefined
+          && (!Array.isArray(body.lineages) || body.lineages.length !== body.changes.length)
+        ) {
+          send(response, 400, { error: 'lineages, if given, must match changes length' });
+          return;
+        }
+        if (
           body.ifRevisions !== undefined
           && (typeof body.ifRevisions !== 'object'
             || body.ifRevisions === null
@@ -3260,6 +3308,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             participant: body.participant,
             change,
             ...(Array.isArray(body.channels) ? { channel: body.channels[at] } : {}),
+            ...(Array.isArray(body.lineages) ? { lineage: body.lineages[at] } : {}),
           }));
         const malformed = inputs.find((input) => 'error' in input);
         if (malformed !== undefined && 'error' in malformed) {
@@ -3272,7 +3321,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (existing.every((operation) => operation !== undefined)) {
           const same = existing.every((operation, at) =>
             JSON.stringify(operation?.submission.change) === JSON.stringify(submissions[at]?.change)
-            && operation?.submission.channel === submissions[at]?.channel);
+            && operation?.submission.channel === submissions[at]?.channel
+            && JSON.stringify(operation?.submission.lineage) === JSON.stringify(submissions[at]?.lineage ?? { relation: 'direct' }));
           if (!same) {
             send(response, 409, { status: 'rejected', reason: 'ese origen de lote ya nombra otros cambios' });
             return;
@@ -7243,6 +7293,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           channel: string;
           originId: string;
           route: string | null;
+          lineage: {
+            relation: ContributionLineage['relation'];
+            relatedParticipant: string | null;
+            relatedName: string | null;
+            sourceKind: NonNullable<ContributionLineage['sourceKind']> | null;
+            sourceReference: string | null;
+          };
           what: string;
           content: string | null;
         }[] = [];
@@ -7263,6 +7320,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             channel: one.submission.channel,
             originId: one.originId,
             route: routeForOrigin(one.originId),
+            lineage: {
+              relation: one.submission.lineage.relation,
+              relatedParticipant: one.submission.lineage.relatedParticipant ?? null,
+              relatedName: one.submission.lineage.relatedParticipant === undefined
+                ? null
+                : graph.participant(one.submission.lineage.relatedParticipant)?.name ?? one.submission.lineage.relatedParticipant,
+              sourceKind: one.submission.lineage.sourceKind ?? null,
+              sourceReference: one.submission.lineage.sourceReference ?? null,
+            },
             what:
               change.kind === 'create_block'
                 ? 'nació'
@@ -7295,6 +7361,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               channel: prior.submission.channel,
               originId: prior.originId,
               route: routeForOrigin(prior.originId),
+              lineage: {
+                relation: prior.submission.lineage.relation,
+                relatedParticipant: prior.submission.lineage.relatedParticipant ?? null,
+                relatedName: prior.submission.lineage.relatedParticipant === undefined
+                  ? null
+                  : graph.participant(prior.submission.lineage.relatedParticipant)?.name ?? prior.submission.lineage.relatedParticipant,
+                sourceKind: prior.submission.lineage.sourceKind ?? null,
+                sourceReference: prior.submission.lineage.sourceReference ?? null,
+              },
               what: 'al publicarse',
               content: change.kind === 'create_block' || change.kind === 'edit_block'
                 ? change.content

@@ -69,6 +69,17 @@ contract AttributedGeneration {
         -- A block may name a recording as its origin and an agent as its hand at
         -- the same time. Where words came from and who last wrote them are
         -- separate claims, and neither one implies the other.
+
+    @invariant RelationalLineageDoesNotReplaceTheHand
+        -- «Herbert por Lucienne», «Lucienne a partir de Herbert» and «Herbert
+        -- con Lucienne» keep Lucienne's material inscription distinguishable
+        -- while naming the precise relation to Herbert. The relation supplements
+        -- authorship, channel and causal origin; it impersonates nobody.
+
+    @invariant EveryRevisionKeepsItsOwnLineage
+        -- A later edit may carry a different relation, but it cannot rewrite the
+        -- relation recorded by an earlier revision. Genealogy belongs to the
+        -- revision, not to a mutable label on the current block.
 }
 
 -- A credential is the only thing that makes an agent an agent rather than a
@@ -342,7 +353,7 @@ rule OwnerChangesCredentialScopes {
 -- operation is the credential's participant, so a caller that names somebody
 -- else does not write as them — it is refused.
 rule CredentialSubmitsChange {
-    when: SubmitAsAgent(agent, token, secret, change, origin_id)
+    when: SubmitAsAgent(agent, token, secret, change, origin_id, lineage)
 
     let membership = core/Membership{graph: token.graph, participant: token.participant}
 
@@ -361,7 +372,8 @@ rule CredentialSubmitsChange {
             origin_id: origin_id,
             participant: token.participant,
             change: change,
-            channel: agent_generation
+            channel: agent_generation,
+            lineage: lineage
         )
         token.last_used_at = now
 }
@@ -376,7 +388,7 @@ rule CredentialSubmitsChange {
 -- cannot come into existence without its authorship, because the submission that
 -- creates it records the hand in the same breath.
 rule WritingRecordsItsHand {
-    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?, lineage)
 
     requires: change.kind = create_block
 
@@ -390,7 +402,7 @@ rule WritingRecordsItsHand {
 
 -- @invariant AuthorshipFollowsTheLastWord made operational.
 rule RewritingTransfersTheHand {
-    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?, lineage)
 
     let previous = Authorship{block: change.block}
 
@@ -408,7 +420,7 @@ rule RewritingTransfersTheHand {
 -- Stated as a rule rather than left to silence, because "the hand does not change
 -- here" is exactly the kind of thing that gets implemented wrong by omission.
 rule MovingLeavesTheHandAlone {
-    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?, lineage)
 
     let authorship = Authorship{block: change.block}
 
@@ -540,7 +552,7 @@ surface AgentGraphParticipation {
         token.scopes
 
     provides:
-        SubmitAsAgent(agent, token, secret, change, origin_id)
+        SubmitAsAgent(agent, token, secret, change, origin_id, lineage)
 
     contracts:
         fulfils AttributedGeneration
@@ -553,6 +565,13 @@ surface AgentGraphParticipation {
         -- A refused submission comes back with the reason it was refused —
         -- expired credential, missing scope, or a rule of the domain. An agent
         -- that cannot tell these apart cannot correct itself.
+
+    @guarantee AgentWritingDeclaresItsRelationToOtherVoices
+        -- When an agent writes from a conversation, recording, page, block,
+        -- document or external source, the operation records whether the agent
+        -- speaks directly, mediates another participant, derives a synthesis or
+        -- contributes jointly. Omitting the relation means direct authorship;
+        -- it never silently claims the human's voice.
 }
 
 ------------------------------------------------------------

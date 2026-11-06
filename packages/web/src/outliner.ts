@@ -3282,12 +3282,31 @@ async function showHistory(
     line.append(when);
     const provenance = document.createElement('div');
     provenance.className = 'history-provenance';
-    provenance.append('Autor: ');
+    provenance.append('Procedencia: ');
     const author = document.createElement('a');
     author.href = participantProfilePath(state.participant);
     author.textContent = state.by;
     author.title = `Ver las contribuciones de ${state.by}`;
-    provenance.append(author, ` · Canal: ${historyChannelLabel(state.channel)}`);
+    const related = state.lineage.relatedName;
+    if (state.lineage.relation === 'mediated' && related !== null) {
+      author.textContent = related;
+      author.href = participantProfilePath(state.lineage.relatedParticipant ?? state.participant);
+      author.title = `Ver las contribuciones de ${related}`;
+      provenance.append(author, ` por ${state.by}`);
+    } else if (state.lineage.relation === 'derived' && related !== null) {
+      provenance.append(author, ` a partir de ${related}`);
+    } else if (state.lineage.relation === 'coauthored' && related !== null) {
+      author.textContent = related;
+      author.href = participantProfilePath(state.lineage.relatedParticipant ?? state.participant);
+      author.title = `Ver las contribuciones de ${related}`;
+      provenance.append(author, ` con ${state.by}`);
+    } else {
+      provenance.append(author);
+    }
+    provenance.append(` · Canal: ${historyChannelLabel(state.channel)}`);
+    if (state.lineage.sourceKind !== null && state.lineage.sourceReference !== null) {
+      provenance.append(` · Fuente: ${historySourceLabel(state.lineage.sourceKind)} ${state.lineage.sourceReference}`);
+    }
     if (state.route !== null) provenance.append(` · Vía: ${state.route}`);
     line.append(provenance);
     const audit = document.createElement('details');
@@ -3343,6 +3362,13 @@ function historyChannelLabel(channel: string): string {
   };
   const label = labels[channel];
   return label === undefined ? channel : `${label} (${channel})`;
+}
+
+function historySourceLabel(kind: NonNullable<import('./api.ts').BlockState['lineage']['sourceKind']>): string {
+  return {
+    conversation: 'conversación', recording: 'grabación', page: 'página',
+    block: 'bloque', document: 'documento', external: 'fuente externa',
+  }[kind];
 }
 
 /**

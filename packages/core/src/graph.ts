@@ -16,6 +16,7 @@ import {
 } from './relations.ts';
 import type { Crossing, RelationNames } from './relations.ts';
 import { DEFAULT_PROPERTY_NAMES, derivedRole } from './property-names.ts';
+import { CONTRIBUTION_RELATIONS, LINEAGE_SOURCE_KINDS } from './types.ts';
 import type { PropertyNames, PropertyRole } from './property-names.ts';
 import {
   calendarDay,
@@ -35,6 +36,7 @@ import type {
   BlockId,
   Change,
   ContributionChannel,
+  ContributionLineage,
   CrossingId,
   GraphId,
   GraphNeighbourhood,
@@ -547,6 +549,7 @@ export class VeraGraph {
 
   submitOperation(input: OperationInput): SubmitOutcome {
     const channel = input.channel ?? 'typed_text';
+    const lineage: ContributionLineage = input.lineage ?? { relation: 'direct' };
 
     // rule AcceptParticipantSubmission
     if (!this.#isActive(input.participant)) {
@@ -571,6 +574,8 @@ export class VeraGraph {
     if (kind === 'human' && channel === 'agent_generation') {
       return { status: 'rejected', reason: 'agent_generation belongs to agent participants' };
     }
+    const lineageRefusal = this.#validateLineage(input.participant, lineage);
+    if (lineageRefusal !== null) return { status: 'rejected', reason: lineageRefusal };
 
     // @invariant OriginIdentityIsTheIdempotencyKey
     const seen = this.#origins.get(input.originId);
@@ -596,6 +601,7 @@ export class VeraGraph {
       change: input.change,
       channel,
       evidence: input.evidence,
+      lineage,
       submittedAt: at,
       status: 'accepted',
     };
@@ -709,12 +715,46 @@ export class VeraGraph {
       authoredBy: submission.submittedBy,
       channel: submission.channel,
       evidence: submission.evidence,
+      lineage: submission.lineage,
       recordedAt: at,
       changeKind: change.kind,
       // La voz autenticada prueba autoría, no verdad factual.
       originIsCanonical:
         submission.channel === 'authenticated_voice' && submission.evidence !== undefined,
     });
+  }
+
+  #validateLineage(participant: ParticipantId, lineage: ContributionLineage): string | null {
+    if (!(CONTRIBUTION_RELATIONS as readonly string[]).includes(lineage.relation)) {
+      return 'unknown contribution lineage relation';
+    }
+    const hasSourceKind = lineage.sourceKind !== undefined;
+    const hasSourceReference = lineage.sourceReference !== undefined;
+    if (hasSourceKind !== hasSourceReference) {
+      return 'lineage source kind and reference must appear together';
+    }
+    if (hasSourceReference && lineage.sourceReference?.trim() === '') {
+      return 'lineage source reference must be non-empty';
+    }
+    if (lineage.sourceKind !== undefined && !(LINEAGE_SOURCE_KINDS as readonly string[]).includes(lineage.sourceKind)) {
+      return 'unknown lineage source kind';
+    }
+    if (lineage.relation === 'direct') {
+      return lineage.relatedParticipant === undefined
+        ? null
+        : 'direct lineage cannot name another participant';
+    }
+    if (lineage.relatedParticipant === undefined) {
+      return 'relational lineage requires another participant';
+    }
+    if (lineage.relatedParticipant === participant) {
+      return 'relational lineage must name a different participant';
+    }
+    if (!this.#isActive(lineage.relatedParticipant)) {
+      return 'lineage participant has no active membership in this graph';
+    }
+    if (!hasSourceKind) return 'relational lineage requires a source';
+    return null;
   }
 
   // -------------------------------------------------------------------------

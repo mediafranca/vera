@@ -111,6 +111,46 @@ describe('entity fields', () => {
   });
 });
 
+describe('linaje de contribución por revisión', () => {
+  it('conserva la mano, la relación y la fuente sin reescribir revisiones anteriores', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, 'Procedencia');
+    const created = graph.submitOperation({
+      originId: 'lineage:create', participant: AGENT, channel: 'agent_generation',
+      lineage: {
+        relation: 'derived', relatedParticipant: OWNER,
+        sourceKind: 'recording', sourceReference: 'recording:8838',
+      },
+      change: { kind: 'create_block', page, parent: null, position: 0, content: 'Ideas ordenadas' },
+    });
+    assert.equal(created.status, 'applied');
+    if (created.status !== 'applied') return;
+    assert.deepEqual(created.operation.submission.lineage, {
+      relation: 'derived', relatedParticipant: OWNER,
+      sourceKind: 'recording', sourceReference: 'recording:8838',
+    });
+    const edited = graph.submitOperation({
+      originId: 'lineage:edit', participant: OWNER, channel: 'typed_text',
+      change: { kind: 'edit_block', block: created.subjectId, content: 'Corrección humana' },
+    });
+    assert.equal(edited.status, 'applied');
+    assert.equal(graph.revisions()[0]?.lineage.relation, 'direct');
+    assert.equal(graph.revisions()[1]?.lineage.relation, 'derived');
+    assert.equal(graph.revisions()[2]?.lineage.relation, 'direct');
+  });
+
+  it('rechaza una relación sin participante o sin fuente', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, 'Procedencia incompleta');
+    const outcome = graph.submitOperation({
+      originId: 'lineage:invalid', participant: AGENT, channel: 'agent_generation',
+      lineage: { relation: 'derived' },
+      change: { kind: 'create_block', page, parent: null, position: 0, content: 'Sin fuente' },
+    });
+    assert.deepEqual(outcome, { status: 'rejected', reason: 'relational lineage requires another participant' });
+  });
+});
+
 describe('invariant BlockParentBelongsToSamePage', () => {
   it('holds after any sequence of changes', () => {
     fc.assert(

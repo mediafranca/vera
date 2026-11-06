@@ -12,11 +12,25 @@ import {
   compactLibrarianPromptContext,
   formativePracticeFor,
   librarianRequestDispositionFor,
+  librarianContributionLineageFor,
 } from '../src/librarian-runtime.ts';
 
 const directories: string[] = [];
 
 describe('frontera formativa de la dialéctica', () => {
+  it('distingue mediación, derivación, coautoría y juicio propio antes de escribir', () => {
+    const request = (text: string, modality: 'audio' | 'page' = 'page') => ({
+      id: 'agent-request:1', askedBy: 'participant:herbert', text, modality,
+      recordingId: modality === 'audio' ? 'recording:1' : null,
+      sourceBlockId: null,
+    }) as Parameters<typeof librarianContributionLineageFor>[0];
+    assert.equal(librarianContributionLineageFor(request('Ordena este audio en puntos', 'audio')).relation, 'derived');
+    assert.equal(librarianContributionLineageFor(request('Redacta una carta en mi nombre')).relation, 'mediated');
+    assert.equal(librarianContributionLineageFor(request('Escribamos juntos esta sección')).relation, 'coauthored');
+    assert.deepEqual(librarianContributionLineageFor(request('Investiga el origen y juzga la evidencia')), {
+      relation: 'direct', sourceKind: 'conversation', sourceReference: 'agent-request:1',
+    });
+  });
   it('reconoce las seis prácticas y deja fluidas las tareas operativas', () => {
     assert.equal(formativePracticeFor('Lee este texto por mí.'), 'reading');
     assert.equal(formativePracticeFor('Elige los pasajes más importantes.'), 'selection');

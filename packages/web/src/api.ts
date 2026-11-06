@@ -346,6 +346,13 @@ export interface BlockState {
   channel: string;
   originId: string;
   route: string | null;
+  lineage: {
+    relation: 'direct' | 'mediated' | 'derived' | 'coauthored';
+    relatedParticipant: string | null;
+    relatedName: string | null;
+    sourceKind: 'conversation' | 'recording' | 'page' | 'block' | 'document' | 'external' | null;
+    sourceReference: string | null;
+  };
   what: string;
   content: string | null;
 }

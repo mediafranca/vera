@@ -577,9 +577,20 @@ CREATE TABLE IF NOT EXISTS operations (
                                            'drawn')),
     evidence_reference     TEXT,
     evidence_captured_at   INTEGER,
+    lineage_relation       TEXT NOT NULL DEFAULT 'direct' CHECK (
+                               lineage_relation IN ('direct','mediated','derived','coauthored')),
+    lineage_participant_id TEXT REFERENCES participants (id),
+    lineage_source_kind    TEXT CHECK (
+                               lineage_source_kind IN ('conversation','recording','page','block','document','external')),
+    lineage_source_reference TEXT,
     submitted_at           INTEGER NOT NULL,
     applied_at             INTEGER NOT NULL,
-    CHECK (channel <> 'authenticated_voice' OR evidence_reference IS NOT NULL)
+    CHECK (channel <> 'authenticated_voice' OR evidence_reference IS NOT NULL),
+    CHECK ((lineage_source_kind IS NULL) = (lineage_source_reference IS NULL)),
+    CHECK ((lineage_relation = 'direct' AND lineage_participant_id IS NULL)
+        OR (lineage_relation <> 'direct' AND lineage_participant_id IS NOT NULL
+            AND lineage_source_kind IS NOT NULL AND lineage_source_reference IS NOT NULL)),
+    CHECK (lineage_participant_id IS NULL OR lineage_participant_id <> participant_id)
 ) STRICT;
 
 -- invariant OperationOriginIsUniqueWithinLog: reenviar no aplica dos veces
@@ -596,6 +607,12 @@ CREATE TABLE IF NOT EXISTS revisions (
     crossing_id     TEXT,
     authored_by     TEXT NOT NULL REFERENCES participants (id),
     channel         TEXT NOT NULL,
+    lineage_relation TEXT NOT NULL DEFAULT 'direct' CHECK (
+                         lineage_relation IN ('direct','mediated','derived','coauthored')),
+    lineage_participant_id TEXT REFERENCES participants (id),
+    lineage_source_kind TEXT CHECK (
+                         lineage_source_kind IN ('conversation','recording','page','block','document','external')),
+    lineage_source_reference TEXT,
     recorded_at     INTEGER NOT NULL
 ) STRICT;
 
@@ -1181,6 +1198,12 @@ CREATE TABLE IF NOT EXISTS agent_replies (
     request_id      TEXT NOT NULL UNIQUE REFERENCES agent_requests (id) ON DELETE CASCADE,
     answered_by     TEXT NOT NULL REFERENCES participants (id),
     text            TEXT NOT NULL,
+    lineage_relation TEXT NOT NULL DEFAULT 'direct' CHECK (
+                         lineage_relation IN ('direct','mediated','derived','coauthored')),
+    lineage_participant_id TEXT REFERENCES participants (id),
+    lineage_source_kind TEXT CHECK (
+                         lineage_source_kind IN ('conversation','recording','page','block','document','external')),
+    lineage_source_reference TEXT,
     created_at      INTEGER NOT NULL
 ) STRICT;
 

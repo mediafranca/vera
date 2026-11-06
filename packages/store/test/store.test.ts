@@ -285,6 +285,30 @@ describe('persistencia', () => {
     store.close();
   });
 
+  it('conserva el linaje relacional al reproducir el registro', () => {
+    const { store, graph, write } = freshStore();
+    const page = write({ kind: 'create_page', title: 'Linaje durable', visibility: 'private' });
+    const agent = 'participant:lucienne';
+    saveParticipant(store, { id: agent, name: 'Lucienne', kind: 'agent' });
+    graph.addParticipant({ id: agent, name: 'Lucienne', kind: 'agent' });
+    graph.admit(agent);
+    const outcome = graph.submitOperation({
+      originId: 'lineage:durable', participant: agent, channel: 'agent_generation',
+      lineage: {
+        relation: 'derived', relatedParticipant: OWNER,
+        sourceKind: 'recording', sourceReference: 'recording:voice-note',
+      },
+      change: { kind: 'create_block', page, parent: null, position: 0, content: 'Síntesis' },
+    });
+    assert.equal(outcome.status, 'applied');
+    if (outcome.status === 'applied') recordOperation(store, graph, outcome.operation);
+    assert.deepEqual(loadGraph(store).revisions().at(-1)?.lineage, {
+      relation: 'derived', relatedParticipant: OWNER,
+      sourceKind: 'recording', sourceReference: 'recording:voice-note',
+    });
+    store.close();
+  });
+
   it('encuentra por FTS5 plegando los diacríticos', () => {
     const { store, write } = freshStore();
     const page = write({ kind: 'create_page', title: 'Travesía', visibility: 'private' });

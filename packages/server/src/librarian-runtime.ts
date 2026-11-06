@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Store } from '@vera/store';
+import type { ContributionLineage } from '@vera/core';
 import { activeManifest, type AgentManifestDocument } from './agent-manifests.ts';
 import { librarianRequest, type LibrarianRequest } from './librarian.ts';
 import { activeOwnerLibrarian } from './owner-librarian.ts';
@@ -100,6 +101,30 @@ export function librarianRequestDispositionFor(text: string): LibrarianRequestDi
   return practice === null
     ? { mode: 'answer', reason: 'ordinary' }
     : { mode: 'challenge', practice };
+}
+
+/**
+ * Clasifica la relación autoral antes de que la respuesta entre al grafo.
+ * La decisión es del harness: el modelo no puede darse a sí mismo una autoría
+ * humana ni borrar la fuente que recibió.
+ */
+export function librarianContributionLineageFor(request: LibrarianRequest): ContributionLineage {
+  const said = folded(request.text);
+  const relation = /\b(en mi nombre|como si fuera yo|con mi voz|firma(?:do)? por mi|redacta (?:una |un )?(?:carta|correo|mensaje)|escribe por mi)\b/.test(said)
+    ? 'mediated'
+    : /\b(escribamos|construyamos|desarrollemos|trabajemos juntos|coautor|entre los dos|conmigo)\b/.test(said)
+      ? 'coauthored'
+      : /\b(ordena|resume|resumen|sintetiza|sintesis|estructura|pasa en limpio|convierte|extrae|organiza|reformula)\b/.test(said)
+        ? 'derived'
+        : 'direct';
+  const source = request.recordingId !== null
+    ? { sourceKind: 'recording' as const, sourceReference: request.recordingId }
+    : request.modality === 'block' && request.sourceBlockId !== null
+      ? { sourceKind: 'block' as const, sourceReference: request.sourceBlockId }
+      : { sourceKind: 'conversation' as const, sourceReference: request.id };
+  return relation === 'direct'
+    ? { relation, ...source }
+    : { relation, relatedParticipant: request.askedBy, ...source };
 }
 
 /**
@@ -556,6 +581,7 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
   return [
     `Eres ${librarianName}, agente de biblioteca de esta Vera. Responde en español claro, breve y afirmativo.`,
     'Tu principal es una persona. No inventes acciones ni herramientas. No reveles razonamiento privado.',
+    'Si la respuesta pedida contradice su fuente, atribuye falsamente una voz o exige sostener afirmaciones incompatibles, nombra la incoherencia antes de responder bajo una lectura coherente o pedir la decisión humana material. No presentes la abstención como un derecho personal de la IA.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
     manifestPrompt(store, config.agent, request.text),
     dialectic,

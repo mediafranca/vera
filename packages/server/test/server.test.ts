@@ -404,6 +404,23 @@ describe('POST /operations', () => {
     assert.equal(status, 403, JSON.stringify(json));
     assert.match(json['reason'] as string, /credencial/);
   });
+
+  it('expone en el historial el linaje y su fuente causal', async () => {
+    const page = await write({ kind: 'create_page', title: 'Linaje HTTP', visibility: 'private' });
+    const response = await post({
+      originId: 'http:lineage', participant: OWNER, channel: 'typed_text',
+      lineage: { relation: 'direct', sourceKind: 'document', sourceReference: 'document:1' },
+      change: { kind: 'create_block', page, parent: null, position: 0, content: 'Con fuente' },
+    });
+    assert.equal(response.status, 201, JSON.stringify(response.json));
+    const history = await get(`/blocks/${encodeURIComponent(String(response.json['subjectId']))}/history`) as {
+      states: Array<{ lineage: { relation: string; sourceKind: string; sourceReference: string } }>;
+    };
+    assert.deepEqual(history.states[0]?.lineage, {
+      relation: 'direct', relatedParticipant: null, relatedName: null,
+      sourceKind: 'document', sourceReference: 'document:1',
+    });
+  });
 });
 
 describe('POST /operations/batch', () => {
@@ -448,6 +465,25 @@ describe('POST /operations/batch', () => {
     const activity = await get('/activity') as { activity: { subjectId: string; channel: string }[] };
     const testimony = activity.activity.find((one) => one.subjectId === 'block:batch-walked');
     assert.equal(testimony?.channel, 'walked');
+  });
+
+  it('conserva una fuente de linaje distinta para cada cambio del lote', async () => {
+    const result = await postBatch({
+      originId: 'batch:lineage', participant: OWNER,
+      changes: [
+        { kind: 'create_page', stableId: 'page:batch-lineage', title: 'Linaje del lote', visibility: 'private' },
+        { kind: 'create_block', stableId: 'block:batch-lineage', page: 'page:batch-lineage', parent: null, position: 0, content: 'Desde un documento' },
+      ],
+      lineages: [
+        { relation: 'direct' },
+        { relation: 'direct', sourceKind: 'document', sourceReference: 'document:batch' },
+      ],
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.json));
+    const history = await get('/blocks/block%3Abatch-lineage/history') as {
+      states: Array<{ lineage: { sourceReference: string | null } }>;
+    };
+    assert.equal(history.states[0]?.lineage.sourceReference, 'document:batch');
   });
 
   it('rechaza canales desalineados sin aplicar el lote', async () => {

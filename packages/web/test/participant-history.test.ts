@@ -5,16 +5,20 @@ import assert from 'node:assert/strict';
 const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
-describe('autoría navegable en el historial de un bloque', () => {
+describe('procedencia navegable en el historial de un bloque', () => {
   it('enlaza el nombre con el registro del participante estable', () => {
     assert.match(outliner, /author\.href = participantProfilePath\(state\.participant\)/);
     assert.match(outliner, /author\.textContent = state\.by/);
   });
 
-  it('separa autor, canal, vía de ingreso, fuente y detalle auditable', () => {
+  it('separa linaje, canal, vía de ingreso, fuente y detalle auditable', () => {
     assert.match(outliner, /Origen: \$\{said\.origin\.route\}/);
     assert.match(outliner, /source\.href = said\.origin\.source/);
-    assert.match(outliner, /provenance\.append\('Autor: '\)/);
+    assert.match(outliner, /provenance\.append\('Procedencia: '\)/);
+    assert.match(outliner, /a partir de/);
+    assert.match(outliner, / por /);
+    assert.match(outliner, / con /);
+    assert.match(outliner, /Fuente: \$\{historySourceLabel/);
     assert.match(outliner, /Canal: \$\{historyChannelLabel\(state\.channel\)\}/);
     assert.match(outliner, /Vía: \$\{state\.route\}/);
     assert.match(outliner, /auditOrigin\.textContent = state\.originId/);
