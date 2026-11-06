@@ -874,6 +874,41 @@ function clearanceRefusalForChange(store: Store, graph: VeraGraph, participant: 
   return null;
 }
 
+function readChange(value: unknown): { error: string } | { change: Change } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { error: 'change must be an object' };
+  const raw = value as Record<string, unknown>;
+  const kind = raw['kind'];
+  if (typeof kind !== 'string' || !CHANGE_KINDS.has(kind)) {
+    return { error: `change.kind must be one of ${[...CHANGE_KINDS].join(', ')}` };
+  }
+  const string = (field: string): boolean => typeof raw[field] === 'string';
+  const optionalString = (field: string): boolean => raw[field] === undefined || typeof raw[field] === 'string';
+  const nullableString = (field: string): boolean => raw[field] === null || typeof raw[field] === 'string';
+  const position = (): boolean => Number.isSafeInteger(raw['position']) && Number(raw['position']) >= 0;
+  let valid = false;
+  switch (kind) {
+    case 'create_page': valid = string('title') && ['private', 'public'].includes(String(raw['visibility'])) && optionalString('stableId'); break;
+    case 'recover_page_origin': valid = string('page') && Number.isSafeInteger(raw['originCreatedAt']); break;
+    case 'rename_page': valid = string('page') && string('title'); break;
+    case 'set_page_visibility': valid = string('page') && ['private', 'public'].includes(String(raw['visibility'])); break;
+    case 'remove_page': valid = string('page'); break;
+    case 'create_block': valid = string('page') && nullableString('parent') && position() && string('content') &&
+      optionalString('stableId') && optionalString('crossing'); break;
+    case 'edit_block': valid = string('block') && string('content'); break;
+    case 'move_block': valid = string('block') && string('page') && nullableString('parent') && position() && optionalString('crossing'); break;
+    case 'remove_block': valid = string('block'); break;
+    case 'set_block_gloss': valid = string('block') && string('content'); break;
+    case 'create_crossing': valid = string('fromPage') && string('toPage') && string('content') && optionalString('stableId') &&
+      (raw['term'] === undefined || nullableString('term')); break;
+    case 'edit_crossing': valid = string('crossing') && string('content') && (raw['term'] === undefined || nullableString('term')); break;
+    case 'set_property': valid = string('propertyKey') && string('propertyValue') &&
+      ((string('page') && raw['block'] === undefined) || (string('block') && raw['page'] === undefined)); break;
+    case 'remove_property': valid = string('propertyKey') &&
+      ((string('page') && raw['block'] === undefined) || (string('block') && raw['page'] === undefined)); break;
+  }
+  return valid ? { change: raw as unknown as Change } : { error: `${kind} has malformed or missing fields` };
+}
+
 function readOperation(body: SubmitBody): { error: string } | {
   originId: string;
   channel: ContributionChannel;
@@ -895,24 +930,9 @@ function readOperation(body: SubmitBody): { error: string } | {
   if (typeof channel !== 'string' || !CHANNELS.has(channel)) {
     return { error: `channel must be one of ${[...CHANNELS].join(', ')}` };
   }
-  const change = body.change;
-  if (typeof change !== 'object' || change === null) return { error: 'change must be an object' };
-  const kind = (change as { kind?: unknown }).kind;
-  if (typeof kind !== 'string' || !CHANGE_KINDS.has(kind)) {
-    return { error: `change.kind must be one of ${[...CHANGE_KINDS].join(', ')}` };
-  }
-  if (kind === 'set_property') {
-    const property = change as { propertyKey?: unknown; propertyValue?: unknown };
-    if (typeof property.propertyKey !== 'string' || typeof property.propertyValue !== 'string') {
-      return { error: 'set_property needs propertyKey and propertyValue strings' };
-    }
-  }
-  if (kind === 'remove_property') {
-    const property = change as { propertyKey?: unknown };
-    if (typeof property.propertyKey !== 'string') {
-      return { error: 'remove_property needs a propertyKey string' };
-    }
-  }
+  const parsedChange = readChange(body.change);
+  if ('error' in parsedChange) return parsedChange;
+  const change = parsedChange.change;
 
   let evidence: OriginEvidence | undefined;
   if (body.evidence !== undefined && body.evidence !== null) {
@@ -950,7 +970,7 @@ function readOperation(body: SubmitBody): { error: string } | {
   return {
     originId: body.originId,
     channel: channel as ContributionChannel,
-    change: change as Change,
+    change,
     ...(evidence === undefined ? {} : { evidence }),
     ...(lineage === undefined ? {} : { lineage }),
   };
@@ -1100,9 +1120,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   ): string | null => {
     if (summary.length > 1_200) return 'el recibo del chat debe ser breve (máximo 1200 caracteres)';
     if (blocks.length > 500 || changes.length > 500) return 'la inscripción excede 500 bloques u operaciones';
-    if (!changes.every((change) => change !== null && typeof change === 'object' &&
-      CORE_CHANGE_KINDS.includes((change as { kind?: string }).kind as never))) {
-      return 'la inscripción contiene una operación desconocida';
+    for (const change of changes) {
+      const parsed = readChange(change);
+      if ('error' in parsed) return `la inscripción contiene una operación malformada: ${parsed.error}`;
     }
     if (!removals.every((one) => one !== null && typeof one === 'object' &&
       typeof one.subject === 'string' && one.subject.trim() !== '' &&

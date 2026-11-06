@@ -691,6 +691,15 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal((await call(`/librarian/requests/${encodeURIComponent(requestId)}/claim`, {
         method: 'POST', secret,
       })).status, 200);
+      const malformedMove = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
+        method: 'POST', secret, body: {
+          text: 'Moví el bloque.', blocks: [],
+          changes: [{ kind: 'move_block', page, parent: null, position: 0 }],
+          ifRevisions: {}, removals: [],
+        },
+      });
+      assert.equal(malformedMove.status, 422, JSON.stringify(malformedMove.json));
+      assert.match(String(malformedMove.json['error']), /move_block.*malformed|malformada/i);
       const answered = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
         method: 'POST', secret, body: {
           text: 'Organicé la respuesta en la Bitácora de Lucienne.',
