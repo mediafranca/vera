@@ -1753,8 +1753,9 @@ async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): P
   const services = await api.services().catch(() => null);
   for (const service of services ?? []) {
     const policy = service.access === 'read-write' ? 'lectura y escritura' : 'sólo lectura';
+    const label = service.title.replace(/^VERA\s*:\s*/i, '');
     actions.prepend(destination(
-      service.title,
+      label,
       `${service.service === 'zotero' ? 'Bibliografía' : service.service} · ${policy} · credencial ${service.secrets.length === 0 ? 'pendiente' : 'guardada'}`,
       () => handlers.onOpenPage(service.title),
     ));
