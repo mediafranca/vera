@@ -634,11 +634,21 @@ function agentMutationPrecondition(
   expected: unknown,
   ownOnly: boolean,
 ): { status: number; reason: string; current?: { revision: string | null; content: string } } | null {
+  const participant = graph.participant(who.participant);
+  const ownDailyRootSuffix = `:${who.participant.replace(/^participant:/, '')}`;
+  const canonicalDailyHeading = participant === undefined ? null : `**Bitácora de ${participant.name}:**`;
+  const repairsOwnDailyHeading =
+    change.kind === 'edit_block' &&
+    change.block.startsWith('block:librarian-daily:') &&
+    change.block.endsWith(ownDailyRootSuffix) &&
+    canonicalDailyHeading !== null &&
+    change.content === canonicalDailyHeading;
   if (
     (change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block') &&
     who.credential !== null &&
-    graph.participant(who.participant)?.kind === 'agent' &&
-    change.block.startsWith('block:librarian-daily:')
+    participant?.kind === 'agent' &&
+    change.block.startsWith('block:librarian-daily:') &&
+    !repairsOwnDailyHeading
   ) {
     return {
       status: 403,
