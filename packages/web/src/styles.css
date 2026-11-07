@@ -6033,6 +6033,34 @@ body.settings-open #text {
 
 .agent-administration-intro { max-width: 52rem; color: var(--text-dim); }
 .agent-administration-body { display: grid; gap: 1.25rem; margin-top: 1.5rem; }
+.agent-administration-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  min-height: 2.75rem;
+  margin: 0;
+  color: var(--text-dim);
+}
+.agent-administration-loading::before {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  content: '';
+  animation: agent-administration-spin .8s linear infinite;
+}
+@keyframes agent-administration-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-administration-loading::before { animation: none; border-color: var(--accent); }
+}
+.agent-administration-body > section {
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+.agent-administration-body > section > h2 { margin: 0 0 .55rem; font-size: 1rem; }
 .agent-administration-card { padding: 1.2rem; border: 1px solid var(--rule); border-radius: .5rem; background: var(--bg-raised); }
 .agent-administration-card h2 { margin: 0; font: 500 1.3rem var(--font-body); }
 .agent-principal { margin: .3rem 0 1rem; color: var(--accent); }
@@ -6060,9 +6088,9 @@ body.settings-open #text {
 .agent-administration button { cursor: pointer; }
 .agent-administration button.primary { border-color: var(--accent); color: var(--accent); }
 .agent-source-rows { display: grid; gap: .35rem; max-height: 22rem; margin: .75rem 0; padding: .5rem; overflow: auto; border: 1px solid var(--rule); }
-.agent-source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(8rem, auto) auto; gap: .65rem; align-items: center; padding: .3rem; }
-.agent-source-open { color: var(--accent); font-size: .78rem; text-decoration: none; }
-.agent-source-open:hover { text-decoration: underline; }
+.agent-source-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, auto) auto; gap: .65rem; align-items: center; padding: .3rem; }
+.agent-source-title { color: var(--accent); font-weight: 600; text-decoration: none; }
+.agent-source-title:hover { text-decoration: underline; }
 .agent-source-row input { min-height: auto; }
 .agent-source-finder { position: relative; margin-block: .75rem; }
 .agent-source-finder > input { width: 100%; }
@@ -6071,12 +6099,21 @@ body.settings-open #text {
 .agent-manifest-actions { margin: .7rem 0; }
 .agent-manifest-history ol { display: grid; gap: .45rem; padding-left: 1.4rem; }
 .agent-manifest-history li { padding-left: .2rem; }
-.agent-manifest-history li button { min-height: 2.25rem; margin-left: .7rem; }
+.agent-manifest-history li button { min-height: 2.25rem; margin-top: .5rem; }
+.agent-manifest > summary { display: flex; justify-content: space-between; gap: 1rem; cursor: pointer; }
+.agent-manifest > summary time, .agent-manifest-sources span { color: var(--text-dim); font-size: .78rem; }
+.agent-manifest > p { overflow-wrap: anywhere; }
+.agent-manifest-sources { display: grid; gap: .3rem; padding-left: 1.2rem; }
+.agent-manifest-sources li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .7rem; }
+.agent-manifest-sources a { color: var(--accent); }
 
 @media (max-width: 640px) {
+  .agent-administration .configuration-surface-header { align-items: flex-start; }
+  .agent-administration .configuration-surface-back { align-self: flex-start; white-space: nowrap; }
   .agent-source-row { grid-template-columns: minmax(0, 1fr) auto; }
   .agent-source-row select { grid-column: 1; width: 100%; }
-  .agent-source-open { grid-column: 1; }
+  .agent-source-title { grid-column: 1; }
+  .agent-manifest > summary, .agent-manifest-sources li { display: grid; grid-template-columns: 1fr; gap: .2rem; }
   .agent-runtime-list li { grid-template-columns: minmax(0, 1fr) auto; }
   .agent-runtime-list time { grid-column: 1 / -1; }
 }
@@ -6677,12 +6714,15 @@ body.settings-open #text {
   background: var(--bg-raised);
 }
 .agent-runtime-configuration h2 { margin: 0 0 .55rem; font-size: 1rem; }
-.agent-runtime-identity { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--rule); }
+.agent-runtime-identity { margin: 0; }
+.agent-runtime-identity > h2 { margin: 0 0 .35rem; font-size: 1rem; }
+.agent-runtime-designation { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
 .agent-runtime-identity h3 { margin: 0 0 .35rem; font-size: .9rem; }
 .agent-runtime-identity-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .55rem; align-items: end; }
 .agent-runtime-identity-form label { display: grid; gap: .3rem; color: var(--text-dim); font-size: .78rem; }
 .agent-runtime-identity-form input,
 .agent-runtime-identity-form select { width: 100%; box-sizing: border-box; min-height: 2.75rem; padding: .55rem .65rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--text); }
+.agent-runtime-identity-form .agent-name-input { font-size: 1.3rem; font-weight: 650; }
 .agent-runtime-identity-form button { min-height: 2.75rem; }
 .agent-runtime-designation h4 { margin: .8rem 0 .35rem; font-size: .78rem; color: var(--text-dim); }
 .librarian-occupant-history { margin: 0; padding-left: 1.2rem; color: var(--text-dim); font-size: .78rem; }
@@ -6699,10 +6739,12 @@ body.settings-open #text {
 .agent-runtime-form > label:has(input[type='checkbox']) { display: flex; align-items: center; gap: .4rem; color: var(--text); }
 .agent-runtime-runs { margin: 1rem 0 0; padding-left: 1.25rem; }
 .agent-runtime-runs p { margin: .25rem 0 .8rem; white-space: pre-wrap; color: var(--text-dim); }
-.librarian-tool-catalogue { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--rule); }
-.librarian-tool-catalogue h3 { margin: 0 0 .35rem; font-size: .9rem; }
+.librarian-tool-catalogue { margin-top: 0; }
+.librarian-tool-catalogue h2 { margin: 0 0 .35rem; font-size: 1rem; }
 .librarian-tool-catalogue ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem 1rem; padding: 0; list-style: none; }
-.librarian-tool-catalogue li { display: grid; gap: .08rem; }
+.librarian-tool-catalogue li { min-width: 0; }
+.librarian-tool-catalogue summary { display: grid; gap: .08rem; cursor: pointer; }
+.librarian-tool-catalogue details p { margin: .35rem 0; color: var(--text-dim); font-size: .78rem; overflow-wrap: anywhere; }
 .librarian-tool-catalogue li span { color: var(--text-dim); font-size: .72rem; }
 
 .territory-administration { padding: 1rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg-raised); }

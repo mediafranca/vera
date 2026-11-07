@@ -107,6 +107,11 @@ describe('constitución portable del agente', () => {
     const runtime = (row?.['runtimes'] as Array<Record<string, unknown>>)[0];
     assert.equal(runtime?.['status'], 'ready');
     assert.equal(runtime?.['alignment'], 'current');
+    const manifests = row?.['manifests'] as Array<Record<string, unknown>>;
+    const sources = manifests[0]?.['sources'] as Array<Record<string, unknown>>;
+    assert.deepEqual(sources.map((source) => source['title']), ['Cotito', 'Oficio del bibliotecario']);
+    assert.deepEqual(sources.map((source) => source['role']), ['identity', 'practice']);
+    assert.ok(sources.every((source) => typeof source['revision'] === 'string'));
   });
 
   it('conserva revisiones anteriores y permite volver a una', async () => {

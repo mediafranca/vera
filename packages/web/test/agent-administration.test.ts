@@ -19,7 +19,8 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /setAgentConstitution/);
     assert.match(administration, /Páginas constitutivas/);
     assert.match(administration, /Páginas canónicas y editables que constituyen/);
-    assert.match(administration, /Abrir y editar/);
+    assert.match(administration, /className = 'agent-source-title'/);
+    assert.doesNotMatch(administration, /Abrir y editar/);
     assert.doesNotMatch(administration, /page\.visibility === 'private'/);
   });
 
@@ -27,15 +28,17 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /Construir borrador/);
     assert.match(administration, /Volver a esta versión/);
     assert.match(administration, /el modelo y el runtime pueden cambiar/);
-    assert.match(administration, /Runtime efectivo/);
+    assert.match(administration, /Ejecuciones observadas · sólo lectura/);
     assert.match(administration, /Sin recibo del runtime/);
     assert.match(administration, /divergente/);
     assert.match(administration, /Vera no confunde activación con ejecución/);
+    assert.match(administration, /compilación versionada e inmutable/);
+    assert.match(administration, /manifest\.sources/);
   });
 
   it('expone el catálogo del harness y gobierna territorios sin prometer autoridad nueva', () => {
-    assert.match(administration, /Herramientas ·/);
-    assert.match(administration, /no contiene herramientas destructivas/);
+    assert.match(administration, /Catálogo del harness · sólo lectura/);
+    assert.match(administration, /una nueva revisión del harness/);
     assert.match(administration, /Territorio de \$\{participantName\}/);
     assert.match(administration, /Una exclusión domina cualquier inclusión/);
     assert.match(administration, /api\.updateTerritory/);
@@ -66,6 +69,7 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /api\.renameParticipant\(view\.librarian!\.agent/);
     assert.match(administration, /Lucienne es sólo el nombre inicial/);
     assert.match(administration, /conserva el oficio, la constitución, el harness, el territorio y la historia/);
+    assert.match(administration, /className = 'agent-name-input'/);
   });
 
   it('separa el cambio de nombre de la designación de otro agente', () => {
@@ -82,6 +86,21 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(styles, /\.agent-administration :is\(button, select, input\)[\s\S]*?min-height: 2\.75rem/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-source-row/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.agent-runtime-list li/);
+  });
+
+  it('explica la superficie sin mapa y muestra carga visible y accesible', () => {
+    assert.match(administration, /no es una página del corpus ni tiene un nodo focal/);
+    assert.match(administration, /className = 'agent-administration-loading'/);
+    assert.match(administration, /setAttribute\('role', 'status'\)/);
+    assert.match(administration, /setAttribute\('aria-live', 'polite'\)/);
+    assert.match(styles, /\.agent-administration-loading::before/);
+    assert.match(styles, /@keyframes agent-administration-spin/);
+  });
+
+  it('nombra los dos caminos de ejecución como evidencia de sólo lectura', () => {
+    assert.match(administration, /Ejecuciones observadas · sólo lectura/);
+    assert.match(administration, /dos caminos de ejecución de/);
+    assert.match(administration, /Cotito no es un runtime de \$\{agent\.agent\.name\}/);
   });
 
   it('resuelve una sola identidad y no convierte el oficio en directorio de agentes', () => {

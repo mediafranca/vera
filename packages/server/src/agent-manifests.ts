@@ -39,6 +39,7 @@ export interface AgentManifestSummary {
   status: 'draft' | 'active' | 'superseded' | 'failed';
   createdAt: number;
   activatedAt: number | null;
+  sources?: Array<{ title: string; role: ConstitutionRole; revision: string }>;
 }
 
 export type AgentRuntimeStatus = 'ready' | 'degraded' | 'failed';
@@ -289,18 +290,24 @@ export function agentAdministration(store: Store, graph: VeraGraph): AgentAdmini
     const sources = store.db.prepare(`SELECT page_id,role,position FROM agent_constitution_pages
       WHERE agent_id=? AND status='active' ORDER BY position,page_id`).all(agent.id) as
       Array<{ page_id: string; role: ConstitutionRole; position: number }>;
-    const manifests = store.db.prepare(`SELECT id,version,digest,status,created_at,activated_at FROM agent_manifests
+    const manifests = store.db.prepare(`SELECT id,version,digest,status,created_at,activated_at,content FROM agent_manifests
       WHERE agent_id=? ORDER BY version DESC`).all(agent.id) as Array<{
         id: string; version: number; digest: string; status: AgentManifestSummary['status'];
-        created_at: number; activated_at: number | null;
+        created_at: number; activated_at: number | null; content: string;
       }>;
     return {
       agent,
       human: human === null ? null : { id: human.id, name: human.name, status: human.status },
       sources: sources.map((source) => ({ page: source.page_id, title: graph.page(source.page_id)?.title ?? source.page_id,
         role: source.role, position: source.position })),
-      manifests: manifests.map((one) => ({ id: one.id, version: one.version, digest: one.digest,
-        status: one.status, createdAt: one.created_at, activatedAt: one.activated_at })),
+      manifests: manifests.map((one) => {
+        const document = JSON.parse(one.content) as AgentManifestDocument;
+        return { id: one.id, version: one.version, digest: one.digest,
+          status: one.status, createdAt: one.created_at, activatedAt: one.activated_at,
+          sources: document.constitution.map((source) => ({
+            title: source.title, role: source.role, revision: source.revision,
+          })) };
+      }),
       runtimes: runtimeReceipts(store, agent.id),
     };
   });
