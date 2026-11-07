@@ -1025,6 +1025,13 @@ describe('lecturas', () => {
     await write({ kind: 'set_property', page: a, propertyKey: 'tipo', propertyValue: 'argumento' });
     const b = await write({ kind: 'create_page', title: 'NodoB', visibility: 'private' });
     await write({
+      kind: 'set_property', page: a, propertyKey: 'concepto',
+      propertyValue: 'cartografía, conocimiento',
+    });
+    await write({
+      kind: 'set_property', page: b, propertyKey: 'concepto', propertyValue: 'cartografía',
+    });
+    await write({
       kind: 'create_block',
       page: a,
       parent: null,
@@ -1041,7 +1048,7 @@ describe('lecturas', () => {
     });
 
     const data = (await get(`/graph/${encodeURIComponent(a)}?depth=1`)) as {
-      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number; lines?: unknown[] }[];
+      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number; concepts?: string[]; lines?: unknown[] }[];
       links: {
         source: string; target: string; kind?: string; crossing?: string;
         blocks?: { stableId: string; parent: string | null; position: number; content: string }[];
@@ -1052,7 +1059,9 @@ describe('lecturas', () => {
     assert.equal(centre?.id, a);
     assert.equal(centre?.name, 'NodoA');
     assert.equal(centre?.trail, true);
+    assert.deepEqual(centre?.concepts, ['cartografía', 'conocimiento']);
     assert.ok(data.nodes.some((n) => n.name === 'NodoB'));
+    assert.deepEqual(data.nodes.find((n) => n.id === b)?.concepts, ['cartografía']);
     assert.equal(data.links.length, 2);
     const explained = data.links.find((link) => link.kind === 'crossing');
     assert.equal(explained?.crossing, crossing);

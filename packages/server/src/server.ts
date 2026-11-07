@@ -9746,6 +9746,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // hojas se entregan únicamente cuando esa vista las pide; enviarlas en
         // cada mapa público hacía viajar cientos de kilobytes invisibles.
         const d4 = url.searchParams.get('detail') === 'd4';
+        const topicName = propertyNames().topic;
+        const conceptsOf = (page: string): string[] => {
+          const seen = new Set<string>();
+          const concepts: string[] = [];
+          for (const property of graph.propertiesOf(page)) {
+            if (titleKey(property.key) !== titleKey(topicName)) continue;
+            for (const answer of answersIn(property.value)) {
+              const concept = answer.trim();
+              const key = titleKey(concept);
+              if (concept === '' || seen.has(key)) continue;
+              seen.add(key);
+              concepts.push(concept);
+            }
+          }
+          return concepts;
+        };
         // El dueño puede mirar el mismo subgrafo publicado sin dejar de ser
         // dueño. Esto filtra sólo el mapa; no cambia la autoridad de la petición.
         const publishedMap = publicAccess || url.searchParams.get('published') === '1';
@@ -9822,7 +9838,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                   content: block.content,
                   gloss: graph.gloss(block.stableId)?.content ?? null,
                 })),
-              } : {}),
+              } : { concepts: conceptsOf(id) }),
             })),
             links,
           });
@@ -9928,7 +9944,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                   content: block.content,
                   gloss: graph.gloss(block.stableId)?.content ?? null,
                 })),
-            } : {}),
+            } : { concepts: conceptsOf(node.page) }),
           })),
           links: responseLinks,
         });

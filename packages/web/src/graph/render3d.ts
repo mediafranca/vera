@@ -27,6 +27,7 @@ import * as d3 from "d3";
 import type { EmbeddedMap3DCamera } from "@vera/core";
 // @ts-expect-error d3-force-3d no publica tipos
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
+import { conceptGravity } from './concept-gravity.ts';
 import type { GraphData, GraphNode } from "./types.ts";
 import type { RenderSettings } from "./render";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
@@ -1105,7 +1106,8 @@ export function renderGraph3D(
         .id((d: { id: string }) => d.id)
         .distance(LINK_DISTANCE),
     )
-    .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260));
+    .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260))
+    .force("concepts", conceptGravity(3) as never);
 
   /*
    * Y los dos resortes del hilo, mientras el recorrido está abierto.

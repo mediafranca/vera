@@ -4,6 +4,7 @@ import type { GraphData, GraphLink, GraphNode } from "./types.ts";
 import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
+import { conceptGravity } from './concept-gravity.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -780,6 +781,7 @@ export function renderGraph(
         .distance(linkDist)
     )
     .force("charge", d3.forceManyBody().strength(charge))
+    .force("concepts", conceptGravity(2) as any)
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", collisionForce as any);
 

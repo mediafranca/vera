@@ -13,6 +13,8 @@ export interface GraphNode extends SimulationNodeDatum {
   degree: number;
   properties?: Record<string, unknown>;
   blockCount?: number;
+  /** Conceptos declarados por la página; sólo informan la física espacial. */
+  concepts?: string[];
   /** Saltos desde la página foco; D4 lo convierte en columnas. */
   distance?: number;
   /** Líneas legibles de la página para el recinto dendrítico. */

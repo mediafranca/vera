@@ -1984,6 +1984,26 @@ surface VeraWorkspace {
         -- picture rather than a place. Recognising a region by its shape is the
         -- whole reason for drawing it.
 
+    @guarantee ConceptsShapeSpaceWithoutInventingConnections
+        -- In the 2D and 3D maps, pages that answer `concepto` with the same
+        -- value are gently drawn towards a common conceptual centre. This
+        -- changes only their spatial arrangement: a shared concept creates no
+        -- graph edge, does not change degree or reach, and cannot make a page
+        -- enter a neighbourhood that explicit relationships did not reach.
+
+        -- Explicit relationships remain the stronger geometry. Sharing more
+        -- than one concept increases the attraction with diminishing returns,
+        -- so a vocabulary cannot outweigh what the pages actually link.
+
+    @guarantee ConceptualCentresResistCollapse
+        -- Conceptual centres repel one another while drawing their member pages.
+        -- A concept shared by many visible pages pulls less strongly than a
+        -- rarer one, so broad terms do not swallow the map and distinct concerns
+        -- remain spatially distinguishable.
+
+        -- Centres belong to the layout, not to the graph: they are not rendered
+        -- as pages, cannot be opened and are never retained as corpus objects.
+
     @guarantee D4IsADendriticArgument
         -- D4 places the page in focus at degree zero, pages that mention it to
         -- the left and pages it mentions to the right. Further degrees open
