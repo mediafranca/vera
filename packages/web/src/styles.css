@@ -5391,7 +5391,7 @@ body:has(.embedded-map-frame) {
   position: fixed;
   right: 1rem;
   top: calc(3.4rem + env(safe-area-inset-top));
-  width: 42rem;
+  width: 48rem;
   max-width: calc(100vw - 2rem);
   max-height: 84vh;
   box-sizing: border-box;
