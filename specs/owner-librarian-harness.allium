@@ -53,6 +53,15 @@ contract OwnerLibrarianHarnessAdministration {
         -- Vera. The librarian never has to reconstruct frontmatter conventions
         -- from prompt folklore or assume another library uses the same words.
 
+    @invariant NativeWritingGrammarIsConstitutiveAndEnforced
+        -- La gramática para escribir desde dentro de Vera —árbol de bloques,
+        -- propiedades estructuradas, referencias canónicas, ontología,
+        -- bitácora propia y declaración de retiros— vive en una página
+        -- constitutiva legible y editable. El harness la proyecta y además
+        -- aplica sus guardas operativas: la página permite comprender y
+        -- evolucionar el oficio, pero borrar una frase no desactiva por sí solo
+        -- la integridad ni la atribución de Vera.
+
     @invariant TheLibrarianInspectsBeforeConcluding
         -- A statement about what the library contains is supported by recorded
         -- searches, page readings or graph queries. Absence is a finding, not a
@@ -127,6 +136,12 @@ contract LibrarianHarnessCatalogue {
         -- The catalogue says what Vera can offer. Only active grants, current
         -- territorial clearance and any per-call approval make one capability
         -- usable by this librarian now.
+
+    @invariant CatalogueIsReadOnlyInAdministration
+        -- La pantalla administrativa permite comprender cada capacidad y su
+        -- política, pero no fabrica herramientas. Extender el catálogo exige
+        -- una nueva revisión del harness, con implementación, pruebas y
+        -- activación explícita; territorio y aprobación siguen limitándola.
 }
 
 ------------------------------------------------------------

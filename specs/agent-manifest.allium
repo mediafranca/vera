@@ -211,6 +211,13 @@ surface AgentAdministration {
         -- historia. El manifiesto es una proyección versionada de esas fuentes,
         -- no una segunda personalidad escondida en el panel.
 
+    @guarantee ManifestsAreReadableCompiledSnapshots
+        -- La administración distingue las fuentes vivas del resultado que el
+        -- runtime carga. Cada manifiesto explica que es una compilación
+        -- versionada e inmutable, nombra las páginas que compiló y permite
+        -- inspeccionar su revisión, fecha, estado y digest sin presentarlo como
+        -- otra página editable del corpus.
+
     @guarantee OperationalEvidenceIsVisibleWithoutEnteringContext
         -- Permisos, referencias de secretos, salud, recibos y actividad se
         -- muestran junto al agente para gobernarlo, pero sus valores privados,

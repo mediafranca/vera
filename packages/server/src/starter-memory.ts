@@ -459,9 +459,43 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
           }
         }
       }
+      const writingTitle = 'Agente de biblioteca — Escritura nativa en Vera';
+      if (librarian !== null && graph.pageTitled(writingTitle) === undefined) {
+        const pageId = 'page:librarian-native-writing';
+        const entries = [
+          { id: 'page', change: { kind: 'create_page' as const, stableId: pageId, title: writingTitle, visibility: 'private' as const } },
+          { id: 'type', change: { kind: 'set_property' as const, page: pageId, propertyKey: 'tipo', propertyValue: 'práctica de agente' } },
+          { id: 'title', change: { kind: 'create_block' as const, stableId: `block:${pageId}:title`, page: pageId, parent: null, position: 0, content: '# Escritura nativa en Vera' } },
+          { id: 'tree', change: { kind: 'create_block' as const, stableId: `block:${pageId}:tree`, page: pageId, parent: null, position: 1, content: '## Árbol de bloques' } },
+          { id: 'unit', change: { kind: 'create_block' as const, stableId: `block:${pageId}:unit`, page: pageId, parent: `block:${pageId}:tree`, position: 0, content: 'Una unidad semántica ocupa un bloque. La jerarquía se expresa mediante padre y orden; nunca mediante tabulaciones ni un outline completo incrustado en un solo bloque.' } },
+          { id: 'properties', change: { kind: 'create_block' as const, stableId: `block:${pageId}:properties`, page: pageId, parent: null, position: 2, content: '## Propiedades y ontología' } },
+          { id: 'frontmatter', change: { kind: 'create_block' as const, stableId: `block:${pageId}:frontmatter`, page: pageId, parent: `block:${pageId}:properties`, position: 0, content: 'El frontmatter se escribe mediante propiedades estructuradas. Una referencia guarda el título canónico sin `[[corchetes]]`; `tipo` dice qué es la página y `concepto` dice de qué trata.' } },
+          { id: 'scope', change: { kind: 'create_block' as const, stableId: `block:${pageId}:scope`, page: pageId, parent: null, position: 3, content: '## Conversación y trabajo' } },
+          { id: 'receipt', change: { kind: 'create_block' as const, stableId: `block:${pageId}:receipt`, page: pageId, parent: `block:${pageId}:scope`, position: 0, content: 'El chat entrega un recibo breve; el trabajo completo vive dentro de Vera y puede distribuirse por todo el territorio gobernado.' } },
+          { id: 'ledger', change: { kind: 'create_block' as const, stableId: `block:${pageId}:ledger`, page: pageId, parent: null, position: 4, content: '## Bitácora y retiros' } },
+          { id: 'daily', change: { kind: 'create_block' as const, stableId: `block:${pageId}:daily`, page: pageId, parent: `block:${pageId}:ledger`, position: 0, content: 'Mantiene un único apartado diario `**Bitácora de <nombre del agente>:**`; su raíz es infraestructura y no se edita como contenido ordinario.' } },
+          { id: 'withdrawal', change: { kind: 'create_block' as const, stableId: `block:${pageId}:withdrawal`, page: pageId, parent: `block:${pageId}:ledger`, position: 1, content: 'Toda página, bloque o propiedad retirada se declara con su motivo tanto en el chat como en la bitácora diaria.' } },
+        ];
+        for (const entry of entries) {
+          const outcome = graph.submitOperation({
+            originId: `starter-memory:librarian-native-writing:${entry.id}`,
+            participant: DISTRIBUTION_PARTICIPANT,
+            channel: 'agent_generation',
+            change: entry.change,
+          });
+          if (outcome.status === 'rejected') throw new Error(`no se pudo sembrar la escritura nativa: ${outcome.reason}`);
+          if (outcome.status === 'applied') {
+            recordOperation(store, graph, outcome.operation);
+            applied += 1;
+          } else {
+            duplicates += 1;
+          }
+        }
+      }
       if (librarian !== null) {
         const sources = [
           { title: 'Agente de biblioteca', role: 'identity' as ConstitutionRole },
+          { title: 'Agente de biblioteca — Escritura nativa en Vera', role: 'practice' as ConstitutionRole },
           { title: 'VERA — Principios', role: 'purpose' as ConstitutionRole },
           { title: 'VERA: Gobierno', role: 'governance' as ConstitutionRole },
           { title: 'VERA — Conectar una inteligencia artificial', role: 'practice' as ConstitutionRole },

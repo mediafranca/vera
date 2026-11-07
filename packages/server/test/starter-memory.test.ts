@@ -37,9 +37,9 @@ describe('memoria inicial distribuida', () => {
       },
     });
     assert.equal(first.version, STARTER_MEMORY_VERSION);
-    assert.equal(first.applied, STARTER_CHANGES.length + 5 + 6);
+    assert.equal(first.applied, STARTER_CHANGES.length + 5 + 6 + 12);
     assert.equal(first.duplicates, 0);
-    assert.equal(first.pages, 15);
+    assert.equal(first.pages, 16);
     assert.ok(first.blocks > 90);
 
     const store = openStore({ path: databasePath, graphName: 'mind' });
@@ -79,6 +79,7 @@ describe('memoria inicial distribuida', () => {
       graph.pages().map((one) => one.title).sort(),
       [
         'Agente de biblioteca',
+        'Agente de biblioteca — Escritura nativa en Vera',
         '2026-11-05',
         'Vera',
         'VERA — Acceder desde tus otros dispositivos',
@@ -113,6 +114,12 @@ describe('memoria inicial distribuida', () => {
       operation.submission.submittedBy === DISTRIBUTION_PARTICIPANT &&
       operation.submission.channel === 'agent_generation'
     ));
+    const writing = graph.pageTitled('Agente de biblioteca — Escritura nativa en Vera');
+    assert.ok(writing);
+    assert.match(graph.blocksOf(writing.id).map((block) => block.content).join('\n'), /jerarquía se expresa mediante padre y orden/);
+    const constitutive = store.db.prepare(`SELECT role FROM agent_constitution_pages
+      WHERE agent_id=? AND page_id=? AND status='active'`).get(librarian.agent_id, writing.id) as any;
+    assert.equal(constitutive.role, 'practice');
     const connections = graph.pages().find((page) => page.title === 'VERA: Conexiones');
     assert.ok(connections);
     assert.ok(graph.propertiesOf(connections.id).some((property) =>

@@ -678,6 +678,7 @@ export interface AgentAdministrationView {
     id: string; version: number; digest: string;
     status: 'draft' | 'active' | 'superseded' | 'failed';
     createdAt: number; activatedAt: number | null;
+    sources?: { title: string; role: ConstitutionRole; revision: string }[];
   }[];
   runtimes: {
     runtime: { id: string; label: string };

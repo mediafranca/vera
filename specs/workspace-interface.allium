@@ -1824,6 +1824,32 @@ surface VeraWorkspace {
         -- administran desde Personas, aunque una ficha individual pueda abrir
         -- sus propios controles de constitución y alcance.
 
+    @guarantee LibrarianAdministrationReadsFromGeneralToParticular
+        -- La administración del agente de biblioteca presenta primero el
+        -- nombre y el oficio; después sus páginas constitutivas y la revisión
+        -- compilada; luego ejecución, territorio, herramientas y actividad.
+        -- El nombre efectivo es el primer control y recibe jerarquía tipográfica
+        -- suficiente para reconocerse como identidad, no como un parámetro más.
+
+    @guarantee LibrarianAdministrationExplainsItsMissingMap
+        -- La administración ocupa una superficie completa porque gobierna
+        -- estado operativo y carece de una página focal. Explica esta frontera
+        -- en la propia vista. Los títulos de las páginas constitutivas enlazan
+        -- directamente a páginas normales, donde sí existen mapa, procedencia,
+        -- historia y edición; no se añade un botón redundante para abrirlas.
+
+    @guarantee LibrarianAdministrationShowsLoadingProgress
+        -- Mientras identidad, constitución, runtimes y territorio todavía se
+        -- recuperan, la superficie muestra un estado visual animado y un estado
+        -- accesible anunciado en vivo. Nunca parece una página vacía o detenida.
+
+    @guarantee LibrarianExecutionPathsAreExplicit
+        -- Los recibos observados distinguen el runtime embebido de Vera y el
+        -- agente externo de OpenClaw como dos caminos de ejecución del mismo
+        -- bibliotecario. Ambos son evidencia de sólo lectura. Un agente elegible
+        -- como sucesor no se presenta como runtime ni se confunde con quien
+        -- ocupa actualmente el oficio.
+
     @guarantee ConnectionsDeclareTheirDirection
         -- Conexiones distingue las salidas de Vera hacia otras aplicaciones,
         -- las entradas autorizadas desde agentes, extensiones e importadores y

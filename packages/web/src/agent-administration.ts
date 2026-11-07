@@ -31,20 +31,25 @@ function control(label: string, action: () => Promise<void> | void, className = 
   return button;
 }
 
-function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refresh: () => Promise<void>): HTMLElement {
+function sourceEditor(agent: AgentAdministrationView, refresh: () => Promise<void>): HTMLElement {
   const section = document.createElement('section'); section.className = 'agent-constitution-sources';
-  const heading = document.createElement('h3'); heading.textContent = 'Páginas constitutivas';
+  const heading = document.createElement('h2'); heading.textContent = 'Páginas constitutivas';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
   explanation.textContent = `Páginas canónicas y editables que constituyen a ${agent.agent.name}; conservan enlaces, autoría, visibilidad e historia.`;
   const rows = document.createElement('div'); rows.className = 'agent-source-rows';
   const selected = new Map(agent.sources.map((source) => [source.page, source.role]));
-  const choices = [...pages].sort((a, b) => a.title.localeCompare(b.title, 'es'));
+  const selectedPages = agent.sources.map((source) => ({ id: source.page, title: source.title } as PageSummary));
+  let choices = selectedPages;
+  let pageCatalogue: Promise<PageSummary[]> | null = null;
+  const loadChoices = async (): Promise<PageSummary[]> => {
+    pageCatalogue ??= api.pages().then((pages) => [...pages].sort((a, b) => a.title.localeCompare(b.title, 'es')));
+    choices = await pageCatalogue; return choices;
+  };
   const rowFor = (page: PageSummary, chosenRole: ConstitutionRole): void => {
-    const row = document.createElement('label'); row.className = 'agent-source-row';
+    const row = document.createElement('div'); row.className = 'agent-source-row';
     row.dataset['page'] = page.id;
-    const title = document.createElement('span'); title.textContent = page.title;
-    const open = document.createElement('a'); open.href = `/p/${encodeURIComponent(page.title)}`;
-    open.textContent = 'Abrir y editar'; open.className = 'agent-source-open';
+    const title = document.createElement('a'); title.href = `/p/${encodeURIComponent(page.title)}`;
+    title.textContent = page.title; title.className = 'agent-source-title';
     const role = document.createElement('select'); role.dataset['page'] = page.id;
     for (const [value, label] of Object.entries(ROLE_LABELS) as Array<[ConstitutionRole, string]>) {
       const option = document.createElement('option'); option.value = value; option.textContent = label;
@@ -52,7 +57,7 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
     }
     const remove = control('Quitar', () => { selected.delete(page.id); row.remove(); });
     remove.setAttribute('aria-label', `Quitar ${page.title} de la constitución`);
-    row.append(title, open, role, remove); rows.append(row);
+    row.append(title, role, remove); rows.append(row);
   };
   for (const source of agent.sources) {
     const page = choices.find((one) => one.id === source.page);
@@ -64,10 +69,12 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
   search.placeholder = 'buscar una página de Vera';
   search.setAttribute('aria-label', `Añadir página a ${agent.agent.name}`);
   const offered = document.createElement('div'); offered.className = 'agent-source-offered'; offered.hidden = true;
-  const suggest = (): void => {
+  const suggest = async (): Promise<void> => {
     offered.replaceChildren();
     const query = search.value.trim().toLocaleLowerCase('es');
     if (query.length < 2) { offered.hidden = true; return; }
+    await loadChoices();
+    if (search.value.trim().toLocaleLowerCase('es') !== query) return;
     const matches = choices.filter((page) => !selected.has(page.id) &&
       page.title.toLocaleLowerCase('es').includes(query)).slice(0, 12);
     for (const page of matches) {
@@ -77,7 +84,7 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
     }
     offered.hidden = matches.length === 0;
   };
-  search.addEventListener('input', suggest);
+  search.addEventListener('input', () => { void suggest(); });
   finder.append(search, offered);
   const save = control('Guardar constitución', async () => {
     const sources = [...rows.querySelectorAll<HTMLElement>('.agent-source-row')].map((row) => ({
@@ -91,17 +98,33 @@ function sourceEditor(agent: AgentAdministrationView, pages: PageSummary[], refr
 
 function manifestHistory(agent: AgentAdministrationView, refresh: () => Promise<void>): HTMLElement {
   const section = document.createElement('section'); section.className = 'agent-manifest-history';
-  const heading = document.createElement('h3'); heading.textContent = 'Manifiestos';
+  const heading = document.createElement('h2'); heading.textContent = 'Manifiestos';
+  const explanation = document.createElement('p'); explanation.className = 'settings-note';
+  explanation.textContent = 'Las páginas constitutivas son las fuentes vivas y editables. Un manifiesto es su compilación versionada e inmutable: el runtime carga una versión concreta y puede volver a una anterior.';
   const actions = document.createElement('div'); actions.className = 'agent-manifest-actions';
   actions.append(control('Construir borrador', async () => { await api.buildAgentManifest(agent.agent.id); await refresh(); }, 'primary'));
   const list = document.createElement('ol');
   for (const manifest of agent.manifests) {
     const item = document.createElement('li');
-    const label = document.createElement('span');
-    label.textContent = `v${manifest.version} · ${manifest.status} · ${manifest.digest.slice(0, 12)}`;
-    item.append(label);
+    const details = document.createElement('details'); details.className = 'agent-manifest';
+    const summary = document.createElement('summary');
+    const label = document.createElement('strong');
+    label.textContent = `Versión ${manifest.version} · ${manifest.status}`;
+    const when = document.createElement('time'); when.dateTime = new Date(manifest.createdAt).toISOString();
+    when.textContent = new Date(manifest.createdAt).toLocaleString('es-CL');
+    summary.append(label, when); details.append(summary);
+    const digest = document.createElement('code'); digest.textContent = manifest.digest;
+    const digestLabel = document.createElement('p'); digestLabel.append('Huella: ', digest); details.append(digestLabel);
+    const sources = document.createElement('ul'); sources.className = 'agent-manifest-sources';
+    for (const source of manifest.sources ?? []) {
+      const sourceItem = document.createElement('li');
+      const link = document.createElement('a'); link.href = `/p/${encodeURIComponent(source.title)}`; link.textContent = source.title;
+      const meta = document.createElement('span'); meta.textContent = `${ROLE_LABELS[source.role]} · revisión ${source.revision}`;
+      sourceItem.append(link, meta); sources.append(sourceItem);
+    }
+    details.append(sources); item.append(details);
     if (manifest.status !== 'active' && manifest.status !== 'failed') {
-      item.append(control(manifest.status === 'superseded' ? 'Volver a esta versión' : 'Activar', async () => {
+        details.append(control(manifest.status === 'superseded' ? 'Volver a esta versión' : 'Activar', async () => {
         await api.activateAgentManifest(agent.agent.id, manifest.id); await refresh();
       }));
     }
@@ -109,16 +132,16 @@ function manifestHistory(agent: AgentAdministrationView, refresh: () => Promise<
   }
   if (agent.manifests.length === 0) {
     const empty = document.createElement('p'); empty.className = 'settings-note';
-    empty.textContent = 'Aún no existe una revisión portable.'; section.append(heading, actions, empty); return section;
+    empty.textContent = 'Aún no existe una revisión portable.'; section.append(heading, explanation, actions, empty); return section;
   }
-  section.append(heading, actions, list); return section;
+  section.append(heading, explanation, actions, list); return section;
 }
 
 function runtimeState(agent: AgentAdministrationView): HTMLElement {
   const section = document.createElement('section'); section.className = 'agent-runtime-state';
-  const heading = document.createElement('h3'); heading.textContent = 'Runtime efectivo';
+  const heading = document.createElement('h2'); heading.textContent = 'Ejecuciones observadas · sólo lectura';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = 'El recibo declara qué revisión cargó realmente cada runtime. Vera no confunde activación con ejecución.';
+  explanation.textContent = `Los recibos son dos caminos de ejecución de ${agent.agent.name}: el runtime interno de Vera y el agente externo de OpenClaw. Vera no confunde activación con ejecución. Cotito no es un runtime de ${agent.agent.name}: es otro participante y sólo puede aparecer como posible sucesor del oficio.`;
   section.append(heading, explanation);
   if (agent.runtimes.length === 0) {
     const empty = document.createElement('p'); empty.className = 'agent-runtime-empty';
@@ -166,19 +189,25 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
 
   if (view.harness !== null) {
     const catalogue = document.createElement('section'); catalogue.className = 'librarian-tool-catalogue';
-    const title = document.createElement('h3');
-    title.textContent = `Herramientas · ${view.harness.version.replace('vera-librarian-harness:', 'harness v')}`;
+    const title = document.createElement('h2');
+    title.textContent = `Catálogo del harness · sólo lectura · ${view.harness.version.replace('vera-librarian-harness:', 'v')}`;
     const note = document.createElement('p'); note.className = 'settings-note';
-    note.textContent = 'Las lecturas se ejecutan dentro del territorio. Una corrección se guarda como propuesta; aplicarla exige confirmación humana. Este harness no contiene herramientas destructivas.';
+    note.textContent = 'Esta lista describe las capacidades de la revisión activa; no se editan desde aquí. Extenderlas exige implementar, probar y activar una nueva revisión del harness. El territorio y las aprobaciones siguen gobernando cada uso.';
     const list = document.createElement('ul');
     for (const capability of view.harness.capabilities) {
       const item = document.createElement('li');
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
       const name = document.createElement('strong'); name.textContent = capability.title;
       const mode = document.createElement('span');
       mode.textContent = capability.approval === 'confirm_each_call'
         ? 'confirmación en cada aplicación'
         : capability.projectedToModel ? 'disponible durante la conversación' : 'parte del oficio del runtime';
-      item.append(name, mode); list.append(item);
+      summary.append(name, mode); details.append(summary);
+      const metadata = document.createElement('p');
+      metadata.textContent = `${capability.name} · revisión ${capability.revision} · ${capability.readOnly ? 'lectura' : capability.destructive ? 'puede retirar contenido' : capability.mutatesCorpus ? 'puede escribir' : 'propone sin escribir'}`;
+      const input = document.createElement('p'); input.textContent = `Entrada: ${capability.input}`;
+      details.append(metadata, input); item.append(details); list.append(item);
     }
     catalogue.append(title, note, list); section.append(catalogue);
   }
@@ -194,11 +223,12 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   }
 
   const identity = document.createElement('section'); identity.className = 'agent-runtime-identity';
-  const identityHeading = document.createElement('h3'); identityHeading.textContent = 'Identidad';
+  const identityHeading = document.createElement('h2'); identityHeading.textContent = 'Identidad y oficio';
   const identityNote = document.createElement('p'); identityNote.className = 'settings-note';
   identityNote.textContent = 'Lucienne es sólo el nombre inicial. Cambiarlo conserva el oficio, la constitución, el harness, el territorio y la historia del participante.';
   const identityForm = document.createElement('form'); identityForm.className = 'agent-runtime-identity-form';
   const participantName = document.createElement('input'); participantName.value = view.librarian.name;
+  participantName.className = 'agent-name-input';
   participantName.required = true; participantName.minLength = 2; participantName.autocomplete = 'off';
   const saveName = control('Guardar nombre', async () => {
     await api.renameParticipant(view.librarian!.agent, participantName.value.trim()); await refresh();
@@ -206,8 +236,6 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   identityForm.onsubmit = (event) => { event.preventDefault(); saveName.click(); };
   identityForm.append(field('Nombre', participantName), saveName);
   identity.append(identityHeading, identityNote, identityForm);
-  section.append(identity);
-
   const designation = document.createElement('section'); designation.className = 'agent-runtime-identity agent-runtime-designation';
   const designationHeading = document.createElement('h3'); designationHeading.textContent = 'Designación';
   const designationNote = document.createElement('p'); designationNote.className = 'settings-note';
@@ -246,7 +274,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     }
     designation.append(priorHeading, priorList);
   }
-  section.append(designation);
+  identity.append(designation); section.append(identity);
 
   const config = view.configuration;
   if (config === null) {
@@ -458,12 +486,15 @@ function territoryPanel(
 }
 
 export async function renderAgentAdministration(host: HTMLElement): Promise<void> {
-  const { title, introduction, body } = createConfigurationSurface(host, {
+  const { root, title, introduction, body } = createConfigurationSurface(host, {
     title: 'Agente de biblioteca',
     introduction: 'Agente de biblioteca es un oficio singular de esta Vera. Su nombre y sus prácticas son editables; el modelo y el runtime pueden cambiar sin reemplazar su identidad.',
     className: 'agent-administration',
   });
-  const status = document.createElement('p'); status.className = 'settings-note'; status.textContent = 'Leyendo configuración…';
+  const boundary = root.querySelector<HTMLElement>('.configuration-surface-boundary');
+  if (boundary !== null) boundary.textContent = 'Esta administración ocupa una página completa porque no es una página del corpus ni tiene un nodo focal para el mapa. Las páginas constitutivas enlazadas abajo sí conservan mapa, procedencia, historia y edición.';
+  const status = document.createElement('p'); status.className = 'agent-administration-loading'; status.textContent = 'Cargando identidad, constitución y runtimes…';
+  status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   body.classList.add('agent-administration-body'); body.append(status);
 
   const refresh = async (): Promise<void> => renderAgentAdministration(host);
@@ -489,6 +520,7 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
     introduction.textContent = librarianMode
       ? 'Identidad, constitución, harness, runtime y territorio del único agente de biblioteca activo de esta Vera.'
       : 'Constitución y territorio de este participante agente. El agente de biblioteca se administra en su panel singular.';
+    status.className = 'settings-note agent-principal';
     status.textContent = agent.human === null ? 'Sin principal humano' : `Principal humano · ${agent.human.name}`;
     if (agent.human === null) {
       const warning = document.createElement('p'); warning.className = 'participant-directory-retained';
@@ -498,10 +530,19 @@ export async function renderAgentAdministration(host: HTMLElement): Promise<void
       body.append(territoryPanel(territories, refresh, agent.agent.id, agent.agent.name));
       return;
     }
-    const pages = await api.pages();
-    body.append(sourceEditor(agent, pages, refresh), manifestHistory(agent, refresh), runtimeState(agent));
-    if (embeddedRuntime !== null) body.append(embeddedRuntime);
+    const identity = embeddedRuntime?.querySelector<HTMLElement>(':scope > .agent-runtime-identity') ?? null;
+    const tools = embeddedRuntime?.querySelector<HTMLElement>(':scope > .librarian-tool-catalogue') ?? null;
+    const runs = embeddedRuntime?.querySelector<HTMLOListElement>(':scope > .agent-runtime-runs') ?? null;
+    if (identity !== null) body.append(identity);
+    body.append(sourceEditor(agent, refresh), manifestHistory(agent, refresh));
+    if (embeddedRuntime !== null) body.append(embeddedRuntime, runtimeState(agent));
     body.append(territoryPanel(territories, refresh, agent.agent.id, agent.agent.name));
+    if (tools !== null) body.append(tools);
+    if (runs !== null) {
+      const activity = document.createElement('section'); activity.className = 'agent-runtime-activity';
+      const heading = document.createElement('h2'); heading.textContent = 'Actividad reciente';
+      activity.append(heading, runs); body.append(activity);
+    }
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : 'No se pudo leer la administración de agentes.';
   }
