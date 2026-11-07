@@ -592,6 +592,13 @@ contract OutlineHierarchyPresentation {
         -- stored content, selection, focus or hit targets; root blocks have no
         -- incoming thread and printing does not require threads to understand
         -- the text.
+
+    @invariant NumberedAuthorshipUsesColourNotASecondMark
+        -- En una lista numerada, el ordinal sigue siendo la única figura del
+        -- carril. Si el bloque fue escrito por un agente, ese número usa el rojo
+        -- de IA; si fue escrito por una persona, conserva el color del texto.
+        -- La viñeta hueca que distingue agentes en listas no numeradas nunca se
+        -- superpone al número ni lo encierra en un cuadrado.
 }
 
 -- La cabecera de una página: lo que se pregunta de ella antes de leerla.

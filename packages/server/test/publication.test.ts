@@ -12,6 +12,13 @@ import { listen } from '../src/server.ts';
 const PORT = 4284;
 const PREVIEW_PORT = 4285;
 const OWNER = 'participant:herbert';
+const PUBLIC_DESIGNS = JSON.stringify({
+  format: 'vera.designs', version: 2, active: 'design:lucienne', common: [],
+  designs: [
+    { id: 'design:vera', name: 'Vera Original', tokens: [{ name: '--bg', light: '#eeeeee', dark: '#111111' }] },
+    { id: 'design:lucienne', name: 'Lucienne', tokens: [{ name: '--bg', light: '#e1e1df', dark: '#221b21' }] },
+  ],
+});
 const output = mkdtempSync(join(tmpdir(), 'vera-public-http-'));
 const web = mkdtempSync(join(tmpdir(), 'vera-public-web-'));
 let base: string;
@@ -89,6 +96,11 @@ async function throughCanonical(
 
 describe('publicación del sitio personal', () => {
   it('publica, reconstruye al editar y retira sin borrar la página', async () => {
+    const appearance = await fetch(`${base}/workspace`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ designTokens: PUBLIC_DESIGNS }),
+    });
+    assert.equal(appearance.status, 200);
     const configuredResponse = await fetch(`${base}/publication-site`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -167,6 +179,10 @@ describe('publicación del sitio personal', () => {
     };
     assert.equal(published.path, 'vera');
     assert.equal(published.entryPoint, true);
+    const publicIndex = readFileSync(join(output, 'index.html'), 'utf8');
+    assert.match(publicIndex, /data-design="design:lucienne"/);
+    assert.match(publicIndex, />Vera Original<\/option>/);
+    assert.match(publicIndex, />Lucienne<\/option>/);
     assert.equal(typeof published.publishedAt, 'number');
     const governed = await fetch(`${base}/publication-site`).then((response) => response.json()) as {
       entryPoint: string;
