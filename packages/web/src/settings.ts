@@ -51,8 +51,7 @@ export type Section =
   | 'bibliotecario'
   | 'conexiones'
   | 'gobierno'
-  | 'apariencia'
-  | 'sistema';
+  | 'apariencia';
 
 export interface SettingsHandlers {
   scheme(): ColourScheme;
@@ -94,7 +93,6 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'conexiones', label: 'Conexiones' },
   { id: 'gobierno', label: 'Gobierno' },
   { id: 'apariencia', label: 'Apariencia' },
-  { id: 'sistema', label: 'Sistema' },
 ];
 
 type CentreDestination = {
@@ -118,8 +116,8 @@ const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
   { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
-  { section: 'sistema', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
-  { section: 'sistema', label: 'Esta Vera', note: 'Nombre, perfil y ubicación de datos', terms: 'instancia identidad' },
+  { section: 'biblioteca', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
+  { section: 'biblioteca', label: 'Esta biblioteca', note: 'Nombre, perfil y ubicación de datos', terms: 'instancia identidad' },
 ];
 
 const waitingService = (id: ObservedServiceStatus['id']): ServiceStatus => ({
@@ -297,13 +295,12 @@ export function renderSettings(
   body.className = 'settings-body';
   host.append(body);
 
-  if (active === 'biblioteca') drawLibrary(body, handlers);
+  if (active === 'biblioteca') void drawLibrary(body, handlers);
   else if (active === 'personas') drawPeople(body, handlers);
   else if (active === 'bibliotecario') void drawLibrarian(body, handlers);
   else if (active === 'conexiones') void drawConnections(body, handlers);
   else if (active === 'gobierno') drawGovernment(body, handlers);
-  else if (active === 'apariencia') drawAppearance(body, tokens, handlers);
-  else void drawSystem(body, handlers);
+  else drawAppearance(body, tokens, handlers);
 }
 
 type ExternalEditorsBridge = {
@@ -1188,20 +1185,39 @@ function proposals(host: HTMLElement, space: SharedAdministration, pages: PageSu
 }
 
 function effectivePages(space: SharedAdministration, pages: PageSummary[]): HTMLElement {
-  const box = document.createElement('div'); box.className = 'sharing-group';
-  const heading = document.createElement('h4'); heading.textContent = 'Pertenencia efectiva'; box.append(heading);
+  const box = document.createElement('details'); box.className = 'sharing-group sharing-effective-membership';
+  const heading = document.createElement('summary');
+  heading.textContent = `Pertenencia efectiva · ${space.effectivePages.length}`;
+  box.append(heading);
+  const note = document.createElement('p'); note.className = 'settings-note';
+  note.textContent = 'Estas páginas cumplen los criterios del espacio o fueron incorporadas manualmente.';
+  const search = document.createElement('input'); search.type = 'search';
+  search.placeholder = 'Buscar una página perteneciente';
+  search.setAttribute('aria-label', 'Buscar páginas pertenecientes al espacio');
   const list = document.createElement('ul'); list.className = 'sharing-list sharing-effective-pages';
-  for (const admitted of space.effectivePages) {
-    const row = document.createElement('li');
-    const title = pages.find((page) => page.id === admitted.page)?.title ?? admitted.page;
-    const text = document.createElement('span'); text.textContent = title;
-    const reason = document.createElement('small'); reason.textContent = admitted.reasons.join(' + ') || 'sin razón declarada';
-    text.append(reason); row.append(text); list.append(row);
-  }
-  if (space.effectivePages.length === 0) {
-    const empty = document.createElement('li'); empty.textContent = 'El espacio todavía no contiene páginas.'; list.append(empty);
-  }
-  box.append(list); return box;
+  const draw = (): void => {
+    list.replaceChildren();
+    const asked = search.value.trim().toLocaleLowerCase('es');
+    const admittedPages = space.effectivePages.map((admitted) => ({
+      ...admitted, title: pages.find((page) => page.id === admitted.page)?.title ?? admitted.page,
+    })).filter((admitted) => `${admitted.title} ${admitted.reasons.join(' ')}`
+      .toLocaleLowerCase('es').includes(asked));
+    for (const admitted of admittedPages) {
+      const row = document.createElement('li');
+      const text = document.createElement('span'); text.textContent = admitted.title;
+      const reason = document.createElement('small'); reason.textContent = admitted.reasons.join(' + ') || 'sin razón declarada';
+      text.append(reason); row.append(text); list.append(row);
+    }
+    if (admittedPages.length === 0) {
+      const empty = document.createElement('li');
+      empty.textContent = space.effectivePages.length === 0
+        ? 'El espacio todavía no contiene páginas.' : 'Ninguna página coincide con la búsqueda.';
+      list.append(empty);
+    }
+  };
+  search.addEventListener('input', draw);
+  draw();
+  box.append(note, search, list); return box;
 }
 
 function participantDirectory(host: HTMLElement, participants: ParticipantIdentity[]): HTMLElement {
@@ -1662,11 +1678,13 @@ function mediaRow(file: CatalogAsset): HTMLTableRowElement {
   return row;
 }
 
-function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
-  heading(host, 'Biblioteca', 'Los materiales que forman el cuaderno.');
+async function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
+  heading(host, 'Biblioteca', 'Identidad, materiales y continuidad del cuaderno.');
+  const shared = handlers.sharedSpace();
+  if (shared === null) await drawInstanceConfiguration(host);
+  heading(host, 'Materiales', 'Lo que la biblioteca contiene y registra.');
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
-  const shared = handlers.sharedSpace();
   actions.append(destination(
     'Importar documentos',
     shared === null
@@ -1677,7 +1695,6 @@ function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
   if (shared === null) {
     actions.append(
       destination('Archivos', 'Encontrar, describir y cuidar imágenes, audios y documentos', handlers.onOpenFiles),
-      destination('Importar una biblioteca', 'Incorporar páginas y archivos desde un respaldo .vera', () => drawPortability(host)),
     );
   }
   actions.append(destination(
@@ -1686,6 +1703,7 @@ function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): void {
     handlers.onOpenActivity,
   ));
   host.append(actions);
+  if (shared === null) drawPortability(host);
 }
 
 function drawPeople(host: HTMLElement, handlers: SettingsHandlers): void {
@@ -1747,8 +1765,7 @@ async function drawConnections(host: HTMLElement, handlers: SettingsHandlers): P
   actions.className = 'settings-destinations';
   actions.append(
     destination('Agentes y clientes MCP', 'Identidad participante, credencial, alcance, estado y revocación', () => handlers.onOpenPage('VERA: Conexiones')),
-    pendingDestination('Captura web', 'La extensión funciona, pero falta reunir aquí su estado y autorización'),
-    pendingDestination('Canales', 'Chat interno, Telegram y futuras puertas aún no comparten un panel'),
+    destination('Captura web', 'Autorizar Vera Clip y capturar contenido desde el navegador', () => handlers.onOpenPage('VERA: Conexiones')),
   );
   const services = await api.services().catch(() => null);
   for (const service of services ?? []) {
@@ -1962,38 +1979,46 @@ function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {
 
 }
 
-async function drawSystem(host: HTMLElement, handlers: SettingsHandlers): Promise<void> {
-  heading(host, 'Sistema', 'Identidad y continuidad de esta instancia.');
-  await drawInstanceConfiguration(host);
-  drawPortability(host);
-}
-
 async function drawInstanceConfiguration(host: HTMLElement): Promise<void> {
-  heading(host, 'Esta Vera', 'Identidad operativa de la instalación, expresada como campos y estados.');
+  heading(host, 'Esta biblioteca', 'Identidad operativa de la instalación.');
   const panel = document.createElement('section'); panel.className = 'instance-configuration';
-  let profile = 'desconocido';
   try {
-    const view = await sharingRequest('/collective-governance') as CollectiveGovernance;
-    profile = view.profile === 'collective' ? 'Colectiva' : 'Personal';
-  } catch { /* El campo conserva un estado legible aun sin conexión. */ }
-  const name = document.createElement('input'); name.value = 'Pendiente de conectar al registro de instancia';
-  name.disabled = true;
-  const kind = document.createElement('select'); kind.disabled = true;
-  const option = document.createElement('option'); option.textContent = profile; option.selected = true; kind.append(option);
-  const location = document.createElement('input'); location.value = 'Gestionada por esta instalación'; location.disabled = true;
-  const labelled = (label: string, control: HTMLInputElement | HTMLSelectElement): HTMLLabelElement => {
-    const held = document.createElement('label');
-    const text = document.createElement('span'); text.textContent = label;
-    held.append(text, control); return held;
-  };
-  panel.append(
-    labelled('Nombre de esta Vera · Pendiente', name),
-    labelled('Perfil de instancia', kind),
-    labelled('Ubicación de datos · Pendiente', location),
-  );
-  const note = document.createElement('p'); note.className = 'settings-note';
-  note.textContent = 'Los campos pendientes muestran el lugar de la decisión sin fingir que una página descriptiva ya la configura.';
-  panel.append(note); host.append(panel);
+    const view = await api.instanceProfile();
+    const form = document.createElement('form'); form.className = 'instance-configuration-form';
+    const name = document.createElement('input'); name.value = view.libraryName;
+    name.required = true; name.maxLength = 120; name.autocomplete = 'off';
+    const kind = document.createElement('select'); kind.disabled = true;
+    const option = document.createElement('option');
+    option.textContent = view.profile === 'collective' ? 'Colectiva' : 'Personal';
+    option.selected = true; kind.append(option);
+    const location = document.createElement('input');
+    location.value = 'Gestionada por esta instalación'; location.disabled = true;
+    form.append(
+      configurationField('Nombre', name, 'effective', 'Nombre visible de esta biblioteca.'),
+      configurationField('Perfil', kind, 'derived', 'Cambiar entre personal y colectiva exige migrar a otra instancia.'),
+      configurationField('Ubicación de datos', location, 'derived', 'Vera administra la raíz durable sin exponer su ruta.'),
+    );
+    const actions = document.createElement('div'); actions.className = 'instance-configuration-actions';
+    const save = document.createElement('button'); save.type = 'submit'; save.className = 'settings-action';
+    save.textContent = 'Guardar nombre';
+    const result = document.createElement('p'); result.className = 'settings-note';
+    result.setAttribute('aria-live', 'polite');
+    actions.append(save, result); form.append(actions); panel.append(form);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault(); save.disabled = true; result.textContent = 'Guardando…';
+      try {
+        const renamed = await api.renameLibrary(name.value);
+        name.value = renamed.libraryName; result.textContent = 'Nombre guardado.';
+      } catch (error) {
+        result.textContent = error instanceof Error ? error.message : 'No se pudo guardar el nombre.';
+      } finally { save.disabled = false; }
+    });
+  } catch (error) {
+    const note = document.createElement('p'); note.className = 'settings-note';
+    note.textContent = error instanceof Error ? error.message : 'No se pudo leer la identidad de esta biblioteca.';
+    panel.append(note);
+  }
+  host.append(panel);
 }
 
 function drawPortability(host: HTMLElement): void {
@@ -2059,16 +2084,6 @@ function destination(label: string, note: string, open: () => void): HTMLButtonE
   explanation.textContent = note;
   button.append(name, explanation);
   button.addEventListener('click', open);
-  return button;
-}
-
-/** Un lugar reconocido del mapa cuya interacción aún no existe. */
-function pendingDestination(label: string, note: string): HTMLButtonElement {
-  const button = destination(label, note, () => undefined);
-  button.disabled = true;
-  button.classList.add('is-pending');
-  const state = document.createElement('small'); state.textContent = 'Pendiente';
-  button.append(state);
   return button;
 }
 

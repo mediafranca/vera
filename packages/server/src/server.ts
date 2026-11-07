@@ -198,6 +198,7 @@ import {
   inviteToCollective,
   isCollectiveAdministrator,
   redeemCollectiveInvitation,
+  renameInstanceLibrary,
   revokeCollectiveInvitation,
   revokeCollectiveRole,
   revokeCollectiveSessions,
@@ -5125,9 +5126,25 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (request.method === 'GET' && path === '/instance-profile') {
       send(response, 200, {
         profile,
+        libraryName: instanceLibraryName(store),
+        dataLocation: 'managed',
         participant: who.participant,
         roles: profile === 'collective' ? collectiveRoles(store, who.participant) : ['owner'],
       });
+      return;
+    }
+
+    if (request.method === 'PATCH' && path === '/instance-profile') {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const body = await readSmallJson();
+        const libraryName = renameInstanceLibrary(store,
+          typeof body['libraryName'] === 'string' ? body['libraryName'] : '');
+        send(response, 200, { profile, libraryName, dataLocation: 'managed' });
+      } catch (error) {
+        send(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
 

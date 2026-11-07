@@ -84,6 +84,16 @@ export function instanceLibraryName(store: Store): string {
   return row?.library_name ?? 'Biblioteca';
 }
 
+export function renameInstanceLibrary(store: Store, name: string): string {
+  const libraryName = name.trim();
+  if (libraryName === '') throw new Error('el nombre de la biblioteca no puede quedar vacío');
+  if (libraryName.length > 120) throw new Error('el nombre de la biblioteca no puede superar 120 caracteres');
+  const changed = store.db.prepare('UPDATE instances SET library_name=? WHERE graph_id=?')
+    .run(libraryName, store.graphId).changes;
+  if (changed === 0) throw new Error('esta instancia todavía no tiene un registro de biblioteca');
+  return libraryName;
+}
+
 export function collectiveRoles(store: Store, participant: string): CollectiveRole[] {
   return (store.db.prepare(`SELECT g.role FROM instance_governance_grants g
     JOIN instances i ON i.id=g.instance_id
