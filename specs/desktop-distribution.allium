@@ -7,6 +7,7 @@
 
 external entity DesktopUser {}
 external entity ReleaseProvider {}
+external entity DesktopRuntime {}
 
 ------------------------------------------------------------
 -- Contracts
@@ -19,6 +20,22 @@ contract DesktopUpdateSafety {
 
     @invariant PortableEditionsNeverSelfReplace
         -- Una edición portable puede avisar, pero nunca reemplaza su ejecutable.
+
+    @invariant ConnectionsSurviveProgramReplacement
+        -- La configuración de conexiones y las referencias a credenciales
+        -- permanecen fuera de los archivos reemplazables de la aplicación. Una
+        -- actualización conserva su identidad y vuelve a comprobarlas sin
+        -- copiar secretos a la memoria personal ni al recibo de instalación.
+
+    @invariant ReplacementRequiresRestartProof
+        -- Reemplazar archivos no basta para declarar una actualización actual.
+        -- La versión nueva debe arrancar y demostrar después del reinicio que
+        -- la memoria abre y que las capacidades configuradas siguen listas.
+
+    @invariant FailedReplacementKeepsLastWorkingProgramRecoverable
+        -- Si la prueba posterior al reinicio falla, la última versión operativa
+        -- sigue disponible para recuperar el servicio sin tocar la memoria ni
+        -- las credenciales de la persona.
 }
 
 ------------------------------------------------------------
@@ -27,7 +44,7 @@ contract DesktopUpdateSafety {
 
 enum DesktopPlatform { windows | macos | linux }
 enum InstallationKind { installed | portable }
-enum UpdateState { current | offered | downloading | ready | failed }
+enum UpdateState { current | offered | downloading | ready | validating | failed }
 enum ReleaseChannel { stable | legacy }
 
 ------------------------------------------------------------
@@ -40,6 +57,7 @@ entity DesktopInstallation {
     kind: InstallationKind
     installed_version: String
     available_version: String?
+    last_working_version: String?
     update_state: UpdateState
     memory_path: String
     release_channel: ReleaseChannel
@@ -138,9 +156,28 @@ rule UserAppliesPreparedUpdate {
     requires: installation.owner = user
     requires: installation.update_state = ready
     ensures:
+        installation.last_working_version = installation.installed_version
         installation.installed_version = installation.available_version
+        installation.update_state = validating
+}
+
+rule ReplacementPassesRestartProof {
+    when: InstalledUpdateValidated(runtime, installation)
+    requires: installation.update_state = validating
+    ensures:
         installation.available_version = null
+        installation.last_working_version = null
         installation.update_state = current
+}
+
+rule ReplacementFailsRestartProof {
+    when: InstalledUpdateValidationFailed(runtime, installation)
+    requires: installation.update_state = validating
+    ensures:
+        installation.installed_version = installation.last_working_version
+        installation.available_version = null
+        installation.last_working_version = null
+        installation.update_state = failed
 }
 
 ------------------------------------------------------------
@@ -202,6 +239,7 @@ surface DesktopUpdateExperience {
     exposes:
         installation.installed_version
         installation.available_version
+        installation.last_working_version
         installation.update_state
 
     provides:
@@ -228,6 +266,17 @@ surface StableReleaseFeed {
 
     contracts:
         demands DesktopUpdateSafety
+}
+
+surface InstalledRuntimeProof {
+    facing runtime: DesktopRuntime
+
+    provides:
+        InstalledUpdateValidated(runtime, installation)
+        InstalledUpdateValidationFailed(runtime, installation)
+
+    contracts:
+        fulfils DesktopUpdateSafety
 }
 
 ------------------------------------------------------------
