@@ -92,8 +92,8 @@ describe('arquitectura de configuración', () => {
     assert.doesNotMatch(main, /openPage\(page\.id[\s\S]*gesture: 'opened_directly'/);
   });
 
-  it('da más ancho al menú y conserva una sola columna en teléfono', () => {
-    assert.match(styles, /#tokens\s*\{[\s\S]*?width:\s*42rem/);
+  it('da ancho para una fila de secciones y conserva una sola columna en teléfono', () => {
+    assert.match(styles, /#tokens\s*\{[\s\S]*?width:\s*48rem/);
     assert.match(styles, /\.settings-destinations\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
     assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.settings-destinations\s*\{\s*grid-template-columns:\s*1fr/);
   });
