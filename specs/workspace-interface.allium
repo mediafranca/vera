@@ -592,6 +592,13 @@ contract OutlineHierarchyPresentation {
         -- stored content, selection, focus or hit targets; root blocks have no
         -- incoming thread and printing does not require threads to understand
         -- the text.
+
+    @invariant NumberedAuthorshipUsesColourNotASecondMark
+        -- En una lista numerada, el ordinal sigue siendo la única figura del
+        -- carril. Si el bloque fue escrito por un agente, ese número usa el rojo
+        -- de IA; si fue escrito por una persona, conserva el color del texto.
+        -- La viñeta hueca que distingue agentes en listas no numeradas nunca se
+        -- superpone al número ni lo encierra en un cuadrado.
 }
 
 -- La cabecera de una página: lo que se pregunta de ella antes de leerla.
@@ -1765,11 +1772,12 @@ surface VeraWorkspace {
 
     @guarantee TheCentreFollowsHumanPurposes
         -- El Centro de Vera abre en Biblioteca y agrupa sus destinos bajo
-        -- Biblioteca, Participantes, Agente de biblioteca, Conexiones, Gobierno, Apariencia,
-        -- y Sistema. Cada pestaña presenta controles explícitos o botones
+        -- Biblioteca, Participantes, Agente de biblioteca, Conexiones, Gobierno
+        -- y Apariencia. Cada pestaña presenta controles explícitos o botones
         -- grandes con una consecuencia legible. Los
-        -- controles frecuentes aparecen primero; la identidad y el perfil de la
-        -- instancia cierran Sistema como decisiones estructurales infrecuentes.
+        -- controles frecuentes aparecen primero. Biblioteca reúne identidad,
+        -- materiales y continuidad: Sistema no repite ese mismo objeto bajo una
+        -- categoría técnica separada.
         -- La ayuda y la documentación siguen siendo páginas de la biblioteca y
         -- no se mezclan con decisiones operativas.
         -- Las instrucciones constitutivas de la bibliotecaria aparecen sólo bajo
@@ -1783,9 +1791,24 @@ surface VeraWorkspace {
         -- tabla o acción explícita que muestra su valor efectivo. Una página de
         -- prosa puede explicar la decisión y conservar su historia, pero el
         -- Centro nunca obliga a interpretar o editar párrafos como si fueran
-        -- controles. Si la superficie todavía no existe, su lugar aparece
-        -- desactivado y dice Pendiente; no finge estar implementada abriendo un
-        -- documento.
+        -- controles. Una capacidad que ya tiene una superficie operativa no
+        -- aparece como Pendiente. Una capacidad aún no diseñada se omite hasta
+        -- que exista una decisión útil, en vez de llenar el Centro con promesas
+        -- inertes.
+
+    @guarantee ConfigurationUsesTheSharedFormGrammar
+        -- Buscar, escoger, editar y guardar comparten la altura, el radio, el
+        -- padding, el foco y los estados del bootstrap visual de Vera. La
+        -- diferencia semántica entre un campo efectivo y uno derivado se
+        -- expresa con texto accesible, no cambiando arbitrariamente su geometría.
+
+    @guarantee SharedSpaceMembershipDoesNotFloodAdministration
+        -- Los criterios deciden la pertenencia real de un espacio compartido,
+        -- incluso cuando alcanzan bitácoras u otras páginas inesperadas. La
+        -- administración no oculta ni reinterpreta esa decisión, pero presenta
+        -- la lista de pertenencia plegada, con cantidad y búsqueda, para que las
+        -- páginas admitidas no se peguen al resto de los controles como si
+        -- fueran otra sección del Centro.
 
     @guarantee ConfigurationSearchOnlyFindsOperableDestinations
         -- La búsqueda del Centro encuentra ajustes y destinos administrativos,

@@ -89,6 +89,19 @@ describe('autenticación de una instancia colectiva', () => {
     assert.equal((await call('/login')).status, 200);
   });
 
+  it('expone y permite al administrador renombrar la biblioteca', async () => {
+    const ownerCookie = sessionCookie(OWNER);
+    const before = await call('/instance-profile', 'GET', undefined, ownerCookie);
+    assert.equal(before.status, 200);
+    assert.equal(before.json['libraryName'], 'Biblioteca de Herbert');
+    assert.equal(before.json['dataLocation'], 'managed');
+
+    const renamed = await call('/instance-profile', 'PATCH', { libraryName: 'Vera común' }, ownerCookie);
+    assert.equal(renamed.status, 200, JSON.stringify(renamed.json));
+    assert.equal(renamed.json['libraryName'], 'Vera común');
+    assert.equal((await call('/instance-profile', 'GET', undefined, ownerCookie)).json['libraryName'], 'Vera común');
+  });
+
   it('una sesión del administrador lee, escribe e invita una sola vez', async () => {
     const ownerCookie = sessionCookie(OWNER);
     assert.equal((await call('/pages', 'GET', undefined, ownerCookie)).status, 200);
@@ -115,6 +128,9 @@ describe('autenticación de una instancia colectiva', () => {
     }, reader.cookie);
     assert.equal(denied.status, 403);
     assert.equal((await call('/collective-governance', 'GET', undefined, reader.cookie)).status, 403);
+    assert.equal((await call('/instance-profile', 'PATCH', {
+      libraryName: 'La lectora manda',
+    }, reader.cookie)).status, 403);
   });
 
   it('un editor invitado escribe con su propia autoría', async () => {

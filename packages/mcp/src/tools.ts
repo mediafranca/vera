@@ -45,6 +45,11 @@ export type Propose = (input: {
   purpose: string;
 }) => Promise<{ status: 'awaiting_review' | 'duplicate'; proposal: string; page: string; block: string } | Failure>;
 
+export type Action = (
+  path: string,
+  body?: Record<string, unknown>,
+) => Promise<Record<string, unknown> | Failure>;
+
 export interface VeraTool {
   name: string;
   title: string;
@@ -61,6 +66,7 @@ export interface VeraTool {
     writeBatch?: WriteBatch,
     query?: Query,
     propose?: Propose,
+    action?: Action,
   ): Promise<string | ToolRunResult>;
 }
 
@@ -117,6 +123,89 @@ function orderedOutline(blocks: readonly Page['blocks'][number][]): {
   return ordered;
 }
 
+const librarianChangeSchema: Record<string, unknown> = {
+  oneOf: [
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'crear_pagina' }, id: { type: 'string' }, titulo: { type: 'string', minLength: 1 },
+      visibilidad: { enum: ['privada', 'publica'] },
+    }, required: ['tipo', 'titulo', 'visibilidad'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'recuperar_origen_pagina' }, pagina: { type: 'string' }, origen_creado_en: { type: 'integer' },
+    }, required: ['tipo', 'pagina', 'origen_creado_en'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'renombrar_pagina' }, pagina: { type: 'string' }, titulo: { type: 'string', minLength: 1 },
+    }, required: ['tipo', 'pagina', 'titulo'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'definir_visibilidad' }, pagina: { type: 'string' }, visibilidad: { enum: ['privada', 'publica'] },
+    }, required: ['tipo', 'pagina', 'visibilidad'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'retirar_pagina' }, pagina: { type: 'string' },
+    }, required: ['tipo', 'pagina'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'crear_bloque' }, id: { type: 'string' }, pagina: { type: 'string' },
+      padre: { type: ['string', 'null'] }, posicion: { type: 'integer', minimum: 0 }, contenido: { type: 'string' },
+    }, required: ['tipo', 'pagina', 'padre', 'posicion', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'editar_bloque' }, bloque: { type: 'string' }, contenido: { type: 'string' },
+    }, required: ['tipo', 'bloque', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'mover_bloque' }, bloque: { type: 'string' }, pagina: { type: 'string' },
+      padre: { type: ['string', 'null'] }, posicion: { type: 'integer', minimum: 0 },
+    }, required: ['tipo', 'bloque', 'pagina', 'padre', 'posicion'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'retirar_bloque' }, bloque: { type: 'string' },
+    }, required: ['tipo', 'bloque'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'glosar_bloque' }, bloque: { type: 'string' }, contenido: { type: 'string' },
+    }, required: ['tipo', 'bloque', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'crear_conectiva' }, id: { type: 'string' }, desde_pagina: { type: 'string' },
+      hacia_pagina: { type: 'string' }, contenido: { type: 'string' }, termino: { type: ['string', 'null'] },
+    }, required: ['tipo', 'desde_pagina', 'hacia_pagina', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'editar_conectiva' }, conectiva: { type: 'string' }, contenido: { type: 'string' },
+      termino: { type: ['string', 'null'] },
+    }, required: ['tipo', 'conectiva', 'contenido'] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'definir_propiedad' }, pagina: { type: 'string' }, bloque: { type: 'string' },
+      propiedad: { type: 'string' }, valor: { type: 'string' },
+    }, required: ['tipo', 'propiedad', 'valor'], oneOf: [{ required: ['pagina'] }, { required: ['bloque'] }] },
+    { type: 'object', additionalProperties: false, properties: {
+      tipo: { const: 'retirar_propiedad' }, pagina: { type: 'string' }, bloque: { type: 'string' },
+      propiedad: { type: 'string' },
+    }, required: ['tipo', 'propiedad'], oneOf: [{ required: ['pagina'] }, { required: ['bloque'] }] },
+  ],
+};
+
+function librarianChange(input: Record<string, unknown>): Record<string, unknown> | null {
+  const visibility = (value: unknown): string => value === 'publica' ? 'public' : 'private';
+  const subject = (): Record<string, unknown> => input['pagina'] === undefined
+    ? { block: input['bloque'] }
+    : { page: input['pagina'] };
+  switch (input['tipo']) {
+    case 'crear_pagina': return { kind: 'create_page', title: input['titulo'], visibility: visibility(input['visibilidad']),
+      ...(input['id'] === undefined ? {} : { stableId: input['id'] }) };
+    case 'recuperar_origen_pagina': return { kind: 'recover_page_origin', page: input['pagina'], originCreatedAt: input['origen_creado_en'] };
+    case 'renombrar_pagina': return { kind: 'rename_page', page: input['pagina'], title: input['titulo'] };
+    case 'definir_visibilidad': return { kind: 'set_page_visibility', page: input['pagina'], visibility: visibility(input['visibilidad']) };
+    case 'retirar_pagina': return { kind: 'remove_page', page: input['pagina'] };
+    case 'crear_bloque': return { kind: 'create_block', page: input['pagina'], parent: input['padre'], position: input['posicion'],
+      content: input['contenido'], ...(input['id'] === undefined ? {} : { stableId: input['id'] }) };
+    case 'editar_bloque': return { kind: 'edit_block', block: input['bloque'], content: input['contenido'] };
+    case 'mover_bloque': return { kind: 'move_block', block: input['bloque'], page: input['pagina'], parent: input['padre'], position: input['posicion'] };
+    case 'retirar_bloque': return { kind: 'remove_block', block: input['bloque'] };
+    case 'glosar_bloque': return { kind: 'set_block_gloss', block: input['bloque'], content: input['contenido'] };
+    case 'crear_conectiva': return { kind: 'create_crossing', fromPage: input['desde_pagina'], toPage: input['hacia_pagina'],
+      content: input['contenido'], ...(input['termino'] === undefined ? {} : { term: input['termino'] }),
+      ...(input['id'] === undefined ? {} : { stableId: input['id'] }) };
+    case 'editar_conectiva': return { kind: 'edit_crossing', crossing: input['conectiva'], content: input['contenido'],
+      ...(input['termino'] === undefined ? {} : { term: input['termino'] }) };
+    case 'definir_propiedad': return { kind: 'set_property', ...subject(), propertyKey: input['propiedad'], propertyValue: input['valor'] };
+    case 'retirar_propiedad': return { kind: 'remove_property', ...subject(), propertyKey: input['propiedad'] };
+    default: return null;
+  }
+}
+
 /** Los bloques de una página, con su sangría, en el orden en que se leen. */
 export function outline(
   blocks: readonly Page['blocks'][number][],
@@ -143,6 +232,143 @@ const when = (at: number | null | undefined): string =>
   at === null || at === undefined ? 'nunca' : new Date(at).toISOString().slice(0, 16).replace('T', ' ');
 
 export const TOOLS: readonly VeraTool[] = [
+  {
+    name: 'vera_solicitud_bibliotecaria',
+    title: 'Leer una solicitud para la bibliotecaria residente',
+    description:
+      'Lee una solicitud durable de Vera por su identificador, incluidos el encargo, la conversación, ' +
+      'el destino y el contexto registrado. Úsala al despertar desde el hook antes de reclamar trabajo.',
+    inputSchema: {
+      type: 'object', properties: { solicitud: { type: 'string', minLength: 1 } },
+      required: ['solicitud'], additionalProperties: false,
+    },
+    async run(args, ask) {
+      const id = say(args.solicitud).trim();
+      if (id === '') return 'Falta `solicitud`.';
+      const request = await ask<Record<string, unknown>>(`/librarian/requests/${encodeURIComponent(id)}`);
+      if (failed(request)) return trouble(request);
+      return cut(JSON.stringify(request, null, 2));
+    },
+  },
+
+  {
+    name: 'vera_reclamar_solicitud_bibliotecaria',
+    title: 'Reclamar una solicitud bibliotecaria',
+    readOnly: false,
+    description:
+      'Marca una solicitud durable como trabajo de la bibliotecaria que porta esta credencial. ' +
+      'Sólo se usa después de leerla y comprobar identidad y constitución.',
+    inputSchema: {
+      type: 'object', properties: { solicitud: { type: 'string', minLength: 1 } },
+      required: ['solicitud'], additionalProperties: false,
+    },
+    async run(args, _ask, _write, _batch, _query, _propose, action) {
+      if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
+      const id = say(args.solicitud).trim();
+      if (id === '') return 'Falta `solicitud`.';
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/claim`);
+      if (failed(result)) return `No pude reclamarla: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `Solicitud ${id} reclamada por la identidad efectiva de esta conexión.`;
+    },
+  },
+
+  {
+    name: 'vera_progreso_solicitud_bibliotecaria',
+    title: 'Registrar progreso bibliotecario',
+    readOnly: false,
+    description:
+      'Publica un hito breve y verificable de una solicitud en curso. Registra etapa, herramienta o espera; ' +
+      'nunca razonamiento privado.',
+    inputSchema: {
+      type: 'object', properties: {
+        solicitud: { type: 'string', minLength: 1 },
+        tipo: { type: 'string', enum: ['stage', 'tool', 'pending'] },
+        texto: { type: 'string', minLength: 1 },
+      }, required: ['solicitud', 'tipo', 'texto'], additionalProperties: false,
+    },
+    async run(args, _ask, _write, _batch, _query, _propose, action) {
+      if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
+      const id = say(args.solicitud).trim(); const text = say(args.texto).trim();
+      const kind = say(args.tipo).trim();
+      if (id === '' || text === '' || !['stage', 'tool', 'pending'].includes(kind)) return 'La solicitud, el tipo y el texto deben ser válidos.';
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/progress`, { kind, text });
+      if (failed(result)) return `No pude registrar el progreso: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `Progreso registrado en ${id}.`;
+    },
+  },
+
+  {
+    name: 'vera_responder_solicitud_bibliotecaria',
+    title: 'Responder una solicitud bibliotecaria',
+    readOnly: false,
+    destructive: true,
+    description:
+      'Cierra una solicitud con un recibo breve para el chat y una inscripción estructurada en Vera. Cada unidad ' +
+      'semántica viaja como bloque y la jerarquía se expresa con padre, nunca con un outline Markdown dentro de texto. ' +
+      'Puede intervenir páginas gobernadas; todo retiro exige motivo y queda declarado también en su bitácora diaria.',
+    inputSchema: {
+      type: 'object', properties: {
+        solicitud: { type: 'string', minLength: 1 },
+        texto: { type: 'string', minLength: 1, maxLength: 1200, description: 'Recibo breve para la conversación.' },
+        bloques: { type: 'array', default: [], items: {
+          type: 'object', additionalProperties: false, properties: {
+            clave: { type: 'string', minLength: 1 },
+            pagina: { type: 'string', minLength: 1,
+              description: 'Página por id o título; bitacora_hoy deposita bajo la raíz diaria propia.' },
+            padre: { type: 'string', minLength: 1,
+              description: 'Clave de otro bloque del lote o id de un bloque existente.' },
+            posicion: { type: 'integer', minimum: 0 },
+            contenido: { type: 'string', minLength: 1 },
+          }, required: ['clave', 'contenido'],
+        } },
+        cambios: { type: 'array', items: librarianChangeSchema, default: [],
+          description: 'Operaciones estructurales y curatoriales tipadas. Mover, editar o retirar exige su revisión vigente en revisiones.' },
+        revisiones: { type: 'object', additionalProperties: { type: 'string' }, default: {} },
+        retiros: { type: 'array', default: [], items: {
+          type: 'object', additionalProperties: false, properties: {
+            sujeto: { type: 'string', minLength: 1 },
+            motivo: { type: 'string', minLength: 1 },
+          }, required: ['sujeto', 'motivo'],
+        } },
+      }, required: ['solicitud', 'texto'], additionalProperties: false,
+    },
+    async run(args, _ask, _write, _batch, _query, _propose, action) {
+      if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
+      const id = say(args.solicitud).trim(); const text = say(args.texto).trim();
+      if (id === '' || text === '') return 'La solicitud y la respuesta no pueden quedar vacías.';
+      const blocks = Array.isArray(args.bloques) ? args.bloques.map((one) => {
+        const input = one as Record<string, unknown>;
+        return {
+          key: input['clave'],
+          ...(input['pagina'] === undefined ? {} : { page: input['pagina'] }),
+          ...(input['padre'] === undefined ? {} : { parent: input['padre'] }),
+          ...(input['posicion'] === undefined ? {} : { position: input['posicion'] }),
+          content: input['contenido'],
+        };
+      }) : [];
+      const changes: Record<string, unknown>[] = [];
+      if (Array.isArray(args.cambios)) {
+        for (const one of args.cambios) {
+          const translated = one !== null && typeof one === 'object' && !Array.isArray(one)
+            ? librarianChange(one as Record<string, unknown>) : null;
+          if (translated === null) return 'Cada cambio debe usar uno de los tipos explícitos publicados por la herramienta.';
+          changes.push(translated);
+        }
+      }
+      const ifRevisions = args.revisiones !== null && typeof args.revisiones === 'object' && !Array.isArray(args.revisiones)
+        ? args.revisiones : {};
+      const removals = Array.isArray(args.retiros) ? args.retiros.map((one) => {
+        const input = one as Record<string, unknown>;
+        return { subject: input['sujeto'], reason: input['motivo'] };
+      }) : [];
+      const result = await action(`/librarian/requests/${encodeURIComponent(id)}/reply`, {
+        text, blocks, changes, ifRevisions, removals,
+      });
+      if (failed(result)) return `No pude responder: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      return `Respuesta final depositada en ${id} por la identidad efectiva de esta conexión.`;
+    },
+  },
+
   {
     name: 'vera_quien_soy',
     title: 'Quién soy en esta memoria',

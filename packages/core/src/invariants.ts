@@ -87,6 +87,22 @@ const blockBelongsToAnExistingPage: Check = (graph, report) => {
   }
 };
 
+const theDailyRootIsReservedStructure: Check = (graph, report) => {
+  for (const block of graph.allBlocks()) {
+    const matched = /^block:librarian-daily:(\d{4}-\d{2}-\d{2}):(.+)$/.exec(block.stableId);
+    if (matched === null) continue;
+    const participant = graph.participant(`participant:${matched[2]}`);
+    const expected = participant === undefined ? null : `**Bitácora de ${participant.name}:**`;
+    const page = graph.page(block.page);
+    if (expected === null || block.parent !== null || block.content.trim() !== expected || page?.title !== matched[1]) {
+      report(
+        'TheDailyRootIsReservedStructure',
+        `${block.stableId} dejó de ser la raíz exacta de la bitácora diaria de su agente`,
+      );
+    }
+  }
+};
+
 const propertyTargetsOneSubject: Check = (graph, report) => {
   for (const page of graph.pages()) {
     for (const property of graph.propertiesOf(page.id)) {
@@ -411,6 +427,7 @@ const CHECKS: readonly Check[] = [
   blockStableIdentityIsUnique,
   blockParentBelongsToSamePage,
   blockBelongsToAnExistingPage,
+  theDailyRootIsReservedStructure,
   siblingOrderIsDenseAndUnique,
   propertyTargetsOneSubject,
   propertyKeyIsUniquePerSubject,

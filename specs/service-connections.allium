@@ -112,9 +112,13 @@ value Connection {
     library: String?
     -- Lo que la página dice traer.
     collections: List<String>
+    -- La autoridad local puede ser menor que la que trae la credencial.
+    access: ConnectionAccess
     -- Lo que se puede contar de sus credenciales sin contarlas.
     secrets: List<SecretStatus>
 }
+
+enum ConnectionAccess { read | read_write }
 
 value SecretStatus {
     -- Cuál es. Casi siempre una, pero hay servicios que piden dos, y nombrarlas
@@ -176,6 +180,12 @@ surface ServicePage {
     provides:
         SaveCredential(participant, connection, name)
         ForgetCredential(participant, connection, name)
+
+    @guarantee CredentialCapabilityAndLocalAuthorityStaySeparate
+        -- La prueba informa lo que el servicio permite a la credencial. La
+        -- página configura por separado si Vera se limita a leer o también
+        -- queda autorizada a escribir. Una clave amplia no asciende sola la
+        -- autoridad de la conexión.
 
     @guarantee TheCredentialIsPutWhereItIsExplained
         -- Se pone, se cambia y se olvida en la misma página que dice qué es esa

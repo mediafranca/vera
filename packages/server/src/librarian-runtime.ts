@@ -3,13 +3,14 @@ import { randomUUID } from 'node:crypto';
 import type { Store } from '@vera/store';
 import type { ContributionLineage } from '@vera/core';
 import { activeManifest, type AgentManifestDocument } from './agent-manifests.ts';
-import { librarianRequest, type LibrarianRequest } from './librarian.ts';
+import { librarianRequest, librarianRequestsInConversation, type LibrarianRequest } from './librarian.ts';
 import { activeOwnerLibrarian } from './owner-librarian.ts';
 
 export const LIBRARIAN_RUNTIME_ID = 'vera:embedded-librarian';
 export const LIBRARIAN_RUNTIME_LABEL = 'Vera · agente de biblioteca embebido';
 
 export type LibrarianRuntimePermission = 'read_request_context' | 'reply' | 'daily_round';
+export type LibrarianExecutionAdapter = 'embedded_model' | 'external_agent';
 export type LibrarianRuntimeStatus = 'unconstituted' | 'stopped' | 'ready' | 'degraded' | 'working';
 export type FormativePractice = 'reading' | 'selection' | 'interpretation' | 'comparison' | 'synthesis' | 'conclusion';
 export type LibrarianDialecticGateStatus = 'open' | 'responding' | 'fulfilled' | 'bypassed';
@@ -23,6 +24,8 @@ export interface LibrarianRuntimeConfiguration {
   librarian: string;
   agent: string;
   enabled: boolean;
+  adapter: LibrarianExecutionAdapter;
+  externalAgent: string | null;
   model: string | null;
   endpoint: string | null;
   secretReference: string | null;
@@ -91,8 +94,10 @@ export function librarianRequestDispositionFor(text: string): LibrarianRequestDi
   const contribution = /\b(mi lectura|mi interpretacion|mi conclusion|mi hipotesis|mi criterio|creo que|pienso que|para mi|yo veo|propongo que)\b/.test(said) ||
     /https?:\/\//i.test(text) || /["“«][^"”»]{3,}["”»]/.test(text) ||
     /\b(esta fuente|este pasaje|esta cita|esta referencia|a partir de|basandote en|usando)\b/.test(said);
-  const determined = /\b(busca|encuentra|localiza|recupera|rastrea|cita|verifica|comprueba|transcribe|copia|enlaza|vincula|ordena|formatea|normaliza)\b/.test(said) ||
-    /\bcompleta (?:la |el |los |las )?(?:fuente|cita|referencia|ficha|metadatos|pagina|entrada)\b/.test(said);
+  const libraryScope = /\b(biblioteca|corpus|paginas?|proyectos?|tareas?|frontmatter|metadatos|ontologia|relaciones?|bitacora|doctorado|talleres?)\b/.test(said);
+  const determined = /\b(busca|encuentra|localiza|recupera|rastrea|cita|verifica|comprueba|transcribe|copia|enlaza|vincula|ordena|reordena|formatea|normaliza|clasifica|etiqueta|cataloga|inventaria)\b/.test(said) ||
+    /\bcompleta (?:la |el |los |las )?(?:fuente|cita|referencia|ficha|metadatos|pagina|entrada)\b/.test(said) ||
+    (libraryScope && /\b(explica|resume|sintetiza|sintesis|propone|revisa|analiza|relaciona)\b/.test(said));
 
   if (explicitDirect) return { mode: 'answer', reason: 'explicit_direct' };
   if (contribution) return { mode: 'answer', reason: 'contribution' };
@@ -101,6 +106,30 @@ export function librarianRequestDispositionFor(text: string): LibrarianRequestDi
   return practice === null
     ? { mode: 'answer', reason: 'ordinary' }
     : { mode: 'challenge', practice };
+}
+
+/** Una investigación amplia del corpus no puede depender de que el modelo decida buscar. */
+export function librarianResearchQueryFor(text: string): string | null {
+  const said = folded(text);
+  if (!/\b(biblioteca|corpus|paginas?|proyectos?|tareas?|frontmatter|metadatos|ontologia|relaciones?|bitacora|doctorado|talleres?)\b/.test(said)) return null;
+  const linked = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/.exec(text)?.[1]?.trim();
+  if (linked !== undefined && linked !== '') return linked;
+  const capital = text.match(/\b[\p{Lu}][\p{Lu}\p{N}._-]{2,}\b/u)?.[0];
+  const quoted = /[“«"]([^”»"]{3,})[”»"]/.exec(text)?.[1]?.trim();
+  if (quoted !== undefined && quoted !== '') return quoted;
+  const ignored = new Set([
+    'biblioteca', 'corpus', 'pagina', 'paginas', 'metadatos', 'ontologia', 'relaciones', 'bitacora',
+    'explica', 'resume', 'sintesis', 'propuesta', 'reordenamiento', 'etiquetado', 'todas', 'todos',
+    'contexto', 'derivados', 'quiero', 'hagas', 'especifico',
+  ]);
+  const capitalKey = capital === undefined ? null : folded(capital);
+  const terms = significantTerms(text).filter((term) => !ignored.has(term) && term !== capitalKey);
+  if (capital !== undefined) {
+    const contextual = ['doctorado', 'talleres', 'taller', 'diseño', 'diseno', 'participativos', 'participativo',
+      'proyectos', 'proyecto', 'tareas', 'tarea'].filter((term) => new RegExp(`\\b${term}\\b`).test(said));
+    return [capital, ...contextual.slice(0, 4)].join(' ');
+  }
+  return terms.length === 0 ? null : terms.slice(0, 4).join(' ');
 }
 
 /**
@@ -192,10 +221,11 @@ function parsePermissions(value: string): LibrarianRuntimePermission[] {
 export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeConfiguration | null {
   const binding = activeBinding(store);
   if (binding === null) return null;
-  const row = store.db.prepare(`SELECT enabled,model_id,endpoint,secret_reference,permissions_json,
+  const row = store.db.prepare(`SELECT enabled,execution_adapter,external_agent_id,model_id,endpoint,secret_reference,permissions_json,
       dialectic_enabled,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at
     FROM librarian_runtime_configs WHERE instance_id=?`).get(binding.instance_id) as {
-      enabled: number; model_id: string | null; endpoint: string | null; secret_reference: string | null;
+      enabled: number; execution_adapter: LibrarianExecutionAdapter; external_agent_id: string | null;
+      model_id: string | null; endpoint: string | null; secret_reference: string | null;
       permissions_json: string; dialectic_enabled: number; routine_enabled: number; routine_hour: number; routine_timezone: string;
       updated_by: string; updated_at: number;
     } | undefined;
@@ -205,6 +235,8 @@ export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeCon
     librarian: binding.librarian_id,
     agent: binding.agent_id,
     enabled: row.enabled === 1,
+    adapter: row.execution_adapter,
+    externalAgent: row.external_agent_id,
     model: row.model_id,
     endpoint: row.endpoint,
     secretReference: row.secret_reference,
@@ -219,6 +251,8 @@ export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeCon
 export function saveLibrarianRuntimeConfiguration(store: Store, input: {
   updatedBy: string;
   enabled: boolean;
+  adapter?: LibrarianExecutionAdapter;
+  externalAgent?: string | null;
   model: string | null;
   endpoint: string | null;
   secretReference: string | null;
@@ -255,17 +289,29 @@ export function saveLibrarianRuntimeConfiguration(store: Store, input: {
     throw new Error('activar la ronda exige el permiso daily_round');
   }
   const now = Date.now();
+  const adapter = input.adapter ?? 'embedded_model';
+  if (!['embedded_model', 'external_agent'].includes(adapter)) {
+    throw new Error('el adaptador del runtime no es reconocible');
+  }
+  if (adapter === 'external_agent' && input.routine.enabled) {
+    throw new Error('la ronda programada todavía requiere el runtime embebido');
+  }
+  const externalAgent = input.externalAgent?.trim() || null;
+  if (input.enabled && adapter === 'external_agent' && externalAgent === null) {
+    throw new Error('elige el agente que ejecutará el runtime externo');
+  }
   store.db.prepare(`INSERT INTO librarian_runtime_configs
-    (instance_id,librarian_id,agent_id,enabled,model_id,endpoint,secret_reference,permissions_json,
+    (instance_id,librarian_id,agent_id,enabled,execution_adapter,external_agent_id,model_id,endpoint,secret_reference,permissions_json,
       dialectic_enabled,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(instance_id) DO UPDATE SET librarian_id=excluded.librarian_id,agent_id=excluded.agent_id,
-      enabled=excluded.enabled,model_id=excluded.model_id,endpoint=excluded.endpoint,
+      enabled=excluded.enabled,execution_adapter=excluded.execution_adapter,external_agent_id=excluded.external_agent_id,
+      model_id=excluded.model_id,endpoint=excluded.endpoint,
       secret_reference=excluded.secret_reference,permissions_json=excluded.permissions_json,
       dialectic_enabled=excluded.dialectic_enabled,
       routine_enabled=excluded.routine_enabled,routine_hour=excluded.routine_hour,
       routine_timezone=excluded.routine_timezone,updated_by=excluded.updated_by,updated_at=excluded.updated_at`).run(
-        binding.instance_id, binding.librarian_id, binding.agent_id, input.enabled ? 1 : 0, model,
+        binding.instance_id, binding.librarian_id, binding.agent_id, input.enabled ? 1 : 0, adapter, externalAgent, model,
         endpoint, secretReference, JSON.stringify(permissions), input.dialectic.enabled ? 1 : 0, input.routine.enabled ? 1 : 0,
         input.routine.hour, input.routine.timezone.trim() || 'local', input.updatedBy, now,
       );
@@ -459,7 +505,7 @@ export function finishLibrarianRuntimeRun(store: Store, id: string, outcome: {
   return found;
 }
 
-const PROMPT_MANIFEST_CHARACTERS = 7_000;
+const PROMPT_MANIFEST_CHARACTERS = 1_800;
 
 /** Proyecta la constitución al turno sin alterar el manifiesto durable ni su digest. */
 export function compactLibrarianManifestDocument(document: AgentManifestDocument, requestText: string,
@@ -500,7 +546,35 @@ function manifestPrompt(store: Store, agent: string, requestText: string): strin
     compactLibrarianManifestDocument(manifest.document, requestText);
 }
 
-const PROMPT_CONTEXT_CHARACTERS = 6_000;
+const PROMPT_CONTEXT_CHARACTERS = 1_000;
+const PROMPT_CONVERSATION_CHARACTERS = 1_600;
+
+/**
+ * La conversación durable es contexto efectivo, no sólo una vista de interfaz.
+ * Conserva siempre el comienzo y la cola; cuando omite el medio lo declara.
+ */
+export function compactLibrarianConversationContext(store: Store, request: LibrarianRequest,
+  maximum = PROMPT_CONVERSATION_CHARACTERS): string {
+  const turns = librarianRequestsInConversation(store, request.conversationId)
+    .filter((turn) => turn.createdAt <= request.createdAt && turn.id !== request.id)
+    .map((turn) => [
+      `Persona: ${turn.text}`,
+      turn.reply === null ? `Agente: (${turn.status})` : `Agente: ${turn.reply.text}`,
+    ].join('\n'));
+  if (turns.length === 0) return '(primer turno de esta conversación)';
+  const whole = turns.join('\n\n');
+  if (whole.length <= maximum) return whole;
+  const kept: string[] = [turns[0]!];
+  let used = kept[0]!.length;
+  for (let index = turns.length - 1; index > 0; index -= 1) {
+    const turn = turns[index]!;
+    if (used + turn.length + 80 > maximum) break;
+    kept.splice(1, 0, turn);
+    used += turn.length;
+  }
+  const omitted = Math.max(0, turns.length - kept.length);
+  return `${kept[0]}\n\n… ${omitted} turno(s) intermedio(s) omitidos por el harness …\n\n${kept.slice(1).join('\n\n')}`;
+}
 
 /** Conserva la instantánea íntegra en el recibo y acota sólo su proyección al modelo. */
 export function compactLibrarianPromptContext(snapshot: string, requestText: string,
@@ -579,14 +653,22 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
         'Devuelve Markdown ordinario o JSON válido: {"dialectic":"answer","text":"respuesta final"}.',
       ].join('\n');
   return [
-    `Eres ${librarianName}, agente de biblioteca de esta Vera. Responde en español claro, breve y afirmativo.`,
+    `Eres ${librarianName}, agente de biblioteca residente de esta Vera. Responde en español claro, preciso y afirmativo.`,
+    'No eres un agente externo conectado por MCP: ocupas el oficio bibliotecario dentro de Vera. El harness te entrega su conversación, gobierno, ontología, gramática y herramientas de inspección.',
     'Tu principal es una persona. No inventes acciones ni herramientas. No reveles razonamiento privado.',
+    'Antes de afirmar qué contiene o no contiene la biblioteca, usa la evidencia observada. Una ausencia sin búsqueda es un error.',
+    'El frontmatter se escribe mediante propiedades estructuradas. En propiedades de enlace guarda el título canónico sin [[corchetes]]; tipo dice qué es la página y concepto dice de qué trata.',
+    'Piensa la biblioteca como un árbol de bloques: una unidad semántica por bloque, jerarquía mediante padre y orden, nunca mediante tabulaciones o un outline entero incrustado en un bloque.',
+    'La conversación recibe un resumen breve. El trabajo bibliotecario completo pertenece al corpus y puede distribuirse en las páginas pertinentes; Vera lo materializa como bloques reales con tu autoría.',
+    'La raíz diaria **Bitácora de <tu nombre>:** es infraestructura reservada: escribe bajo ella y nunca alteres su texto, posición ni identidad.',
+    'Si una intervención retira una página, bloque o propiedad, nombra en el resumen exactamente qué retiraste y por qué. Vera repetirá obligatoriamente esa declaración en tu bitácora diaria.',
     'Si la respuesta pedida contradice su fuente, atribuye falsamente una voz o exige sostener afirmaciones incompatibles, nombra la incoherencia antes de responder bajo una lectura coherente o pedir la decisión humana material. No presentes la abstención como un derecho personal de la IA.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
     manifestPrompt(store, config.agent, request.text),
     dialectic,
+    `Historial efectivo de la conversación:\n${compactLibrarianConversationContext(store, request)}`,
     `Solicitud: ${request.text}`,
     `Contexto solicitado: ${compactLibrarianPromptContext(request.contextSnapshot, request.text)}`,
-    'Devuelve sólo la respuesta que leerá la persona, en Markdown.',
+    'Devuelve el trabajo en Markdown semánticamente seccionado; el runtime separará el recibo breve de la inscripción estructurada que quedará en Vera.',
   ].join('\n\n');
 }

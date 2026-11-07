@@ -1395,6 +1395,53 @@ const addContributionLineage: Migration = {
   },
 };
 
+/** 37 — harness residente: continuidad, ontología, investigación y bitácora propia. */
+const upgradeResidentLibrarianHarness: Migration = {
+  version: 37,
+  name: 'harness bibliotecario residente v3',
+  apply(db) {
+    const harnesses = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_harnesses'",
+    ).get();
+    if (harnesses === undefined) return;
+    db.exec(`UPDATE librarian_harnesses SET version='vera-librarian-harness:3'
+      WHERE status='active' AND version='vera-librarian-harness:2'`);
+  },
+};
+
+/** 38 — el oficio no queda amarrado a un motor: embebido o agente externo. */
+const addConfigurableLibrarianExecutionAdapter: Migration = {
+  version: 38,
+  name: 'adaptador configurable del agente de biblioteca',
+  apply(db) {
+    const table = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_runtime_configs'",
+    ).get();
+    if (table === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'execution_adapter')) {
+      db.exec("ALTER TABLE librarian_runtime_configs ADD COLUMN execution_adapter TEXT NOT NULL DEFAULT 'embedded_model' CHECK (execution_adapter IN ('embedded_model','external_agent'))");
+    }
+    if (!columns.some((column) => column.name === 'external_agent_id')) {
+      db.exec('ALTER TABLE librarian_runtime_configs ADD COLUMN external_agent_id TEXT');
+    }
+  },
+};
+
+/** 39 — salida nativa en árboles y retiros con doble declaración. */
+const addStructuredLibrarianInscription: Migration = {
+  version: 39,
+  name: 'inscripción bibliotecaria estructurada v4',
+  apply(db) {
+    const harnesses = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_harnesses'",
+    ).get();
+    if (harnesses === undefined) return;
+    db.exec(`UPDATE librarian_harnesses SET version='vera-librarian-harness:4'
+      WHERE status='active' AND version='vera-librarian-harness:3'`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1432,6 +1479,9 @@ export const MIGRATIONS: readonly Migration[] = [
   addTerritorialClearanceAndLibrarianHarnessV2,
   addLibrarianDialectic,
   addContributionLineage,
+  upgradeResidentLibrarianHarness,
+  addConfigurableLibrarianExecutionAdapter,
+  addStructuredLibrarianInscription,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

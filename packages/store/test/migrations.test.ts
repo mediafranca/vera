@@ -363,7 +363,7 @@ describe('migraciones', () => {
     db.close();
   });
 
-  it('preserva el alcance existente al añadir territorios y lleva el harness a v2', () => {
+  it('preserva el alcance existente al añadir territorios y lleva el harness residente a v4', () => {
     const store = openStore({ path: ':memory:', graphName: 'mind' });
     saveParticipant(store, { id: 'participant:owner', name: 'Dueña', kind: 'human' });
     saveParticipant(store, { id: 'participant:lucienne', name: 'Lucienne', kind: 'agent' });
@@ -400,7 +400,7 @@ describe('migraciones', () => {
     );
     assert.equal(
       (store.db.prepare('SELECT version FROM librarian_harnesses WHERE id=?').get('harness:1') as any).version,
-      'vera-librarian-harness:2',
+      'vera-librarian-harness:4',
     );
     assert.deepEqual(
       store.db.prepare(`SELECT surface_kind,surface_id,human_id FROM surface_stewards`).all()
@@ -429,6 +429,8 @@ describe('migraciones', () => {
     assert.ok((store.db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_dialectic_gates'").get()));
     const columns = store.db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
     assert.ok(columns.some((column) => column.name === 'dialectic_enabled'));
+    assert.ok(columns.some((column) => column.name === 'execution_adapter'));
+    assert.ok(columns.some((column) => column.name === 'external_agent_id'));
     store.close();
   });
 });

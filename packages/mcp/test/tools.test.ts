@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { connectionFrom } from '../src/client.ts';
-import { TOOLS, outline, toolNamed, type Ask, type Propose, type Query, type Write, type WriteBatch } from '../src/tools.ts';
+import { TOOLS, outline, toolNamed, type Action, type Ask, type Propose, type Query, type Write, type WriteBatch } from '../src/tools.ts';
 
 /** Una Vera de mentira que anota lo que le preguntan. */
 function fakeVera(answers: Record<string, unknown>) {
@@ -32,16 +32,20 @@ const run = async (
   write?: Write,
   query?: Query,
   propose?: Propose,
+  action?: Action,
 ): Promise<string> => {
   const tool = toolNamed(name);
   assert.ok(tool !== undefined, `no existe la herramienta ${name}`);
-  const result = await tool.run(args, ask, write, undefined, query, propose);
+  const result = await tool.run(args, ask, write, undefined, query, propose, action);
   return typeof result === 'string' ? result : result.text;
 };
 
 describe('el catálogo', () => {
   it('ofrece escritura, propuesta y descarte explícitamente destructivo', () => {
     assert.deepEqual(TOOLS.filter((tool) => tool.readOnly === false).map((tool) => tool.name), [
+      'vera_reclamar_solicitud_bibliotecaria',
+      'vera_progreso_solicitud_bibliotecaria',
+      'vera_responder_solicitud_bibliotecaria',
       'vera_escribir',
       'vera_editar_bloque_propio',
       'vera_mover_bloque_propio',
@@ -50,6 +54,7 @@ describe('el catálogo', () => {
       'vera_descartar',
     ]);
     assert.deepEqual(TOOLS.filter((tool) => tool.destructive === true).map((tool) => tool.name), [
+      'vera_responder_solicitud_bibliotecaria',
       'vera_descartar',
     ]);
     assert.deepEqual(
@@ -68,8 +73,12 @@ describe('el catálogo', () => {
         'vera_mover_bloque_propio',
         'vera_ontologia',
         'vera_preparar_escritura',
+        'vera_progreso_solicitud_bibliotecaria',
         'vera_proponer_edicion',
         'vera_quien_soy',
+        'vera_reclamar_solicitud_bibliotecaria',
+        'vera_responder_solicitud_bibliotecaria',
+        'vera_solicitud_bibliotecaria',
         'vera_vecindario',
       ],
     );
@@ -81,6 +90,61 @@ describe('el catálogo', () => {
       assert.equal(tool.inputSchema.type, 'object');
       assert.equal(tool.inputSchema.additionalProperties, false);
     }
+  });
+
+  it('publica la gramática completa de cambios bibliotecarios en vez de Array<object>', () => {
+    const tool = toolNamed('vera_responder_solicitud_bibliotecaria')!;
+    const properties = tool.inputSchema['properties'] as Record<string, Record<string, unknown>>;
+    const changes = properties['cambios']!;
+    const variants = (changes['items'] as Record<string, unknown>)['oneOf'] as unknown[];
+    assert.equal(variants.length, 14);
+    assert.match(JSON.stringify(variants), /mover_bloque/);
+    assert.match(JSON.stringify(variants), /definir_propiedad/);
+    assert.match(JSON.stringify(variants), /crear_conectiva/);
+  });
+});
+
+describe('ciclo de la bibliotecaria residente', () => {
+  it('lee, reclama, informa y responde por rutas explícitas', async () => {
+    const { ask, asked } = fakeVera({
+      '/librarian/requests/agent-request%3A1': { id: 'agent-request:1', text: 'Investiga PICTOS' },
+    });
+    const actions: { path: string; body: Record<string, unknown> }[] = [];
+    const action: Action = async (path, body = {}) => { actions.push({ path, body }); return { ok: true }; };
+    assert.match(await run('vera_solicitud_bibliotecaria', { solicitud: 'agent-request:1' }, ask), /Investiga PICTOS/);
+    assert.match(await run('vera_reclamar_solicitud_bibliotecaria', { solicitud: 'agent-request:1' }, ask,
+      undefined, undefined, undefined, action), /reclamada/);
+    assert.match(await run('vera_progreso_solicitud_bibliotecaria', {
+      solicitud: 'agent-request:1', tipo: 'tool', texto: 'Leí la ontología',
+    }, ask, undefined, undefined, undefined, action), /registrado/);
+    assert.match(await run('vera_responder_solicitud_bibliotecaria', {
+      solicitud: 'agent-request:1', texto: 'Síntesis fundada',
+      bloques: [
+        { clave: 'sintesis', pagina: 'bitacora_hoy', contenido: 'PICTOS articula doctorado y talleres.' },
+        { clave: 'talleres', padre: 'sintesis', contenido: 'Los talleres organizan tres frentes.' },
+      ],
+      cambios: [
+        { tipo: 'mover_bloque', bloque: 'block:uno', pagina: 'page:uno', padre: null, posicion: 3 },
+      ],
+      revisiones: { 'block:uno': 'op:vigente' }, retiros: [],
+    }, ask, undefined, undefined, undefined, action), /depositada/);
+    assert.equal(asked[0]?.path, '/librarian/requests/agent-request%3A1');
+    assert.deepEqual(actions.map((one) => one.path), [
+      '/librarian/requests/agent-request%3A1/claim',
+      '/librarian/requests/agent-request%3A1/progress',
+      '/librarian/requests/agent-request%3A1/reply',
+    ]);
+    assert.deepEqual(actions.at(-1)?.body, {
+      text: 'Síntesis fundada',
+      blocks: [
+        { key: 'sintesis', page: 'bitacora_hoy', content: 'PICTOS articula doctorado y talleres.' },
+        { key: 'talleres', parent: 'sintesis', content: 'Los talleres organizan tres frentes.' },
+      ],
+      changes: [
+        { kind: 'move_block', block: 'block:uno', page: 'page:uno', parent: null, position: 3 },
+      ],
+      ifRevisions: { 'block:uno': 'op:vigente' }, removals: [],
+    });
   });
 });
 

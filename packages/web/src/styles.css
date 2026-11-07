@@ -5391,7 +5391,7 @@ body:has(.embedded-map-frame) {
   position: fixed;
   right: 1rem;
   top: calc(3.4rem + env(safe-area-inset-top));
-  width: 42rem;
+  width: 48rem;
   max-width: calc(100vw - 2rem);
   max-height: 84vh;
   box-sizing: border-box;
@@ -6249,11 +6249,12 @@ body.settings-open #text {
 .settings-search > input {
   width: 100%;
   box-sizing: border-box;
-  padding: .6rem .72rem;
+  height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--rule);
-  border-radius: 4px;
+  border-radius: var(--form-control-radius);
   font: inherit;
 }
 
@@ -6273,7 +6274,7 @@ body.settings-open #text {
 .settings-search-results[hidden] { display: none; }
 
 .settings-pill {
-  min-height: 2.55rem;
+  min-height: var(--form-control-height);
   box-sizing: border-box;
   background: var(--bg-raised);
   border: 1px solid var(--rule);
@@ -6389,6 +6390,7 @@ body.settings-open #text {
  * paleta sin incrustar otro color.
  */
 .settings-field select,
+.instance-configuration select,
 .sharing-field select,
 .sharing-publish select {
   -webkit-appearance: none;
@@ -6405,6 +6407,7 @@ body.settings-open #text {
 }
 
 .settings-field :is(input, select):focus-visible,
+.instance-configuration :is(input, select):focus-visible,
 .sharing-field :is(input, select):focus-visible,
 .sharing-publish :is(input, select):focus-visible {
   outline: 2px solid var(--accent);
@@ -6478,14 +6481,16 @@ body.settings-open #text {
 .settings-destination.is-pending { opacity: .78; }
 
 .instance-configuration {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: .7rem;
   margin-bottom: 1.35rem;
   padding: .9rem;
   border: 1px solid var(--rule);
   border-radius: 6px;
   background: var(--bg-raised);
+}
+.instance-configuration-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .7rem;
 }
 .instance-configuration label { display: grid; gap: .35rem; min-width: 0; }
 .instance-configuration label > span { color: var(--text-dim); font-size: .72rem; }
@@ -6493,16 +6498,25 @@ body.settings-open #text {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 2.65rem;
-  padding: .5rem .6rem;
+  height: var(--form-control-height);
+  min-height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--rule);
-  border-radius: 4px;
+  border-radius: var(--form-control-radius);
   font: inherit;
 }
 .instance-configuration :is(input, select):disabled { opacity: .72; }
 .instance-configuration .settings-note { grid-column: 1 / -1; margin: 0; }
+.instance-configuration-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .7rem;
+}
+.instance-configuration-actions .settings-note { flex: 1 1 12rem; }
 
 .settings-corpus-summary {
   margin: 0 0 .65rem;
@@ -6604,7 +6618,7 @@ body.settings-open #text {
 
 @media (max-width: 640px) {
   .settings-destinations { grid-template-columns: 1fr; }
-  .instance-configuration { grid-template-columns: 1fr; }
+  .instance-configuration-form { grid-template-columns: 1fr; }
   .settings-search-results { grid-template-columns: 1fr; }
   .configuration-surface { width: min(100% - 1rem, 72rem); }
   .configuration-surface-header { align-items: stretch; }
@@ -6793,7 +6807,7 @@ body.settings-open #text {
 .media-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
 .settings-open-files { color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 4px; padding: .4rem .7rem; cursor: pointer; }
 .memory-portability { display: flex; flex-wrap: wrap; gap: .6rem; margin: .8rem 0; }
-.settings-action { color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 4px; padding: .5rem .75rem; cursor: pointer; font: inherit; text-decoration: none; }
+.settings-action { box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--form-control-height); color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: var(--form-control-radius); padding: 0 var(--form-control-padding-inline); cursor: pointer; font: inherit; text-decoration: none; }
 .settings-action:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .settings-action:disabled { opacity: .55; cursor: wait; }
 
@@ -7634,9 +7648,18 @@ body.settings-open #text {
  * llevaba el suyo propio y salía al doble de grande, que es lo que hacía que lo
  * generado pesara más que lo escrito en una página donde casi todo es escrito.
  */
-.bullet.generated::before {
+.block:not(.numbered):not(.trail-stop) > .bullet.generated::before {
   background: none;
   box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/*
+ * Cuando la marca ya es un número, no cabe una segunda figura de procedencia.
+ * El número generado toma el rojo de IA; el humano conserva el color ordinario.
+ */
+:is(.block.numbered, .block.trail-stop) > .bullet.generated::before {
+  color: var(--accent);
+  box-shadow: none;
 }
 
 /*
@@ -9960,6 +9983,23 @@ html[data-working-slow='true']::after {
   color: var(--warning);
 }
 
+.service-access {
+  box-sizing: border-box;
+  height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  font: inherit;
+}
+
+.service-access-note {
+  flex-basis: 100%;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
 /*
  * El buscador bibliográfico, junto a lo que se está escribiendo.
  *
@@ -12190,6 +12230,30 @@ html[data-working-slow='true']::after {
 .sharing-revoked-history > summary { cursor: pointer; }
 .sharing-group { margin: 1.35rem 0; }
 .sharing-group h4 { margin-bottom: .6rem; }
+.sharing-effective-membership {
+  padding: .75rem .9rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  background: var(--bg);
+}
+.sharing-effective-membership > summary { color: var(--accent); cursor: pointer; font-weight: 600; }
+.sharing-effective-membership > .settings-note { margin: .7rem 0; }
+.sharing-effective-membership > input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--form-control-height);
+  padding: 0 var(--form-control-padding-inline);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--form-control-radius);
+  font: inherit;
+}
+.sharing-effective-membership > input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
 .sharing-permissions { display: flex; flex-wrap: wrap; gap: 1rem; margin: .75rem 0; }
 .sharing-invitation-result { display: grid; gap: .65rem; margin-top: .75rem; }
 .sharing-issued-invitation { display: grid; grid-template-columns: 1fr auto; gap: .5rem; padding: .75rem; border: 1px solid var(--rule); border-radius: .45rem; background: var(--bg); }

@@ -237,6 +237,32 @@ export async function renderService(
     put('colecciones'),
   );
 
+  /* La capacidad de la clave y la autoridad concedida por Vera son distintas. */
+  const accessCell = named('acceso');
+  const access = document.createElement('select');
+  access.className = 'service-access';
+  access.setAttribute('aria-label', 'Acceso permitido para esta conexión');
+  access.append(new Option('Sólo lectura', 'read'), new Option('Lectura y escritura', 'read-write'));
+  access.value = service.access;
+  access.addEventListener('change', () => {
+    access.disabled = true;
+    const next = access.value === 'read-write' ? 'lectura y escritura' : 'lectura';
+    void put('acceso')(next).then((saved) => {
+      access.disabled = false;
+      if (!saved) {
+        access.value = service.access;
+        notify('no se pudo cambiar el acceso de la conexión');
+        return;
+      }
+      service.access = next === 'lectura y escritura' ? 'read-write' : 'read';
+      notify(`acceso de Zotero: ${next}`);
+    });
+  });
+  const accessNote = document.createElement('small');
+  accessNote.className = 'service-access-note';
+  accessNote.textContent = 'Esta política limita a Vera. La prueba muestra por separado lo que permite la clave de Zotero.';
+  accessCell.append(access, accessNote);
+
   observedCell(
     named('traído'),
     service.pages === 0
@@ -265,7 +291,7 @@ export async function renderService(
         return;
       }
       result.classList.remove('bad');
-      result.textContent = describe(said);
+      result.textContent = describe(said, service.access);
       state.textContent = `conectada como ${said.identity.username}`;
     });
   });
@@ -274,15 +300,16 @@ export async function renderService(
   return panel;
 }
 
-function describe(said: ServiceCheck): string {
+function describe(said: ServiceCheck, access: ServiceView['access']): string {
   const can = [
     said.identity.access.library ? 'lee la biblioteca' : null,
     said.identity.access.notes ? 'lee las notas' : null,
-    said.identity.access.write ? 'podría escribir (Vera no lo hace)' : null,
+    said.identity.access.write ? 'la clave permite escribir' : 'la clave no permite escribir',
     said.identity.access.groups > 0 ? `${said.identity.access.groups} grupos` : null,
   ].filter((one): one is string => one !== null);
   const library = said.declared ? said.library : `${said.library} (no declarada; se dedujo)`;
-  return `conectada como ${said.identity.username} · ${library} · ${can.join(', ')}`;
+  const policy = access === 'read-write' ? 'Vera autoriza lectura y escritura' : 'Vera autoriza sólo lectura';
+  return `conectada como ${said.identity.username} · ${library} · ${can.join(', ')} · ${policy}`;
 }
 
 /** ¿Esta página gobierna un servicio? Se responde con lo que ya trae la página. */

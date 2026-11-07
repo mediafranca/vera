@@ -58,7 +58,7 @@ describe('memoria inicial distribuida', () => {
       WHERE l.status='active' AND h.status='active'`).get() as any;
     assert.equal(librarian.owner_id, owner.id);
     assert.equal(librarian.name, 'Aurelia');
-    assert.equal(librarian.version, 'vera-librarian-harness:2');
+    assert.equal(librarian.version, 'vera-librarian-harness:4');
     const runtime = store.db.prepare(`SELECT enabled,model_id,endpoint,secret_reference
       FROM librarian_runtime_configs`).get() as any;
     assert.deepEqual({ ...runtime }, {

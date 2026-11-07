@@ -77,6 +77,14 @@ export interface PublicationSiteView {
   }[];
 }
 
+export interface InstanceProfileView {
+  profile: 'personal' | 'collective';
+  libraryName: string;
+  dataLocation: 'managed';
+  participant?: string;
+  roles?: string[];
+}
+
 /**
  * Una ruta del Markdown y el objeto al que resuelve. El bloque sigue diciendo
  * `../assets/foo.png`; la traducción ocurre al presentar, así que la fuente no
@@ -459,6 +467,8 @@ export interface ServiceView {
   service: string;
   library: string | null;
   collections: string[];
+  /** Política local de la conexión; la capacidad de la clave se observa aparte. */
+  access: 'read' | 'read-write';
   secrets: ServiceSecret[];
   /** Cuántas páginas del corpus vinieron de ahí. Se cuenta, no se guarda. */
   pages: number;
@@ -712,6 +722,8 @@ export interface LibrarianRuntimeView {
     librarian: string;
     agent: string;
     enabled: boolean;
+    adapter: 'embedded_model' | 'external_agent';
+    externalAgent: string | null;
     model: string | null;
     endpoint: string | null;
     secretReference: string | null;
@@ -1023,6 +1035,12 @@ export const api = {
     proposeInsteadOfWriting = health.canContribute === true && health.canEdit !== true;
     return health;
   },
+
+  instanceProfile: () => json<InstanceProfileView>('/instance-profile'),
+
+  renameLibrary: (libraryName: string) => json<InstanceProfileView>('/instance-profile', {
+    method: 'PATCH', body: JSON.stringify({ libraryName }),
+  }),
 
   /** Incorpora el estado y los objetos de otro archivo portable de Vera. */
   importVera: async (
@@ -1651,7 +1669,8 @@ export const api = {
   }),
 
   configureLibrarianRuntime: (configuration: {
-    enabled: boolean; model: string | null; endpoint: string | null; secretReference: string | null;
+    enabled: boolean; adapter: 'embedded_model' | 'external_agent'; externalAgent: string | null;
+    model: string | null; endpoint: string | null; secretReference: string | null;
     permissions: LibrarianRuntimePermission[];
     dialectic: { enabled: boolean };
     routine: { enabled: boolean; hour: number; timezone: string };

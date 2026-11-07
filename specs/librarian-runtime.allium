@@ -4,23 +4,135 @@
 -- Scope: ejecución embebida y gobernada de la bibliotecaria de una Vera.
 -- Includes: constitución, configuración de inferencia por referencia, ciclo de
 --   vida, solicitudes, ronda diaria, recibos y coexistencia con un puente externo.
--- Excludes: custodia material del secreto, semántica de cada modelo y herramientas
---   mutantes distintas de la respuesta ordinaria del agente de biblioteca.
+-- Excludes: custodia material del secreto y semántica de cada modelo.
 
 use "./core.allium" as core
 use "./agent-manifest.allium" as manifests
 use "./agent-conversation.allium" as conversations
 use "./owner-librarian-harness.allium" as harnesses
 
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract ResidentLibrarianExecution {
+    answer_request: (configuration: LibrarianRuntimeConfiguration, request: conversations/ConversationRequest) -> conversations/AgentReply
+
+    @invariant ConversationContinuityIsEffectiveContext
+        -- Every inference receives a bounded chronological projection of the
+        -- conversation, including the original unresolved instruction, human
+        -- contributions, prior replies and the current turn. A new turn never
+        -- reduces the task to its last sentence.
+
+    @invariant GovernanceAndOntologyAreResidentContext
+        -- The effective property vocabulary, semantic objects, relation
+        -- definitions, special pages and corpus-writing grammar travel with the
+        -- task or are available through built-in tools. They are part of the
+        -- resident office, not optional MCP lore.
+
+    @invariant ToolProtocolNeverBecomesLibraryContent
+        -- A valid or malformed tool request is protocol, never a final reply and
+        -- never a block. Markdown fences around structured calls do not turn
+        -- them into prose; rejected calls remain recoverable runtime failures.
+
+    @invariant NegativeFindingsRequireRecordedEvidence
+        -- The librarian cannot claim that pages, projects, tasks or relations do
+        -- not exist without at least one successful relevant corpus inspection.
+        -- Contradictory positive hits force another answer instead of inscription.
+
+    @invariant DraftsAreValidatedBeforeTheyBecomeProposals
+        -- Page properties and block edits are checked against current identity,
+        -- revisions, ontology, target subject and value grammar before they can
+        -- accompany a reply as reviewable changes.
+
+    @invariant DailyWritingUsesTheLibrariansOwnSection
+        -- When a request explicitly targets today's journal, the visible reply
+        -- is a child of the single daily root "Bitácora de <agent name>". Vera
+        -- creates the private journal and its bitácora type on first use when
+        -- necessary, preserving ordinary agent_generation authorship.
+
+    @invariant ConversationSummaryAndCorpusWorkAreDifferentObjects
+        -- The conversational reply is a short account of what the librarian
+        -- understood and did. Substantive work is a structured inscription in
+        -- Vera and may target any governed page; it is never flattened into the
+        -- chat message or into one oversized Markdown block.
+
+    @invariant CorpusWritingIsARealBlockTree
+        -- Each semantic unit is one block. Parent and position express the
+        -- hierarchy; indentation, Markdown headings and list markers inside a
+        -- string never impersonate child blocks. The server validates the whole
+        -- tree before applying it atomically with agent_generation authorship.
+
+    @invariant TheDailyRootIsReservedStructure
+        -- The one root "Bitácora de <agent name>" is stable infrastructure. A
+        -- librarian may add, edit, move or remove descendants but cannot alter,
+        -- move or remove that root through an ordinary request.
+
+    @invariant EveryRemovalIsDeclaredTwice
+        -- A destructive corpus operation is accepted only when the short chat
+        -- reply names what was removed and why, and the same declaration is
+        -- written automatically under today's own librarian journal. A removal
+        -- can therefore never succeed silently, even when its target is elsewhere.
+
+    @invariant ResidentAuthorityDoesNotEraseHistory
+        -- The resident librarian may curate throughout the governed Vera with
+        -- the owner's configured authority. Edits, moves and removals still use
+        -- fresh revisions, ordinary operations, lineage and recoverable history;
+        -- broad reach is not an exemption from provenance.
+
+    @invariant IdentitySurvivesRuntimeAndProviderChanges
+        -- Lucienne's participant, office, conversations, harness, authorship and
+        -- history do not belong to Qwen, Codex, OpenClaw or any other runtime or
+        -- model provider. The owner may replace either execution adapter or
+        -- provider without replacing the librarian.
+
+    @invariant TheConfiguredRuntimeIsTheOnlyRuntime
+        -- A request is dispatched only through the execution adapter and model
+        -- chosen by the owner. Failure leaves the durable request recoverable;
+        -- Vera never falls back silently from Codex to a local model, from one
+        -- provider to another, or from an external agent to embedded inference.
+}
+
 enum LibrarianRunKind { request | routine }
 enum LibrarianRunState { running | completed | failed }
+enum LibrarianExecutionAdapter { embedded_model | external_agent }
 enum LibrarianRuntimePermission { read_request_context | reply | daily_round }
 enum FormativePractice { reading | selection | interpretation | comparison | synthesis | conclusion }
 enum DialecticGateStatus { open | responding | fulfilled | bypassed }
 
+entity LibrarianCorpusInscription {
+    request: conversations/ConversationRequest
+    reply: conversations/AgentReply
+    librarian: core/Participant
+    blocks: List<LibrarianInscribedBlock>
+    changes: List<core/Change>
+    removals: List<LibrarianRemovalDeclaration>
+    created_at: Timestamp
+}
+
+entity LibrarianInscribedBlock {
+    inscription: LibrarianCorpusInscription
+    key: String
+    page: core/Page
+    parent_key: String?
+    position: Integer
+    content: String
+    materialized_block: core/Block
+}
+
+entity LibrarianRemovalDeclaration {
+    inscription: LibrarianCorpusInscription
+    subject: String
+    reason: String
+    chat_declaration: String
+    journal_block: core/Block
+}
+
 entity LibrarianRuntimeConfiguration {
     librarian: harnesses/OwnerLibrarian
     enabled: Boolean
+    adapter: LibrarianExecutionAdapter
+    external_agent_id: String?
     model_id: String?
     endpoint: String?
     secret_reference: String?
@@ -63,16 +175,19 @@ actor LibrarianOwner {
     identified_by: core/Participant where this.kind = human and this.status = active
 }
 
-rule OwnerConfiguresEmbeddedRuntime {
-    when: ConfigureLibrarianRuntime(owner, librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
+rule OwnerConfiguresResidentRuntime {
+    when: ConfigureLibrarianRuntime(owner, librarian, enabled, adapter, external_agent_id, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
     requires: librarian.owner = owner
     requires: not enabled or model_id != null
+    requires: not enabled or adapter != external_agent or external_agent_id != null
     requires: routine_hour >= 0 and routine_hour <= 23
     requires: not enabled or (permissions.contains(read_request_context) and permissions.contains(reply))
     requires: not routine_enabled or permissions.contains(daily_round)
     ensures: LibrarianRuntimeConfiguration.created(
         librarian: librarian,
         enabled: enabled,
+        adapter: adapter,
+        external_agent_id: external_agent_id,
         model_id: model_id,
         endpoint: endpoint,
         secret_reference: secret_reference,
@@ -188,6 +303,49 @@ rule EmbeddedRuntimeAnswersOneClaimedRequest {
     )
 }
 
+rule ResidentLibrarianInscribesStructuredWork {
+    when: InscribeLibrarianWork(configuration, request, summary, blocks, changes, removals)
+    requires: configuration.enabled
+    requires: configuration.permissions.contains(reply)
+    requires: request.conversation.agent = configuration.librarian.librarian
+    requires: request.status = working
+    requires: summary != ""
+    requires: blocks.all(block => block.content != "")
+    requires: blocks.all(block => block.parent_key = null or blocks.any(parent => parent.key = block.parent_key))
+    requires: blocks.all(block => not flattened_outline(block.content))
+    requires: changes.all(change => not destructive(change) or removals.any(one => one.subject = subject_of(change)))
+    requires: removals.all(one => summary.contains(one.chat_declaration))
+    ensures:
+        let reply = conversations/AgentReply.created(
+            request: request,
+            answered_by: configuration.librarian.librarian,
+            text: summary,
+            lineage: direct,
+            written_block: null,
+            created_at: now
+        )
+        let inscription = LibrarianCorpusInscription.created(
+            request: request,
+            reply: reply,
+            librarian: configuration.librarian.librarian,
+            blocks: blocks,
+            changes: changes,
+            removals: removals,
+            created_at: now
+        )
+        request.status = answered
+        request.finished_at = now
+
+    @guidance
+        -- A correction request may split one old block into a tree, move its
+        -- descendants or curate other pages. The visible conversation remains a
+        -- compact receipt; the graph, operations and journal carry the work.
+        -- Blocks materialize atomically as agent_generation using parent_key and
+        -- position. Changes use fresh revisions and lineage. Every removal also
+        -- creates its declaration under today's reserved librarian root before
+        -- the request can become answered.
+}
+
 rule OwnerRunsTheDailyRound {
     when: RunLibrarianRoutine(owner, configuration)
     requires: configuration.librarian.owner = owner
@@ -248,6 +406,9 @@ surface LibrarianRuntimeAdministration {
         ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
         RunLibrarianRoutine(owner, configuration)
 
+    contracts:
+        fulfils ResidentLibrarianExecution
+
     @guarantee RuntimeIdentityIsTheConstitutedLibrarian
         -- La bibliotecaria responde con su participante. Cotito puede seguir
         -- operando por el puente externo, pero nunca firma como Lucienne.
@@ -281,6 +442,16 @@ surface LibrarianRuntimeAdministration {
     @guarantee EveryRunLeavesPublicOperationalEvidence
         -- Vera conserva modelo, manifiesto, comienzo, término, estado, salida o
         -- error. No conserva razonamiento privado ni el valor del secreto.
+
+    @guarantee BroadLibraryQuestionsBeginWithARecordedSurvey
+        -- Una petición sobre conjuntos de páginas, proyectos, tareas o relaciones
+        -- comienza por una inspección gobernada del corpus. El modelo puede pedir
+        -- lecturas posteriores, pero no decidir que buscar era innecesario.
+
+    @guarantee TheOriginalTaskSurvivesEveryFollowUp
+        -- Aclaraciones, aportes mayéuticos, preguntas sobre progreso y bypasses
+        -- conservan el encargo abierto. La respuesta final resuelve ese encargo,
+        -- no sólo la frase más reciente.
 }
 
 actor LibrarianConversationHuman {
@@ -309,9 +480,10 @@ surface LibrarianDialecticConversation {
 
     @guarantee OperationalRequestsRemainDirect
         -- Buscar, citar, verificar, recuperar, ordenar, transcribir, enlazar,
-        -- completar metadatos, formatear o ejecutar una decisión ya tomada no
-        -- abre un umbral. Una fuente identificable tampoco debe quedar detrás de
-        -- una pregunta formativa.
+        -- completar metadatos, clasificar, etiquetar, reordenar, explicar el
+        -- corpus, formatear o ejecutar una decisión ya tomada no abre un umbral.
+        -- Una fuente identificable tampoco debe quedar detrás de una pregunta
+        -- formativa.
 
     @guarantee AClueCountsAsContribution
         -- Una pista, hipótesis, fuente o criterio ya aportado basta para ayudar
@@ -323,6 +495,11 @@ surface LibrarianDialecticConversation {
         -- completa primero la parte determinada. Puede formular como máximo una
         -- pregunta breve sobre la decisión personal restante, sin retener lo ya
         -- encontrado.
+
+    @guarantee ResearchPrecedesAnyFormativeQuestion
+        -- La palabra «síntesis» no convierte una investigación bibliotecaria en
+        -- un examen. Cuando hay corpus que recuperar, clasificar o relacionar,
+        -- toda esa labor se completa antes de ofrecer una pregunta de juicio.
 
     @guarantee MayeuticsIsAnOfferNotAnAccessCondition
         -- Una petición explícita de ejecución directa o la insistencia posterior

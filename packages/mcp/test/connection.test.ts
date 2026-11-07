@@ -76,9 +76,13 @@ before(async () => {
   };
 
   PAGE = await write({ kind: 'create_page', title: 'La bitácora', visibility: 'private' });
-  const first = await write({ kind: 'create_block', page: PAGE, parent: null, content: 'Un pensamiento' });
+  const first = await write({
+    kind: 'create_block', page: PAGE, parent: null, position: 0, content: 'Un pensamiento',
+  });
   OWNER_BLOCK = first;
-  OWNER_CHILD = await write({ kind: 'create_block', page: PAGE, parent: first, content: 'Y su matiz' });
+  OWNER_CHILD = await write({
+    kind: 'create_block', page: PAGE, parent: first, position: 0, content: 'Y su matiz',
+  });
 
   const agent = await fetch(`http://127.0.0.1:${PORT}/agents`, {
     method: 'POST',
@@ -123,7 +127,7 @@ after(async () => {
 describe('vera-mcp por stdio', () => {
   it('arranca y ofrece su catálogo', async () => {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 16);
+    assert.equal(tools.length, 20);
     assert.ok(tools.some((tool) => tool.name === 'vera_mi_constitucion'));
     assert.ok(tools.some((tool) => tool.name === 'vera_preparar_escritura'));
     assert.ok(tools.some((tool) => tool.name === 'vera_consultar'));
@@ -138,6 +142,8 @@ describe('vera-mcp por stdio', () => {
         .filter((tool) => ![
           'vera_escribir', 'vera_escribir_lote', 'vera_editar_bloque_propio',
           'vera_mover_bloque_propio', 'vera_proponer_edicion', 'vera_descartar',
+          'vera_reclamar_solicitud_bibliotecaria', 'vera_progreso_solicitud_bibliotecaria',
+          'vera_responder_solicitud_bibliotecaria',
         ].includes(tool.name))
         .every((tool) => tool.annotations?.readOnlyHint === true),
     );

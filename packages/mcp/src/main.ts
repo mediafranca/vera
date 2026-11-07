@@ -29,6 +29,7 @@ import {
 
 import {
   ask as askVera,
+  act as actVera,
   connectionFrom,
   propose as proposeVera,
   query as queryVera,
@@ -103,6 +104,7 @@ export function mcpServer(connection: Connection): Server {
   const writeBatch: WriteBatch = (origin, changes) => submitBatchVera(connection, origin, changes);
   const query: Query = (input) => queryVera(connection, input);
   const propose: Propose = (input) => proposeVera(connection, input);
+  const action = (path: string, body?: Record<string, unknown>) => actVera(connection, path, body);
 
   const server = new Server(
     { name: 'vera', version: VERSION },
@@ -140,7 +142,7 @@ export function mcpServer(connection: Connection): Server {
      * primero—. Vera apagada es una circunstancia, no una violación.
      */
     try {
-      const result = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch, query, propose);
+      const result = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch, query, propose, action);
       const text = typeof result === 'string' ? result : result.text;
       return {
         content: [{ type: 'text' as const, text }],

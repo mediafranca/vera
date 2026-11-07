@@ -1,8 +1,8 @@
 -- allium: 3
 -- owner-librarian-harness.allium
 
--- Scope: The librarian agent that belongs to the human owner of one Vera and
---   the special library capabilities that Vera supplies through its harness
+-- Scope: The resident librarian agent that belongs to the human owner of one
+--   Vera and the library understanding and capabilities supplied by its harness
 -- Includes: Owner/principal binding, editable identity, one active librarian
 --   role per instance, explicit harness capabilities, territorial clearance,
 --   ordinary attributed writes and revocation
@@ -39,6 +39,24 @@ contract OwnerLibrarianHarnessAdministration {
         -- Vera constitutes and versions the librarian harness and its specific
         -- tools. The harness does not own the agent, become its human principal
         -- or replace the owner's responsibility for delegated action.
+
+    @invariant TheResidentOfficeIsNotAConnection
+        -- MCP, channels and credentials connect an external participant to Vera.
+        -- The owner librarian instead occupies a singular resident office inside
+        -- the library. Its authority to understand government, ontology, corpus
+        -- grammar and history comes from that office and disappears when the
+        -- participant leaves it; no MCP grant creates an equivalent resident.
+
+    @invariant TheHarnessCarriesTheLibraryGrammar
+        -- The harness projects the effective property names, semantic objects,
+        -- relation vocabulary, special pages and writing constraints of this
+        -- Vera. The librarian never has to reconstruct frontmatter conventions
+        -- from prompt folklore or assume another library uses the same words.
+
+    @invariant TheLibrarianInspectsBeforeConcluding
+        -- A statement about what the library contains is supported by recorded
+        -- searches, page readings or graph queries. Absence is a finding, not a
+        -- plausible sentence the model may emit without looking.
 
     @invariant LucienneIsAnEditableDefaultNotAProductIdentity
         -- Desktop may propose “Lucienne”. The owner can rename the participant
@@ -83,6 +101,18 @@ contract OwnerLibrarianHarnessAdministration {
         -- operation as the librarian participant. Authorship, revision fences,
         -- clearance, restrictions and the activity log remain effective.
 
+    @invariant DestructiveWorkRequiresDoubleDeclaration
+        -- Harness v4 may apply removals throughout the governed Vera. A removal
+        -- is unavailable unless its exact subject and reason appear in the
+        -- conversational receipt and in the librarian's daily ledger.
+
+    @invariant TheResidentKeepsTheirOwnDailyLedger
+        -- A material intervention is summarized on the private page for that
+        -- day, below one root named "Bitácora de <effective agent name>". The
+        -- entry links what changed and records meaning and decision, not a
+        -- command transcript. It never shares Cotito's root or substitutes the
+        -- technical activity log for the librarian's own historical account.
+
     @invariant OperationalInspectionDoesNotRevealExcludedContent
         -- Health, index, migration and backup tools may inspect operational
         -- state needed to care for the installation. They do not return page or
@@ -104,8 +134,9 @@ contract LibrarianHarnessCatalogue {
 ------------------------------------------------------------
 
 enum HarnessCapabilityName {
-    search_memory | read_page | query_graph | inspect_relations |
-    check_invariants | reply_to_request | propose_edit | apply_approved_edit
+    search_memory | survey_topic | read_page | query_graph | inspect_relations |
+    inspect_ontology | inspect_page_schema | check_invariants |
+    reply_to_request | propose_edit | propose_page_properties | apply_approved_edit
 }
 
 ------------------------------------------------------------
@@ -187,12 +218,16 @@ rule OwnerAttachesLibrarianHarness {
 
     ensures:
         HarnessCapability.created(harness: harness, name: search_memory, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: survey_topic, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: read_page, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: query_graph, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: inspect_relations, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: inspect_ontology, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: inspect_page_schema, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: check_invariants, revision: "1", read_only: true, mutates_corpus: false, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: reply_to_request, revision: "1", read_only: false, mutates_corpus: true, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: propose_edit, revision: "1", read_only: false, mutates_corpus: false, destructive: false, approval: automatic, status: active)
+        HarnessCapability.created(harness: harness, name: propose_page_properties, revision: "1", read_only: false, mutates_corpus: false, destructive: false, approval: automatic, status: active)
         HarnessCapability.created(harness: harness, name: apply_approved_edit, revision: "1", read_only: false, mutates_corpus: true, destructive: false, approval: confirm_each_call, status: active)
 }
 
@@ -257,9 +292,9 @@ invariant HarnessNeverOverridesSurfaceExclusion {
                 not harness_can_read_content(harness, surface_rule.surface)
 }
 
-invariant DestructiveCapabilityIsAbsentFromTheInitialHarness {
+invariant DestructiveCapabilityRequiresTheNativeV4Harness {
     for capability in HarnessCapabilities where status = active:
-        capability.harness.version = "vera-librarian-harness:2" implies not capability.destructive
+        capability.destructive implies capability.harness.version = "vera-librarian-harness:4"
 }
 
 ------------------------------------------------------------
@@ -304,10 +339,12 @@ surface LibrarianHarnessAdministration {
         ReplaceOwnerLibrarian(owner, harness.librarian, successor, principal)
 
     @guarantee TheInitialCatalogueIsSmallAndLegible
-        -- Vera starts with search, reading, structured query, relations,
-        -- invariant inspection, answering and an editorial proposal path.
-        -- Applying a proposal requires a fresh human confirmation; deletion is
-        -- absent rather than hidden behind a broad librarian role.
+        -- Vera starts with search, a topic survey, page reading, structured
+        -- query, relations, ontology and page-schema inspection, invariant
+        -- inspection, answering and editorial proposal paths for blocks and
+        -- structured page properties. Applying a proposal requires a fresh
+        -- human confirmation; deletion is absent rather than hidden behind a
+        -- broad librarian role.
 
     @guarantee TheCurrentLibrarianIsNamedBeforeItsMachinery
         -- The surface heading shows the active participant name followed by the

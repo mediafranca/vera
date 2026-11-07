@@ -329,6 +329,14 @@ describe('POST /operations', () => {
       400,
       'una propiedad con nombres de campo ajenos se rechaza sin tumbar el servidor',
     );
+    assert.equal(
+      (await post({
+        originId: 'movimiento-sin-bloque',
+        change: { kind: 'move_block', page: 'page:algo', parent: null, position: 0 },
+      })).status,
+      400,
+      'un move_block incompleto se rechaza antes de tocar la puerta de mutación',
+    );
   });
 
   it('protege una página especial de borrado, recorrido y procesamiento', async () => {

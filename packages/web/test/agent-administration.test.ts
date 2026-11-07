@@ -51,6 +51,16 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /view\.librarian\.name.*pide primero una tentativa/);
   });
 
+  it('elige runtime y proveedor sin fallback implícito', () => {
+    assert.match(administration, /OpenClaw · harness Codex/);
+    assert.match(administration, /Vera · modelo embebido/);
+    assert.match(administration, /adapter: adapter\.value === 'external_agent'/);
+    assert.match(administration, /Agente de OpenClaw/);
+    assert.match(administration, /Proveedor y modelo/);
+    assert.match(administration, /openai:gpt-5\.6-sol/);
+    assert.match(administration, /No existe fallback implícito/);
+  });
+
   it('permite cambiar el nombre efectivo sin convertir una página en configuración', () => {
     assert.match(administration, /participantName\.value = view\.librarian\.name/);
     assert.match(administration, /api\.renameParticipant\(view\.librarian!\.agent/);
