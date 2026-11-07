@@ -10,9 +10,10 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Biblioteca', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Gobierno', 'Apariencia', 'Sistema']) {
+    for (const label of ['Biblioteca', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Gobierno', 'Apariencia']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
+    assert.doesNotMatch(settings, /label: 'Sistema'/);
     assert.doesNotMatch(settings, /label: 'Ayuda'/);
     assert.doesNotMatch(settings, /label: 'Inicio'/);
     assert.doesNotMatch(settings, /function drawStart/);
@@ -23,10 +24,8 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /'Importar documentos',[\s\S]*handlers\.onImportDocuments/);
     const library = settings.match(/function drawLibrary[\s\S]*?function drawPeople/)?.[0] ?? '';
     const librarian = settings.match(/async function drawLibrarian[\s\S]*?async function drawConnections/)?.[0] ?? '';
-    const system = settings.match(/async function drawSystem[\s\S]*?async function drawInstanceConfiguration/)?.[0] ?? '';
     assert.match(library, /Registro de actividad/);
     assert.doesNotMatch(librarian, /Registro de actividad/);
-    assert.doesNotMatch(system, /Registro de actividad/);
     assert.match(settings, /section: 'conexiones', label: 'Zotero'/);
     assert.match(settings, /service\.access === 'read-write'/);
     assert.match(settings, /service\.title\.replace\(\/\^VERA\\s\*:\\s\*\/i, ''\)/);
@@ -83,7 +82,7 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /Bitácora de hoy/);
     const librarian = settings.match(/async function drawLibrarian[\s\S]*?async function drawConnections/)?.[0] ?? '';
     assert.doesNotMatch(librarian, /pendingDestination\('Dialéctica bibliotecaria'/);
-    assert.match(settings, /pendingDestination/);
+    assert.doesNotMatch(settings, /pendingDestination/);
   });
 
   it('presenta páginas del sistema sin exponer el espacio de nombres ni la taxonomía técnica', () => {
@@ -114,11 +113,37 @@ describe('arquitectura de configuración', () => {
     assert.match(main, /focus\(\{ preventScroll: true \}\)/);
   });
 
-  it('deja respaldo e identidad de instancia en Sistema', () => {
-    assert.match(settings, /function drawSystem[\s\S]*drawInstanceConfiguration[\s\S]*drawPortability/);
-    assert.match(settings, /Nombre de esta Vera · Pendiente/);
+  it('reúne identidad, materiales y continuidad en Biblioteca', () => {
+    assert.match(settings, /async function drawLibrary[\s\S]*drawInstanceConfiguration[\s\S]*drawPortability/);
+    assert.doesNotMatch(settings, /function drawSystem/);
+    assert.doesNotMatch(settings, /Pendiente/);
+    assert.match(settings, /api\.instanceProfile/);
+    assert.match(settings, /api\.renameLibrary/);
     assert.match(settings, /settings-backup/);
     assert.match(styles, /\.instance-configuration :is\(input, select\)[\s\S]*height:\s*var\(--form-control-height\)/);
+  });
+
+  it('abre la captura web existente y omite canales sin panel operativo', () => {
+    const connections = settings.match(/async function drawConnections[\s\S]*?async function drawVoiceConfiguration/)?.[0] ?? '';
+    assert.match(connections, /destination\('Captura web'/);
+    assert.doesNotMatch(connections, /pendingDestination/);
+    assert.doesNotMatch(connections, /'Canales'/);
+  });
+
+  it('pliega y permite buscar la pertenencia efectiva de un espacio', () => {
+    const membership = settings.match(/function effectivePages[\s\S]*?function participantDirectory/)?.[0] ?? '';
+    assert.match(membership, /document\.createElement\('details'\)/);
+    assert.match(membership, /Pertenencia efectiva · \$\{space\.effectivePages\.length\}/);
+    assert.match(membership, /type = 'search'/);
+    assert.match(membership, /aria-label.*Buscar páginas pertenecientes/);
+    assert.match(membership, /addEventListener\('input'/);
+  });
+
+  it('normaliza los controles del Centro con la gramática de formularios', () => {
+    assert.match(styles, /\.settings-search > input\s*\{[\s\S]*?height:\s*var\(--form-control-height\)/);
+    assert.match(styles, /\.settings-pill\s*\{[\s\S]*?min-height:\s*var\(--form-control-height\)/);
+    assert.match(styles, /\.settings-action\s*\{[\s\S]*?min-height:\s*var\(--form-control-height\)/);
+    assert.match(styles, /\.settings-action\s*\{[\s\S]*?border-radius:\s*var\(--form-control-radius\)/);
   });
 
   it('reúne el gobierno ontológico en un destino y conserva Gobierno como inventario', () => {

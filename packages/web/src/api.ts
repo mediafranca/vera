@@ -77,6 +77,14 @@ export interface PublicationSiteView {
   }[];
 }
 
+export interface InstanceProfileView {
+  profile: 'personal' | 'collective';
+  libraryName: string;
+  dataLocation: 'managed';
+  participant?: string;
+  roles?: string[];
+}
+
 /**
  * Una ruta del Markdown y el objeto al que resuelve. El bloque sigue diciendo
  * `../assets/foo.png`; la traducción ocurre al presentar, así que la fuente no
@@ -1027,6 +1035,12 @@ export const api = {
     proposeInsteadOfWriting = health.canContribute === true && health.canEdit !== true;
     return health;
   },
+
+  instanceProfile: () => json<InstanceProfileView>('/instance-profile'),
+
+  renameLibrary: (libraryName: string) => json<InstanceProfileView>('/instance-profile', {
+    method: 'PATCH', body: JSON.stringify({ libraryName }),
+  }),
 
   /** Incorpora el estado y los objetos de otro archivo portable de Vera. */
   importVera: async (
