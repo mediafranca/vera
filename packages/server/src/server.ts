@@ -1943,6 +1943,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     projectPublicSiteAtomically(graph, resolve(options.publicOutput), {
       site,
       publications: graph.publicationsOf(site.id),
+      ownerDesignLibrary: workspaceOf(store, site.owner).designTokens,
       ...(options.publicBranding === undefined
         ? {}
         : { brandingAssets: resolve(options.publicBranding) }),

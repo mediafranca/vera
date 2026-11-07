@@ -1,6 +1,6 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +13,35 @@ import {
 } from '../src/public-projection.ts';
 
 const OWNER = 'participant:herbert';
+const DESIGNS = JSON.stringify({
+  format: 'vera.designs',
+  version: 2,
+  active: 'design:lucienne',
+  common: [
+    { name: '--font-body', light: "'IBM Plex Sans', system-ui, sans-serif", dark: "'IBM Plex Sans', system-ui, sans-serif" },
+    { name: '--text-size', light: '15px', dark: '16px' },
+  ],
+  designs: [
+    {
+      id: 'design:vera',
+      name: 'Vera Original',
+      tokens: [
+        { name: '--bg', light: '#e6ebe9', dark: '#2e0024' },
+        { name: '--text', light: '#454f6e', dark: '#cde0cf' },
+        { name: '--accent', light: '#a84a0b', dark: '#ee895d' },
+      ],
+    },
+    {
+      id: 'design:lucienne',
+      name: 'Lucienne',
+      tokens: [
+        { name: '--bg', light: '#e1e1df', dark: '#221b21' },
+        { name: '--text', light: '#37483b', dark: '#bec3b3' },
+        { name: '--accent', light: '#bf4040', dark: '#fd8a58' },
+      ],
+    },
+  ],
+});
 const temporary: string[] = [];
 const scratch = (): string => {
   const directory = mkdtempSync(join(tmpdir(), 'vera-public-'));
@@ -81,6 +110,52 @@ function published(
 }
 
 describe('proyección pública', () => {
+  it('publica todos los diseños y nace con Lucienne sin esperar JavaScript', () => {
+    const target = scratch();
+    const corpus = graph();
+    projectPublicSite(corpus, target, { ...published(corpus), ownerDesignLibrary: DESIGNS });
+    const html = readFileSync(join(target, 'index.html'), 'utf8');
+
+    assert.match(html, /<html lang="es" data-design="design:lucienne"/);
+    assert.match(html, /--bg:#e1e1df/);
+    assert.match(html, /--text:#37483b/);
+    assert.match(html, /<option value="design:vera">Vera Original<\/option>/);
+    assert.match(html, /<option value="design:lucienne" selected>Lucienne<\/option>/);
+    assert.match(html, /aria-label="Diseño"/);
+  });
+
+  it('recuerda diseño y esquema del visitante por separado, sin escribir en Vera', () => {
+    const target = scratch();
+    const corpus = graph();
+    projectPublicSite(corpus, target, { ...published(corpus), ownerDesignLibrary: DESIGNS });
+    const html = readFileSync(join(target, 'index.html'), 'utf8');
+
+    assert.match(html, /vera\.public\.design/);
+    assert.match(html, /vera\.public\.scheme/);
+    assert.match(html, /write\(designKey,designInput\.value\)/);
+    assert.match(html, /write\(schemeKey,schemeInput\.value\)/);
+    assert.doesNotMatch(html, /fetch\(|XMLHttpRequest|\/operations/);
+    assert.match(html, /root\.dataset\.design=design\.id/);
+    assert.match(html, /root\.dataset\.scheme=scheme/);
+  });
+
+  it('no permite que un nombre o token de diseño inyecte HTML o CSS', () => {
+    const target = scratch();
+    const corpus = graph();
+    const malicious = JSON.stringify({
+      format: 'vera.designs', version: 2, active: 'bad', common: [],
+      designs: [{
+        id: 'bad', name: '</select><script>globalThis.pwned=true</script>',
+        tokens: [{ name: '--bg', light: 'red;display:none', dark: 'url(https://example.net/x)' }],
+      }],
+    });
+    projectPublicSite(corpus, target, { ...published(corpus), ownerDesignLibrary: malicious });
+    const html = readFileSync(join(target, 'index.html'), 'utf8');
+
+    assert.doesNotMatch(html, /<script>globalThis\.pwned/);
+    assert.doesNotMatch(html, /display:none|url\(https:/);
+  });
+
   it('genera sólo publicaciones explícitas y escapa su HTML', () => {
     const target = scratch();
     const corpus = graph();
@@ -167,6 +242,13 @@ describe('proyección pública', () => {
     ]) {
       writeFileSync(join(branding, filename), filename);
     }
+    const fonts = join(branding, 'fonts');
+    mkdirSync(fonts);
+    for (const filename of [
+      'robotoserif-latin-wghtwdthgrad-normal.woff2', 'robotoserif-latin-wghtwdthgrad-italic.woff2',
+      'plex-sans-variable.woff2', 'plex-sans-variable-italic.woff2',
+      'plex-mono-400.woff2', 'plex-mono-600.woff2',
+    ]) writeFileSync(join(fonts, filename), filename);
     const corpus = graph();
     projectPublicSite(corpus, target, { ...published(corpus), brandingAssets: branding });
 
@@ -176,6 +258,8 @@ describe('proyección pública', () => {
     assert.match(index, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/);
     assert.match(index, /property="og:image" content="https:\/\/vera\.mediafranca\.net\/icon-512\.png"/);
     assert.equal(readFileSync(join(target, 'icon-512.png'), 'utf8'), 'icon-512.png');
+    assert.equal(readFileSync(join(target, 'fonts', 'plex-sans-variable.woff2'), 'utf8'), 'plex-sans-variable.woff2');
+    assert.match(index, /font-family:"IBM Plex Sans";src:url\("\/fonts\/plex-sans-variable\.woff2"\)/);
     const manifest = JSON.parse(readFileSync(join(target, 'site.webmanifest'), 'utf8')) as {
       background_color: string; theme_color: string;
     };

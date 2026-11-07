@@ -3,7 +3,7 @@
 
 import { fileURLToPath } from 'node:url';
 
-import { loadGraph, openStore } from './store.ts';
+import { loadGraph, openStore, workspaceOf } from './store.ts';
 import { projectPublicSiteAtomically } from './public-projection.ts';
 
 const database = process.argv[2] ?? 'data/vera.sqlite';
@@ -18,6 +18,7 @@ try {
   const summary = projectPublicSiteAtomically(graph, target, {
     site,
     publications: graph.publicationsOf(site.id),
+    ownerDesignLibrary: workspaceOf(store, site.owner).designTokens,
     brandingAssets: fileURLToPath(new URL('../../web/public/', import.meta.url)),
   });
   console.log(`sitio público proyectado a ${target}`);

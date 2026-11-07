@@ -208,6 +208,20 @@ describe('enlaces salientes', () => {
   });
 });
 
+describe('autoría en listas numeradas', () => {
+  it('distingue al agente coloreando el número y no dibujando otro glifo', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(
+      styles,
+      /:is\(\.block\.numbered, \.block\.trail-stop\) > \.bullet\.generated::before \{[\s\S]*?color: var\(--accent\);[\s\S]*?box-shadow: none;/,
+    );
+    assert.match(
+      styles,
+      /\.block:not\(\.numbered\):not\(\.trail-stop\) > \.bullet\.generated::before \{[\s\S]*?box-shadow: inset 0 0 0 1px currentColor;/,
+    );
+  });
+});
+
 describe('redibujar después de escribir', () => {
   it('un renombrado vuelve al corpus y reemplaza la ruta actual', () => {
     assert.deepEqual(

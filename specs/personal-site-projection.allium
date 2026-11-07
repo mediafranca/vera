@@ -154,9 +154,34 @@ contract PersonalWebsiteProjection {
 
     @invariant SafeControlsRemainUseful
         -- `anybody` can use page navigation, search, text/graph/split views, 2D
-        -- and 3D maps, reach, folding, light/dark presentation, local design
-        -- token overrides and PDF export. These controls alter only the reader's
-        -- local reading state and never the graph or shared presentation.
+        -- and 3D maps, reach, folding, a named public design, light/dark
+        -- presentation, local design token overrides and PDF export. These
+        -- controls alter only the reader's local reading state and never the
+        -- graph or shared presentation.
+
+    @invariant PublicSiteSharesItsNamedDesigns
+        -- La proyección ofrece todos los diseños nombrados que la persona dueña
+        -- conserva en su biblioteca de diseños al reconstruir el sitio. Cada
+        -- diseño publica sólo sus tokens de presentación; no revela otras
+        -- preferencias, páginas ni estado privado del espacio de trabajo.
+
+    @invariant PublicDefaultDesignIsTheOwnersActiveDesign
+        -- Al reconstruir una superficie que todavía no declara otra elección
+        -- pública, su diseño inicial es el diseño activo de la persona dueña.
+        -- El HTML ya sale con esos valores: no destella primero con una plantilla
+        -- genérica mientras espera JavaScript. En la instalación actual, ese
+        -- diseño se llama «Lucienne».
+
+    @invariant PublicDesignAndColourSchemeAreIndependent
+        -- Elegir Vera Original, Lucienne u otro diseño no elige a la vez claro
+        -- u oscuro. Cada diseño conserva ambos juegos de color y el lector puede
+        -- cambiar cualquiera de las dos dimensiones sin alterar la otra.
+
+    @invariant PublicDesignChoiceStaysWithTheReader
+        -- La elección del visitante se conserva sólo en el almacenamiento local
+        -- de ese navegador y origen. No produce una operación, no modifica el
+        -- corpus ni la configuración compartida, y un diseño retirado cae de
+        -- forma segura al diseño público inicial.
 
     @invariant AuthoringCapabilitiesAreAbsent
         -- The public boundary offers no mutation, editor, voice recording,
@@ -222,6 +247,8 @@ entity PublicWorkspace {
     split_divider_position: Decimal
     graph_view: workspace/GraphViewMode
     colour_scheme: workspace/ColourScheme
+    available_designs: Set<workspace/Design>
+    active_design: workspace/Design
     reach: Integer
     properties_visible: Boolean
     folded_blocks: Set<core/Block>
@@ -325,6 +352,8 @@ rule PublicReadingOpensInVera {
         split_divider_position: 0.5,
         graph_view: graph_3d,
         colour_scheme: dark,
+        available_designs: public_designs(reading.site),
+        active_design: public_default_design(reading.site),
         reach: 1,
         properties_visible: false,
         folded_blocks: folding/initial_folds(entry.page),
@@ -379,6 +408,16 @@ rule AnybodyChangesPublicColourScheme {
     requires: public_workspace.reading.identity = reader
 
     ensures: public_workspace.colour_scheme = scheme
+}
+
+rule AnybodySelectsAPublicDesign {
+    when: SelectPublicDesign(reader, public_workspace, design)
+
+    requires: reader = identity/anybody
+    requires: public_workspace.reading.identity = reader
+    requires: public_workspace.available_designs.contains(design)
+
+    ensures: public_workspace.active_design = design
 }
 
 rule AnybodyChoosesWhetherToSeePublicProperties {
@@ -871,6 +910,9 @@ surface PublicVeraWorkspace {
         public_workspace.split_divider_position
         public_workspace.graph_view
         public_workspace.colour_scheme
+        for design in public_workspace.available_designs:
+            design.name
+        public_workspace.active_design.name
         public_workspace.reach
         public_workspace.properties_visible
         for property in public_page_properties(public_workspace.active_publication):
@@ -893,6 +935,8 @@ surface PublicVeraWorkspace {
         ChangePublicGraphView(reader, public_workspace, mode)
         ChangePublicReach(reader, public_workspace, reach)
         ChangePublicColourScheme(reader, public_workspace, scheme)
+        SelectPublicDesign(reader, public_workspace, design)
+            when public_workspace.available_designs.contains(design)
         SetPublicPropertiesVisible(reader, public_workspace, visible)
         SetPublicLocalToken(reader, public_workspace, name, value)
         SetPublicBlockFolded(reader, public_workspace, block, folded)

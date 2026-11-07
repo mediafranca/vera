@@ -7635,9 +7635,18 @@ body.settings-open #text {
  * llevaba el suyo propio y salía al doble de grande, que es lo que hacía que lo
  * generado pesara más que lo escrito en una página donde casi todo es escrito.
  */
-.bullet.generated::before {
+.block:not(.numbered):not(.trail-stop) > .bullet.generated::before {
   background: none;
   box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/*
+ * Cuando la marca ya es un número, no cabe una segunda figura de procedencia.
+ * El número generado toma el rojo de IA; el humano conserva el color ordinario.
+ */
+:is(.block.numbered, .block.trail-stop) > .bullet.generated::before {
+  color: var(--accent);
+  box-shadow: none;
 }
 
 /*

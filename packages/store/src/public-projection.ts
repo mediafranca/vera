@@ -6,6 +6,7 @@
 
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -25,6 +26,8 @@ export interface PublicProjectionOptions {
   publications: readonly Publication[];
   /** Directorio de la marca pública, compartido con la PWA. */
   brandingAssets?: string;
+  /** Biblioteca de diseños v2 de la persona dueña, proyectada sin otro estado privado. */
+  ownerDesignLibrary?: string | null;
 }
 
 export interface PublicProjectionSummary {
@@ -39,6 +42,128 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+interface PublicDesignToken {
+  name: string;
+  light: string;
+  dark: string;
+}
+
+interface PublicDesign {
+  id: string;
+  name: string;
+  tokens: PublicDesignToken[];
+}
+
+interface PublicDesignLibrary {
+  active: string;
+  common: PublicDesignToken[];
+  designs: PublicDesign[];
+}
+
+const PUBLIC_TOKEN_NAMES = new Set([
+  '--bg', '--bg-raised', '--text', '--text-dim', '--rule', '--accent',
+  '--node-central', '--node-text', '--link-stroke', '--link-in', '--link-out',
+  '--warm', '--voice', '--success', '--warning', '--danger', '--phone-scale',
+  '--text-size', '--line-height', '--content-width', '--indent',
+  '--font-body', '--font-ui', '--font-mono',
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+function safePublicToken(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '' && value.length <= 512 &&
+    !/[\u0000-\u001f\u007f{};<>]/.test(value) && !/url\s*\(|@import/i.test(value);
+}
+
+function publicDesignTokens(value: unknown): PublicDesignToken[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const tokens: PublicDesignToken[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry['name'] !== 'string') continue;
+    const name = entry['name'];
+    if (!PUBLIC_TOKEN_NAMES.has(name) || seen.has(name) ||
+        !safePublicToken(entry['light']) || !safePublicToken(entry['dark'])) continue;
+    seen.add(name);
+    tokens.push({ name, light: entry['light'], dark: entry['dark'] });
+  }
+  return tokens;
+}
+
+function publicDesignLibrary(source: string | null | undefined): PublicDesignLibrary | null {
+  if (source === null || source === undefined) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value) || value['format'] !== 'vera.designs' || value['version'] !== 2 ||
+      !Array.isArray(value['designs'])) return null;
+  const designs: PublicDesign[] = [];
+  const seen = new Set<string>();
+  for (const entry of value['designs']) {
+    if (!isRecord(entry) || typeof entry['id'] !== 'string' ||
+        typeof entry['name'] !== 'string') continue;
+    const id = entry['id'].trim();
+    const name = entry['name'].trim();
+    if (id === '' || name === '' || id.length > 160 || name.length > 120 || seen.has(id)) continue;
+    seen.add(id);
+    designs.push({ id, name, tokens: publicDesignTokens(entry['tokens']) });
+  }
+  if (designs.length === 0) return null;
+  const asked = typeof value['active'] === 'string' ? value['active'] : '';
+  const active = designs.some((design) => design.id === asked) ? asked : designs[0]!.id;
+  return { active, common: publicDesignTokens(value['common']), designs };
+}
+
+function tokensFor(design: PublicDesign, common: PublicDesignToken[], scheme: 'light' | 'dark'):
+  Record<string, string> {
+  return Object.fromEntries([...common, ...design.tokens].map((token) => [token.name, token[scheme]]));
+}
+
+function cssDeclarations(tokens: Record<string, string>): string {
+  return Object.entries(tokens).map(([name, value]) => `${name}:${value}`).join(';');
+}
+
+function publicAppearance(library: PublicDesignLibrary | null): {
+  attributes: string;
+  controls: string;
+  css: string;
+  script: string;
+  theme: string;
+} {
+  if (library === null) return { attributes: '', controls: '', css: '', script: '', theme: '#202224' };
+  const active = library.designs.find((design) => design.id === library.active) ?? library.designs[0]!;
+  const light = tokensFor(active, library.common, 'light');
+  const dark = tokensFor(active, library.common, 'dark');
+  const serialised = JSON.stringify(library).replace(/</g, '\\u003c');
+  const options = library.designs.map((design) =>
+    `<option value="${escapeHtml(design.id)}"${design.id === active.id ? ' selected' : ''}>${escapeHtml(design.name)}</option>`
+  ).join('');
+  const controls = `<aside class="public-appearance" aria-label="Apariencia"><label>Diseño<select id="public-design" aria-label="Diseño">${options}</select></label><label>Color<select id="public-scheme" aria-label="Esquema de color"><option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Oscuro</option></select></label></aside>`;
+  const css = [
+    `:root{${cssDeclarations(light)}}`,
+    `:root[data-scheme="dark"]{${cssDeclarations(dark)}}`,
+    `@media(prefers-color-scheme:dark){:root:not([data-scheme]){${cssDeclarations(dark)}}}`,
+  ].join('\n');
+  const script = `<script type="application/json" id="vera-public-designs">${serialised}</script>
+<script>(()=>{
+const root=document.documentElement,designKey='vera.public.design',schemeKey='vera.public.scheme';
+const library=JSON.parse(document.getElementById('vera-public-designs').textContent),designInput=document.getElementById('public-design'),schemeInput=document.getElementById('public-scheme');
+const byId=id=>library.designs.find(design=>design.id===id),read=key=>{try{return localStorage.getItem(key)}catch{return null}},write=(key,value)=>{try{localStorage.setItem(key,value)}catch{}};
+const resolvedScheme=choice=>choice==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):choice;
+const apply=()=>{const design=byId(designInput.value)||byId(library.active)||library.designs[0],choice=schemeInput.value,scheme=resolvedScheme(choice),tokens=[...library.common,...design.tokens],names=new Set([...library.common,...library.designs.flatMap(one=>one.tokens)].map(token=>token.name));root.dataset.design=design.id;root.dataset.scheme=scheme;for(const name of names)root.style.removeProperty(name);for(const token of tokens)root.style.setProperty(token.name,token[scheme]);const theme=document.querySelector('meta[name="theme-color"]');if(theme)theme.content=getComputedStyle(root).getPropertyValue('--bg').trim();dispatchEvent(new CustomEvent('vera-public-appearance'));};
+const rememberedDesign=read(designKey),rememberedScheme=read(schemeKey);designInput.value=byId(rememberedDesign)?.id||library.active;schemeInput.value=['system','light','dark'].includes(rememberedScheme)?rememberedScheme:'system';
+designInput.addEventListener('change',()=>{write(designKey,designInput.value);apply()});schemeInput.addEventListener('change',()=>{write(schemeKey,schemeInput.value);apply()});matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(schemeInput.value==='system')apply()});apply();
+})();</script>`;
+  return {
+    attributes: ` data-design="${escapeHtml(active.id)}"`, controls, css, script,
+    theme: light['--bg'] ?? '#202224',
+  };
 }
 
 export const publicPathFor = suggestedPathFor;
@@ -106,7 +231,7 @@ const publicExecutableFrames = `<script>
       '--text-size','--line-height','--content-width','--indent',
       '--font-body','--font-ui','--font-mono'
     ]) tokens[name] = style.getPropertyValue(name).trim();
-    return { scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', tokens };
+    return { scheme: document.documentElement.dataset.scheme === 'dark' ? 'dark' : 'light', tokens };
   };
   const frames = () => [...document.querySelectorAll('iframe[data-executable-frame]')];
   const send = frame => frame.contentWindow?.postMessage({ type, appearance: appearance() }, '*');
@@ -118,7 +243,7 @@ const publicExecutableFrames = `<script>
     frame.style.height = Math.min(2400, Math.max(24, Math.ceil(asked))) + 'px';
     send(frame);
   });
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => frames().forEach(send));
+  addEventListener('vera-public-appearance', () => frames().forEach(send));
 })();
 </script>`;
 
@@ -225,14 +350,16 @@ function document(input: {
   brandImageUrl: string;
   body: string;
   branded: boolean;
+  designLibrary: PublicDesignLibrary | null;
 }): string {
   const title = escapeHtml(input.title);
   const site = escapeHtml(input.siteTitle);
   const url = escapeHtml(input.canonicalUrl);
+  const appearance = publicAppearance(input.designLibrary);
   const branding = input.branded
     ? [
         '<link rel="manifest" href="/site.webmanifest">',
-        '<meta name="theme-color" content="#202224">',
+        `<meta name="theme-color" content="${escapeHtml(appearance.theme)}">`,
         '<link rel="icon" href="/icon-16.png" sizes="16x16" type="image/png">',
         '<link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png">',
         '<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">',
@@ -243,7 +370,7 @@ function document(input: {
     : [];
   return [
     '<!doctype html>',
-    '<html lang="es">',
+    `<html lang="es"${appearance.attributes}>`,
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
@@ -254,18 +381,25 @@ function document(input: {
     '<style>',
     '@font-face{font-family:"Roboto Serif";src:url("/fonts/robotoserif-latin-wghtwdthgrad-normal.woff2") format("woff2");font-weight:100 900;font-stretch:62.5% 100%;font-style:normal;font-display:swap}',
     '@font-face{font-family:"Roboto Serif";src:url("/fonts/robotoserif-latin-wghtwdthgrad-italic.woff2") format("woff2");font-weight:100 900;font-stretch:62.5% 100%;font-style:italic;font-display:swap}',
-    ':root{color-scheme:light dark;font-family:ui-serif,Georgia,Cambria,"Times New Roman",serif;line-height:1.58;background:#f7f5ef;color:#24231f}',
+    '@font-face{font-family:"IBM Plex Sans";src:url("/fonts/plex-sans-variable.woff2") format("woff2");font-weight:100 700;font-style:normal;font-display:swap}',
+    '@font-face{font-family:"IBM Plex Sans";src:url("/fonts/plex-sans-variable-italic.woff2") format("woff2");font-weight:100 700;font-style:italic;font-display:swap}',
+    '@font-face{font-family:"IBM Plex Mono";src:url("/fonts/plex-mono-400.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}',
+    '@font-face{font-family:"IBM Plex Mono";src:url("/fonts/plex-mono-600.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}',
+    ':root{color-scheme:light dark;font-family:var(--font-body,ui-serif,Georgia,Cambria,"Times New Roman",serif);line-height:var(--line-height,1.58);background:var(--bg,#f7f5ef);color:var(--text,#24231f)}',
+    appearance.css,
     '*{box-sizing:border-box}',
     'body{margin:0}',
     'main{max-width:48rem;margin:0 auto;padding:clamp(2rem,7vw,6rem) clamp(1.25rem,5vw,3rem) 8rem}',
     'h1{font-size:clamp(2.7rem,8vw,5rem);line-height:.95;letter-spacing:-.045em;margin:0 0 3rem}',
-    'h2,h3{font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.15;letter-spacing:-.025em;margin:3rem 0 1rem}',
+    'h2,h3{font-family:var(--font-ui,ui-sans-serif,system-ui,sans-serif);line-height:1.15;letter-spacing:-.025em;margin:3rem 0 1rem}',
     'h3{font-size:clamp(1.35rem,3vw,1.75rem)}',
     'p{font-size:clamp(1.08rem,2vw,1.28rem);margin:0 0 1.35rem}',
     '.poem{font-family:"Roboto Serif",Georgia,"Times New Roman",ui-serif,serif;font-size:1.6em;line-height:1.18;font-weight:300;font-optical-sizing:auto;white-space:pre-wrap;overflow-wrap:normal;word-break:normal}',
     'strong{font-weight:700}',
     'ul{list-style:none;margin:0;padding:0}',
     'li>ul{border-left:1px solid color-mix(in srgb,currentColor 20%,transparent);padding-left:1.25rem}',
+    '.public-appearance{position:sticky;z-index:2;top:0;display:flex;justify-content:flex-end;gap:.7rem;padding:.6rem clamp(1rem,4vw,2rem);border-bottom:1px solid var(--rule,color-mix(in srgb,currentColor 20%,transparent));background:color-mix(in srgb,var(--bg,#f7f5ef) 92%,transparent);backdrop-filter:blur(12px);font:clamp(.76rem,1.5vw,.88rem)/1.2 var(--font-ui,ui-sans-serif,system-ui,sans-serif)}',
+    '.public-appearance label{display:flex;align-items:center;gap:.4rem;color:var(--text-dim,currentColor)}.public-appearance select{min-height:2.2rem;padding:.35rem 1.8rem .35rem .55rem;border:1px solid var(--rule,color-mix(in srgb,currentColor 22%,transparent));border-radius:.25rem;background:var(--bg-raised,var(--bg,#f7f5ef));color:var(--text,currentColor);font:inherit}',
     '.traceable-block>summary{cursor:pointer;list-style-position:outside;margin-left:1rem;padding-left:.25rem}',
     '.traceable-block>summary::marker{color:color-mix(in srgb,currentColor 58%,transparent)}',
     '.traceable-block>summary>p{display:inline}',
@@ -274,13 +408,16 @@ function document(input: {
     'a{color:inherit;text-decoration-thickness:.08em;text-underline-offset:.18em}',
     '.unavailable{color:color-mix(in srgb,currentColor 72%,transparent)}',
     '.executable{margin:1.25rem 0}.executable iframe{display:block;width:100%;height:6rem;border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:.3rem;background:inherit}.executable summary{cursor:pointer;font-family:ui-sans-serif,system-ui,sans-serif;font-size:.85rem;margin-top:.45rem}.executable pre{overflow:auto}',
-    'nav{border-top:1px solid color-mix(in srgb,currentColor 20%,transparent);margin-top:4rem;padding-top:2rem;font-family:ui-sans-serif,system-ui,sans-serif}',
-    '@media(prefers-color-scheme:dark){:root{background:#1c1b18;color:#ece8df}}',
+    'nav{border-top:1px solid color-mix(in srgb,currentColor 20%,transparent);margin-top:4rem;padding-top:2rem;font-family:var(--font-ui,ui-sans-serif,system-ui,sans-serif)}',
+    '@media(prefers-color-scheme:dark){:root:not([data-design]){background:#1c1b18;color:#ece8df}}',
+    '@media(max-width:520px){.public-appearance{justify-content:stretch}.public-appearance label{flex:1;display:grid}.public-appearance select{width:100%}}',
     '</style>',
     '</head>',
     '<body>',
+    appearance.controls,
     input.body,
     publicExecutableFrames,
+    appearance.script,
     '</body>',
     '</html>',
     '',
@@ -299,6 +436,8 @@ const BRAND_ASSETS = [
 
 function projectBranding(target: string, source: string, siteTitle: string): string[] {
   for (const filename of BRAND_ASSETS) copyFileSync(join(source, filename), join(target, filename));
+  const fontFiles = readdirSync(join(source, 'fonts'));
+  cpSync(join(source, 'fonts'), join(target, 'fonts'), { recursive: true });
   writeFileSync(
     join(target, 'site.webmanifest'),
     `${JSON.stringify(
@@ -320,7 +459,7 @@ function projectBranding(target: string, source: string, siteTitle: string): str
     )}\n`,
     'utf8',
   );
-  return [...BRAND_ASSETS, 'site.webmanifest'];
+  return [...BRAND_ASSETS, ...fontFiles.map((filename) => `fonts/${filename}`), 'site.webmanifest'];
 }
 
 function clear(target: string): void {
@@ -340,6 +479,7 @@ export function projectPublicSite(
 ): PublicProjectionSummary {
   mkdirSync(target, { recursive: true });
   clear(target);
+  const designLibrary = publicDesignLibrary(options.ownerDesignLibrary);
 
   const pages = options.publications
     .map((publication) => {
@@ -385,6 +525,7 @@ export function projectPublicSite(
         brandImageUrl: `${options.site.canonicalDomain.replace(/\/+$/, '')}/icon-512.png`,
         body: `<main><h1>${escapeHtml(page.title)}</h1>${renderBlocks(graph, page, publishedByTitle, publication)}</main>`,
         branded: options.brandingAssets !== undefined,
+        designLibrary,
       }),
       'utf8',
     );
@@ -411,6 +552,7 @@ export function projectPublicSite(
       brandImageUrl: `${options.site.canonicalDomain.replace(/\/+$/, '')}/icon-512.png`,
       body: indexBody,
       branded: options.brandingAssets !== undefined,
+      designLibrary,
     }),
     'utf8',
   );
