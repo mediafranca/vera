@@ -1723,6 +1723,12 @@ export const api = {
       method: 'POST',
     }),
 
+  replaceParticipantAccess: (participant: string) =>
+    json<{ participant: ParticipantIdentityView; url: string; expiresAt: number;
+      revokedAuthenticators: number; revokedSessions: number }>(
+      `/participants/${encodeURIComponent(participant)}/replace-access`, { method: 'POST' },
+    ),
+
   reconcileParticipant: (duplicate: string, canonical: string, reason: string) =>
     json<{ duplicate: string; canonical: string }>(`/participants/${encodeURIComponent(duplicate)}/reconcile`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ canonical, reason }),

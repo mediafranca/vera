@@ -48,6 +48,14 @@ describe('gobierno de participantes', () => {
     assert.match(surface, /el QR aparece dentro de su propia sesión humana/);
   });
 
+  it('renueva las credenciales perdidas sin retirar los accesos de la persona', () => {
+    assert.match(surface, /Renovar acceso…/);
+    assert.match(surface, /Revocar y generar enlace/);
+    assert.match(surface, /api\.replaceParticipantAccess/);
+    assert.match(surface, /Sus superficies, permisos, roles, identidad e historia permanecen intactos/);
+    assert.match(surface, /los accesos a superficies se conservaron/);
+  });
+
   it('en una colectiva deja a cada persona constituir y gobernar sólo sus agentes', () => {
     assert.match(surface, /cada persona constituye y gobierna únicamente sus propios agentes/);
     assert.match(surface, /la persona dueña constituye y gobierna todos los agentes/);

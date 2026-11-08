@@ -1202,6 +1202,7 @@ export async function openLibrarianConversation(
     microphone.setAttribute('aria-label', 'Transcribiendo mensaje de voz');
     microphone.classList.add('transcribing');
     void recording.stop().then(async ({ audio, durationMs }) => {
+      if (audio.size === 0) throw new Error('El teléfono cerró el micrófono antes de entregar el audio. Vuelve a grabar con Vera en primer plano.');
       const captured = await voice.capture(audio, durationMs);
       if ('error' in captured) throw new Error(captured.error);
       const transcribed = await voice.transcript(captured.id);

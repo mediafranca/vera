@@ -575,6 +575,42 @@ rule ExistingHumanSessionAuthorizesAnotherAuthenticator {
     -- their membership and every grant already exist and remain unchanged.
 }
 
+rule AdministratorReplacesLostHumanAccess {
+    when: ReplaceLostHumanAccess(administrator, participant)
+
+    let membership = core/Membership{graph: instance.graph, participant: participant}
+
+    requires: administrator = instance.owner
+    requires: exists membership
+    requires: membership.status = active
+    requires: participant.kind = human
+    requires: participant.status = active
+    requires: participant != administrator
+
+    ensures:
+        for authenticator in HumanAuthenticators:
+            authenticator.participant = participant and authenticator.status = active implies
+                authenticator.status = revoked
+                authenticator.revoked_at = now
+        for session in HumanSessions:
+            session.participant = participant and session.status = active implies
+                session.status = ended
+                session.ended_at = now
+        for enrollment in AuthenticatorEnrollments:
+            enrollment.participant = participant and enrollment.status = pending implies
+                enrollment.status = revoked
+        AuthenticatorEnrollment.created(
+            instance: instance,
+            participant: participant,
+            authorized_by: administrator,
+            status: pending,
+            expires_at: now + config.enrollment_lifetime
+        )
+
+    -- Recovery rotates proofs, not the person. Membership, governance roles,
+    -- shared-space grants, authorship and history remain unchanged.
+}
+
 rule FreshInstanceBeginsOwnerAuthenticationBootstrap {
     when: fresh_instance: identity/VeraInstance.created
 

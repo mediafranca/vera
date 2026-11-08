@@ -67,7 +67,6 @@ export async function startRecording(): Promise<{
   recorder.addEventListener('dataavailable', (event) => {
     if (event.data.size > 0) chunks.push(event.data);
   });
-  recorder.start(1000);
   const began = Date.now();
 
   /*
@@ -172,20 +171,56 @@ export async function startRecording(): Promise<{
    */
   let settle: ((result: { audio: Blob; durationMs: number; peak: number }) => void) | null = null;
   let finished: { audio: Blob; durationMs: number; peak: number } | null = null;
+  let finishFallback: number | null = null;
 
   const finish = (): void => {
     if (finished !== null) return;
+    if (finishFallback !== null) window.clearTimeout(finishFallback);
+    finishFallback = null;
     finished = captured();
     close();
     settle?.(finished);
   };
 
+  /*
+   * Pedir el cierre y esperar el vaciado final son el mismo acto.
+   *
+   * En WebKit móvil una pista puede terminar antes de que `MediaRecorder`
+   * entregue su último `dataavailable`. Cerrar inmediatamente desde `ended`
+   * construía el Blob con una lista todavía vacía. Se le pide al grabador que
+   * vacíe sus codificadores y se toma `stop` como frontera; el plazo sólo evita
+   * que una implementación defectuosa deje la interfaz esperando para siempre.
+   */
+  const requestFinish = (): void => {
+    if (finished !== null || finishFallback !== null) return;
+    if (recorder.state === 'inactive') {
+      finishFallback = window.setTimeout(finish, 150);
+      return;
+    }
+    try {
+      finishFallback = window.setTimeout(finish, 2_000);
+      recorder.stop();
+    } catch {
+      finish();
+    }
+  };
+
   recorder.addEventListener('stop', finish);
   // El grabador se rinde: lo grabado hasta aquí es lo que hay, y vale.
-  recorder.addEventListener('error', finish);
+  recorder.addEventListener('error', requestFinish);
   // El sistema retiró el micrófono —otra aplicación lo pidió, o se acabó el
-  // permiso—. La pista termina sin que el grabador se entere.
-  for (const track of stream.getTracks()) track.addEventListener('ended', finish);
+  // permiso—. La pista termina antes del último trozo en algunos móviles.
+  for (const track of stream.getTracks()) track.addEventListener('ended', requestFinish);
+
+  // Los listeners de final están puestos antes de empezar. Un teléfono puede
+  // retirar la pista inmediatamente al cambiar de aplicación o apagar pantalla.
+  try {
+    recorder.start(1000);
+  } catch {
+    finished = captured();
+    close();
+    return { error: 'este navegador no pudo iniciar la grabación' };
+  }
 
   return {
     stop: () =>
@@ -195,18 +230,12 @@ export async function startRecording(): Promise<{
           return;
         }
         settle = done;
-        try {
-          // Puede estar ya inactivo si el sistema lo paró: entonces esto lanza,
-          // y lo que corresponde es cerrar con lo que haya en vez de esperar un
-          // evento que no va a llegar.
-          if (recorder.state === 'inactive') finish();
-          else recorder.stop();
-        } catch {
-          finish();
-        }
+        requestFinish();
       }),
     cancel: () => {
       // Cancelar no sube nada: una grabación descartada nunca existió.
+      if (finishFallback !== null) window.clearTimeout(finishFallback);
+      finishFallback = null;
       finished = captured();
       try {
         if (recorder.state !== 'inactive') recorder.stop();

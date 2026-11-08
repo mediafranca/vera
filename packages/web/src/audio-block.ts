@@ -200,6 +200,13 @@ export function renderRecorder(
       void started
         .stop()
         .then(async ({ audio, durationMs, peak }) => {
+          if (audio.size === 0) {
+            handlers.notify('El teléfono cerró el micrófono antes de entregar el audio. La grabación quedó vacía; vuelve a intentarlo con Vera en primer plano.');
+            host.innerHTML = '';
+            closeOverlay();
+            handlers.onSettled();
+            return;
+          }
           const captured = await voice.capture(audio, durationMs, block);
           if ('error' in captured) {
             handlers.notify(captured.error);

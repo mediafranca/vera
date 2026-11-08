@@ -269,6 +269,31 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
         name.select();
       }));
 
+      if (one.kind === 'human' && one.canManage && one.status === 'active' && one.id !== self) {
+        actions.append(action(one.id, 'replace-access', 'Renovar acceso…', () => {
+          const explanation = document.createElement('p');
+          explanation.textContent = 'Revoca las passkeys, sesiones y enlaces de matrícula anteriores, y crea un enlace nuevo para la misma persona. Sus superficies, permisos, roles, identidad e historia permanecen intactos.';
+          participantDialog(`Renovar acceso de ${one.name}`, [explanation], 'Revocar y generar enlace', () => {
+            void api.replaceParticipantAccess(one.id).then((made) => {
+              replace(made.participant);
+              redraw(one.id, 'replace-access');
+              const url = document.createElement('input'); url.readOnly = true; url.value = made.url;
+              url.setAttribute('aria-label', `Nuevo enlace de acceso para ${one.name}`);
+              const expiry = document.createElement('p'); expiry.className = 'settings-note';
+              expiry.textContent = `El enlace es de un solo uso y vence ${new Date(made.expiresAt).toLocaleString()}. Se revocaron ${made.revokedAuthenticators} passkeys y ${made.revokedSessions} sesiones; los accesos a superficies se conservaron.`;
+              const copy = button('Copiar enlace', () => {
+                void navigator.clipboard.writeText(made.url).then(() => { copy.textContent = 'Enlace copiado'; });
+              });
+              participantDialog(`Nuevo acceso para ${one.name}`, [url, expiry, copy], 'Cerrar', () => undefined);
+              url.select();
+            }).catch((error: unknown) => {
+              alert(error instanceof Error ? error.message : 'No se pudo renovar el acceso.');
+              redraw(one.id, 'replace-access');
+            });
+          });
+        }));
+      }
+
       const candidates = people.filter((candidate) => candidate.id !== one.id && candidate.kind === one.kind && candidate.canManage);
       if (one.canManage && candidates.length > 0) actions.append(action(one.id, 'merge', 'Fusionar…', () => {
         const explanation = document.createElement('p'); explanation.textContent = 'La identidad elegida será la canónica. Esta fila quedará como alias histórico y la autoría conserva su procedencia.';

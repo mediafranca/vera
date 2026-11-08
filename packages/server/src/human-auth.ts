@@ -72,6 +72,53 @@ export function beginDeviceEnrollment(store: Store, participant: string): {
   return { enrollment, secret, expiresAt };
 }
 
+/**
+ * Sustituye las pruebas de acceso perdidas de una persona sin retirar su lugar.
+ *
+ * La identidad, membresía, roles y permisos de superficies son durables. Sólo
+ * cambian las pruebas que podrían seguir en manos de un dispositivo perdido:
+ * passkeys, sesiones, desafíos y matrículas pendientes. La matrícula nueva
+ * vuelve a nombrar al mismo participante canónico.
+ */
+export function replaceHumanAccess(store: Store, participant: string, authorizedBy: string): {
+  enrollment: string; secret: string; expiresAt: number; revokedAuthenticators: number; revokedSessions: number;
+} {
+  const canonical = canonicalParticipant(store, participant);
+  const person = store.db.prepare(`SELECT 1 FROM participants p
+    JOIN memberships m ON m.participant_id=p.id AND m.graph_id=? AND m.status='active'
+    WHERE p.id=? AND p.kind='human' AND p.status='active'`).get(store.graphId, canonical);
+  if (person === undefined) throw new Error('la persona no existe o no está activa');
+
+  const identities = participantAliases(store, canonical);
+  const places = identities.map(() => '?').join(',');
+  const enrollment = identifier('enrollment');
+  const secret = opaque('vera_enroll_');
+  const now = Date.now();
+  const expiresAt = now + ENROLLMENT_LIFETIME_MS;
+  store.db.exec('BEGIN IMMEDIATE');
+  try {
+    const revokedAuthenticators = Number(store.db.prepare(`UPDATE human_authenticators
+      SET status='revoked' WHERE participant_id IN (${places}) AND status='active'`)
+      .run(...identities).changes);
+    const revokedSessions = Number(store.db.prepare(`UPDATE human_sessions
+      SET status='revoked',revoked_at=? WHERE participant_id IN (${places}) AND status='active'`)
+      .run(now, ...identities).changes);
+    store.db.prepare(`UPDATE authenticator_enrollments SET status='revoked'
+      WHERE participant_id IN (${places}) AND status='pending'`).run(...identities);
+    store.db.prepare(`DELETE FROM webauthn_challenges WHERE participant_id IN (${places})`)
+      .run(...identities);
+    store.db.prepare(`INSERT INTO authenticator_enrollments
+      (id,graph_id,participant_id,authorized_by,proof_digest,status,expires_at)
+      VALUES (?,?,?,?,?,'pending',?)`).run(enrollment, store.graphId, canonical,
+      authorizedBy, digestOf(secret), expiresAt);
+    store.db.exec('COMMIT');
+    return { enrollment, secret, expiresAt, revokedAuthenticators, revokedSessions };
+  } catch (error) {
+    store.db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export async function registrationOptions(store: Store, enrollmentId: string, proof: string,
   ceremony: Ceremony): Promise<unknown> {
   const held = enrollment(store, enrollmentId, proof);

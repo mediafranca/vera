@@ -219,6 +219,10 @@ rule ParticipantSpeaksIntoABlock {
     -- @invariant VoiceCanonicalityRequiresEvidence, from core: a recording that
     -- claims to be someone's voice arrives with what backs the claim.
     requires: evidence != null
+    -- El navegador termina y vacía sus codificadores antes de que el audio sea
+    -- canónico. Una pista móvil interrumpida que todavía no entregó bytes se
+    -- informa como fallo recuperable y no crea una grabación vacía.
+    requires: audio != ""
     -- One block holds one recording. Two would leave it ambiguous which one the
     -- text came from.
     requires: not exists Recording{placed_in: block}
@@ -325,6 +329,11 @@ rule OriginFollowsASplit {
 invariant EveryRecordingCarriesItsEvidence {
     for r in Recordings:
         r.evidence != null
+}
+
+invariant EveryRecordedAudioHasContent {
+    for r in Recordings:
+        r.audio != ""
 }
 
 invariant NoOriginWithoutARecording {
