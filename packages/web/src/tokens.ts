@@ -394,6 +394,7 @@ const VIEW_KEY = 'vera.graphView';
 const REACH_KEY = 'vera.graphReach';
 const JOURNALS_KEY = 'vera.graphJournals';
 const AUTO_ROTATE_KEY = 'vera.graphAutoRotate';
+const CONCEPT_GRAVITY_KEY = 'vera.graphConceptGravity';
 
 export type ColourScheme = 'light' | 'dark';
 export type WorkspaceLayout = 'text_only' | 'graph_only' | 'split';
@@ -769,6 +770,11 @@ export const session = {
   graphAutoRotate: (): boolean => localStorage.getItem(AUTO_ROTATE_KEY) === 'true',
   setGraphAutoRotate: (rotating: boolean) =>
     localStorage.setItem(AUTO_ROTATE_KEY, String(rotating)),
+
+  /** Los conceptos participan en la geometría salvo que la persona los aparte. */
+  graphConceptGravity: (): boolean => localStorage.getItem(CONCEPT_GRAVITY_KEY) !== 'false',
+  setGraphConceptGravity: (enabled: boolean) =>
+    localStorage.setItem(CONCEPT_GRAVITY_KEY, String(enabled)),
 
   graphView: (): GraphViewMode =>
     (localStorage.getItem(VIEW_KEY) as GraphViewMode | null) ?? 'graph_2d',

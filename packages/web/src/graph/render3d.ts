@@ -1106,8 +1106,10 @@ export function renderGraph3D(
         .id((d: { id: string }) => d.id)
         .distance(LINK_DISTANCE),
     )
-    .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260))
-    .force("concepts", conceptGravity(3) as never);
+    .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260));
+  if (settings.conceptGravity !== false) {
+    sim.force("concepts", conceptGravity(3) as never);
+  }
 
   /*
    * Y los dos resortes del hilo, mientras el recorrido está abierto.

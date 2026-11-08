@@ -117,6 +117,19 @@ describe('rotación automática del mapa 3D', () => {
   });
 });
 
+describe('gravedad conceptual del mapa espacial', () => {
+  it('nace encendida y recuerda cuando se la aparta', () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+
+    assert.equal(session.graphConceptGravity(), true);
+    session.setGraphConceptGravity(false);
+    assert.equal(session.graphConceptGravity(), false);
+    session.setGraphConceptGravity(true);
+    assert.equal(session.graphConceptGravity(), true);
+  });
+});
+
 describe('superficies del sistema de diseño', () => {
   it('proyecta el fondo efectivo del tema al chrome del navegador', () => {
     const prior = Object.getOwnPropertyDescriptor(globalThis, 'document');

@@ -49,6 +49,8 @@ export interface RenderSettings {
   autoRotate?: boolean;
   /** Conserva hacia dónde se mira cuando una entrega progresiva amplía el mapa. */
   preserveDirection?: boolean;
+  /** Agrupa suavemente por conceptos compartidos; los enlaces siguen dominando. */
+  conceptGravity?: boolean;
   /** Cámara declarada por una incrustación; si falta, el mapa se encuadra solo. */
   camera?: EmbeddedMapCamera;
 }
@@ -781,9 +783,11 @@ export function renderGraph(
         .distance(linkDist)
     )
     .force("charge", d3.forceManyBody().strength(charge))
-    .force("concepts", conceptGravity(2) as any)
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", collisionForce as any);
+  if (settings.conceptGravity !== false) {
+    sim.force("concepts", conceptGravity(2) as any);
+  }
 
   /*
    * Y, mientras hay un recorrido abierto, los dos resortes del hilo.
