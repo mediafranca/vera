@@ -2016,6 +2016,13 @@ surface VeraWorkspace {
         -- separate layout waiting at either extreme. The visible multipliers
         -- always describe the forces currently shaping the map.
 
+        -- Repeated journeys across the slider remain bounded by the current
+        -- frame. A later journey cannot accumulate spatial drift that sends
+        -- page names beyond the viewport, and releasing the control cannot run
+        -- another hidden layout step. The current magnification remains stable
+        -- throughout; the visible map changes continuously rather than escaping
+        -- and then being reframed.
+
         -- An explicit Reorganizar action discards the single accumulated
         -- arrangement and computes it again at the current balance. The controls
         -- are absent in D4, whose geometry is an argument and never uses

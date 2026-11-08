@@ -29,7 +29,7 @@ import type { EmbeddedMap3DCamera } from "@vera/core";
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
 import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
-import { graphBalance } from './balance.ts';
+import { graphBalance, graphBalanceNeedsLayout } from './balance.ts';
 import type { GraphData, GraphNode, GraphResource } from "./types.ts";
 import { resourceOrbit, type RenderSettings } from "./render.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
@@ -1280,7 +1280,14 @@ export function renderGraph3D(
   };
 
   governGraphBalance = (value: number, final: boolean): void => {
-    applyBalanceForces(value);
+    const next = graphBalance(value).value;
+    if (!graphBalanceNeedsLayout(balance.value, next, final)) {
+      rememberPlaces();
+      paint();
+      sortByDepth();
+      return;
+    }
+    applyBalanceForces(next);
     for (const node of nodes) {
       Object.assign(node, { fx: null, fy: null, fz: null });
     }

@@ -29,3 +29,8 @@ export function graphBalanceLabel(value: number): string {
   const balance = graphBalance(value);
   return `Enlaces ${balance.links.toFixed(1)}× · Conceptos ${balance.concepts.toFixed(1)}×`;
 }
+
+/** Soltar un valor ya aplicado persiste la elección; no vuelve a mover el mapa. */
+export function graphBalanceNeedsLayout(current: number, next: number, final: boolean): boolean {
+  return !final || graphBalance(current).value !== graphBalance(next).value;
+}

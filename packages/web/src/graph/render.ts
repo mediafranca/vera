@@ -6,7 +6,7 @@ import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
-import { graphBalance } from './balance.ts';
+import { graphBalance, graphBalanceNeedsLayout } from './balance.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -94,6 +94,51 @@ export function resourceOrbit(index: number, total = 12): { x: number; y: number
 }
 
 type NodeDimensions = Map<string, { w: number; h: number }>;
+
+export interface PlanarViewport {
+  width: number;
+  height: number;
+  padding: number;
+}
+
+export interface PlanarTransform {
+  x: number;
+  y: number;
+  k: number;
+}
+
+/**
+ * Mantiene las cajas tipográficas dentro de la cámara vigente sin tocar su zoom.
+ *
+ * La lente cambia posiciones, no la decisión de cuánto acercó la persona. Por
+ * eso se acotan las coordenadas del mundo que ya está bajo esa cámara en vez de
+ * recalcular su escala. Si una etiqueta fuese mayor que el recinto disponible,
+ * se centra en ese eje: ningún desplazamiento podría hacerla caber completa.
+ */
+export function containPlanarNodes(
+  nodes: GraphNode[],
+  dims: NodeDimensions,
+  viewport: PlanarViewport,
+  transform: PlanarTransform,
+): void {
+  if (transform.k <= 0 || viewport.width <= 0 || viewport.height <= 0) return;
+  const left = (viewport.padding - transform.x) / transform.k;
+  const right = (viewport.width - viewport.padding - transform.x) / transform.k;
+  const top = (viewport.padding - transform.y) / transform.k;
+  const bottom = (viewport.height - viewport.padding - transform.y) / transform.k;
+
+  for (const node of nodes) {
+    const box = dims.get(node.id) ?? { w: 40, h: 16 };
+    const minX = left + box.w / 2;
+    const maxX = right - box.w / 2;
+    const minY = top + box.h / 2;
+    const maxY = bottom - box.h / 2;
+    const x = node.x ?? (left + right) / 2;
+    const y = node.y ?? (top + bottom) / 2;
+    node.x = minX <= maxX ? Math.min(maxX, Math.max(minX, x)) : (left + right) / 2;
+    node.y = minY <= maxY ? Math.min(maxY, Math.max(minY, y)) : (top + bottom) / 2;
+  }
+}
 
 /**
  * Compone cerca los componentes sin conectarlos.
@@ -872,6 +917,12 @@ export function renderGraph(
   };
   applyBalanceForces(balance.value);
 
+  const keepInsideCurrentFrame = (): void => {
+    if (heldTransform === null) return;
+    const padding = Math.min(48, Math.max(20, Math.min(width, height) * 0.08));
+    containPlanarNodes(data.nodes, dims, { width, height, padding }, heldTransform);
+  };
+
   /*
    * Y, mientras hay un recorrido abierto, los dos resortes del hilo.
    *
@@ -1092,11 +1143,25 @@ export function renderGraph(
       governGraphBalance = null;
       return;
     }
-    applyBalanceForces(value);
+    const next = graphBalance(value).value;
+    if (!graphBalanceNeedsLayout(balance.value, next, final)) {
+      keepInsideCurrentFrame();
+      place();
+      remember();
+      draw();
+      return;
+    }
+    applyBalanceForces(next);
     sim.alpha(final ? 0.55 : 0.3);
     const ticks = final ? 140 : 28;
-    for (let step = 0; step < ticks; step += 1) sim.tick();
+    for (let step = 0; step < ticks; step += 1) {
+      sim.tick();
+      keepInsideCurrentFrame();
+    }
     settle();
+    keepInsideCurrentFrame();
+    place();
+    remember();
     draw();
   };
 
