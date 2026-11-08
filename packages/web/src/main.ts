@@ -76,7 +76,7 @@ import {
   setGraph3DAutoRotate,
   setGraph3DBalance,
 } from './graph/render3d.ts';
-import { graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
+import { cleanupGraphD4, graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
 import { mapEmbeddingSource } from './map-embedding.ts';
 import { activatePageShareFromLocation, isPageShareRoute } from './page-share.ts';
@@ -2885,8 +2885,10 @@ async function drawGraph(reach = 1): Promise<void> {
   try {
     if (data.nodes.length === 0) {
       cleanupGraph3D();
+      cleanupGraphD4();
       container.innerHTML = '<p class="map-aviso">Los diarios están apagados.</p>';
     } else if (workspace.graphView === 'graph_3d') {
+      cleanupGraphD4();
       renderGraph3D(container, data, onClick, settings);
     } else if (workspace.graphView === 'graph_d4') {
       cleanupGraph3D();
@@ -2939,6 +2941,7 @@ async function drawGraph(reach = 1): Promise<void> {
       });
     } else {
       cleanupGraph3D();
+      cleanupGraphD4();
       renderGraph(container, data, onClick, settings);
     }
   } finally {
@@ -3825,6 +3828,14 @@ function wireTheme(): void {
     setGraph3DAutoRotate(workspace.graphAutoRotate && !reducedMotion.matches);
   });
   showAutoRotate();
+
+  /* Zoom extents: la cámara vuelve a abarcar todo lo dibujado sin pedir ni
+   * reconstruir el grafo. Cada proyección resuelve su propia geometría. */
+  const zoomExtents = $<HTMLButtonElement>('#map-zoom-extents');
+  zoomExtents.innerHTML = icon('maximize');
+  zoomExtents.addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('constel:center'));
+  });
 
   const copyMap = $<HTMLButtonElement>('#map-copy-embed');
   copyMap.innerHTML = icon('copy');

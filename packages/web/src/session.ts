@@ -4,8 +4,9 @@
 // ella dice qué hay que guardar. Así el comportamiento que decide si se pierde
 // texto se puede probar sin un navegador.
 //
-// @invariant TypingIsNeverLost: el texto llega al grafo mientras se escribe y no
-// sólo al salir del bloque. Nada de lo escrito depende de acordarse de salir.
+// @invariant TypingIsNeverLost: mientras se escribe, el outliner conserva este
+// buffer como borrador durable local. La sesión entrega una sola forma final al
+// grafo cuando termina la jugada.
 
 /** Qué toca hacer ahora. `nada` cuando el buffer coincide con lo ya guardado. */
 export type SaveIntent = { action: 'nada' } | { action: 'guardar'; content: string };
@@ -13,7 +14,7 @@ export type SaveIntent = { action: 'nada' } | { action: 'guardar'; content: stri
 export interface EditSession {
   /** El texto que el participante está viendo. */
   buffer(): string;
-  /** Lo último que llegó al grafo. */
+  /** Lo último que llegó al grafo canónico. */
   saved(): string;
   dirty(): boolean;
 
@@ -21,10 +22,9 @@ export interface EditSession {
   type(next: string): void;
 
   /**
-   * Lo que la pausa de escritura debe guardar.
+   * Lo que corresponde confirmar al terminar esta jugada.
    *
-   * Un guardado sin nada que decir no escribe: sin esto, el temporizador pondría
-   * una operación en el log cada vez que alguien se detiene a pensar.
+   * Un cierre sin nada que decir no escribe.
    */
   pending(): SaveIntent;
 
@@ -34,8 +34,8 @@ export interface EditSession {
   /**
    * Salir del bloque, por Escape o por clic fuera.
    *
-   * Guarda lo que quede pendiente. No descarta: cuando se pulsa, el guardado al
-   * reposar ya dejó el texto en el grafo, y ofrecer descartar sería mentir.
+   * Guarda lo que quede pendiente. El borrador local se retira sólo después de
+   * que el resultado haya sido confirmado.
    */
   leave(): SaveIntent;
 

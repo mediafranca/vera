@@ -14,6 +14,7 @@ const governance = readFileSync(new URL('../src/governance-page.ts', import.meta
 const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
 const graph2d = readFileSync(new URL('../src/graph/render.ts', import.meta.url), 'utf8');
 const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
+const graphD4 = readFileSync(new URL('../src/graph/renderD4.ts', import.meta.url), 'utf8');
 const embeddedMap = readFileSync(new URL('../src/map-frame.ts', import.meta.url), 'utf8');
 const executableFrames = readFileSync(new URL('../src/executable-frames.ts', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -121,6 +122,15 @@ describe('superficies especiales', () => {
     assert.doesNotMatch(toggle, /applyLayout|drawGraph/);
     assert.match(graph3d, /governAutoRotation\?\.\(enabled\)/);
     assert.match(graph3d, /setAutoRotation\(false\)/);
+  });
+
+  it('devuelve todo el mapa al encuadre desde el menú del ojo en las tres vistas', () => {
+    assert.match(html, /id="map-zoom-extents"/);
+    assert.match(main, /zoomExtents\.innerHTML = icon\('maximize'\)/);
+    assert.match(main, /zoomExtents\.addEventListener\('click'[\s\S]*?constel:center/);
+    assert.match(graph3d, /addEventListener\("constel:center", onCentre\)/);
+    assert.match(graphD4, /addEventListener\('constel:center', onCentre\)/);
+    assert.match(graphD4, /const frameAll = \(\): void =>/);
   });
 
   it('ofrece una lente continua con calibración visible y reorganiza sólo por petición', () => {

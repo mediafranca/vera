@@ -1391,6 +1391,7 @@ button { touch-action: manipulation; }
 }
 
 .map-icon-check .icon,
+#map-zoom-extents .icon,
 #map-copy-embed .icon,
 #map-reorganize .icon {
   display: block;
@@ -1411,12 +1412,16 @@ button { touch-action: manipulation; }
   accent-color: var(--accent);
 }
 
+#map-zoom-extents,
 #map-copy-embed {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: auto;
   padding: 0.2rem 0.3rem;
+}
+
+#map-zoom-extents {
+  margin-left: auto;
 }
 
 /* Lo que el mapa dice cuando no puede dibujarse. Centrado en su sitio, porque

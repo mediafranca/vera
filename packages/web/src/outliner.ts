@@ -8,8 +8,8 @@
 // nunca se guarda, así que ninguna edición pasa de ida y vuelta por el
 // renderizador.
 //
-// Cada edición emite una operación. No hay guardado implícito ni estado local
-// que pueda divergir del grafo.
+// Cada jugada editorial terminada emite una operación. Mientras la mano sigue
+// dentro del bloque hay un borrador durable local, no revisiones intermedias.
 
 import {
   DEFAULT_PROPERTY_NAMES,
@@ -96,6 +96,7 @@ import { createPage } from './pages.ts';
 import { presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
+import { discardEditingDraft, keepEditingDraft, recoverEditingDraft } from './editing-draft.ts';
 import { clearTaskState, taskToggle } from './task-toggle.ts';
 import {
   actionOf,
@@ -8633,9 +8634,6 @@ async function candidatesFor(
   return out;
 }
 
-/** Cuánto silencio hace falta para que lo escrito baje al grafo. */
-const EDITING_PAUSE = 900;
-
 /**
  * Qué carácter del texto dibujado hay debajo del punto que se pulsó.
  *
@@ -8831,7 +8829,12 @@ function startEditing(
   sourceMode = false,
 ): void {
   if (body.querySelector('textarea') !== null) return;
+  const recoveredDraft = recoverEditingDraft(block.stableId, block.content);
   const session = createSession(block.content);
+  if (recoveredDraft !== null) {
+    session.type(recoveredDraft);
+    toast('recuperé el borrador local de este bloque');
+  }
 
   const editor = document.createElement('textarea');
   editor.className = 'editor';
@@ -8851,7 +8854,7 @@ function startEditing(
    * de cambios sin autor. Se curan solos cuando alguien los edite de verdad —ver
    * session.ts, que ya no guarda ese blanco—, y mientras tanto no se ven.
    */
-  editor.value = block.content.trimEnd();
+  editor.value = (recoveredDraft ?? block.content).trimEnd();
   editor.rows = 1;
   const syncCodeTypeface = (): void => {
     body.classList.toggle('code-source', isFencedCodeContent(editor.value));
@@ -9085,7 +9088,6 @@ function startEditing(
       // después consulta el catálogo y sólo entonces abre el objeto.
       event.preventDefault();
       void (async () => {
-        window.clearTimeout(timer);
         const saved = await flush(session.leave());
         if (!saved) return;
         let catalogue: CatalogAsset[];
@@ -9127,7 +9129,6 @@ function startEditing(
     void renderMermaid(body);
   };
 
-  let timer: number | undefined;
   let composing = false;
   // Abrir un selector de archivos quita el foco del textarea, pero no significa
   // que Herbert haya terminado de editar: el archivo elegido todavía tiene que
@@ -9152,7 +9153,7 @@ function startEditing(
       });
     } catch {
       // Sin red no se pierde lo escrito: sigue pendiente y el siguiente intento
-      // —otra pausa, o salir del bloque— vuelve a mandarlo.
+      // de terminar la jugada vuelve a mandarlo.
       session.failed();
       editor.classList.add('failed');
       editor.title = 'no se pudo guardar: sin conexión con el servidor';
@@ -9166,6 +9167,7 @@ function startEditing(
 
     const before = block.content;
     session.settled(intent.content);
+    discardEditingDraft(block.stableId, intent.content);
     block.content = intent.content;
     editor.classList.remove('failed');
     editor.removeAttribute('title');
@@ -9173,16 +9175,17 @@ function startEditing(
     return true;
   };
 
-  /** @invariant TypingIsNeverLost: el texto baja al grafo mientras se escribe. */
-  const scheduleSave = (): void => {
-    window.clearTimeout(timer);
-    timer = window.setTimeout(() => void flush(session.pending()), EDITING_PAUSE);
+  /**
+   * @invariant TypingIsNeverLost: el texto en curso queda durable en este
+   * dispositivo, pero no se disfraza de revisión antes de terminar la jugada.
+   */
+  const preserveDraft = (): void => {
+    keepEditingDraft(block.stableId, block.content, session.buffer());
   };
 
   const leave = (): void => {
     if (leaving) return;
     leaving = true;
-    window.clearTimeout(timer);
     void flush(session.leave()).then((saved) => {
       if (!saved) {
         leaving = false;
@@ -9200,7 +9203,6 @@ function startEditing(
   const structural = (outcome: KeyOutcome): void => {
     if (outcome.kind === 'ninguno') return;
     leaving = true;
-    window.clearTimeout(timer);
     void flush(session.pending()).then(() => {
       if (outcome.kind === 'rechazo') {
         // Un rechazo no cambia nada, así que se vuelve a la edición.
@@ -9400,16 +9402,13 @@ function startEditing(
     // La barra ya pertenece al bloque que se está editando. `/formato` sólo la
     // nombra y devuelve el foco al texto; no inventa una segunda interfaz.
     if (acts === 'formato') {
-      scheduleSave();
+      preserveDraft();
       editor.focus();
       return;
     }
 
     if (acts === 'tabla') {
       const at = applied.cursor;
-      // El temporizador nació al teclear `/tabla`; la elección modal todavía no
-      // ha escrito nada y no debe guardar el comando a medio consumir.
-      window.clearTimeout(timer);
       choosingTable = true;
       pickTableShape(editor, (rows, columns, axis) => {
         choosingTable = false;
@@ -9419,7 +9418,7 @@ function startEditing(
         editor.setSelectionRange(after, after);
         session.type(editor.value);
         autosize();
-        scheduleSave();
+        preserveDraft();
         editor.focus();
       }, () => {
         choosingTable = false;
@@ -9433,7 +9432,7 @@ function startEditing(
         held.stableId === block.stableId ? applied.buffer : held.content
       );
       applyFormat(insertFootnote(applied.buffer, applied.cursor, applied.cursor, sources));
-      scheduleSave();
+      preserveDraft();
       return;
     }
 
@@ -9448,13 +9447,12 @@ function startEditing(
         return;
       }
       applyFormat(insertMarkdownFragment(applied.buffer, applied.cursor, index));
-      scheduleSave();
+      preserveDraft();
       return;
     }
 
     if (acts === 'iframe') {
       const at = applied.cursor;
-      window.clearTimeout(timer);
       choosingIframe = true;
       pickIframe(editor, (source) => {
         choosingIframe = false;
@@ -9463,7 +9461,7 @@ function startEditing(
         editor.setSelectionRange(after, after);
         session.type(editor.value);
         autosize();
-        scheduleSave();
+        preserveDraft();
         editor.focus();
       }, () => {
         choosingIframe = false;
@@ -9584,7 +9582,7 @@ function startEditing(
         editor.setSelectionRange(after, after);
         session.type(editor.value);
         autosize();
-        scheduleSave();
+        preserveDraft();
         editor.focus();
       });
       return;
@@ -9603,7 +9601,7 @@ function startEditing(
         editor.setSelectionRange(after, after);
         session.type(editor.value);
         autosize();
-        scheduleSave();
+        preserveDraft();
         editor.focus();
       });
       return;
@@ -9631,7 +9629,7 @@ function startEditing(
       return;
     }
 
-    scheduleSave();
+    preserveDraft();
     editor.focus();
   };
 
@@ -9688,7 +9686,6 @@ function startEditing(
       // No se difiere: el selector ya produjo un archivo y la referencia es el
       // resultado de ese mismo gesto. Así no puede perderse por un blur o una
       // navegación inmediatamente posteriores a la subida.
-      window.clearTimeout(timer);
       const inserted = await flush(session.pending());
       if (!inserted) {
         toast(`no se pudo incorporar ${label} al bloque`);
@@ -9793,7 +9790,7 @@ function startEditing(
     autosize();
     keepCaretInSight(editor, editor.selectionStart);
     scheduleSplitControl();
-    scheduleSave();
+    preserveDraft();
     refreshList();
   });
 
@@ -9823,7 +9820,7 @@ function startEditing(
     keepCaretInSight(editor, editor.selectionStart);
     scheduleSplitControl();
     if (composing || (event instanceof InputEvent && event.isComposing)) return;
-    scheduleSave();
+    preserveDraft();
     refreshList();
   });
 
@@ -9865,7 +9862,7 @@ function startEditing(
       editor.setSelectionRange(formatted.selectionStart, formatted.selectionEnd);
       session.type(editor.value);
       autosize();
-      scheduleSave();
+      preserveDraft();
       return;
     }
 
@@ -9953,7 +9950,7 @@ function startEditing(
       editor.setSelectionRange(typed.cursor, typed.cursor);
       session.type(editor.value);
       autosize();
-      scheduleSave();
+      preserveDraft();
       // El autopar se come su propia tecla, así que aquí no llega ningún evento
       // `input` y nadie mira el disparador. Y el único instante en que `[[`
       // queda a la izquierda del cursor es exactamente éste: si pasa sin que se
