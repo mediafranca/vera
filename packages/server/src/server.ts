@@ -322,6 +322,7 @@ import {
   issueSession,
   participantForSession,
   registrationOptions,
+  replaceHumanAccess,
   revokeSession,
 } from './human-auth.ts';
 import { completeOwnerBootstrapIfDue } from './owner-bootstrap.ts';
@@ -5336,6 +5337,35 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const summary = participantSummaries(store).find((one) => one.id === participant.id) ?? participant;
         send(response, 200, {
           participant: { ...summary, canManage: participant.kind === 'agent' ? canGovernAgent(participant.id) : ownerOnly() === null },
+        });
+      } catch (error) {
+        send(response, 409, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/participants\/[^/]+\/replace-access$/.test(path)) {
+      const blocked = ownerOnly();
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      try {
+        const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const participant = graph.participant(canonicalParticipant(store, participantId));
+        if (participant?.kind !== 'human') {
+          send(response, 409, { error: 'sólo una persona humana puede renovar su acceso' }); return;
+        }
+        if (participant.id === who.participant) {
+          send(response, 409, { error: 'esta acción recupera el acceso de otra persona; tu sesión añade dispositivos desde el QR propio' }); return;
+        }
+        const made = replaceHumanAccess(store, participantId, who.participant);
+        const destination = new URL(`/enroll-device/${encodeURIComponent(made.enrollment)}`, ceremony().origin);
+        destination.searchParams.set('returnTo', '/');
+        destination.hash = new URLSearchParams({ secret: made.secret }).toString();
+        const summary = participantSummaries(store).find((one) => one.id === participant.id);
+        if (summary === undefined) throw new Error('no se pudo releer la identidad renovada');
+        send(response, 201, {
+          url: destination.toString(), expiresAt: made.expiresAt,
+          revokedAuthenticators: made.revokedAuthenticators, revokedSessions: made.revokedSessions,
+          participant: { ...summary, canManage: true },
         });
       } catch (error) {
         send(response, 409, { error: error instanceof Error ? error.message : String(error) });

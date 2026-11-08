@@ -38,6 +38,7 @@ import {
   openExternalLink,
   presentOutlinerPage,
   renderOutliner,
+  speakAtCursor,
   speakInto,
   type OutlinerCallbacks,
 } from './outliner.ts';
@@ -4013,18 +4014,7 @@ function wireTheme(): void {
     }
   };
 
-  /**
-   * Hablar, desde la barra.
-   *
-   * Lo grabado cae en el día de hoy, y por el mismo camino que `/audio`: un
-   * bloque del día le guarda el lugar y ahí se recorre la cascada. Que sea el
-   * mismo camino importa más de lo que parece — es lo que hace que ninguna
-   * grabación pueda volver a quedar flotando sin página, porque todas nacen con
-   * un día.
-   *
-   * En un teléfono es la razón de ser de la aplicación: se saca del bolsillo, se
-   * habla, y lo dicho ya está en el día que le corresponde.
-   */
+  /** Hablar desde la barra conserva el punto de escritura, igual que `/audio`. */
   /*
    * El buscador plegado, en un teléfono.
    *
@@ -4073,14 +4063,17 @@ function wireTheme(): void {
   // estado lo lleva quien lo conoce, y aquí sólo se pinta.
   onRecording((on) => $('#insert-voice').classList.toggle('live', on));
 
-  $('#insert-voice').addEventListener('click', () => {
+  const insertVoice = $('#insert-voice');
+  insertVoice.addEventListener('pointerdown', (event) => {
+    // Pulsar la barra no debe quitar el cursor antes de preguntar dónde estaba.
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement && active.classList.contains('editor')) {
+      event.preventDefault();
+    }
+  });
+  insertVoice.addEventListener('click', () => {
     if (isAnybody()) return;
-    void (async () => {
-      const block = await startDay(today());
-      if (block === null) return;
-      speakInto(block, today());
-      if (workspace.activePage !== null) await openPage(workspace.activePage);
-    })();
+    if (!speakAtCursor()) notice('Pon el cursor en el bloque donde quieres dejar el audio.');
   });
 
   $('#settings').addEventListener('click', () => {

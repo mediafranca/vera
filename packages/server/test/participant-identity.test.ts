@@ -103,6 +103,45 @@ describe('identidad estable de participantes', () => {
     assert.ok(row.retainedBy.includes('historia de nombres'));
   });
 
+  it('renueva el acceso humano sin retirar superficies, permisos ni identidad', async () => {
+    const declared = await call('/participants', 'POST', { name: 'Participante con dispositivo perdido', kind: 'human' });
+    const participant = declared.json['participant'].id as string;
+    for (const slug of ['taller-a', 'taller-b']) {
+      const space = await call('/shared-spaces', 'POST', {
+        name: slug, slug, selectorKey: 'espacio', selectorValue: slug,
+      });
+      assert.equal(space.status, 201, JSON.stringify(space.json));
+      const invitation = await call(`/shared-spaces/${slug}/invitations`, 'POST', {
+        participant, permissions: ['read', 'contribute'],
+      });
+      const redeemed = await call(`/invitations/${encodeURIComponent(invitation.json['id'])}/redeem`,
+        'POST', { secret: invitation.json['secret'] });
+      assert.equal(redeemed.status, 201, JSON.stringify(redeemed.json));
+    }
+    running.vera.store.db.prepare(`INSERT INTO human_authenticators
+      (credential_id,participant_id,public_key,counter,transports,device_type,backed_up,registered_at,status)
+      VALUES (?,?,X'01',0,'internal','singleDevice',0,?,'active')`)
+      .run('credential:lost-device', participant, Date.now());
+
+    const beforeGrants = Number((running.vera.store.db.prepare(`SELECT count(*) AS n FROM access_grants
+      WHERE participant_id=? AND status='active'`).get(participant) as { n: number }).n);
+    const renewed = await call(`/participants/${encodeURIComponent(participant)}/replace-access`, 'POST');
+    assert.equal(renewed.status, 201, JSON.stringify(renewed.json));
+    assert.match(String(renewed.json['url']), /\/enroll-device\/enrollment%3A/);
+    assert.equal(renewed.json['revokedAuthenticators'], 1);
+    assert.ok(Number(renewed.json['revokedSessions']) >= 2);
+    assert.equal((running.vera.store.db.prepare(`SELECT status FROM human_authenticators
+      WHERE credential_id='credential:lost-device'`).get() as { status: string }).status, 'revoked');
+    assert.equal(Number((running.vera.store.db.prepare(`SELECT count(*) AS n FROM access_grants
+      WHERE participant_id=? AND status='active'`).get(participant) as { n: number }).n), beforeGrants);
+    assert.equal((running.vera.store.db.prepare(`SELECT status FROM memberships
+      WHERE participant_id=?`).get(participant) as { status: string }).status, 'active');
+    assert.equal((running.vera.store.db.prepare(`SELECT status FROM participants
+      WHERE id=?`).get(participant) as { status: string }).status, 'active');
+    assert.equal(Number((running.vera.store.db.prepare(`SELECT count(*) AS n FROM authenticator_enrollments
+      WHERE participant_id=? AND status='pending'`).get(participant) as { n: number }).n), 1);
+  });
+
   it('mantiene todos los agentes personales bajo la autoridad de la persona dueña', async () => {
     const human = await call('/participants', 'POST', { name: 'Profesora guía', kind: 'human' });
     const refused = await call('/participants', 'POST', {

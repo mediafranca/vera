@@ -396,6 +396,23 @@ export function reloadAfterDerivedWriting(): ReloadOptions {
  */
 let speakingIn: { block: string; destination: string } | null = null;
 
+/*
+ * La barra superior vive fuera del outliner, pero hablar sigue perteneciendo al
+ * punto de escritura. Guardar la acción en el propio editor evita que la barra
+ * tenga que reconstruir página, bloque o vecindad mirando el DOM.
+ */
+const cursorSpeakers = new WeakMap<HTMLTextAreaElement, () => void>();
+
+/** Habla donde está el cursor, por el mismo camino que `/audio`. */
+export function speakAtCursor(): boolean {
+  const editor = document.activeElement;
+  if (!(editor instanceof HTMLTextAreaElement)) return false;
+  const speak = cursorSpeakers.get(editor);
+  if (speak === undefined) return false;
+  speak();
+  return true;
+}
+
 function stamp(milliseconds: number): string {
   const total = Math.floor(milliseconds / 1000);
   const hours = Math.floor(total / 3600);
@@ -1202,6 +1219,7 @@ export async function openLibrarianConversation(
     microphone.setAttribute('aria-label', 'Transcribiendo mensaje de voz');
     microphone.classList.add('transcribing');
     void recording.stop().then(async ({ audio, durationMs }) => {
+      if (audio.size === 0) throw new Error('El teléfono cerró el micrófono antes de entregar el audio. Vuelve a grabar con Vera en primer plano.');
       const captured = await voice.capture(audio, durationMs);
       if ('error' in captured) throw new Error(captured.error);
       const transcribed = await voice.transcript(captured.id);
@@ -8869,6 +8887,9 @@ function startEditing(
   const editor = document.createElement('textarea');
   editor.className = 'editor';
   editor.enterKeyHint = 'enter';
+  cursorSpeakers.set(editor, () => {
+    void callbacks.onSpeak?.(block.stableId, editor.value.trim());
+  });
   /*
    * El fuente, sin el blanco del final.
    *
@@ -9425,7 +9446,7 @@ function startEditing(
     // ocurre en el grafo. Lo que quedara escrito se guarda antes, porque la
     // grabación necesita un bloque vacío que le guarde el lugar.
     if (acts === 'hablar') {
-      void callbacks.onSpeak?.(block.stableId, editor.value.trim());
+      cursorSpeakers.get(editor)?.();
       return;
     }
 

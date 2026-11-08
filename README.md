@@ -80,13 +80,16 @@ otras personas, corpus y contextos universitarios.
 - [Seguridad](https://vera.mediafranca.net/vera-seguridad/)
 - [Probar e instalar](https://vera.mediafranca.net/vera-probar-e-instalar/)
 
-Vera es actualmente una **alfa de investigación**: funciona sobre un corpus
-real, pero está destinada por ahora a una persona y un grafo. No es todavía un
-servicio multiusuario listo para producción.
+Vera es actualmente una **alfa de investigación**: funciona sobre corpus reales
+y una instancia puede constituirse como biblioteca personal o colectiva. Cada
+instancia conserva un grafo soberano; la colaboración ocurre mediante personas
+autenticadas, superficies delimitadas y permisos explícitos. No es todavía un
+servicio multiusuario listo para producción general.
 
 > [!WARNING]
 > La aplicación privada escucha en loopback por omisión. No expongas directamente
-> ese puerto a Internet: las personas aún no se autentican ante Vera. Lee
+> ese puerto a Internet: las passkeys y sesiones humanas no sustituyen una
+> frontera de red, TLS ni una política de exposición revisada. Lee
 > [Seguridad](SECURITY.md) y [Exponer Vera](docs/exponer-vera.md) antes de cambiar
 > la frontera de red.
 
