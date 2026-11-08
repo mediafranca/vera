@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const surface = readFileSync(new URL('../src/participant-administration.ts', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 describe('gobierno de participantes', () => {
   it('tiene una superficie de sistema y una dirección propia', () => {
@@ -45,5 +46,12 @@ describe('gobierno de participantes', () => {
   it('explica la continuidad humana y reserva el QR para la sesión de esa persona', () => {
     assert.match(surface, /su sesión puede abrir el QR para añadir otro dispositivo/);
     assert.match(surface, /el QR aparece dentro de su propia sesión humana/);
+  });
+
+  it('integra los enlaces del directorio en la tipografía del sistema', () => {
+    const directoryLinks = styles.match(/\.participant-administration-related a,[\s\S]*?\n\}/)?.[0] ?? '';
+    assert.match(directoryLinks, /color: inherit/);
+    assert.doesNotMatch(directoryLinks, /var\(--accent\)/);
+    assert.match(styles, /\.participant-directory-card h2 a \{ text-decoration-line: underline; \}/);
   });
 });

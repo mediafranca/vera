@@ -604,9 +604,9 @@ async function drawCollectiveAdministration(host: HTMLElement): Promise<void> {
     : 'Instancia personal · una sola persona gobierna el corpus y el acceso local sigue funcionando sin iniciar sesión.';
   if (view.profile !== 'collective') {
     const boundary = document.createElement('section'); boundary.className = 'sharing-group';
-    const title = document.createElement('h4'); title.textContent = 'Pasar a una Vera colectiva';
+    const title = document.createElement('h4'); title.textContent = 'Conversión a una Vera colectiva';
     const explanation = document.createElement('p'); explanation.className = 'settings-note';
-    explanation.textContent = 'No es un interruptor sobre este corpus. La conversión crea otra instancia y conserva su linaje; antes de migrar se registra y comprueba una passkey administrativa. Este acceso personal no cambia hasta completar esa prueba.';
+    explanation.textContent = 'La arquitectura está definida, pero esta versión todavía no ejecuta la migración. No es un interruptor sobre este corpus: la conversión creará otra instancia, conservará el linaje y exigirá comprobar una passkey administrativa antes de trasladar contenido.';
     const sharing = document.createElement('p'); sharing.className = 'settings-note';
     sharing.textContent = 'Para colaborar sin cambiar el gobierno de esta Vera, usa Espacios compartidos.';
     boundary.append(title, explanation, sharing); host.append(boundary);

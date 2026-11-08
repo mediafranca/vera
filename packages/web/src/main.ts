@@ -1946,6 +1946,7 @@ async function applyRoute(): Promise<void> {
 }
 
 async function openCollectiveAdministration(push = false): Promise<void> {
+  stopJournalPull();
   workspace.activePage = null;
   workspace.focusRoot = null;
   nameWindow('Personas e identidad');
@@ -1956,6 +1957,7 @@ async function openCollectiveAdministration(push = false): Promise<void> {
 }
 
 async function openParticipantsAdministration(push = false): Promise<void> {
+  stopJournalPull();
   workspace.activePage = null;
   workspace.focusRoot = null;
   nameWindow('Participantes');
@@ -1966,6 +1968,7 @@ async function openParticipantsAdministration(push = false): Promise<void> {
 }
 
 async function openAgentAdministration(push = false): Promise<void> {
+  stopJournalPull();
   workspace.activePage = null;
   workspace.focusRoot = null;
   nameWindow('Agente de biblioteca y agentes');
@@ -1976,6 +1979,7 @@ async function openAgentAdministration(push = false): Promise<void> {
 }
 
 async function openSharingAdministration(push = false): Promise<void> {
+  stopJournalPull();
   workspace.activePage = null;
   workspace.focusRoot = null;
   nameWindow('Espacios compartidos');
@@ -1986,6 +1990,7 @@ async function openSharingAdministration(push = false): Promise<void> {
 }
 
 async function openFilesAdministration(push = false): Promise<void> {
+  stopJournalPull();
   workspace.activePage = null;
   workspace.focusRoot = null;
   nameWindow('Administración de archivos');
@@ -1996,6 +2001,7 @@ async function openFilesAdministration(push = false): Promise<void> {
 }
 
 async function openParticipantProfile(participant: string): Promise<void> {
+  stopJournalPull();
   opening += 1;
   pageDelivery?.abort();
   pageDelivery = null;
@@ -3341,6 +3347,7 @@ async function openSearchResults(text: string, push = true): Promise<void> {
   const query = text.trim();
   if (query === '') return;
 
+  stopJournalPull();
   opening += 1;
   pageDelivery?.abort();
   pageDelivery = null;

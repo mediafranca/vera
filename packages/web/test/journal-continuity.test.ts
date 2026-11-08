@@ -31,6 +31,23 @@ describe('edición dentro de la bitácora continua', () => {
     assert.match(continuation, /\.then\(\(older\) => \{\s*if \(run !== journalRun\) return;/);
   });
 
+  it('corta la lectura continua antes de entrar en cualquier superficie especial', () => {
+    for (const opening of [
+      'openCollectiveAdministration',
+      'openParticipantsAdministration',
+      'openAgentAdministration',
+      'openSharingAdministration',
+      'openFilesAdministration',
+      'openParticipantProfile',
+      'openSearchResults',
+    ]) {
+      const start = main.indexOf(`function ${opening}`);
+      const next = main.indexOf('\n}', start);
+      assert.notEqual(start, -1, `falta ${opening}`);
+      assert.match(main.slice(start, next), /stopJournalPull\(\)/, `${opening} hereda el diario anterior`);
+    }
+  });
+
   it('los días anteriores se leen del corpus y nunca de la copia retenida', () => {
     const continuation = main.slice(
       main.indexOf('function continueBackwards'),
