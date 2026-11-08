@@ -244,6 +244,71 @@ describe('migraciones', () => {
     );
   });
 
+  it('la migración 25 tolera invitaciones que ya tienen identidad estable', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE participants (id TEXT PRIMARY KEY) STRICT;
+      CREATE TABLE shared_spaces (id TEXT PRIMARY KEY) STRICT;
+      CREATE TABLE instances (id TEXT PRIMARY KEY) STRICT;
+      CREATE TABLE access_invitations (
+        id TEXT PRIMARY KEY,
+        space_id TEXT NOT NULL REFERENCES shared_spaces (id),
+        issued_by TEXT NOT NULL REFERENCES participants (id),
+        permissions TEXT NOT NULL,
+        proof_digest TEXT NOT NULL UNIQUE,
+        intended_contact TEXT,
+        status TEXT NOT NULL,
+        issued_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        redeemed_by TEXT REFERENCES participants (id),
+        redeemed_at INTEGER,
+        participant_id TEXT REFERENCES participants (id)
+      ) STRICT;
+      CREATE TABLE collective_invitations (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL REFERENCES instances (id),
+        issued_by TEXT NOT NULL REFERENCES participants (id),
+        role TEXT NOT NULL,
+        proof_digest TEXT NOT NULL UNIQUE,
+        intended_contact TEXT,
+        status TEXT NOT NULL,
+        issued_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        redeemed_by TEXT REFERENCES participants (id),
+        redeemed_at INTEGER,
+        participant_id TEXT REFERENCES participants (id)
+      ) STRICT;
+      INSERT INTO participants VALUES ('participant:owner');
+      INSERT INTO shared_spaces VALUES ('space:1');
+      INSERT INTO instances VALUES ('instance:1');
+      INSERT INTO access_invitations VALUES (
+        'access:1','space:1','participant:owner','read','digest:access',NULL,
+        'pending',1,2,NULL,NULL,'participant:owner'
+      );
+      INSERT INTO collective_invitations VALUES (
+        'collective:1','instance:1','participant:owner','reader','digest:collective',NULL,
+        'pending',1,2,NULL,NULL,'participant:owner'
+      );
+    `);
+
+    const migration = MIGRATIONS.find((one) => one.version === 25);
+    assert.ok(migration);
+    assert.doesNotThrow(() => migration.apply(db));
+    assert.equal(count(db, 'access_invitations'), 1);
+    assert.equal(count(db, 'collective_invitations'), 1);
+    assert.equal(
+      (db.prepare('SELECT participant_id FROM access_invitations').get() as { participant_id: string })
+        .participant_id,
+      'participant:owner',
+    );
+    assert.equal(
+      (db.prepare('SELECT participant_id FROM collective_invitations').get() as { participant_id: string })
+        .participant_id,
+      'participant:owner',
+    );
+    db.close();
+  });
+
   it('compacta exposiciones sin perder sus filas ni conservar el índice microscópico', () => {
     const db = new DatabaseSync(':memory:');
     db.exec(`

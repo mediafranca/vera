@@ -909,9 +909,14 @@ const stabiliseParticipantIdentity: Migration = {
     const exists = (table: string): boolean => db.prepare(
       `SELECT 1 AS present FROM sqlite_schema WHERE type='table' AND name=?`,
     ).get(table) !== undefined;
+    const hasColumn = (table: string, column: string): boolean =>
+      (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+        .some((one) => one.name === column);
 
     if (exists('access_invitations')) {
-      db.exec('ALTER TABLE access_invitations ADD COLUMN participant_id TEXT REFERENCES participants (id)');
+      if (!hasColumn('access_invitations', 'participant_id')) {
+        db.exec('ALTER TABLE access_invitations ADD COLUMN participant_id TEXT REFERENCES participants (id)');
+      }
       db.exec(`UPDATE access_invitations SET participant_id=redeemed_by WHERE redeemed_by IS NOT NULL`);
       db.exec(`UPDATE access_invitations SET status='revoked' WHERE participant_id IS NULL AND status='pending'`);
       rebuildTable(
@@ -939,7 +944,9 @@ const stabiliseParticipantIdentity: Migration = {
     }
 
     if (exists('collective_invitations')) {
-      db.exec('ALTER TABLE collective_invitations ADD COLUMN participant_id TEXT REFERENCES participants (id)');
+      if (!hasColumn('collective_invitations', 'participant_id')) {
+        db.exec('ALTER TABLE collective_invitations ADD COLUMN participant_id TEXT REFERENCES participants (id)');
+      }
       db.exec(`UPDATE collective_invitations SET participant_id=redeemed_by WHERE redeemed_by IS NOT NULL`);
       db.exec(`UPDATE collective_invitations SET status='revoked' WHERE participant_id IS NULL AND status='pending'`);
       rebuildTable(

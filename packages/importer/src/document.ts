@@ -9,7 +9,6 @@
 // otra cosa. No se mira el largo de los párrafos ni la tipografía.
 
 import { inflateRawSync } from 'node:zlib';
-import { PDFParse } from 'pdf-parse';
 
 export type DocumentFormat = 'markdown' | 'docx' | 'pdf' | 'rtf';
 
@@ -431,6 +430,14 @@ export function parseRtf(bytes: Buffer): ParsedDocument | null {
 }
 
 async function parsePdf(bytes: Buffer): Promise<ParsedDocument | null> {
+  /*
+   * PDF.js intenta cargar su puente nativo de canvas al inicializar el módulo.
+   * Importarlo al arrancar Desktop hacía que una capacidad ocasional —traer un
+   * PDF— pudiera impedir abrir una biblioteca entera si el paquete nativo no
+   * estaba disponible. Se carga sólo cuando llega un PDF; el distribuidor sigue
+   * incluyendo el puente para que esa operación también sea completa.
+   */
+  const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: new Uint8Array(bytes) });
   try {
     // pdf.js mantiene estado interno durante el análisis: pedir texto e

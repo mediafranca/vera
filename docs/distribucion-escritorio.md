@@ -182,6 +182,7 @@ npm run spec
 npm test -- --test-concurrency=1
 npm run typecheck
 npm run build:desktop
+npm run verify:desktop-package
 npm version <versión> --no-git-tag-version
 npm run release:verify-tag -- v<versión>
 ```
@@ -189,6 +190,11 @@ npm run release:verify-tag -- v<versión>
 Después se revisa y compromete el cambio de versión. Crear y empujar el tag es
 una operación humana deliberada; GitHub Actions hace el resto. Nunca se reutiliza
 un número de versión retirado: una corrección lleva un número mayor.
+
+`verify:desktop-package` inspecciona el `app.asar` construido y exige tanto el
+puente JavaScript como el binario nativo de cada arquitectura distribuida. En
+macOS universal deben estar presentes Apple Silicon e Intel; que la aplicación
+compile en la máquina de CI no demuestra por sí solo ese cierre.
 
 ## Prueba de aceptación A → B
 
