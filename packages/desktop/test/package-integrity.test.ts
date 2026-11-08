@@ -18,6 +18,10 @@ const packageVerifier = readFileSync(
   'utf8',
 );
 const desktopMain = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const desktopWorkflow = readFileSync(
+  new URL('../../../.github/workflows/desktop.yml', import.meta.url),
+  'utf8',
+);
 
 test('Desktop lleva el canvas nativo que PDF.js resuelve en ejecución', () => {
   assert.equal(root.dependencies?.['@napi-rs/canvas'], '0.1.80');
@@ -30,6 +34,8 @@ test('Desktop lleva el canvas nativo que PDF.js resuelve en ejecución', () => {
   assert.match(packageVerifier, /canvas-darwin-arm64/);
   assert.match(packageVerifier, /canvas-darwin-x64/);
   assert.match(packageVerifier, /canvas-linux-x64-gnu/);
+  assert.match(desktopWorkflow, /canvas-darwin-arm64@0\.1\.80/);
+  assert.match(desktopWorkflow, /canvas-darwin-x64@0\.1\.80/);
 });
 
 test('la lectura de PDF no condiciona el arranque de una biblioteca', () => {

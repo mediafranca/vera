@@ -138,6 +138,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Preparar canvas para Apple Silicon e Intel
+        run: >-
+          npm install --no-save --package-lock=false --force
+          @napi-rs/canvas-darwin-arm64@0.1.80
+          @napi-rs/canvas-darwin-x64@0.1.80
 
       - name: Determinar si hay firma y notarización de Apple
         id: sign-check
