@@ -1,10 +1,11 @@
 import * as d3 from "d3";
 import type { EmbeddedMapCamera, EmbeddedMapPlanarCamera } from "@vera/core";
-import type { GraphData, GraphLink, GraphNode } from "./types.ts";
+import type { GraphData, GraphLens, GraphLink, GraphNode, GraphResource } from "./types.ts";
 import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { conceptGravity } from './concept-gravity.ts';
+import { proximityExplanation } from './proximity.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -49,8 +50,10 @@ export interface RenderSettings {
   autoRotate?: boolean;
   /** Conserva hacia dónde se mira cuando una entrega progresiva amplía el mapa. */
   preserveDirection?: boolean;
-  /** Agrupa suavemente por conceptos compartidos; los enlaces siguen dominando. */
-  conceptGravity?: boolean;
+  /** Qué relaciones gobiernan la geometría espacial. */
+  graphLens?: GraphLens;
+  /** Abre el diálogo seguro de un satélite externo. */
+  openExternalResource?: (url: string) => void;
   /** Cámara declarada por una incrustación; si falta, el mapa se encuadra solo. */
   camera?: EmbeddedMapCamera;
 }
@@ -78,6 +81,16 @@ const MAX_LABEL_CHARS = 24;
 
 /** El aire entre dos nombres. Sin él se tocan, y tocarse ya se lee como uno. */
 const COLLISION_PAD = 6;
+
+/** Sitio estable de un recurso alrededor de la página en foco. */
+export function resourceOrbit(index: number): { x: number; y: number; z: number } {
+  const ring = Math.floor(index / 12);
+  const within = index % 12;
+  const count = 12;
+  const angle = (within / count) * Math.PI * 2 + ring * 0.31;
+  const radius = 38 + ring * 22;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: (within % 3 - 1) * 8 };
+}
 
 type NodeDimensions = Map<string, { w: number; h: number }>;
 
@@ -200,7 +213,12 @@ let active2dListeners: { event: string; fn: EventListener }[] = [];
  * recuerda es una imagen y no un lugar. Reconocer una región por su forma es
  * para lo que sirve dibujarla.
  */
-const positions = new Map<string, { x: number; y: number }>();
+const positionsByLens = new Map<GraphLens, Map<string, { x: number; y: number }>>();
+const positionsFor = (lens: GraphLens): Map<string, { x: number; y: number }> => {
+  const held = positionsByLens.get(lens) ?? new Map<string, { x: number; y: number }>();
+  positionsByLens.set(lens, held);
+  return held;
+};
 
 /** El encuadre. Se conserva por lo mismo: volver no debe reencuadrar. */
 let heldTransform: d3.ZoomTransform | null = null;
@@ -235,8 +253,9 @@ let relaxing = 0;
 let straightened: string | null = null;
 
 /** Olvida lo colocado. Para cuando el grafo cambia de centro de verdad. */
-export function forgetPositions(): void {
-  positions.clear();
+export function forgetPositions(lens?: GraphLens): void {
+  if (lens === undefined) positionsByLens.clear();
+  else positionsFor(lens).clear();
   heldTransform = null;
   // Y el encuadre del recorrido: si las posiciones son otras, el que había ya no
   // encuadraba nada. Ni el acomodo, por lo mismo.
@@ -262,6 +281,8 @@ export function renderGraph(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {}
 ) {
+  const graphLens = settings.graphLens ?? 'hybrid';
+  const positions = positionsFor(graphLens);
   // Clean up previous listeners
   for (const { event, fn } of active2dListeners) {
     document.removeEventListener(event, fn);
@@ -357,6 +378,41 @@ export function renderGraph(
     .attr("stroke-width", 1);
   link.style("transition", "stroke-opacity 0.2s, stroke 0.2s");
 
+  // Los destinos web de la página en foco son satélites, no nodos del grafo.
+  // No entran a la simulación ni a su alcance. @guarantee ExternalResourcesOrbitTheFocusedPage.
+  const resources = data.resources ?? [];
+  const resourceLayer = g.append('g').attr('class', 'map-resources');
+  const resourceLinks = resourceLayer.append('g')
+    .attr('stroke', colors.linkStroke)
+    .attr('stroke-opacity', 0.55)
+    .selectAll<SVGLineElement, GraphResource>('line')
+    .data(resources)
+    .join('line')
+    .attr('stroke-dasharray', '2 3');
+  const resourceNodes = resourceLayer.append('g')
+    .selectAll<SVGGElement, GraphResource>('g')
+    .data(resources)
+    .join('g')
+    .attr('class', 'map-resource')
+    .attr('tabindex', 0)
+    .attr('role', 'link')
+    .attr('aria-label', (resource) => `Enlace externo: ${resource.domain}`)
+    .attr('cursor', 'pointer');
+  resourceNodes.append('circle')
+    .attr('r', 4.5)
+    .attr('fill', 'var(--bg)')
+    .attr('stroke', colors.hoverAccent)
+    .attr('stroke-width', 1.4);
+  resourceNodes.append('title').text((resource) => resource.url);
+  const openResource = (_event: Event, resource: GraphResource): void => {
+    settings.openExternalResource?.(resource.url);
+  };
+  resourceNodes.on('click', openResource).on('keydown', (event, resource) => {
+    if ((event as KeyboardEvent).key !== 'Enter' && (event as KeyboardEvent).key !== ' ') return;
+    (event as KeyboardEvent).preventDefault();
+    openResource(event as Event, resource);
+  });
+
   // Nodes
   const node = g
     .append("g")
@@ -424,7 +480,15 @@ export function renderGraph(
   node
     .attr("tabindex", 0)
     .attr("role", "link")
-    .attr("aria-label", (d) => d.name);
+    .attr("aria-label", (d) => {
+      const focus = data.nodes.find((one) => one.central === true);
+      const reason = focus === undefined ? null : proximityExplanation(d, focus, data.links, graphLens);
+      return reason === null ? d.name : `${d.name}. ${reason}`;
+    });
+  node.append('title').text((d) => {
+    const focus = data.nodes.find((one) => one.central === true);
+    return focus === undefined ? d.name : (proximityExplanation(d, focus, data.links, graphLens) ?? d.name);
+  });
 
   /*
    * Un clic señala; dos abren.
@@ -729,6 +793,18 @@ export function renderGraph(
       .attr("x2", (d: any) => d.target.x)
       .attr("y2", (d: any) => d.target.y);
     node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+    const focus = data.nodes.find((one) => one.central === true);
+    const focusX = focus?.x ?? width / 2;
+    const focusY = focus?.y ?? height / 2;
+    resourceLinks
+      .attr('x1', focusX)
+      .attr('y1', focusY)
+      .attr('x2', (_resource, index) => focusX + resourceOrbit(index).x)
+      .attr('y2', (_resource, index) => focusY + resourceOrbit(index).y);
+    resourceNodes.attr('transform', (_resource, index) => {
+      const offset = resourceOrbit(index);
+      return `translate(${focusX + offset.x},${focusY + offset.y})`;
+    });
 
     if (thread !== null) {
       const at = new Map<string, GraphNode>();
@@ -776,17 +852,16 @@ export function renderGraph(
 
   const sim = d3
     .forceSimulation<GraphNode>(data.nodes)
-    .force(
-      "link",
-      d3.forceLink<GraphNode, any>(data.links)
-        .id((d) => d.id)
-        .distance(linkDist)
-    )
     .force("charge", d3.forceManyBody().strength(charge))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", collisionForce as any);
-  if (settings.conceptGravity !== false) {
-    sim.force("concepts", conceptGravity(2) as any);
+  if (graphLens !== 'concepts') {
+    sim.force("link", d3.forceLink<GraphNode, any>(data.links)
+      .id((d) => d.id)
+      .distance(linkDist));
+  }
+  if (graphLens !== 'links') {
+    sim.force("concepts", conceptGravity(2, graphLens === 'concepts' ? 2.8 : 1) as any);
   }
 
   /*

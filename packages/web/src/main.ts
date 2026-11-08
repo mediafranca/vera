@@ -29,11 +29,13 @@ import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
 import { editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
+  externalDestination,
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
   openPageFind,
   openLibrarianConversation,
+  openExternalLink,
   presentOutlinerPage,
   renderOutliner,
   speakInto,
@@ -95,6 +97,7 @@ import {
   type GraphViewMode,
   type WorkspaceLayout,
 } from './tokens.ts';
+import type { GraphLens } from './graph/types.ts';
 import { repaintMermaid } from './mermaid.ts';
 import {
   clearTrace,
@@ -146,7 +149,7 @@ interface Workspace {
   /** Si la cámara de la vista 3D orbita lentamente por sí sola. */
   graphAutoRotate: boolean;
   /** Si los conceptos compartidos participan en la geometría espacial. */
-  graphConceptGravity: boolean;
+  graphLens: GraphLens;
 }
 
 const workspace: Workspace = {
@@ -161,7 +164,7 @@ const workspace: Workspace = {
   depth: session.reach(),
   graphJournals: session.graphJournals(),
   graphAutoRotate: session.graphAutoRotate(),
-  graphConceptGravity: session.graphConceptGravity(),
+  graphLens: session.graphLens(),
 };
 
 /**
@@ -538,7 +541,11 @@ function applyLayout(): void {
     button.setAttribute('aria-pressed', String(button.dataset['view'] === workspace.graphView));
   }
   $('#map-auto-rotate-field').hidden = workspace.graphView !== 'graph_3d';
-  $('#map-concepts-field').hidden = workspace.graphView === 'graph_d4';
+  $('#map-lens-field').hidden = workspace.graphView === 'graph_d4';
+  $('#map-reorganize').hidden = workspace.graphView === 'graph_d4';
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-graph-lens]')) {
+    button.setAttribute('aria-pressed', String(button.dataset['graphLens'] === workspace.graphLens));
+  }
 
   if (effective !== 'text_only') drawGraph();
   else cleanupGraph3D();
@@ -2756,6 +2763,12 @@ async function drawGraph(reach = 1): Promise<void> {
       delivery.signal,
     );
     data = journalsInMap(data, workspace.activePage, workspace.graphJournals);
+    data = {
+      ...data,
+      resources: (data.resources ?? []).filter(
+        resource => externalDestination(resource.url) !== null,
+      ),
+    };
   } catch {
     if (delivery.signal.aborted) return;
     /*
@@ -2844,7 +2857,11 @@ async function drawGraph(reach = 1): Promise<void> {
     showEdges: true,
     showTitles: true,
     autoRotate: workspace.graphAutoRotate,
-    conceptGravity: workspace.graphConceptGravity,
+    graphLens: workspace.graphLens,
+    openExternalResource: (url: string) => {
+      const destination = externalDestination(url);
+      if (destination !== null) openExternalLink(destination);
+    },
     preserveDirection: requestedDepth > 1,
     // @guarantee GraphNodesAreTheirNames. En 2D los nombres no se traslapan:
     // dos nombres uno encima de otro no son ninguno de los dos.
@@ -3754,26 +3771,25 @@ function wireTheme(): void {
   });
   showJournals();
 
-  /*
-   * La geometría conceptual es una lente espacial y no una relación del grafo.
-   * Apagarla vuelve a colocar el mismo vecindario usando sólo sus enlaces; por
-   * eso se olvidan posiciones y cámara, pero no se vuelve a definir el alcance.
-   * @guarantee ConceptualGravityCanStepAside.
-   */
-  const conceptsSwitch = $<HTMLInputElement>('#map-concepts');
-  $('#map-concepts-icon').innerHTML = icon('affiliate');
-  const showConceptGravity = (): void => {
-    conceptsSwitch.checked = workspace.graphConceptGravity;
-  };
-  conceptsSwitch.addEventListener('change', () => {
-    workspace.graphConceptGravity = conceptsSwitch.checked;
-    session.setGraphConceptGravity(workspace.graphConceptGravity);
-    showConceptGravity();
-    forgetPositions();
-    forgetCamera();
+  /* Las tres geometrías son lugares recordados, no un interruptor que sacude el
+   * mismo dibujo. Reorganizar es la única acción que descarta un lugar.
+   * @guarantee ConceptualGravityCanStepAside. */
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-graph-lens]')) {
+    button.addEventListener('click', () => {
+      const lens = button.dataset['graphLens'] as GraphLens;
+      if (lens === workspace.graphLens) return;
+      workspace.graphLens = lens;
+      session.setGraphLens(lens);
+      applyLayout();
+    });
+  }
+  const reorganize = $<HTMLButtonElement>('#map-reorganize');
+  reorganize.innerHTML = icon('refresh-cw');
+  reorganize.addEventListener('click', () => {
+    forgetPositions(workspace.graphLens);
+    forgetCamera(workspace.graphLens);
     void refreshGraph();
   });
-  showConceptGravity();
 
   /*
    * Girar es una propiedad de la cámara 3D, no de los datos ni de las otras

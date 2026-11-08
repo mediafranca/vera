@@ -180,12 +180,16 @@
               </span>
             </div>
 
-            <div class="map-compact-actions">
-              <label class="map-icon-check" id="map-concepts-field" title="Agrupar por conceptos">
-                <span id="map-concepts-icon" aria-hidden="true"></span>
-                <input id="map-concepts" type="checkbox" aria-label="Agrupar por conceptos">
-              </label>
+            <label class="map-field" id="map-lens-field">
+              <span class="map-field-name">lente</span>
+              <span class="map-choice" role="group" aria-label="Geometría del mapa">
+                <button type="button" data-graph-lens="links">Enlaces</button>
+                <button type="button" data-graph-lens="concepts">Conceptos</button>
+                <button type="button" data-graph-lens="hybrid">Híbrida</button>
+              </span>
+            </label>
 
+            <div class="map-compact-actions">
               <label class="map-icon-check" title="Mostrar el diario en foco">
                 <span id="map-journals-icon" aria-hidden="true"></span>
                 <input id="map-journals" type="checkbox" aria-label="Mostrar el diario en foco">
@@ -195,6 +199,13 @@
                 <span id="map-auto-rotate-icon" aria-hidden="true"></span>
                 <input id="map-auto-rotate" type="checkbox" aria-label="Rotación automática">
               </label>
+
+              <button
+                id="map-reorganize"
+                type="button"
+                aria-label="Reorganizar esta lente"
+                title="Reorganizar esta lente"
+              ></button>
 
               <button
                 id="map-copy-embed"

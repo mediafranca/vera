@@ -118,15 +118,16 @@ describe('rotación automática del mapa 3D', () => {
 });
 
 describe('gravedad conceptual del mapa espacial', () => {
-  it('nace encendida y recuerda cuando se la aparta', () => {
+  it('nace híbrida, recuerda cada lente y migra el interruptor breve', () => {
     const storage = new MemoryStorage();
     globalThis.localStorage = storage as unknown as Storage;
 
-    assert.equal(session.graphConceptGravity(), true);
-    session.setGraphConceptGravity(false);
-    assert.equal(session.graphConceptGravity(), false);
-    session.setGraphConceptGravity(true);
-    assert.equal(session.graphConceptGravity(), true);
+    assert.equal(session.graphLens(), 'hybrid');
+    session.setGraphLens('concepts');
+    assert.equal(session.graphLens(), 'concepts');
+    storage.removeItem('vera.graphLens');
+    storage.setItem('vera.graphConceptGravity', 'false');
+    assert.equal(session.graphLens(), 'links');
   });
 });
 

@@ -4,6 +4,8 @@
 
 import type { SimulationNodeDatum } from 'd3';
 
+export type GraphLens = 'links' | 'concepts' | 'hybrid';
+
 export interface GraphNode extends SimulationNodeDatum {
   id: string;
   name: string;
@@ -38,7 +40,16 @@ export interface GraphLink {
   blocks?: { stableId: string; parent: string | null; position: number; content: string }[];
 }
 
+/** Un destino web citado por la página en foco; no es una página del grafo. */
+export interface GraphResource {
+  id: string;
+  url: string;
+  domain: string;
+  page: string;
+}
+
 export interface GraphData {
   nodes: GraphNode[];
   links: GraphLink[];
+  resources?: GraphResource[];
 }

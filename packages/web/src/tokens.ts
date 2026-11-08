@@ -6,6 +6,8 @@
 //
 // @invariant DualColourScheme: cada token declara su valor claro y su oscuro.
 
+import type { GraphLens } from './graph/types.ts';
+
 /** Qué clase de valor es, para saber con qué control se edita. */
 export type TokenKind = 'color' | 'font' | 'text';
 
@@ -395,6 +397,7 @@ const REACH_KEY = 'vera.graphReach';
 const JOURNALS_KEY = 'vera.graphJournals';
 const AUTO_ROTATE_KEY = 'vera.graphAutoRotate';
 const CONCEPT_GRAVITY_KEY = 'vera.graphConceptGravity';
+const GRAPH_LENS_KEY = 'vera.graphLens';
 
 export type ColourScheme = 'light' | 'dark';
 export type WorkspaceLayout = 'text_only' | 'graph_only' | 'split';
@@ -771,10 +774,13 @@ export const session = {
   setGraphAutoRotate: (rotating: boolean) =>
     localStorage.setItem(AUTO_ROTATE_KEY, String(rotating)),
 
-  /** Los conceptos participan en la geometría salvo que la persona los aparte. */
-  graphConceptGravity: (): boolean => localStorage.getItem(CONCEPT_GRAVITY_KEY) !== 'false',
-  setGraphConceptGravity: (enabled: boolean) =>
-    localStorage.setItem(CONCEPT_GRAVITY_KEY, String(enabled)),
+  /** La geometría espacial recordada; migra el interruptor breve del primer corte. */
+  graphLens: (): GraphLens => {
+    const held = localStorage.getItem(GRAPH_LENS_KEY);
+    if (held === 'links' || held === 'concepts' || held === 'hybrid') return held;
+    return localStorage.getItem(CONCEPT_GRAVITY_KEY) === 'false' ? 'links' : 'hybrid';
+  },
+  setGraphLens: (lens: GraphLens) => localStorage.setItem(GRAPH_LENS_KEY, lens),
 
   graphView: (): GraphViewMode =>
     (localStorage.getItem(VIEW_KEY) as GraphViewMode | null) ?? 'graph_2d',

@@ -270,7 +270,7 @@ import {
 } from './services.ts';
 import { children, item, search, whoami, type ZoteroItem } from './zotero.ts';
 import { youtubeTranscript, youtubeTranscriptChoices } from './youtube-transcript.ts';
-import { readLinks } from './process.ts';
+import { readLinks, urlsIn } from './process.ts';
 import { describeStructure, readingPasses, readStructure } from './structure.ts';
 import { describePlan, planTabularity } from './tabularity.ts';
 import { transcribeAudio } from './transcribe.ts';
@@ -9762,6 +9762,33 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }
           return concepts;
         };
+        const resourcesOf = (page: string): {
+          id: string; url: string; domain: string; page: string;
+        }[] => {
+          const resources = new Map<string, { id: string; url: string; domain: string; page: string }>();
+          for (const block of graph.blocksOf(page)) {
+            for (const raw of urlsIn(block.content)) {
+              try {
+                const parsed = new URL(raw);
+                if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+                // Una dirección con credenciales no debe volver a presentarse ni
+                // como texto operativo ni como destino desde el mapa.
+                if (parsed.username !== '' || parsed.password !== '') continue;
+                const url = parsed.href;
+                if (resources.has(url)) continue;
+                resources.set(url, {
+                  id: `resource:${createHash('sha256').update(url).digest('hex').slice(0, 16)}`,
+                  url,
+                  domain: parsed.hostname,
+                  page,
+                });
+              } catch {
+                // `urlsIn` encuentra candidatos; la URL válida sigue mandando.
+              }
+            }
+          }
+          return [...resources.values()].sort((left, right) => left.url.localeCompare(right.url));
+        };
         // El dueño puede mirar el mismo subgrafo publicado sin dejar de ser
         // dueño. Esto filtra sólo el mapa; no cambia la autoridad de la petición.
         const publishedMap = publicAccess || url.searchParams.get('published') === '1';
@@ -9841,6 +9868,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               } : { concepts: conceptsOf(id) }),
             })),
             links,
+            resources: d4 ? [] : resourcesOf(centred.id),
           });
           return;
         }
@@ -9947,6 +9975,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             } : { concepts: conceptsOf(node.page) }),
           })),
           links: responseLinks,
+          resources: d4 || centred === undefined ? [] : resourcesOf(centred.id),
         });
         return;
       }

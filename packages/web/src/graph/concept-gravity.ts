@@ -89,7 +89,7 @@ const addVelocity = (node: SpatialGraphNode, axis: Velocity, amount: number): vo
  * traversed or persisted. Their mutual repulsion is applied back to the pages
  * that constitute them.
  */
-export function conceptGravity(dimensions: 2 | 3): ConceptGravityForce {
+export function conceptGravity(dimensions: 2 | 3, intensity = 1): ConceptGravityForce {
   let groups: ConceptGroup[] = [];
   let memberships = new Map<string, number>();
   const axes: Axis[] = dimensions === 2 ? ['x', 'y'] : ['x', 'y', 'z'];
@@ -110,7 +110,7 @@ export function conceptGravity(dimensions: 2 | 3): ConceptGravityForce {
         const diminishing = Math.sqrt(memberships.get(node.id) ?? 1);
         axes.forEach((axis, axisIndex) => {
           const delta = centres[groupIndex]![axisIndex]! - coordinate(node, axis);
-          addVelocity(node, velocities[axisIndex]!, delta * group.attraction * alpha / diminishing);
+          addVelocity(node, velocities[axisIndex]!, delta * group.attraction * intensity * alpha / diminishing);
         });
       }
     });
@@ -131,7 +131,7 @@ export function conceptGravity(dimensions: 2 | 3): ConceptGravityForce {
         const rarity = 1 / Math.sqrt(
           groups[left]!.members.length * groups[right]!.members.length,
         );
-        const impulse = CENTRE_REPULSION * rarity * alpha /
+        const impulse = CENTRE_REPULSION * rarity * intensity * alpha /
           Math.max(distanceSquared, MIN_CENTRE_DISTANCE * MIN_CENTRE_DISTANCE);
         axes.forEach((_, axisIndex) => {
           const amount = delta[axisIndex]! / distance * impulse;

@@ -1917,11 +1917,10 @@ surface VeraWorkspace {
         -- the layout could have told them.
 
     @guarantee BinaryMapChoicesStayCompact
-        -- The journal, conceptual-gravity and automatic-rotation choices are
-        -- compact icon-labelled checkboxes in the eye menu, not textual buttons
-        -- whose two labels make the menu grow whenever their state changes.
-        -- Their accessible names still state the complete choice and current
-        -- availability.
+        -- The journal and automatic-rotation choices are compact icon-labelled
+        -- checkboxes in the eye menu, not textual buttons whose two labels make
+        -- the menu grow whenever their state changes. Their accessible names
+        -- still state the complete choice and current availability.
 
     @guarantee TheCurrentMapViewCanBeEmbedded
         -- Copying an embedding from the eye menu puts a complete `mapa` block in
@@ -2006,14 +2005,27 @@ surface VeraWorkspace {
         -- as pages, cannot be opened and are never retained as corpus objects.
 
     @guarantee ConceptualGravityCanStepAside
-        -- The spatial-map controls offer one remembered binary choice between
-        -- link-only geometry and link-plus-concept geometry. Conceptual gravity
-        -- begins enabled, because it is part of the spatial map rather than an
-        -- expert mode; turning it off restores the simpler linked arrangement.
+        -- The spatial-map controls offer three remembered lenses: Enlaces uses
+        -- explicit relationships, Conceptos uses declared conceptual centres,
+        -- and Híbrida lets relationships dominate while concepts exert a
+        -- secondary attraction. Híbrida is the initial lens.
 
-        -- Changing the choice lays out 2D and 3D again from the same graph. The
-        -- control is absent in D4, whose geometry is an argument and never uses
-        -- conceptual gravity.
+        -- Each lens preserves its own positions. Switching lenses revisits its
+        -- remembered place rather than repeatedly rearranging the map; an
+        -- explicit Reorganizar action discards the current lens's positions and
+        -- computes them again. The controls are absent in D4, whose geometry is
+        -- an argument and never uses conceptual gravity.
+
+    @guarantee ExternalResourcesOrbitTheFocusedPage
+        -- In 2D and 3D, safe HTTP or HTTPS destinations cited by the focused
+        -- page appear as small hollow satellites joined to that page. They are
+        -- resources rather than pages: they do not alter reach, degree,
+        -- navigation or the three graph lenses, and D4 keeps them in prose.
+
+        -- The same normalized destination appears once. Destinations carrying
+        -- embedded credentials are absent, and drawing a resource never fetches
+        -- its site or favicon. Activating a satellite reuses Vera's external-link
+        -- dialog, exposing the complete URL and Copy, Open and Cancel actions.
 
     @guarantee D4IsADendriticArgument
         -- D4 places the page in focus at degree zero, pages that mention it to

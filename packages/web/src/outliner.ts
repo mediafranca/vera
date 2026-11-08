@@ -205,7 +205,7 @@ export function externalDestination(raw: string, here = window.location.href): s
  * activación del usuario, pero no promete escoger navegador: una PWA sigue
  * perteneciendo al navegador que la instaló y la Web no puede saltárselo.
  */
-function openExternalLink(url: string): void {
+export function openExternalLink(url: string): void {
   const dialog = document.createElement('dialog');
   dialog.className = 'external-link-dialog';
 

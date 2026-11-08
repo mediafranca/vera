@@ -1369,10 +1369,17 @@ button { touch-action: manipulation; }
 }
 
 .map-icon-check .icon,
-#map-copy-embed .icon {
+#map-copy-embed .icon,
+#map-reorganize .icon {
   display: block;
   width: 0.95rem;
   height: 0.95rem;
+}
+
+.map-resource:is(:hover, :focus-visible) circle,
+.map3d-resource:is(:hover, :focus-visible) circle {
+  fill: var(--accent);
+  outline: none;
 }
 
 .map-icon-check input {

@@ -1036,7 +1036,7 @@ describe('lecturas', () => {
       page: a,
       parent: null,
       position: 0,
-      content: 'ver [[NodoB]]',
+      content: 'ver [[NodoB]] y https://example.com/articulo; no https://alice:secret@example.com/private',
     });
     const crossing = await write({
       kind: 'create_crossing', fromPage: a, toPage: b,
@@ -1053,6 +1053,7 @@ describe('lecturas', () => {
         source: string; target: string; kind?: string; crossing?: string;
         blocks?: { stableId: string; parent: string | null; position: number; content: string }[];
       }[];
+      resources: { id: string; url: string; domain: string; page: string }[];
     };
 
     const centre = data.nodes.find((n) => n.central);
@@ -1063,6 +1064,9 @@ describe('lecturas', () => {
     assert.ok(data.nodes.some((n) => n.name === 'NodoB'));
     assert.deepEqual(data.nodes.find((n) => n.id === b)?.concepts, ['cartografía']);
     assert.equal(data.links.length, 2);
+    assert.deepEqual(data.resources.map(({ url, domain, page }) => ({ url, domain, page })), [{
+      url: 'https://example.com/articulo', domain: 'example.com', page: a,
+    }]);
     const explained = data.links.find((link) => link.kind === 'crossing');
     assert.equal(explained?.crossing, crossing);
     assert.deepEqual(explained?.blocks?.map((block) => block.content), [

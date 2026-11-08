@@ -122,16 +122,16 @@ describe('superficies especiales', () => {
     assert.match(graph3d, /setAutoRotation\(false\)/);
   });
 
-  it('permite apartar la gravedad conceptual sólo en los mapas espaciales', () => {
-    assert.match(html, /id="map-concepts-field"/);
-    assert.match(html, /id="map-concepts" type="checkbox"/);
-    assert.match(main, /map-concepts-field'\)\.hidden = workspace\.graphView === 'graph_d4'/);
-    assert.match(main, /conceptGravity: workspace\.graphConceptGravity/);
-    const toggle = main.match(/conceptsSwitch\.addEventListener\('change',[\s\S]*?\n  \}\);/)?.[0] ?? '';
-    assert.match(toggle, /setGraphConceptGravity/);
-    assert.match(toggle, /forgetPositions\(\)/);
-    assert.match(toggle, /forgetCamera\(\)/);
-    assert.match(toggle, /refreshGraph\(\)/);
+  it('ofrece tres lentes espaciales y reorganiza sólo por petición', () => {
+    assert.match(html, /data-graph-lens="links"[^>]*>Enlaces/);
+    assert.match(html, /data-graph-lens="concepts"[^>]*>Conceptos/);
+    assert.match(html, /data-graph-lens="hybrid"[^>]*>Híbrida/);
+    assert.match(html, /id="map-reorganize"/);
+    assert.match(main, /map-lens-field'\)\.hidden = workspace\.graphView === 'graph_d4'/);
+    assert.match(main, /graphLens: workspace\.graphLens/);
+    assert.match(main, /session\.setGraphLens\(lens\)/);
+    assert.match(main, /forgetPositions\(workspace\.graphLens\)/);
+    assert.match(main, /forgetCamera\(workspace\.graphLens\)/);
   });
 
   it('entrega el mapa por alcances crecientes sin retirar el que ya llegó', () => {
