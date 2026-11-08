@@ -1984,6 +1984,61 @@ surface VeraWorkspace {
         -- picture rather than a place. Recognising a region by its shape is the
         -- whole reason for drawing it.
 
+    @guarantee ConceptsShapeSpaceWithoutInventingConnections
+        -- In the 2D and 3D maps, pages that answer `concepto` with the same
+        -- value are gently drawn towards a common conceptual centre. This
+        -- changes only their spatial arrangement: a shared concept creates no
+        -- graph edge, does not change degree or reach, and cannot make a page
+        -- enter a neighbourhood that explicit relationships did not reach.
+
+        -- Explicit relationships remain the stronger geometry. Sharing more
+        -- than one concept increases the attraction with diminishing returns,
+        -- so a vocabulary cannot outweigh what the pages actually link.
+
+    @guarantee ConceptualCentresResistCollapse
+        -- Conceptual centres repel one another while drawing their member pages.
+        -- A concept shared by many visible pages pulls less strongly than a
+        -- rarer one, so broad terms do not swallow the map and distinct concerns
+        -- remain spatially distinguishable.
+
+        -- Centres belong to the layout, not to the graph: they are not rendered
+        -- as pages, cannot be opened and are never retained as corpus objects.
+
+    @guarantee ConceptualGravityCanStepAside
+        -- The spatial-map controls offer one remembered continuous slider from
+        -- Enlaces through Híbrida to Conceptos. Its visible readout states the
+        -- two effective force multipliers so calibration is inspectable rather
+        -- than hidden in code; the centre begins with both forces at 2.0× and
+        -- either extreme reaches 4.0× while switching the other force off.
+
+        -- Moving the slider changes the same neighbourhood while the hand is
+        -- still dragging it: there are no hidden steps, three regimes or a
+        -- separate layout waiting at either extreme. The visible multipliers
+        -- always describe the forces currently shaping the map.
+
+        -- Repeated journeys across the slider remain bounded by the current
+        -- frame. A later journey cannot accumulate spatial drift that sends
+        -- page names beyond the viewport, and releasing the control cannot run
+        -- another hidden layout step. The current magnification remains stable
+        -- throughout; the visible map changes continuously rather than escaping
+        -- and then being reframed.
+
+        -- An explicit Reorganizar action discards the single accumulated
+        -- arrangement and computes it again at the current balance. The controls
+        -- are absent in D4, whose geometry is an argument and never uses
+        -- conceptual gravity.
+
+    @guarantee ExternalResourcesOrbitTheFocusedPage
+        -- In 2D and 3D, safe HTTP or HTTPS destinations cited by the focused
+        -- page appear as small hollow satellites joined to that page. They are
+        -- resources rather than pages: they do not alter reach, degree,
+        -- navigation or the three graph lenses, and D4 keeps them in prose.
+
+        -- The same normalized destination appears once. Destinations carrying
+        -- embedded credentials are absent, and drawing a resource never fetches
+        -- its site or favicon. Activating a satellite reuses Vera's external-link
+        -- dialog, exposing the complete URL and Copy, Open and Cancel actions.
+
     @guarantee D4IsADendriticArgument
         -- D4 places the page in focus at degree zero, pages that mention it to
         -- the left and pages it mentions to the right. Further degrees open

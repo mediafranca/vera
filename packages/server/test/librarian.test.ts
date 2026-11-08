@@ -2,6 +2,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -148,11 +149,30 @@ describe('solicitudes al bibliotecario', () => {
         method: 'POST', secret: queueSecret,
       })).status, 409);
 
+      // Si el worker muere después de reclamar, un turno sin progreso no puede
+      // secuestrar para siempre todos los pedidos posteriores.
+      await queued.close();
+      const database = new DatabaseSync(databasePath);
+      database.prepare(`UPDATE agent_requests SET started_at=0 WHERE id=?`).run(firstId);
+      database.prepare(`UPDATE agent_request_events SET created_at=0 WHERE request_id=?`).run(firstId);
+      database.close();
+      queued = listen({
+        port: queuePort,
+        databasePath,
+        owner: { id: OWNER, name: 'Herbert' },
+        librarianHook: { url: `http://127.0.0.1:${hookPort}/wake`, token: 'test-hook-token' },
+      });
+      await waitForWakes(2);
+      assert.deepEqual(wakes, [firstId, firstId]);
+      assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(firstId)}/claim`, {
+        method: 'POST', secret: queueSecret,
+      })).status, 200);
+
       assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(firstId)}/reply`, {
         method: 'POST', secret: queueSecret, body: { text: 'Primera respuesta', changes: [] },
       })).status, 201);
-      await waitForWakes(2);
-      assert.deepEqual(wakes, [firstId, secondId]);
+      await waitForWakes(3);
+      assert.deepEqual(wakes, [firstId, firstId, secondId]);
       assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(secondId)}/claim`, {
         method: 'POST', secret: queueSecret,
       })).status, 200);

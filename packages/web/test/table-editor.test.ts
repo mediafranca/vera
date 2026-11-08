@@ -46,7 +46,7 @@ describe('editor visual de tablas', () => {
     assert.equal(tableHeaderAxis(column), 'column');
     assert.match(newMarkdownTableSource(2, 2, 'column'), /\| Fila 1 \|  \|/);
     assert.match(outliner, /acts === 'tabla'/);
-    assert.match(outliner, /acts === 'tabla'[\s\S]*?window\.clearTimeout\(timer\)/);
+    assert.match(outliner, /acts === 'tabla'[\s\S]*?preserveDraft\(\)/);
     assert.match(outliner, /choosingAttachment \|\| choosingTable/);
   });
 

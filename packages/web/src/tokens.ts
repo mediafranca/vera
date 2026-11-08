@@ -6,6 +6,7 @@
 //
 // @invariant DualColourScheme: cada token declara su valor claro y su oscuro.
 
+
 /** Qué clase de valor es, para saber con qué control se edita. */
 export type TokenKind = 'color' | 'font' | 'text';
 
@@ -394,6 +395,9 @@ const VIEW_KEY = 'vera.graphView';
 const REACH_KEY = 'vera.graphReach';
 const JOURNALS_KEY = 'vera.graphJournals';
 const AUTO_ROTATE_KEY = 'vera.graphAutoRotate';
+const CONCEPT_GRAVITY_KEY = 'vera.graphConceptGravity';
+const GRAPH_LENS_KEY = 'vera.graphLens';
+const GRAPH_BALANCE_KEY = 'vera.graphBalance';
 
 export type ColourScheme = 'light' | 'dark';
 export type WorkspaceLayout = 'text_only' | 'graph_only' | 'split';
@@ -769,6 +773,22 @@ export const session = {
   graphAutoRotate: (): boolean => localStorage.getItem(AUTO_ROTATE_KEY) === 'true',
   setGraphAutoRotate: (rotating: boolean) =>
     localStorage.setItem(AUTO_ROTATE_KEY, String(rotating)),
+
+  /** La mezcla espacial recordada; migra las dos interfaces experimentales previas. */
+  graphBalance: (): number => {
+    const rawBalance = localStorage.getItem(GRAPH_BALANCE_KEY);
+    const balance = rawBalance === null ? Number.NaN : Number(rawBalance);
+    if (Number.isFinite(balance) && balance >= 0 && balance <= 100) return balance;
+    const held = localStorage.getItem(GRAPH_LENS_KEY);
+    if (held === 'links') return 0;
+    if (held === 'concepts') return 100;
+    if (held === 'hybrid') return 50;
+    return localStorage.getItem(CONCEPT_GRAVITY_KEY) === 'false' ? 0 : 50;
+  },
+  setGraphBalance: (balance: number) => localStorage.setItem(
+    GRAPH_BALANCE_KEY,
+    String(Math.min(100, Math.max(0, balance))),
+  ),
 
   graphView: (): GraphViewMode =>
     (localStorage.getItem(VIEW_KEY) as GraphViewMode | null) ?? 'graph_2d',

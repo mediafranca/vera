@@ -21,9 +21,9 @@ describe('createSession', () => {
     assert.deepEqual(session.pending(), { action: 'guardar', content: 'otra cosa' });
   });
 
-  describe('la pausa de escritura', () => {
+  describe('la forma pendiente de la jugada', () => {
     it('no escribe cuando no hay nada que decir', () => {
-      // Sin esto, detenerse a pensar pondría una operación en el log.
+      // Sin esto, terminar sin cambios pondría una operación en el log.
       const session = createSession('original');
       session.type('original');
       assert.deepEqual(session.pending(), { action: 'nada' });
@@ -95,22 +95,30 @@ describe('createSession', () => {
   });
 
   describe('salir del bloque', () => {
+    it('confirma sólo el resultado final de una jugada con varias pausas', () => {
+      const session = createSession('a');
+      session.type('ab');
+      session.type('abc');
+      session.type('resultado');
+      assert.deepEqual(session.leave(), { action: 'guardar', content: 'resultado' });
+    });
+
     it('guarda lo que quedaba pendiente', () => {
       const session = createSession('a');
       session.type('b');
       assert.deepEqual(session.leave(), { action: 'guardar', content: 'b' });
     });
 
-    it('no escribe si la pausa ya lo había guardado', () => {
-      // @invariant TypingIsNeverLost llevado al otro extremo: tampoco se guarda
-      // dos veces lo mismo.
+    it('no escribe si un gesto interno ya había confirmado ese resultado', () => {
+      // Adjuntar un archivo puede confirmar dentro de la misma sesión. Al salir
+      // no se vuelve a registrar exactamente lo mismo.
       const session = createSession('a');
       session.type('b');
       session.settled('b');
       assert.deepEqual(session.leave(), { action: 'nada' });
     });
 
-    it('no ofrece descartar, porque el texto ya está en el grafo', () => {
+    it('conserva como guardado lo que ya fue confirmado', () => {
       const session = createSession('original');
       session.type('escrito');
       session.settled('escrito');

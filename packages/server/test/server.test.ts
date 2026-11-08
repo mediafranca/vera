@@ -1025,11 +1025,18 @@ describe('lecturas', () => {
     await write({ kind: 'set_property', page: a, propertyKey: 'tipo', propertyValue: 'argumento' });
     const b = await write({ kind: 'create_page', title: 'NodoB', visibility: 'private' });
     await write({
+      kind: 'set_property', page: a, propertyKey: 'concepto',
+      propertyValue: 'cartografía, conocimiento',
+    });
+    await write({
+      kind: 'set_property', page: b, propertyKey: 'concepto', propertyValue: 'cartografía',
+    });
+    await write({
       kind: 'create_block',
       page: a,
       parent: null,
       position: 0,
-      content: 'ver [[NodoB]]',
+      content: 'ver [[NodoB]] y https://example.com/articulo; no https://alice:secret@example.com/private',
     });
     const crossing = await write({
       kind: 'create_crossing', fromPage: a, toPage: b,
@@ -1041,19 +1048,25 @@ describe('lecturas', () => {
     });
 
     const data = (await get(`/graph/${encodeURIComponent(a)}?depth=1`)) as {
-      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number; lines?: unknown[] }[];
+      nodes: { id: string; name: string; central: boolean; trail: boolean; degree: number; blockCount: number; concepts?: string[]; lines?: unknown[] }[];
       links: {
         source: string; target: string; kind?: string; crossing?: string;
         blocks?: { stableId: string; parent: string | null; position: number; content: string }[];
       }[];
+      resources: { id: string; url: string; domain: string; page: string }[];
     };
 
     const centre = data.nodes.find((n) => n.central);
     assert.equal(centre?.id, a);
     assert.equal(centre?.name, 'NodoA');
     assert.equal(centre?.trail, true);
+    assert.deepEqual(centre?.concepts, ['cartografía', 'conocimiento']);
     assert.ok(data.nodes.some((n) => n.name === 'NodoB'));
+    assert.deepEqual(data.nodes.find((n) => n.id === b)?.concepts, ['cartografía']);
     assert.equal(data.links.length, 2);
+    assert.deepEqual(data.resources.map(({ url, domain, page }) => ({ url, domain, page })), [{
+      url: 'https://example.com/articulo', domain: 'example.com', page: a,
+    }]);
     const explained = data.links.find((link) => link.kind === 'crossing');
     assert.equal(explained?.crossing, crossing);
     assert.deepEqual(explained?.blocks?.map((block) => block.content), [

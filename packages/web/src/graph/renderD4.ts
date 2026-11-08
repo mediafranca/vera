@@ -10,6 +10,14 @@ const held = new Map<string, { x: number; y: number }>();
 const openRelations = new Set<string>();
 let focusedRelation: string | null = null;
 let shownViewport: EmbeddedMapPlanarCamera | null = null;
+let activeCentreListener: EventListener | null = null;
+
+/** Suelta el control global de cámara cuando otra proyección ocupa el mapa. */
+export function cleanupGraphD4(): void {
+  if (activeCentreListener === null) return;
+  document.removeEventListener('constel:center', activeCentreListener);
+  activeCentreListener = null;
+}
 
 /** La cámara D4 que «Copiar incrustación» puede preservar. */
 export function graphD4Camera(): EmbeddedMapPlanarCamera | null {
@@ -160,6 +168,7 @@ export function renderGraphD4(
     camera?: EmbeddedMapCamera;
   } = {},
 ): void {
+  cleanupGraphD4();
   container.innerHTML = '';
   const focus = data.nodes.find((node) => node.central)?.id ?? data.nodes[0]?.id;
   if (focus === undefined) return;
@@ -967,7 +976,8 @@ export function renderGraphD4(
     return { left: at.x - dim.w / 2, right: at.x + dim.w / 2,
       top: at.y - dim.h / 2, bottom: at.y + dim.h / 2 };
   });
-  if (boxes.length > 0 && focusedLink === undefined && embedded === null) {
+  const frameAll = (): void => {
+    if (boxes.length === 0) return;
     const left = Math.min(...boxes.map((box) => box.left));
     const right = Math.max(...boxes.map((box) => box.right));
     const top = Math.min(...boxes.map((box) => box.top));
@@ -979,5 +989,13 @@ export function renderGraphD4(
       .scale(scale)
       .translate(-(left + right) / 2, -(top + bottom) / 2);
     svg.call(zoom.transform, framed);
+  };
+
+  const onCentre = (() => frameAll()) as EventListener;
+  activeCentreListener = onCentre;
+  document.addEventListener('constel:center', onCentre);
+
+  if (focusedLink === undefined && embedded === null) {
+    frameAll();
   }
 }

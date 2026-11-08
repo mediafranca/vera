@@ -29,11 +29,13 @@ import { createOutbox, durableOrNot, inOrder, type Outbox } from './outbox.ts';
 import { editBlockExternally, editPageExternally } from './external-editing-dialog.ts';
 import {
   allowEmbedsFrom,
+  externalDestination,
   focusAfterChange,
   foldsWhileRevealing,
   nameProperties,
   openPageFind,
   openLibrarianConversation,
+  openExternalLink,
   presentOutlinerPage,
   renderOutliner,
   speakInto,
@@ -63,7 +65,7 @@ import { sameReadablePage } from './page-validation.ts';
 import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
-import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
+import { forgetPositions, graph2DCamera, renderGraph, selectNode, setGraph2DBalance, type ThreadSettings } from './graph/render.ts';
 import { threadSettings } from './graph/thread.ts';
 import {
   renderGraph3D,
@@ -72,8 +74,9 @@ import {
   graph3DCamera,
   selectNode3D,
   setGraph3DAutoRotate,
+  setGraph3DBalance,
 } from './graph/render3d.ts';
-import { graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
+import { cleanupGraphD4, graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
 import { mapEmbeddingSource } from './map-embedding.ts';
 import { activatePageShareFromLocation, isPageShareRoute } from './page-share.ts';
@@ -95,6 +98,7 @@ import {
   type GraphViewMode,
   type WorkspaceLayout,
 } from './tokens.ts';
+import { graphBalance, graphBalanceLabel } from './graph/balance.ts';
 import { repaintMermaid } from './mermaid.ts';
 import {
   clearTrace,
@@ -145,6 +149,8 @@ interface Workspace {
   graphJournals: boolean;
   /** Si la cámara de la vista 3D orbita lentamente por sí sola. */
   graphAutoRotate: boolean;
+  /** Mezcla visible entre fuerza de enlaces y gravedad conceptual. */
+  graphBalance: number;
 }
 
 const workspace: Workspace = {
@@ -159,6 +165,7 @@ const workspace: Workspace = {
   depth: session.reach(),
   graphJournals: session.graphJournals(),
   graphAutoRotate: session.graphAutoRotate(),
+  graphBalance: session.graphBalance(),
 };
 
 /**
@@ -535,6 +542,11 @@ function applyLayout(): void {
     button.setAttribute('aria-pressed', String(button.dataset['view'] === workspace.graphView));
   }
   $('#map-auto-rotate-field').hidden = workspace.graphView !== 'graph_3d';
+  $('#map-lens-field').hidden = workspace.graphView === 'graph_d4';
+  $('#map-reorganize').hidden = workspace.graphView === 'graph_d4';
+  const lens = $<HTMLInputElement>('#map-lens');
+  lens.value = String(workspace.graphBalance);
+  $<HTMLOutputElement>('#map-lens-value').value = graphBalanceLabel(workspace.graphBalance);
 
   if (effective !== 'text_only') drawGraph();
   else cleanupGraph3D();
@@ -2752,6 +2764,12 @@ async function drawGraph(reach = 1): Promise<void> {
       delivery.signal,
     );
     data = journalsInMap(data, workspace.activePage, workspace.graphJournals);
+    data = {
+      ...data,
+      resources: (data.resources ?? []).filter(
+        resource => externalDestination(resource.url) !== null,
+      ),
+    };
   } catch {
     if (delivery.signal.aborted) return;
     /*
@@ -2840,6 +2858,11 @@ async function drawGraph(reach = 1): Promise<void> {
     showEdges: true,
     showTitles: true,
     autoRotate: workspace.graphAutoRotate,
+    graphBalance: workspace.graphBalance,
+    openExternalResource: (url: string) => {
+      const destination = externalDestination(url);
+      if (destination !== null) openExternalLink(destination);
+    },
     preserveDirection: requestedDepth > 1,
     // @guarantee GraphNodesAreTheirNames. En 2D los nombres no se traslapan:
     // dos nombres uno encima de otro no son ninguno de los dos.
@@ -2862,8 +2885,10 @@ async function drawGraph(reach = 1): Promise<void> {
   try {
     if (data.nodes.length === 0) {
       cleanupGraph3D();
+      cleanupGraphD4();
       container.innerHTML = '<p class="map-aviso">Los diarios están apagados.</p>';
     } else if (workspace.graphView === 'graph_3d') {
+      cleanupGraphD4();
       renderGraph3D(container, data, onClick, settings);
     } else if (workspace.graphView === 'graph_d4') {
       cleanupGraph3D();
@@ -2916,6 +2941,7 @@ async function drawGraph(reach = 1): Promise<void> {
       });
     } else {
       cleanupGraph3D();
+      cleanupGraphD4();
       renderGraph(container, data, onClick, settings);
     }
   } finally {
@@ -3749,6 +3775,32 @@ function wireTheme(): void {
   });
   showJournals();
 
+  /* La lente es una mezcla continua: el mismo mapa cambia mientras se arrastra,
+   * sin pedir otra vez el vecindario ni saltar entre tres disposiciones ocultas.
+   * Reorganizar es la única acción que descarta el lugar acumulado.
+   * @guarantee ConceptualGravityCanStepAside. */
+  const lens = $<HTMLInputElement>('#map-lens');
+  const lensValue = $<HTMLOutputElement>('#map-lens-value');
+  lens.addEventListener('input', () => {
+    workspace.graphBalance = graphBalance(Number(lens.value)).value;
+    lensValue.value = graphBalanceLabel(workspace.graphBalance);
+    setGraph2DBalance(workspace.graphBalance);
+    setGraph3DBalance(workspace.graphBalance);
+  });
+  lens.addEventListener('change', () => {
+    workspace.graphBalance = graphBalance(Number(lens.value)).value;
+    session.setGraphBalance(workspace.graphBalance);
+    setGraph2DBalance(workspace.graphBalance, true);
+    setGraph3DBalance(workspace.graphBalance, true);
+  });
+  const reorganize = $<HTMLButtonElement>('#map-reorganize');
+  reorganize.innerHTML = icon('refresh-cw');
+  reorganize.addEventListener('click', () => {
+    forgetPositions();
+    forgetCamera();
+    void refreshGraph();
+  });
+
   /*
    * Girar es una propiedad de la cámara 3D, no de los datos ni de las otras
    * proyecciones. Por eso el control sólo aparece junto a esa dimensión. La
@@ -3776,6 +3828,14 @@ function wireTheme(): void {
     setGraph3DAutoRotate(workspace.graphAutoRotate && !reducedMotion.matches);
   });
   showAutoRotate();
+
+  /* Zoom extents: la cámara vuelve a abarcar todo lo dibujado sin pedir ni
+   * reconstruir el grafo. Cada proyección resuelve su propia geometría. */
+  const zoomExtents = $<HTMLButtonElement>('#map-zoom-extents');
+  zoomExtents.innerHTML = icon('maximize');
+  zoomExtents.addEventListener('click', () => {
+    document.dispatchEvent(new CustomEvent('constel:center'));
+  });
 
   const copyMap = $<HTMLButtonElement>('#map-copy-embed');
   copyMap.innerHTML = icon('copy');

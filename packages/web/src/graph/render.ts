@@ -1,9 +1,12 @@
 import * as d3 from "d3";
 import type { EmbeddedMapCamera, EmbeddedMapPlanarCamera } from "@vera/core";
-import type { GraphData, GraphLink, GraphNode } from "./types.ts";
+import type { GraphData, GraphLink, GraphNode, GraphResource } from "./types.ts";
 import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
+import { conceptGravity } from './concept-gravity.ts';
+import { proximityExplanation } from './proximity.ts';
+import { graphBalance, graphBalanceNeedsLayout } from './balance.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -48,6 +51,10 @@ export interface RenderSettings {
   autoRotate?: boolean;
   /** Conserva hacia dónde se mira cuando una entrega progresiva amplía el mapa. */
   preserveDirection?: boolean;
+  /** Posición del deslizador entre enlaces (0) y conceptos (100). */
+  graphBalance?: number;
+  /** Abre el diálogo seguro de un satélite externo. */
+  openExternalResource?: (url: string) => void;
   /** Cámara declarada por una incrustación; si falta, el mapa se encuadra solo. */
   camera?: EmbeddedMapCamera;
 }
@@ -76,7 +83,62 @@ const MAX_LABEL_CHARS = 24;
 /** El aire entre dos nombres. Sin él se tocan, y tocarse ya se lee como uno. */
 const COLLISION_PAD = 6;
 
+/** Sitio estable de un recurso alrededor de la página en foco. */
+export function resourceOrbit(index: number, total = 12): { x: number; y: number; z: number } {
+  const count = Math.max(1, Math.min(12, total));
+  const ring = Math.floor(index / count);
+  const within = index % count;
+  const angle = (within / count) * Math.PI * 2 + ring * 0.31;
+  const radius = 82 + ring * 28;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: (within % 3 - 1) * 8 };
+}
+
 type NodeDimensions = Map<string, { w: number; h: number }>;
+
+export interface PlanarViewport {
+  width: number;
+  height: number;
+  padding: number;
+}
+
+export interface PlanarTransform {
+  x: number;
+  y: number;
+  k: number;
+}
+
+/**
+ * Mantiene las cajas tipográficas dentro de la cámara vigente sin tocar su zoom.
+ *
+ * La lente cambia posiciones, no la decisión de cuánto acercó la persona. Por
+ * eso se acotan las coordenadas del mundo que ya está bajo esa cámara en vez de
+ * recalcular su escala. Si una etiqueta fuese mayor que el recinto disponible,
+ * se centra en ese eje: ningún desplazamiento podría hacerla caber completa.
+ */
+export function containPlanarNodes(
+  nodes: GraphNode[],
+  dims: NodeDimensions,
+  viewport: PlanarViewport,
+  transform: PlanarTransform,
+): void {
+  if (transform.k <= 0 || viewport.width <= 0 || viewport.height <= 0) return;
+  const left = (viewport.padding - transform.x) / transform.k;
+  const right = (viewport.width - viewport.padding - transform.x) / transform.k;
+  const top = (viewport.padding - transform.y) / transform.k;
+  const bottom = (viewport.height - viewport.padding - transform.y) / transform.k;
+
+  for (const node of nodes) {
+    const box = dims.get(node.id) ?? { w: 40, h: 16 };
+    const minX = left + box.w / 2;
+    const maxX = right - box.w / 2;
+    const minY = top + box.h / 2;
+    const maxY = bottom - box.h / 2;
+    const x = node.x ?? (left + right) / 2;
+    const y = node.y ?? (top + bottom) / 2;
+    node.x = minX <= maxX ? Math.min(maxX, Math.max(minX, x)) : (left + right) / 2;
+    node.y = minY <= maxY ? Math.min(maxY, Math.max(minY, y)) : (top + bottom) / 2;
+  }
+}
 
 /**
  * Compone cerca los componentes sin conectarlos.
@@ -185,6 +247,12 @@ function wrapText(text: string, maxChars: number): string[] {
 // ── History ring config ──
 // Track listeners for cleanup on re-render
 let active2dListeners: { event: string; fn: EventListener }[] = [];
+let governGraphBalance: ((value: number, final: boolean) => void) | null = null;
+
+/** Cambia las fuerzas del mapa montado sin volver a pedir ni reconstruir sus datos. */
+export function setGraph2DBalance(value: number, final = false): void {
+  governGraphBalance?.(value, final);
+}
 
 /**
  * Dónde quedó cada nodo, entre un dibujo y el siguiente.
@@ -259,6 +327,9 @@ export function renderGraph(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {}
 ) {
+  let balance = graphBalance(settings.graphBalance ?? 50);
+  let graphLens = balance.lens;
+  governGraphBalance = null;
   // Clean up previous listeners
   for (const { event, fn } of active2dListeners) {
     document.removeEventListener(event, fn);
@@ -354,6 +425,41 @@ export function renderGraph(
     .attr("stroke-width", 1);
   link.style("transition", "stroke-opacity 0.2s, stroke 0.2s");
 
+  // Los destinos web de la página en foco son satélites, no nodos del grafo.
+  // No entran a la simulación ni a su alcance. @guarantee ExternalResourcesOrbitTheFocusedPage.
+  const resources = data.resources ?? [];
+  const resourceLayer = g.append('g').attr('class', 'map-resources');
+  const resourceLinks = resourceLayer.append('g')
+    .attr('stroke', colors.linkStroke)
+    .attr('stroke-opacity', 0.55)
+    .selectAll<SVGLineElement, GraphResource>('line')
+    .data(resources)
+    .join('line')
+    .attr('stroke-dasharray', '2 3');
+  const resourceNodes = resourceLayer.append('g')
+    .selectAll<SVGGElement, GraphResource>('g')
+    .data(resources)
+    .join('g')
+    .attr('class', 'map-resource')
+    .attr('tabindex', 0)
+    .attr('role', 'link')
+    .attr('aria-label', (resource) => `Enlace externo: ${resource.domain}`)
+    .attr('cursor', 'pointer');
+  resourceNodes.append('circle')
+    .attr('r', 6)
+    .attr('fill', 'var(--bg)')
+    .attr('stroke', colors.hoverAccent)
+    .attr('stroke-width', 1.4);
+  resourceNodes.append('title').text((resource) => resource.url);
+  const openResource = (_event: Event, resource: GraphResource): void => {
+    settings.openExternalResource?.(resource.url);
+  };
+  resourceNodes.on('click', openResource).on('keydown', (event, resource) => {
+    if ((event as KeyboardEvent).key !== 'Enter' && (event as KeyboardEvent).key !== ' ') return;
+    (event as KeyboardEvent).preventDefault();
+    openResource(event as Event, resource);
+  });
+
   // Nodes
   const node = g
     .append("g")
@@ -421,7 +527,15 @@ export function renderGraph(
   node
     .attr("tabindex", 0)
     .attr("role", "link")
-    .attr("aria-label", (d) => d.name);
+    .attr("aria-label", (d) => {
+      const focus = data.nodes.find((one) => one.central === true);
+      const reason = focus === undefined ? null : proximityExplanation(d, focus, data.links, graphLens);
+      return reason === null ? d.name : `${d.name}. ${reason}`;
+    });
+  node.append('title').text((d) => {
+    const focus = data.nodes.find((one) => one.central === true);
+    return focus === undefined ? d.name : (proximityExplanation(d, focus, data.links, graphLens) ?? d.name);
+  });
 
   /*
    * Un clic señala; dos abren.
@@ -726,6 +840,18 @@ export function renderGraph(
       .attr("x2", (d: any) => d.target.x)
       .attr("y2", (d: any) => d.target.y);
     node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+    const focus = data.nodes.find((one) => one.central === true);
+    const focusX = focus?.x ?? width / 2;
+    const focusY = focus?.y ?? height / 2;
+    resourceLinks
+      .attr('x1', focusX)
+      .attr('y1', focusY)
+      .attr('x2', (_resource, index) => focusX + resourceOrbit(index, resources.length).x)
+      .attr('y2', (_resource, index) => focusY + resourceOrbit(index, resources.length).y);
+    resourceNodes.attr('transform', (_resource, index) => {
+      const offset = resourceOrbit(index, resources.length);
+      return `translate(${focusX + offset.x},${focusY + offset.y})`;
+    });
 
     if (thread !== null) {
       const at = new Map<string, GraphNode>();
@@ -773,15 +899,29 @@ export function renderGraph(
 
   const sim = d3
     .forceSimulation<GraphNode>(data.nodes)
-    .force(
-      "link",
-      d3.forceLink<GraphNode, any>(data.links)
-        .id((d) => d.id)
-        .distance(linkDist)
-    )
     .force("charge", d3.forceManyBody().strength(charge))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", collisionForce as any);
+  const applyBalanceForces = (value: number): void => {
+    balance = graphBalance(value);
+    graphLens = balance.lens;
+    sim.force("link", balance.links > 0
+      ? d3.forceLink<GraphNode, any>(data.links)
+        .id((d) => d.id)
+        .distance(linkDist)
+        .strength(balance.links)
+      : null);
+    sim.force("concepts", balance.concepts > 0
+      ? conceptGravity(2, balance.concepts) as any
+      : null);
+  };
+  applyBalanceForces(balance.value);
+
+  const keepInsideCurrentFrame = (): void => {
+    if (heldTransform === null) return;
+    const padding = Math.min(48, Math.max(20, Math.min(width, height) * 0.08));
+    containPlanarNodes(data.nodes, dims, { width, height, padding }, heldTransform);
+  };
 
   /*
    * Y, mientras hay un recorrido abierto, los dos resortes del hilo.
@@ -996,6 +1136,34 @@ export function renderGraph(
 
   // Un dibujo nuevo deja sin efecto el acomodo que estuviera corriendo.
   relaxing += 1;
+
+  governGraphBalance = (value: number, final: boolean): void => {
+    const drawing = svg.node();
+    if (drawing === null || !container.contains(drawing)) {
+      governGraphBalance = null;
+      return;
+    }
+    const next = graphBalance(value).value;
+    if (!graphBalanceNeedsLayout(balance.value, next, final)) {
+      keepInsideCurrentFrame();
+      place();
+      remember();
+      draw();
+      return;
+    }
+    applyBalanceForces(next);
+    sim.alpha(final ? 0.55 : 0.3);
+    const ticks = final ? 140 : 28;
+    for (let step = 0; step < ticks; step += 1) {
+      sim.tick();
+      keepInsideCurrentFrame();
+    }
+    settle();
+    keepInsideCurrentFrame();
+    place();
+    remember();
+    draw();
+  };
 
   sim.stop();
   if (!allPlaced) {

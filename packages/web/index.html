@@ -180,6 +180,16 @@
               </span>
             </div>
 
+            <label class="map-field" id="map-lens-field">
+              <span class="map-field-name">lente</span>
+              <span class="map-lens-scale" aria-hidden="true">
+                <span>Enlaces</span><span>Híbrida</span><span>Conceptos</span>
+              </span>
+              <input id="map-lens" type="range" min="0" max="100" step="1" value="50"
+                aria-label="Mezcla entre enlaces y conceptos">
+              <output id="map-lens-value" for="map-lens">Enlaces 2.0× · Conceptos 2.0×</output>
+            </label>
+
             <div class="map-compact-actions">
               <label class="map-icon-check" title="Mostrar el diario en foco">
                 <span id="map-journals-icon" aria-hidden="true"></span>
@@ -190,6 +200,20 @@
                 <span id="map-auto-rotate-icon" aria-hidden="true"></span>
                 <input id="map-auto-rotate" type="checkbox" aria-label="Rotación automática">
               </label>
+
+              <button
+                id="map-reorganize"
+                type="button"
+                aria-label="Reorganizar esta lente"
+                title="Reorganizar esta lente"
+              ></button>
+
+              <button
+                id="map-zoom-extents"
+                type="button"
+                aria-label="Encuadrar todo el mapa"
+                title="Encuadrar todo el mapa"
+              ></button>
 
               <button
                 id="map-copy-embed"

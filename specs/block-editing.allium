@@ -2,8 +2,8 @@
 -- block-editing.allium
 
 -- Scope: The keystroke-level behaviour that makes Vera's outliner writable
--- Includes: The edit session and its buffer, saving while typing rather than only
---   on the way out, splitting a block with Enter, indenting with Tab, merging with
+-- Includes: The edit session and its durable local draft, one canonical change
+--   when the editing gesture settles, splitting a block with Enter, indenting with Tab, merging with
 --   Backspace at the start of a block and the refusals that protect it, moving
 --   between blocks without leaving the editor, delimiter autopairing, the
 --   autocomplete state machine for references, tags and commands, and the outline
@@ -49,13 +49,15 @@ contract FluidBlockEditing {
     settle: (session: EditSession) -> core/Block
 
     @invariant TypingIsNeverLost
-        -- Text reaches the graph while the participant is still writing, not only
-        -- when they leave the block. Nothing typed depends on remembering to exit.
+        -- Text is kept as a durable local draft while the participant is still
+        -- writing and is recovered only over the same canonical base. Leaving the
+        -- block settles it into the graph; a pause for thought is not a revision.
 
-    @invariant EveryKeystrokeChangeIsAnOperation
-        -- Splitting, merging, indenting and saving all submit ordinary operations
-        -- with the same provenance as any other change. Fluency is an interface
-        -- property; it buys no shortcut into the graph.
+    @invariant OneEditingGestureIsOneCanonicalChange
+        -- Beginning and ending one textual edit produces at most one edit_block
+        -- operation with the final content. Pauses and intermediate drafts never
+        -- become historical states. Splitting, merging and indenting remain
+        -- distinct structural gestures and submit their own ordinary operations.
 
     @invariant StructureChangesPreserveIdentity
         -- Splitting, merging and indenting never re-create a block that already

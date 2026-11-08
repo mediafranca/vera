@@ -27,8 +27,11 @@ import * as d3 from "d3";
 import type { EmbeddedMap3DCamera } from "@vera/core";
 // @ts-expect-error d3-force-3d no publica tipos
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
-import type { GraphData, GraphNode } from "./types.ts";
-import type { RenderSettings } from "./render";
+import { conceptGravity } from './concept-gravity.ts';
+import { proximityExplanation } from './proximity.ts';
+import { graphBalance, graphBalanceNeedsLayout } from './balance.ts';
+import type { GraphData, GraphNode, GraphResource } from "./types.ts";
+import { resourceOrbit, type RenderSettings } from "./render.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { icon } from "../icons.ts";
 import {
@@ -136,6 +139,12 @@ let teardown: (() => void) | null = null;
 
 /** Cambia la órbita del mapa ya montado, sin volver a pedir ni dibujar sus datos. */
 let governAutoRotation: ((enabled: boolean) => void) | null = null;
+let governGraphBalance: ((value: number, final: boolean) => void) | null = null;
+
+/** Cambia las fuerzas del mapa montado sin reconstruir el SVG ni pedir datos. */
+export function setGraph3DBalance(value: number, final = false): void {
+  governGraphBalance?.(value, final);
+}
 
 /**
  * Si lo que gira la rueda es un trackpad y no una rueda de ratón.
@@ -262,6 +271,9 @@ export function renderGraph3D(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {},
 ): void {
+  let balance = graphBalance(settings.graphBalance ?? 50);
+  let graphLens = balance.lens;
+  governGraphBalance = null;
   cleanupGraph3D();
   container.innerHTML = "";
 
@@ -450,6 +462,14 @@ export function renderGraph3D(
   const threadLayer = document.createElementNS(SVG_NS, "g");
   threadLayer.setAttribute("class", "thread-layer");
 
+  const resourceEdgeLayer = document.createElementNS(SVG_NS, 'g');
+  resourceEdgeLayer.setAttribute('class', 'map3d-resource-edges');
+  resourceEdgeLayer.setAttribute('stroke', colors.linkStroke);
+  resourceEdgeLayer.setAttribute('stroke-dasharray', '2 3');
+  resourceEdgeLayer.setAttribute('stroke-opacity', '0.55');
+  const resourceLayer = document.createElementNS(SVG_NS, 'g');
+  resourceLayer.setAttribute('class', 'map3d-resources');
+
   const nodeLayer = document.createElementNS(SVG_NS, "g");
   nodeLayer.setAttribute("class", "map3d-nodes");
   nodeLayer.setAttribute("font-family", fontFamily);
@@ -470,7 +490,7 @@ export function renderGraph3D(
    */
   nodeLayer.setAttribute("pointer-events", "none");
 
-  svg.append(edgeLayer, threadLayer, nodeLayer);
+  svg.append(edgeLayer, threadLayer, resourceEdgeLayer, resourceLayer, nodeLayer);
   container.append(svg);
 
   // ---------------------------------------------------------------------
@@ -497,6 +517,11 @@ export function renderGraph3D(
     }
     group.dataset["id"] = node.id;
     group.style.cursor = "pointer";
+    const focused = nodes.find((one) => one.central === true);
+    const reason = focused === undefined ? null : proximityExplanation(node, focused, data.links, graphLens);
+    const title = document.createElementNS(SVG_NS, 'title');
+    title.textContent = reason ?? node.name;
+    group.append(title);
 
     const texts = lines.map((line, i) => {
       const text = document.createElementNS(SVG_NS, "text");
@@ -591,6 +616,38 @@ export function renderGraph3D(
   });
 
   const drawnById = new Map(drawn.map((d) => [d.node.id, d]));
+
+  const focusedNode = nodes.find((node) => node.central === true) ?? null;
+  const resources = (data.resources ?? []).map((resource: GraphResource) => {
+    const line = document.createElementNS(SVG_NS, 'line');
+    resourceEdgeLayer.append(line);
+    const group = document.createElementNS(SVG_NS, 'g');
+    group.setAttribute('class', 'map3d-resource');
+    group.setAttribute('tabindex', '0');
+    group.setAttribute('role', 'link');
+    group.setAttribute('aria-label', `Enlace externo: ${resource.domain}`);
+    group.style.cursor = 'pointer';
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('r', '6');
+    circle.setAttribute('fill', 'var(--bg)');
+    circle.setAttribute('stroke', colors.accent);
+    circle.setAttribute('stroke-width', '1.4');
+    const title = document.createElementNS(SVG_NS, 'title');
+    title.textContent = resource.url;
+    group.append(circle, title);
+    resourceLayer.append(group);
+    const open = (event: Event): void => {
+      event.stopPropagation();
+      settings.openExternalResource?.(resource.url);
+    };
+    group.addEventListener('click', open);
+    group.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      open(event);
+    });
+    return { resource, line, group };
+  });
 
   /*
    * Con quien se nombra cada pagina, para poder encenderlo al pasar por encima.
@@ -1001,6 +1058,29 @@ export function renderGraph3D(
       d.sh = d.lines.length * LINE_EM * px;
     }
 
+    if (focusedNode !== null) {
+      const focusPoint = {
+        x: focusedNode.x ?? 0,
+        y: focusedNode.y ?? 0,
+        z: focusedNode.z ?? 0,
+      };
+      const from = project(focusPoint, orbit, lens);
+      resources.forEach((drawnResource, index) => {
+        const offset = resourceOrbit(index, resources.length);
+        const to = project({
+          x: focusPoint.x + offset.x,
+          y: focusPoint.y + offset.y,
+          z: focusPoint.z + offset.z,
+        }, orbit, lens);
+        drawnResource.line.setAttribute('x1', from.x.toFixed(1));
+        drawnResource.line.setAttribute('y1', from.y.toFixed(1));
+        drawnResource.line.setAttribute('x2', to.x.toFixed(1));
+        drawnResource.line.setAttribute('y2', to.y.toFixed(1));
+        drawnResource.group.setAttribute('transform', `translate(${to.x.toFixed(1)},${to.y.toFixed(1)})`);
+        drawnResource.group.setAttribute('opacity', lejania(to.depth, orbit.distance, 0.55).toFixed(2));
+      });
+    }
+
     /** Los nodos dibujados por su identidad, para poner cada número sobre el suyo. */
     const shown = new Map<string, Drawn>();
     for (const d of drawn) shown.set(d.node.id, d);
@@ -1099,13 +1179,21 @@ export function renderGraph3D(
   // ---------------------------------------------------------------------
   const LINK_DISTANCE = settings.linkDistance ?? 60;
   const sim = forceSimulation(nodes, 3)
-    .force(
-      "link",
-      forceLink(links)
-        .id((d: { id: string }) => d.id)
-        .distance(LINK_DISTANCE),
-    )
     .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260));
+  const applyBalanceForces = (value: number): void => {
+    balance = graphBalance(value);
+    graphLens = balance.lens;
+    sim.force("link", balance.links > 0
+      ? forceLink(links)
+        .id((d: { id: string }) => d.id)
+        .distance(LINK_DISTANCE)
+        .strength(balance.links)
+      : null);
+    sim.force("concepts", balance.concepts > 0
+      ? conceptGravity(3, balance.concepts) as never
+      : null);
+  };
+  applyBalanceForces(balance.value);
 
   /*
    * Y los dos resortes del hilo, mientras el recorrido está abierto.
@@ -1189,6 +1277,28 @@ export function renderGraph3D(
       if (!Number.isFinite(n.x) || !Number.isFinite(n.y) || !Number.isFinite(n.z)) continue;
       positions.set(n.id, { x: n.x as number, y: n.y as number, z: n.z as number });
     }
+  };
+
+  governGraphBalance = (value: number, final: boolean): void => {
+    const next = graphBalance(value).value;
+    if (!graphBalanceNeedsLayout(balance.value, next, final)) {
+      rememberPlaces();
+      paint();
+      sortByDepth();
+      return;
+    }
+    applyBalanceForces(next);
+    for (const node of nodes) {
+      Object.assign(node, { fx: null, fy: null, fz: null });
+    }
+    sim.stop().alpha(final ? 0.55 : 0.3);
+    const ticks = final ? 140 : 28;
+    for (let step = 0; step < ticks; step += 1) sim.tick();
+    sim.stop();
+    rememberPlaces();
+    fit();
+    paint();
+    sortByDepth();
   };
 
   sim.on("tick", () => {
@@ -1680,6 +1790,7 @@ export function renderGraph3D(
     resizeObserver?.disconnect();
     setAutoRotation(false);
     if (governAutoRotation === setAutoRotation) governAutoRotation = null;
+    governGraphBalance = null;
     document.removeEventListener("constel:zoom", onZoom);
     document.removeEventListener("constel:center", onCentre);
     window.removeEventListener("resize", onResize);
