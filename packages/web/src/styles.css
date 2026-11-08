@@ -5954,6 +5954,21 @@ body.settings-open #text {
   color: var(--text-dim);
 }
 
+.participant-administration-related a,
+.participant-directory-card h2 a {
+  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 32%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: .16em;
+}
+
+.participant-administration-related a:hover,
+.participant-administration-related a:focus-visible,
+.participant-directory-card h2 a:hover,
+.participant-directory-card h2 a:focus-visible {
+  text-decoration-color: currentColor;
+}
+
 .participant-facets {
   display: flex;
   flex-wrap: wrap;
@@ -6012,7 +6027,7 @@ body.settings-open #text {
 }
 
 .participant-directory-card h2 { margin: 0; font: 500 1.15rem/1.2 var(--font-body); }
-.participant-directory-card h2 a { color: var(--accent); text-decoration: none; }
+.participant-directory-card h2 a { text-decoration-line: underline; }
 .participant-directory-relation {
   margin: .35rem 0;
   color: var(--text);

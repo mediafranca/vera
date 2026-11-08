@@ -48,10 +48,11 @@ describe('arquitectura de configuración', () => {
     assert.doesNotMatch(settings, /open: \(h\) => h\.onOpenPage\('VERA —/);
   });
 
-  it('explica que una Vera personal no se convierte con un interruptor', () => {
+  it('declara el estado real de la migración de una Vera personal', () => {
     assert.match(settings, /el acceso local sigue funcionando sin iniciar sesión/);
+    assert.match(settings, /esta versión todavía no ejecuta la migración/);
     assert.match(settings, /No es un interruptor sobre este corpus/);
-    assert.match(settings, /antes de migrar se registra y comprueba una passkey administrativa/);
+    assert.match(settings, /comprobar una passkey administrativa antes de trasladar contenido/);
   });
 
   it('asocia editores por tipo y por dispositivo sin escribir rutas en el grafo', () => {
