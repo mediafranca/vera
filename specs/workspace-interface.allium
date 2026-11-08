@@ -2011,11 +2011,15 @@ surface VeraWorkspace {
         -- than hidden in code; the centre begins with both forces at 2.0× and
         -- either extreme reaches 4.0× while switching the other force off.
 
-        -- Releasing the slider recalculates the same neighbourhood from its
-        -- current positions. An explicit Reorganizar action discards positions
-        -- for the active link, hybrid or concept regime and computes them again.
-        -- The controls are absent in D4, whose geometry is an argument and never
-        -- uses conceptual gravity.
+        -- Moving the slider changes the same neighbourhood while the hand is
+        -- still dragging it: there are no hidden steps, three regimes or a
+        -- separate layout waiting at either extreme. The visible multipliers
+        -- always describe the forces currently shaping the map.
+
+        -- An explicit Reorganizar action discards the single accumulated
+        -- arrangement and computes it again at the current balance. The controls
+        -- are absent in D4, whose geometry is an argument and never uses
+        -- conceptual gravity.
 
     @guarantee ExternalResourcesOrbitTheFocusedPage
         -- In 2D and 3D, safe HTTP or HTTPS destinations cited by the focused

@@ -65,7 +65,7 @@ import { sameReadablePage } from './page-validation.ts';
 import { firstReadable } from './page-delivery.ts';
 import { behind, disagreements, said, type Behind } from './behind.ts';
 import { applyResolutions, askAboutDisagreements } from './reconcile.ts';
-import { forgetPositions, graph2DCamera, renderGraph, selectNode, type ThreadSettings } from './graph/render.ts';
+import { forgetPositions, graph2DCamera, renderGraph, selectNode, setGraph2DBalance, type ThreadSettings } from './graph/render.ts';
 import { threadSettings } from './graph/thread.ts';
 import {
   renderGraph3D,
@@ -74,6 +74,7 @@ import {
   graph3DCamera,
   selectNode3D,
   setGraph3DAutoRotate,
+  setGraph3DBalance,
 } from './graph/render3d.ts';
 import { graphD4Camera, renderGraphD4 } from './graph/renderD4.ts';
 import { journalsInMap } from './graph/journals.ts';
@@ -3771,26 +3772,29 @@ function wireTheme(): void {
   });
   showJournals();
 
-  /* La lente es una mezcla continua. Mientras se arrastra sólo se leen los
-   * multiplicadores; al soltar se recalcula el mismo vecindario desde su lugar
-   * actual. Reorganizar es la única acción que descarta ese lugar.
+  /* La lente es una mezcla continua: el mismo mapa cambia mientras se arrastra,
+   * sin pedir otra vez el vecindario ni saltar entre tres disposiciones ocultas.
+   * Reorganizar es la única acción que descarta el lugar acumulado.
    * @guarantee ConceptualGravityCanStepAside. */
   const lens = $<HTMLInputElement>('#map-lens');
   const lensValue = $<HTMLOutputElement>('#map-lens-value');
   lens.addEventListener('input', () => {
-    lensValue.value = graphBalanceLabel(Number(lens.value));
+    workspace.graphBalance = graphBalance(Number(lens.value)).value;
+    lensValue.value = graphBalanceLabel(workspace.graphBalance);
+    setGraph2DBalance(workspace.graphBalance);
+    setGraph3DBalance(workspace.graphBalance);
   });
   lens.addEventListener('change', () => {
     workspace.graphBalance = graphBalance(Number(lens.value)).value;
     session.setGraphBalance(workspace.graphBalance);
-    applyLayout();
+    setGraph2DBalance(workspace.graphBalance, true);
+    setGraph3DBalance(workspace.graphBalance, true);
   });
   const reorganize = $<HTMLButtonElement>('#map-reorganize');
   reorganize.innerHTML = icon('refresh-cw');
   reorganize.addEventListener('click', () => {
-    const activeLens = graphBalance(workspace.graphBalance).lens;
-    forgetPositions(activeLens);
-    forgetCamera(activeLens);
+    forgetPositions();
+    forgetCamera();
     void refreshGraph();
   });
 

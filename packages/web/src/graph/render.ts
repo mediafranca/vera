@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 import type { EmbeddedMapCamera, EmbeddedMapPlanarCamera } from "@vera/core";
-import type { GraphData, GraphLens, GraphLink, GraphNode, GraphResource } from "./types.ts";
+import type { GraphData, GraphLink, GraphNode, GraphResource } from "./types.ts";
 import { is } from "../bindings.ts";
 import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
@@ -202,6 +202,12 @@ function wrapText(text: string, maxChars: number): string[] {
 // ── History ring config ──
 // Track listeners for cleanup on re-render
 let active2dListeners: { event: string; fn: EventListener }[] = [];
+let governGraphBalance: ((value: number, final: boolean) => void) | null = null;
+
+/** Cambia las fuerzas del mapa montado sin volver a pedir ni reconstruir sus datos. */
+export function setGraph2DBalance(value: number, final = false): void {
+  governGraphBalance?.(value, final);
+}
 
 /**
  * Dónde quedó cada nodo, entre un dibujo y el siguiente.
@@ -214,12 +220,7 @@ let active2dListeners: { event: string; fn: EventListener }[] = [];
  * recuerda es una imagen y no un lugar. Reconocer una región por su forma es
  * para lo que sirve dibujarla.
  */
-const positionsByLens = new Map<GraphLens, Map<string, { x: number; y: number }>>();
-const positionsFor = (lens: GraphLens): Map<string, { x: number; y: number }> => {
-  const held = positionsByLens.get(lens) ?? new Map<string, { x: number; y: number }>();
-  positionsByLens.set(lens, held);
-  return held;
-};
+const positions = new Map<string, { x: number; y: number }>();
 
 /** El encuadre. Se conserva por lo mismo: volver no debe reencuadrar. */
 let heldTransform: d3.ZoomTransform | null = null;
@@ -254,9 +255,8 @@ let relaxing = 0;
 let straightened: string | null = null;
 
 /** Olvida lo colocado. Para cuando el grafo cambia de centro de verdad. */
-export function forgetPositions(lens?: GraphLens): void {
-  if (lens === undefined) positionsByLens.clear();
-  else positionsFor(lens).clear();
+export function forgetPositions(): void {
+  positions.clear();
   heldTransform = null;
   // Y el encuadre del recorrido: si las posiciones son otras, el que había ya no
   // encuadraba nada. Ni el acomodo, por lo mismo.
@@ -282,9 +282,9 @@ export function renderGraph(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {}
 ) {
-  const balance = graphBalance(settings.graphBalance ?? 50);
-  const graphLens = balance.lens;
-  const positions = positionsFor(graphLens);
+  let balance = graphBalance(settings.graphBalance ?? 50);
+  let graphLens = balance.lens;
+  governGraphBalance = null;
   // Clean up previous listeners
   for (const { event, fn } of active2dListeners) {
     document.removeEventListener(event, fn);
@@ -857,15 +857,20 @@ export function renderGraph(
     .force("charge", d3.forceManyBody().strength(charge))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", collisionForce as any);
-  if (balance.links > 0) {
-    sim.force("link", d3.forceLink<GraphNode, any>(data.links)
-      .id((d) => d.id)
-      .distance(linkDist)
-      .strength(balance.links));
-  }
-  if (balance.concepts > 0) {
-    sim.force("concepts", conceptGravity(2, balance.concepts) as any);
-  }
+  const applyBalanceForces = (value: number): void => {
+    balance = graphBalance(value);
+    graphLens = balance.lens;
+    sim.force("link", balance.links > 0
+      ? d3.forceLink<GraphNode, any>(data.links)
+        .id((d) => d.id)
+        .distance(linkDist)
+        .strength(balance.links)
+      : null);
+    sim.force("concepts", balance.concepts > 0
+      ? conceptGravity(2, balance.concepts) as any
+      : null);
+  };
+  applyBalanceForces(balance.value);
 
   /*
    * Y, mientras hay un recorrido abierto, los dos resortes del hilo.
@@ -1080,6 +1085,20 @@ export function renderGraph(
 
   // Un dibujo nuevo deja sin efecto el acomodo que estuviera corriendo.
   relaxing += 1;
+
+  governGraphBalance = (value: number, final: boolean): void => {
+    const drawing = svg.node();
+    if (drawing === null || !container.contains(drawing)) {
+      governGraphBalance = null;
+      return;
+    }
+    applyBalanceForces(value);
+    sim.alpha(final ? 0.55 : 0.3);
+    const ticks = final ? 140 : 28;
+    for (let step = 0; step < ticks; step += 1) sim.tick();
+    settle();
+    draw();
+  };
 
   sim.stop();
   if (!allPlaced) {

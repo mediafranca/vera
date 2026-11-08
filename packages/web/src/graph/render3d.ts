@@ -30,7 +30,7 @@ import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force
 import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
 import { graphBalance } from './balance.ts';
-import type { GraphData, GraphLens, GraphNode, GraphResource } from "./types.ts";
+import type { GraphData, GraphNode, GraphResource } from "./types.ts";
 import { resourceOrbit, type RenderSettings } from "./render.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { icon } from "../icons.ts";
@@ -104,12 +104,7 @@ const TURN_PER_PIXEL = Math.PI / 320;
  * @guarantee TheMapHoldsItsPositions. Es el `positions` de dos dimensiones, y
  * está aquí por lo mismo: ir a una página vecina no debe rehacer el mapa entero.
  */
-const positionsByLens = new Map<GraphLens, Map<string, Point>>();
-const positionsFor = (lens: GraphLens): Map<string, Point> => {
-  const held = positionsByLens.get(lens) ?? new Map<string, Point>();
-  positionsByLens.set(lens, held);
-  return held;
-};
+const positions = new Map<string, Point>();
 
 /** Desde dónde se estaba mirando. */
 let heldOrbit: Orbit | null = null;
@@ -144,6 +139,12 @@ let teardown: (() => void) | null = null;
 
 /** Cambia la órbita del mapa ya montado, sin volver a pedir ni dibujar sus datos. */
 let governAutoRotation: ((enabled: boolean) => void) | null = null;
+let governGraphBalance: ((value: number, final: boolean) => void) | null = null;
+
+/** Cambia las fuerzas del mapa montado sin reconstruir el SVG ni pedir datos. */
+export function setGraph3DBalance(value: number, final = false): void {
+  governGraphBalance?.(value, final);
+}
 
 /**
  * Si lo que gira la rueda es un trackpad y no una rueda de ratón.
@@ -173,14 +174,13 @@ function looksLikeTrackpad(event: WheelEvent): boolean {
 }
 
 /** Olvida la cámara y lo colocado. Para cuando el grafo cambia de veras. */
-export function forgetCamera(lens?: GraphLens): void {
+export function forgetCamera(): void {
   heldOrbit = null;
   shownOrbit = null;
   framed = null;
   heldFor = null;
   claimedFor = null;
-  if (lens === undefined) positionsByLens.clear();
-  else positionsFor(lens).clear();
+  positions.clear();
 }
 
 /** Señala un nodo desde fuera, para que abrir una página lo marque en el mapa. */
@@ -271,9 +271,9 @@ export function renderGraph3D(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {},
 ): void {
-  const balance = graphBalance(settings.graphBalance ?? 50);
-  const graphLens = balance.lens;
-  const positions = positionsFor(graphLens);
+  let balance = graphBalance(settings.graphBalance ?? 50);
+  let graphLens = balance.lens;
+  governGraphBalance = null;
   cleanupGraph3D();
   container.innerHTML = "";
 
@@ -1180,15 +1180,20 @@ export function renderGraph3D(
   const LINK_DISTANCE = settings.linkDistance ?? 60;
   const sim = forceSimulation(nodes, 3)
     .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260));
-  if (balance.links > 0) {
-    sim.force("link", forceLink(links)
-      .id((d: { id: string }) => d.id)
-      .distance(LINK_DISTANCE)
-      .strength(balance.links));
-  }
-  if (balance.concepts > 0) {
-    sim.force("concepts", conceptGravity(3, balance.concepts) as never);
-  }
+  const applyBalanceForces = (value: number): void => {
+    balance = graphBalance(value);
+    graphLens = balance.lens;
+    sim.force("link", balance.links > 0
+      ? forceLink(links)
+        .id((d: { id: string }) => d.id)
+        .distance(LINK_DISTANCE)
+        .strength(balance.links)
+      : null);
+    sim.force("concepts", balance.concepts > 0
+      ? conceptGravity(3, balance.concepts) as never
+      : null);
+  };
+  applyBalanceForces(balance.value);
 
   /*
    * Y los dos resortes del hilo, mientras el recorrido está abierto.
@@ -1272,6 +1277,21 @@ export function renderGraph3D(
       if (!Number.isFinite(n.x) || !Number.isFinite(n.y) || !Number.isFinite(n.z)) continue;
       positions.set(n.id, { x: n.x as number, y: n.y as number, z: n.z as number });
     }
+  };
+
+  governGraphBalance = (value: number, final: boolean): void => {
+    applyBalanceForces(value);
+    for (const node of nodes) {
+      Object.assign(node, { fx: null, fy: null, fz: null });
+    }
+    sim.stop().alpha(final ? 0.55 : 0.3);
+    const ticks = final ? 140 : 28;
+    for (let step = 0; step < ticks; step += 1) sim.tick();
+    sim.stop();
+    rememberPlaces();
+    fit();
+    paint();
+    sortByDepth();
   };
 
   sim.on("tick", () => {
@@ -1763,6 +1783,7 @@ export function renderGraph3D(
     resizeObserver?.disconnect();
     setAutoRotation(false);
     if (governAutoRotation === setAutoRotation) governAutoRotation = null;
+    governGraphBalance = null;
     document.removeEventListener("constel:zoom", onZoom);
     document.removeEventListener("constel:center", onCentre);
     window.removeEventListener("resize", onResize);

@@ -12,6 +12,7 @@ const mcp = readFileSync(new URL('../src/mcp-page.ts', import.meta.url), 'utf8')
 const governing = readFileSync(new URL('../src/governing-table.ts', import.meta.url), 'utf8');
 const governance = readFileSync(new URL('../src/governance-page.ts', import.meta.url), 'utf8');
 const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+const graph2d = readFileSync(new URL('../src/graph/render.ts', import.meta.url), 'utf8');
 const graph3d = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
 const embeddedMap = readFileSync(new URL('../src/map-frame.ts', import.meta.url), 'utf8');
 const executableFrames = readFileSync(new URL('../src/executable-frames.ts', import.meta.url), 'utf8');
@@ -123,15 +124,21 @@ describe('superficies especiales', () => {
   });
 
   it('ofrece una lente continua con calibración visible y reorganiza sólo por petición', () => {
-    assert.match(html, /id="map-lens" type="range" min="0" max="100" step="5"/);
+    assert.match(html, /id="map-lens" type="range" min="0" max="100" step="1"/);
     assert.match(html, /Enlaces<\/span><span>Híbrida<\/span><span>Conceptos/);
     assert.match(html, /id="map-lens-value"/);
     assert.match(html, /id="map-reorganize"/);
     assert.match(main, /map-lens-field'\)\.hidden = workspace\.graphView === 'graph_d4'/);
     assert.match(main, /graphBalance: workspace\.graphBalance/);
     assert.match(main, /session\.setGraphBalance\(workspace\.graphBalance\)/);
-    assert.match(main, /forgetPositions\(activeLens\)/);
-    assert.match(main, /forgetCamera\(activeLens\)/);
+    assert.match(main, /lens\.addEventListener\('input',[\s\S]*setGraph2DBalance\(workspace\.graphBalance\)[\s\S]*setGraph3DBalance\(workspace\.graphBalance\)/);
+    assert.doesNotMatch(main, /lens\.addEventListener\('change',[\s\S]{0,250}applyLayout\(\)/);
+    assert.doesNotMatch(graph2d, /positionsByLens|positionsFor\(graphLens\)/);
+    assert.doesNotMatch(graph3d, /positionsByLens|positionsFor\(graphLens\)/);
+    assert.match(graph2d, /export function setGraph2DBalance[\s\S]*governGraphBalance/);
+    assert.match(graph3d, /export function setGraph3DBalance[\s\S]*governGraphBalance/);
+    assert.match(main, /forgetPositions\(\)/);
+    assert.match(main, /forgetCamera\(\)/);
   });
 
   it('entrega el mapa por alcances crecientes sin retirar el que ya llegó', () => {

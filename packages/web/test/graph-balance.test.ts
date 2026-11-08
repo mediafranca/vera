@@ -9,6 +9,7 @@ describe('calibración continua del mapa', () => {
     assert.deepEqual(graphBalance(50), { value: 50, links: 2, concepts: 2, lens: 'hybrid' });
     assert.deepEqual(graphBalance(100), { value: 100, links: 0, concepts: 4, lens: 'concepts' });
     assert.equal(graphBalanceLabel(75), 'Enlaces 1.0× · Conceptos 3.0×');
+    assert.deepEqual(graphBalance(37), { value: 37, links: 2.52, concepts: 1.48, lens: 'hybrid' });
   });
 
   it('acota valores persistidos fuera del rango', () => {
