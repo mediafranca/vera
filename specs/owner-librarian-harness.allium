@@ -75,7 +75,10 @@ contract OwnerLibrarianHarnessAdministration {
 
     @invariant TheOfficeDoesNotImposeGenderOnItsOccupant
         -- Product navigation calls the singular office “Agente de biblioteca”.
-        -- It displays the participant's effective name instead of deriving a
+        -- Administration keeps that role name, while requests, waiting states,
+        -- queue receipts and conversations address the current participant by
+        -- their effective name. Renaming the participant therefore changes every
+        -- operational encounter without renaming the office or deriving a
         -- gendered title or pronouns from the smart default.
 
     @invariant TheLibrarianIsARoleNotAnAgentDirectory

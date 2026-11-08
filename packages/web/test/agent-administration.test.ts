@@ -70,6 +70,9 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /Lucienne es sólo el nombre inicial/);
     assert.match(administration, /conserva el oficio, la constitución, el harness, el territorio y la historia/);
     assert.match(administration, /className = 'agent-name-input'/);
+    assert.match(administration, /announceLibrarianIdentity\(\{ agent: renamed\.participant\.id, name: renamed\.participant\.name \}\)/);
+    assert.match(main, /addEventListener\('vera:librarian-identity'/);
+    assert.match(main, /useCorpus\(\{ \.\.\.corpus, librarian: \{ id: detail\.id, name: detail\.name \} \}\)/);
   });
 
   it('separa el cambio de nombre de la designación de otro agente', () => {

@@ -15,6 +15,7 @@ describe('participación desde un espacio compartido', () => {
 
   it('una invitación identificada de sólo lectura conserva la conversación', () => {
     assert.match(main, /canAskLibrarian: corpus\?\.canAskLibrarian === true/);
-    assert.match(outliner, /callbacks\.canAskLibrarian === true[\s\S]*Solicitar al agente de biblioteca/);
+    assert.match(main, /librarianName: corpus\.librarian\.name/);
+    assert.match(outliner, /callbacks\.canAskLibrarian === true[\s\S]*librarianActor\(callbacks\.librarianName\)\.requestLabel/);
   });
 });

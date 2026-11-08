@@ -23,7 +23,7 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.doesNotMatch(asking, /window\.prompt/);
     assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
     assert.match(outliner, /activity\.className = 'librarian-activity'/);
-    assert.match(outliner, /activity\.onclick = openConversation \?\? \(\(\) => openLibrarianProgress\(requests\)\)/);
+    assert.match(outliner, /activity\.onclick = openConversation \?\? \(\(\) => openLibrarianProgress\(requests, librarianName\)\)/);
     assert.match(outliner, /Tiempo transcurrido:/);
     assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
     assert.match(styles, /\.librarian-activity \.icon/);

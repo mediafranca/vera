@@ -97,6 +97,7 @@ import { presentPage } from './presentation.ts';
 import { removePageAndBlocks } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
 import { discardEditingDraft, keepEditingDraft, recoverEditingDraft } from './editing-draft.ts';
+import { librarianActor } from './librarian-language.ts';
 import { clearTaskState, taskToggle } from './task-toggle.ts';
 import {
   actionOf,
@@ -296,6 +297,8 @@ export interface OutlinerCallbacks {
   onExternalEditBlock?(page: PageView, block: BlockView): void | Promise<void>;
   /** La sesión es una persona capaz de mantener su conversación privada. */
   canAskLibrarian?: boolean;
+  /** Quien ocupa ahora el oficio; el rol genérico no sustituye su identidad. */
+  librarianName?: string;
   /** Apariencia compartida con el presentador, para que no invente una segunda
    * preferencia local mientras ocupa toda la pantalla. */
   scheme?(): 'light' | 'dark';
@@ -826,7 +829,8 @@ export async function askLibrarian(
   block: BlockView | null,
   callbacks: OutlinerCallbacks,
 ): Promise<void> {
-  const instruction = await librarianInstruction(page, block);
+  const actor = librarianActor(callbacks.librarianName);
+  const instruction = await librarianInstruction(page, block, actor.name);
   if (!instruction) return;
   try {
     const request = await api.askLibrarian({
@@ -835,10 +839,10 @@ export async function askLibrarian(
       text: instruction,
     });
     toast(request.dispatchStatus === 'failed'
-      ? 'pedido guardado; el agente de biblioteca está desconectado y podrá retomarlo'
+      ? `pedido guardado; ${actor.subject} no está disponible y podrá retomarlo`
       : request.dispatchStatus === 'pending'
-        ? 'pedido guardado en la cola del agente de biblioteca'
-        : 'pedido enviado al agente de biblioteca');
+        ? `pedido guardado en la cola ${actor.queueOwner}`
+        : `pedido enviado a ${actor.object}`);
     callbacks.onReload(null);
   } catch {
     toast('no se pudo guardar la solicitud');
@@ -1035,8 +1039,8 @@ export async function openLibrarianConversation(
         stream.append(replied);
       } else {
         const reason = request.status === 'failed' && request.failureReason !== null
-          ? `${librarianRequestState(request)} · ${request.failureReason}`
-          : librarianRequestState(request);
+          ? `${librarianRequestState(request, next.agent.name)} · ${request.failureReason}`
+          : librarianRequestState(request, next.agent.name);
         stream.append(turn('status', next.agent.name, reason, saySeconds(Math.max(0, Date.now() - request.createdAt))));
       }
     }
@@ -1240,14 +1244,20 @@ export async function openLibrarianConversation(
 }
 
 /** Pide una instrucción dentro de Vera, con espacio suficiente para pensarla. */
-function librarianInstruction(page: PageView, block: BlockView | null): Promise<string | null> {
+function librarianInstruction(
+  page: PageView,
+  block: BlockView | null,
+  librarianName?: string,
+): Promise<string | null> {
   return new Promise((resolve) => {
     const dialog = document.createElement('dialog');
     dialog.className = 'librarian-dialog librarian-request-dialog';
 
+    const actor = librarianActor(librarianName);
     const header = librarianDialogHeader(
-      'Solicitar al agente de biblioteca',
+      actor.requestLabel,
       block === null ? `Sobre «${page.title}»` : `Sobre un bloque de «${page.title}»`,
+      actor.name,
     );
     const form = document.createElement('form');
     form.method = 'dialog';
@@ -1302,7 +1312,7 @@ function librarianInstruction(page: PageView, block: BlockView | null): Promise<
   });
 }
 
-function librarianDialogHeader(title: string, context: string): HTMLElement {
+function librarianDialogHeader(title: string, context: string, librarianName?: string): HTMLElement {
   const header = document.createElement('header');
   header.className = 'librarian-dialog-header';
   const mark = document.createElement('span');
@@ -1311,7 +1321,7 @@ function librarianDialogHeader(title: string, context: string): HTMLElement {
   const words = document.createElement('div');
   const kicker = document.createElement('span');
   kicker.className = 'librarian-dialog-kicker';
-  kicker.textContent = 'Vera · agente de biblioteca';
+  kicker.textContent = librarianActor(librarianName).kicker;
   const heading = document.createElement('h2');
   heading.textContent = title;
   const scope = document.createElement('p');
@@ -1321,23 +1331,29 @@ function librarianDialogHeader(title: string, context: string): HTMLElement {
   return header;
 }
 
-function librarianRequestState(request: LibrarianRequestView): string {
-  if (request.status === 'working') return 'El agente de biblioteca está trabajando';
+function librarianRequestState(request: LibrarianRequestView, librarianName?: string): string {
+  const actor = librarianActor(librarianName);
+  if (request.status === 'working') return `${actor.subject} está trabajando`;
   if (request.dispatchStatus === 'failed') return 'Solicitud guardada; esperando reconexión';
   if (request.dispatchStatus === 'pending') return 'Solicitud guardada en la cola';
-  return 'Solicitud entregada; esperando al agente de biblioteca';
+  return `Solicitud entregada; esperando a ${actor.object}`;
 }
 
 let activeLibrarianRequests: LibrarianRequestView[] = [];
+let activeLibrarianName: string | undefined;
 
-function updateLibrarianProgress(dialog: HTMLDialogElement, requests: LibrarianRequestView[]): void {
+function updateLibrarianProgress(
+  dialog: HTMLDialogElement,
+  requests: LibrarianRequestView[],
+  librarianName = activeLibrarianName,
+): void {
   const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0];
   if (latest === undefined) return;
   const state = dialog.querySelector<HTMLElement>('.librarian-progress-state');
   const asked = dialog.querySelector<HTMLElement>('.librarian-progress-request');
   const elapsed = dialog.querySelector<HTMLElement>('.librarian-progress-elapsed');
   const more = dialog.querySelector<HTMLElement>('.librarian-progress-more');
-  if (state !== null) state.textContent = librarianRequestState(latest);
+  if (state !== null) state.textContent = librarianRequestState(latest, librarianName);
   if (asked !== null) asked.textContent = latest.text;
   if (elapsed !== null) elapsed.textContent = `Tiempo transcurrido: ${saySeconds(Math.max(0, Date.now() - latest.createdAt))}`;
   if (more !== null) {
@@ -1347,10 +1363,10 @@ function updateLibrarianProgress(dialog: HTMLDialogElement, requests: LibrarianR
   }
 }
 
-function openLibrarianProgress(requests: LibrarianRequestView[]): void {
+function openLibrarianProgress(requests: LibrarianRequestView[], librarianName?: string): void {
   const already = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
   if (already !== null) {
-    updateLibrarianProgress(already, requests);
+    updateLibrarianProgress(already, requests, librarianName);
     if (!already.open) already.showModal();
     return;
   }
@@ -1358,7 +1374,11 @@ function openLibrarianProgress(requests: LibrarianRequestView[]): void {
   if (latest === undefined) return;
   const dialog = document.createElement('dialog');
   dialog.className = 'librarian-dialog librarian-progress-dialog';
-  const header = librarianDialogHeader('Solicitud en curso', librarianRequestState(latest));
+  const header = librarianDialogHeader(
+    'Solicitud en curso',
+    librarianRequestState(latest, librarianName),
+    librarianName,
+  );
   header.querySelector('p')?.classList.add('librarian-progress-state');
 
   const body = document.createElement('div');
@@ -1383,8 +1403,12 @@ function openLibrarianProgress(requests: LibrarianRequestView[]): void {
   actions.append(close);
   dialog.append(header, body, actions);
   document.body.append(dialog);
-  updateLibrarianProgress(dialog, requests);
-  const clock = window.setInterval(() => updateLibrarianProgress(dialog, activeLibrarianRequests), 1_000);
+  updateLibrarianProgress(dialog, requests, librarianName);
+  const clock = window.setInterval(() => updateLibrarianProgress(
+    dialog,
+    activeLibrarianRequests,
+    activeLibrarianName,
+  ), 1_000);
   dialog.addEventListener('close', () => {
     window.clearInterval(clock);
     dialog.remove();
@@ -1399,9 +1423,11 @@ function openLibrarianProgress(requests: LibrarianRequestView[]): void {
  */
 function showLibrarianActivity(
   requests: LibrarianRequestView[],
+  librarianName?: string,
   openConversation?: () => void,
 ): void {
   activeLibrarianRequests = requests;
+  activeLibrarianName = librarianName;
   const current = document.querySelector<HTMLButtonElement>('.librarian-activity');
   if (requests.length === 0) {
     current?.remove();
@@ -1417,9 +1443,9 @@ function showLibrarianActivity(
   activity.innerHTML = icon('vera');
   activity.dataset['request'] = latest.id;
   activity.dataset['state'] = latest.dispatchStatus === 'failed' ? 'waiting' : latest.status;
-  activity.title = `${librarianRequestState(latest)} · abrir detalle`;
+  activity.title = `${librarianRequestState(latest, librarianName)} · abrir detalle`;
   activity.setAttribute('aria-label', activity.title);
-  activity.onclick = openConversation ?? (() => openLibrarianProgress(requests));
+  activity.onclick = openConversation ?? (() => openLibrarianProgress(requests, librarianName));
   if (current === null) document.body.append(activity);
   const dialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
   if (dialog !== null) updateLibrarianProgress(dialog, requests);
@@ -1440,7 +1466,11 @@ async function showLibrarianTurns(
   // debe convertir una repetición de transporte en dos avisos iguales.
   const unique = [...new Map(requests.map((request) => [request.id, request])).values()];
   const active = unique.filter((request) => request.status === 'queued' || request.status === 'working');
-  showLibrarianActivity(active, () => void openLibrarianConversation(page, callbacks));
+  showLibrarianActivity(
+    active,
+    callbacks.librarianName,
+    () => void openLibrarianConversation(page, callbacks),
+  );
   // Las respuestas terminadas son contenido del grafo: sobre un bloque lo
   // reemplazan y sobre una página nacen como un bloque ordinario. La solicitud
   // auxiliar permanece en el registro, pero no vuelve a montarse como una copia
@@ -5390,7 +5420,7 @@ export function renderOutliner(
     if (readOnly) {
       openBlockMenu(more, [[
         ...(callbacks.canAskLibrarian === true ? [{
-          label: 'Solicitar al agente de biblioteca',
+          label: librarianActor(callbacks.librarianName).requestLabel,
           icon: 'message-square',
           run: () => void askLibrarian(page, null, callbacks),
         } satisfies MenuAction] : []),
@@ -5481,7 +5511,7 @@ export function renderOutliner(
         run: () => void renderPageSharing(page.id, page.title),
       },
       {
-        label: 'Solicitar al agente de biblioteca',
+        label: librarianActor(callbacks.librarianName).requestLabel,
         icon: 'message-square',
         run: () => void askLibrarian(page, null, callbacks),
       },
@@ -6407,7 +6437,7 @@ export function renderOutliner(
       if (readOnly) {
         openBlockMenu(bullet, [[
           ...(callbacks.canAskLibrarian === true ? [{
-            label: 'Solicitar al agente de biblioteca',
+            label: librarianActor(callbacks.librarianName).requestLabel,
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
           } satisfies MenuAction] : []),
@@ -6468,7 +6498,7 @@ export function renderOutliner(
            * lo que es: no lo escribió quien escribió el pedido.
            */
           {
-            label: 'Solicitar al agente de biblioteca',
+            label: librarianActor(callbacks.librarianName).requestLabel,
             icon: 'message-square',
             run: () => void askLibrarian(page, node.block, callbacks),
           },

@@ -16,6 +16,13 @@ import {
 } from './api.ts';
 import { configurationField, createConfigurationSurface } from './configuration-surface.ts';
 
+function announceLibrarianIdentity(librarian: { agent: string; name: string } | null): void {
+  if (librarian === null) return;
+  document.dispatchEvent(new CustomEvent('vera:librarian-identity', {
+    detail: { id: librarian.agent, name: librarian.name },
+  }));
+}
+
 const ROLE_LABELS: Record<ConstitutionRole, string> = {
   identity: 'Identidad', purpose: 'Propósito', practice: 'Práctica', memory: 'Memoria', governance: 'Gobierno',
 };
@@ -217,7 +224,9 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     explanation.textContent = 'Esta biblioteca precede al nombre inicial. Constituir el oficio crea el agente, su vínculo con la persona dueña, el harness y un manifiesto inicial editable.';
     const name = document.createElement('input'); name.value = 'Lucienne'; name.required = true;
     section.append(explanation, field('Nombre inicial', name), control('Constituir agente de biblioteca', async () => {
-      await api.constituteLibrarianRuntime(name.value); await refresh();
+      const next = await api.constituteLibrarianRuntime(name.value);
+      announceLibrarianIdentity(next.librarian);
+      await refresh();
     }, 'primary'));
     return section;
   }
@@ -231,7 +240,9 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   participantName.className = 'agent-name-input';
   participantName.required = true; participantName.minLength = 2; participantName.autocomplete = 'off';
   const saveName = control('Guardar nombre', async () => {
-    await api.renameParticipant(view.librarian!.agent, participantName.value.trim()); await refresh();
+    const renamed = await api.renameParticipant(view.librarian!.agent, participantName.value.trim());
+    announceLibrarianIdentity({ agent: renamed.participant.id, name: renamed.participant.name });
+    await refresh();
   }, 'primary');
   identityForm.onsubmit = (event) => { event.preventDefault(); saveName.click(); };
   identityForm.append(field('Nombre', participantName), saveName);
@@ -257,7 +268,9 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
       if (candidate === undefined) return;
       const accepted = confirm(`¿Designar a ${candidate.name} como agente de biblioteca en reemplazo de ${view.librarian!.name}? Las identidades y sus historias permanecerán separadas.`);
       if (!accepted) return;
-      await api.designateLibrarianRuntime(candidate.agent); await refresh();
+      const next = await api.designateLibrarianRuntime(candidate.agent);
+      announceLibrarianIdentity(next.librarian);
+      await refresh();
     }, 'primary');
     designationForm.onsubmit = (event) => { event.preventDefault(); designate.click(); };
     designationForm.append(field('Agente sucesor', successor), designate);
