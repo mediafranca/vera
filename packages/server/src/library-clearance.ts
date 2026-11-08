@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type { VeraGraph } from '@vera/core';
 import type { Store } from '@vera/store';
+import { humanPrincipal } from './agent-manifests.ts';
+import { canReadCollective, instanceProfile } from './instance-governance.ts';
 import { pageBelongsToSharedSpace, sharedSpaces } from './shared-spaces.ts';
 
 export type TerritoryMode = 'selected' | 'all';
@@ -124,7 +126,10 @@ export function updateTerritoryPolicy(store: Store, input: {
     permissions?: SurfacePermission[] }[];
 }): TerritoryPolicy {
   const library = instance(store);
-  if (input.administrator !== library.owner) throw new Error('sólo la persona dueña gobierna territorios');
+  const mayGovern = instanceProfile(store) === 'personal'
+    ? input.administrator === library.owner
+    : canReadCollective(store, input.administrator) && humanPrincipal(store, input.participant) === input.administrator;
+  if (!mayGovern) throw new Error('sólo su principal humano gobierna el territorio de este agente');
   const policy = ensureTerritoryPolicy(store, input.participant, input.administrator);
   const available = new Set(librarySurfaces(store, null).map((surface) => `${surface.kind}:${surface.id}`));
   const seen = new Set<string>();
@@ -197,14 +202,15 @@ export function librarySurfaces(store: Store, graph: VeraGraph | null): Territor
   }))];
 }
 
-export function territoryAdministration(store: Store, graph: VeraGraph): {
+export function territoryAdministration(store: Store, graph: VeraGraph, participants?: ReadonlySet<string>): {
   surfaces: TerritorySurface[];
   policies: TerritoryPolicy[];
 } {
-  const participants = store.db.prepare(`SELECT m.participant_id FROM memberships m
-    WHERE m.graph_id=? ORDER BY m.participant_id`).all(store.graphId) as { participant_id: string }[];
+  const members = (store.db.prepare(`SELECT m.participant_id FROM memberships m
+    WHERE m.graph_id=? ORDER BY m.participant_id`).all(store.graphId) as { participant_id: string }[])
+    .filter((one) => participants === undefined || participants.has(one.participant_id));
   const library = instance(store);
-  const policies = participants.map((one) => ensureTerritoryPolicy(
+  const policies = members.map((one) => ensureTerritoryPolicy(
     store, one.participant_id, library.owner,
     one.participant_id === library.owner ? { mode: 'all', includeGeneral: true } : undefined,
   ));

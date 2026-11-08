@@ -224,6 +224,7 @@ import {
   buildManifest,
   chooseConstitutionSources,
   establishAgentPrincipal,
+  humanPrincipal,
   reportRuntimeReceipt,
   type AgentRuntimeStatus,
   type ConstitutionRole,
@@ -2822,6 +2823,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     const conversationalHuman = publicAccess && publicSharedConversation
       ? scopedParticipant
       : who.participant;
+    const isCollectivePerson = (): boolean => profile === 'collective' && who.credential === null &&
+      canReadCollective(store, who.participant);
+    const canDeclareOwnAgent = (): boolean => profile === 'personal'
+      ? who.credential === null && who.participant === owner.id
+      : isCollectivePerson();
+    const canGovernAgent = (agent: string): boolean => profile === 'personal'
+      ? who.credential === null && who.participant === owner.id
+      : isCollectivePerson() && humanPrincipal(store, agent) === who.participant;
     let readablePageIdsCache: ReadonlySet<string> | null = null;
     const readablePageIds = (): ReadonlySet<string> => {
       readablePageIdsCache ??= publicAccess
@@ -3347,17 +3356,24 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'GET' && path === '/territories') {
-      if (who.participant !== owner.id) {
+      if (profile === 'personal' && who.participant !== owner.id) {
         send(response, 403, { error: 'sólo la persona dueña gobierna territorios' }); return;
       }
-      send(response, 200, territoryAdministration(store, graph));
+      if (profile === 'collective' && !isCollectivePerson()) {
+        send(response, 403, { error: 'se necesita una participación humana activa' }); return;
+      }
+      const ownAgents = profile === 'collective'
+        ? new Set(agentAdministration(store, graph, who.participant).map((one) => one.agent.id))
+        : undefined;
+      send(response, 200, territoryAdministration(store, graph, ownAgents));
       return;
     }
 
     const territoryMatch = /^\/territories\/([^/]+)$/.exec(path);
     if (request.method === 'PUT' && territoryMatch !== null) {
-      if (who.participant !== owner.id) {
-        send(response, 403, { error: 'sólo la persona dueña gobierna territorios' }); return;
+      const governed = decodeURIComponent(territoryMatch[1] ?? '');
+      if (!canGovernAgent(governed)) {
+        send(response, 403, { error: 'sólo su principal humano gobierna el territorio de este agente' }); return;
       }
       let body: Record<string, unknown>;
       try { body = await readSmallJson(); }
@@ -3383,8 +3399,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
       try {
         const policy = updateTerritoryPolicy(store, {
-          administrator: owner.id,
-          participant: decodeURIComponent(territoryMatch[1] ?? ''),
+          administrator: who.participant,
+          participant: governed,
           mode,
           includeGeneral: body['includeGeneral'] === true,
           rules,
@@ -5165,28 +5181,51 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'GET' && path === '/participants') {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
-      send(response, 200, { participants: participantSummaries(store) });
+      const administrator = ownerOnly() === null;
+      if (!administrator && !isCollectivePerson()) {
+        send(response, 403, { error: 'se necesita una participación humana activa' }); return;
+      }
+      send(response, 200, {
+        profile,
+        self: who.participant,
+        canAdministerPeople: administrator,
+        canDeclareAgents: canDeclareOwnAgent(),
+        participants: participantSummaries(store).map((participant) => ({
+          ...participant,
+          canManage: participant.kind === 'agent' ? canGovernAgent(participant.id) : administrator,
+        })),
+      });
       return;
     }
 
     if (request.method === 'POST' && path === '/participants') {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
       try {
         const body = await readSmallJson();
         const name = typeof body['name'] === 'string' ? body['name'] : '';
         const kind = body['kind'] === 'agent' ? 'agent' : 'human';
-        const participant = declareParticipant(store, who.participant, name, kind);
+        if (kind === 'human') {
+          const blocked = ownerOnly();
+          if (blocked !== null) { send(response, 403, blocked); return; }
+        } else if (!canDeclareOwnAgent()) {
+          send(response, 403, { error: 'sólo una persona activa puede declarar sus agentes' }); return;
+        }
+        const requestedPrincipal = typeof body['principal'] === 'string' ? body['principal'] : who.participant;
+        if (kind === 'agent' && profile === 'collective' && requestedPrincipal !== who.participant) {
+          send(response, 403, { error: 'cada persona declara únicamente sus propios agentes' }); return;
+        }
+        if (kind === 'agent' && profile === 'personal' && requestedPrincipal !== owner.id) {
+          send(response, 403, { error: 'en una Vera personal todos los agentes permanecen bajo la persona dueña' }); return;
+        }
+        const participant = declareParticipant(store, name, kind);
         if (kind === 'agent') {
-          const principal = typeof body['principal'] === 'string' ? body['principal'] : who.participant;
+          const principal = profile === 'collective' ? who.participant : owner.id;
           establishAgentPrincipal(store, participant.id, principal, who.participant);
         }
         graph.addParticipant({ id: participant.id, name: participant.name, kind: participant.kind });
         graph.admit(participant.id);
+        const summary = participantSummaries(store).find((one) => one.id === participant.id) ?? participant;
         send(response, 201, {
-          participant: participantSummaries(store).find((one) => one.id === participant.id) ?? participant,
+          participant: { ...summary, canManage: kind === 'agent' ? canGovernAgent(participant.id) : ownerOnly() === null },
         });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
@@ -5195,9 +5234,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'GET' && path === '/agent-administration') {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
-      send(response, 200, { agents: agentAdministration(store, graph) });
+      if (profile === 'personal') {
+        const blocked = ownerOnly();
+        if (blocked !== null) { send(response, 403, blocked); return; }
+      } else if (!isCollectivePerson()) {
+        send(response, 403, { error: 'se necesita una participación humana activa' }); return;
+      }
+      send(response, 200, { agents: agentAdministration(store, graph,
+        profile === 'collective' ? who.participant : undefined) });
       return;
     }
 
@@ -5262,16 +5306,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'PATCH' && /^\/participants\/[^/]+$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
       try {
         const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const kind = graph.participant(participantId)?.kind;
+        const blocked = kind === 'agent' ? (canGovernAgent(participantId) ? null : { error: 'sólo su principal humano gobierna este agente' }) : ownerOnly();
+        if (blocked !== null) { send(response, 403, blocked); return; }
         const body = await readSmallJson();
         if (typeof body['name'] !== 'string') throw new Error('el nuevo nombre es obligatorio');
         const participant = renameParticipant(store, who.participant, participantId, body['name']);
         graph.renameParticipant(participant.id, participant.name);
+        const summary = participantSummaries(store).find((one) => one.id === participant.id) ?? participant;
         send(response, 200, {
-          participant: participantSummaries(store).find((one) => one.id === participant.id) ?? participant,
+          participant: { ...summary, canManage: participant.kind === 'agent' ? canGovernAgent(participant.id) : ownerOnly() === null },
         });
       } catch (error) {
         send(response, 400, { error: error instanceof Error ? error.message : String(error) });
@@ -5280,14 +5326,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'POST' && /^\/participants\/[^/]+\/suspend$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
       try {
         const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const kind = graph.participant(participantId)?.kind;
+        const blocked = kind === 'agent' ? (canGovernAgent(participantId) ? null : { error: 'sólo su principal humano gobierna este agente' }) : ownerOnly();
+        if (blocked !== null) { send(response, 403, blocked); return; }
         const participant = suspendParticipant(store, who.participant, participantId);
         graph.suspend(participant.id);
+        const summary = participantSummaries(store).find((one) => one.id === participant.id) ?? participant;
         send(response, 200, {
-          participant: participantSummaries(store).find((one) => one.id === participant.id) ?? participant,
+          participant: { ...summary, canManage: participant.kind === 'agent' ? canGovernAgent(participant.id) : ownerOnly() === null },
         });
       } catch (error) {
         send(response, 409, { error: error instanceof Error ? error.message : String(error) });
@@ -5296,12 +5344,16 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'POST' && /^\/participants\/[^/]+\/reconcile$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
       try {
         const duplicate = decodeURIComponent(path.split('/')[2] ?? '');
         const body = await readSmallJson();
         const canonical = typeof body['canonical'] === 'string' ? body['canonical'] : '';
+        const kind = graph.participant(duplicate)?.kind;
+        const blocked = kind === 'agent'
+          ? (canGovernAgent(duplicate) && canGovernAgent(canonical)
+              ? null : { error: 'sólo el principal común reconcilia sus agentes' })
+          : ownerOnly();
+        if (blocked !== null) { send(response, 403, blocked); return; }
         const reason = typeof body['reason'] === 'string' ? body['reason'] : '';
         const source = canonicalParticipant(store, duplicate);
         reconcileParticipants(store, who.participant, source, canonical, reason);
@@ -5314,10 +5366,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'DELETE' && /^\/participants\/[^/]+$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) { send(response, 403, blocked); return; }
       try {
         const participantId = decodeURIComponent(path.split('/')[2] ?? '');
+        const kind = graph.participant(participantId)?.kind;
+        const blocked = kind === 'agent' ? (canGovernAgent(participantId) ? null : { error: 'sólo su principal humano gobierna este agente' }) : ownerOnly();
+        if (blocked !== null) { send(response, 403, blocked); return; }
         const canonical = canonicalParticipant(store, participantId);
         eraseEmptyParticipant(store, who.participant, canonical);
         graph.forgetParticipant(canonical);
@@ -5910,9 +5963,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'GET' && path === '/agents/credentials') {
-      const blocked = ownerOnly();
-      if (blocked !== null) {
-        send(response, 403, blocked);
+      const administrator = ownerOnly() === null;
+      if (!administrator && !isCollectivePerson()) {
+        send(response, 403, { error: 'se necesita una participación humana activa' });
         return;
       }
       /*
@@ -5926,7 +5979,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       send(
         response,
         200,
-        listCredentials(store).map((one) => ({
+        listCredentials(store).filter((one) => canGovernAgent(one.participant)).map((one) => ({
           ...one,
           confinement: fenced.get(one.id) ?? null,
         })),
@@ -5937,19 +5990,20 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     /*
      * Cercar una credencial, y quitarle el cerco.
      *
-     * Cosa del dueño, como emitirla: @invariant AFenceIsGrantedByAPerson. Y
-     * quitar el cerco es ampliar un permiso, no retirarlo —una credencial sin
-     * cerco escribe donde quiera—, así que pasa por la misma puerta.
+     * Cosa de la persona principal, como emitirla: @invariant
+     * AFenceIsGrantedByAPerson. Y quitar el cerco es ampliar un permiso, no
+     * retirarlo —una credencial sin cerco escribe donde quiera—, así que pasa
+     * por la misma puerta.
      */
     if (request.method === 'POST' && /^\/agents\/credentials\/[^/]+\/confinement$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) {
-        send(response, 403, blocked);
+      const token = decodeURIComponent(path.split('/')[3] ?? '');
+      const credential = credentialById(store, token);
+      if (credential === null) {
+        send(response, 404, { error: `no existe la credencial ${token}` });
         return;
       }
-      const token = decodeURIComponent(path.split('/')[3] ?? '');
-      if (!listCredentials(store).some((one) => one.id === token)) {
-        send(response, 404, { error: `no existe la credencial ${token}` });
+      if (!canGovernAgent(credential.participant)) {
+        send(response, 403, { error: 'sólo el principal humano gobierna esta credencial' });
         return;
       }
       const chunks: Buffer[] = [];
@@ -5969,25 +6023,26 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
-        const owner = graph.owner;
-        if (owner === null) {
-          send(response, 500, { error: 'this graph has no owner' });
-          return;
-        }
         const source =
           typeof body.source === 'string' && body.source.trim() !== '' ? body.source.trim() : null;
-        send(response, 200, grantConfinement(store, { token, kind, source, grantedBy: owner }));
+        send(response, 200, grantConfinement(store, {
+          token, kind, source, grantedBy: who.participant,
+        }));
       });
       return;
     }
 
     if (request.method === 'DELETE' && /^\/agents\/credentials\/[^/]+\/confinement$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) {
-        send(response, 403, blocked);
+      const token = decodeURIComponent(path.split('/')[3] ?? '');
+      const credential = credentialById(store, token);
+      if (credential === null) {
+        send(response, 404, { error: `no existe la credencial ${token}` });
         return;
       }
-      const token = decodeURIComponent(path.split('/')[3] ?? '');
+      if (!canGovernAgent(credential.participant)) {
+        send(response, 403, { error: 'sólo el principal humano gobierna esta credencial' });
+        return;
+      }
       send(response, withdrawConfinement(store, token) ? 200 : 404, {
         token,
         confined: false,
@@ -5996,11 +6051,6 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'POST' && path === '/agents/credentials') {
-      const blocked = ownerOnly();
-      if (blocked !== null) {
-        send(response, 403, blocked);
-        return;
-      }
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
@@ -6024,6 +6074,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           });
           return;
         }
+        if (!canGovernAgent(participant)) {
+          send(response, 403, { error: 'sólo el principal humano emite credenciales para este agente' });
+          return;
+        }
 
         const asked = Array.isArray(body.scopes) ? body.scopes : [];
         const scopes = asked.filter((s): s is Scope => SCOPES.includes(s as Scope));
@@ -6032,18 +6086,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
 
-        const owner = graph.owner;
-        if (owner === null) {
-          send(response, 500, { error: 'this graph has no owner' });
-          return;
-        }
-
         try {
           const issued = issueCredential(store, {
             participant,
             scopes,
             label: typeof body.label === 'string' && body.label !== '' ? body.label : participant,
-            issuedBy: owner,
+            issuedBy: who.participant,
             expiresAt: typeof body.expiresAt === 'number' ? body.expiresAt : null,
           });
           // La única vez que el secreto viaja. No se vuelve a poder leer.
@@ -6059,28 +6107,33 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'POST' && /^\/agents\/credentials\/[^/]+\/revoke$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) {
-        send(response, 403, blocked);
-        return;
-      }
       const id = decodeURIComponent(path.split('/')[3] ?? '');
-      const revoked = revokeCredential(store, id);
-      if (revoked === null) {
+      const credential = credentialById(store, id);
+      if (credential === null) {
         send(response, 404, { error: `no existe la credencial ${id}` });
         return;
       }
+      if (!canGovernAgent(credential.participant)) {
+        send(response, 403, { error: 'sólo el principal humano gobierna esta credencial' });
+        return;
+      }
+      const revoked = revokeCredential(store, id);
+      if (revoked === null) throw new Error(`la credencial ${id} desapareció durante la revocación`);
       send(response, 200, revoked);
       return;
     }
 
     if (request.method === 'PATCH' && /^\/agents\/credentials\/[^/]+$/.test(path)) {
-      const blocked = ownerOnly();
-      if (blocked !== null) {
-        send(response, 403, blocked);
+      const id = decodeURIComponent(path.split('/')[3] ?? '');
+      const credential = credentialById(store, id);
+      if (credential === null) {
+        send(response, 404, { error: `no existe la credencial ${id}` });
         return;
       }
-      const id = decodeURIComponent(path.split('/')[3] ?? '');
+      if (!canGovernAgent(credential.participant)) {
+        send(response, 403, { error: 'sólo el principal humano gobierna esta credencial' });
+        return;
+      }
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {

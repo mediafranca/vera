@@ -48,6 +48,14 @@ describe('gobierno de participantes', () => {
     assert.match(surface, /el QR aparece dentro de su propia sesión humana/);
   });
 
+  it('en una colectiva deja a cada persona constituir y gobernar sólo sus agentes', () => {
+    assert.match(surface, /cada persona constituye y gobierna únicamente sus propios agentes/);
+    assert.match(surface, /la persona dueña constituye y gobierna todos los agentes/);
+    assert.match(surface, /activeKind: ParticipantKind = canAdministerPeople \? 'human' : 'agent'/);
+    assert.match(surface, /one\.kind === 'agent' && one\.canManage/);
+    assert.match(surface, /declare\.hidden = activeKind === 'human' \? !canAdministerPeople : !canDeclareAgents/);
+  });
+
   it('integra los enlaces del directorio en la tipografía del sistema', () => {
     const directoryLinks = styles.match(/\.participant-administration-related a,[\s\S]*?\n\}/)?.[0] ?? '';
     assert.match(directoryLinks, /color: inherit/);

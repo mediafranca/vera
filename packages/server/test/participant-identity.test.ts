@@ -103,17 +103,22 @@ describe('identidad estable de participantes', () => {
     assert.ok(row.retainedBy.includes('historia de nombres'));
   });
 
-  it('presenta cada agente bajo la autoridad de su principal humano', async () => {
+  it('mantiene todos los agentes personales bajo la autoridad de la persona dueña', async () => {
     const human = await call('/participants', 'POST', { name: 'Profesora guía', kind: 'human' });
-    const agent = await call('/participants', 'POST', {
+    const refused = await call('/participants', 'POST', {
       name: 'Bibliotecario de tesis',
       kind: 'agent',
       principal: human.json['participant'].id,
     });
+    assert.equal(refused.status, 403, JSON.stringify(refused.json));
+    const agent = await call('/participants', 'POST', {
+      name: 'Bibliotecario de tesis',
+      kind: 'agent',
+    });
     assert.equal(agent.status, 201, JSON.stringify(agent.json));
     assert.deepEqual(agent.json['participant'].principal, {
-      id: human.json['participant'].id,
-      name: 'Profesora guía',
+      id: OWNER,
+      name: 'Herbert',
       status: 'active',
     });
   });

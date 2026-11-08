@@ -69,10 +69,23 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
   body.append(roleAdministration, status, directory);
 
   let people: ParticipantIdentityView[];
-  try { people = (await api.participants()).participants; }
+  let profile: 'personal' | 'collective';
+  let self: string;
+  let canAdministerPeople: boolean;
+  let canDeclareAgents: boolean;
+  try {
+    const view = await api.participants();
+    people = view.participants;
+    profile = view.profile;
+    self = view.self;
+    canAdministerPeople = view.canAdministerPeople;
+    canDeclareAgents = view.canDeclareAgents;
+  }
   catch (error) { status.textContent = error instanceof Error ? error.message : 'No se pudo leer el padrón.'; return; }
 
-  let activeKind: ParticipantKind = 'human';
+  if (!canAdministerPeople) roleAdministration.remove();
+
+  let activeKind: ParticipantKind = canAdministerPeople ? 'human' : 'agent';
   const facets = document.createElement('nav'); facets.className = 'participant-facets';
   facets.setAttribute('aria-label', 'Clases de participantes');
   const tools = document.createElement('section'); tools.className = 'participant-administration-tools';
@@ -123,16 +136,13 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
     const name = document.createElement('input');
     name.placeholder = activeKind === 'human' ? 'Nombre de la persona' : 'Nombre del agente';
     name.autocomplete = activeKind === 'human' ? 'name' : 'off';
-    const principal = document.createElement('select');
-    principal.setAttribute('aria-label', 'Principal humano del agente');
-    for (const human of people.filter((one) => one.kind === 'human' && one.status === 'active')) {
-      const option = document.createElement('option'); option.value = human.id; option.textContent = human.name; principal.append(option);
-    }
     const contents: HTMLElement[] = [name];
     if (activeKind === 'agent') {
       const explanation = document.createElement('p'); explanation.className = 'settings-note';
-      explanation.textContent = 'El agente actúa bajo la autoridad de una persona principal.';
-      contents.push(explanation, principal);
+      explanation.textContent = profile === 'collective'
+        ? 'En una Vera colectiva, cada persona constituye y gobierna únicamente sus propios agentes.'
+        : 'En una Vera personal, la persona dueña constituye y gobierna todos los agentes.';
+      contents.push(explanation);
     }
     participantDialog(
       activeKind === 'human' ? 'Declarar persona' : 'Declarar agente',
@@ -141,7 +151,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
       () => {
         const heldKind = activeKind;
         const heldName = name.value.trim();
-        const heldPrincipal = heldKind === 'agent' ? principal.value : undefined;
+        const heldPrincipal = heldKind === 'agent' ? self : undefined;
         const temporary = `local:${crypto.randomUUID()}`;
         const principalView = heldPrincipal === undefined ? null : people.find((one) => one.id === heldPrincipal) ?? null;
         commit(
@@ -149,6 +159,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
             id: temporary, name: heldName, kind: heldKind, status: 'active', canonical: temporary,
             aliases: [], roles: [], activity: 0, credentials: { active: 0, revoked: 0 },
             activeSessions: 0, authenticators: 0, permissions: 0, canErase: true, retainedBy: [],
+            canManage: true,
             principal: principalView === null ? null : {
               id: principalView.id, name: principalView.name, status: principalView.status,
             },
@@ -162,8 +173,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
           'rename',
         );
       },
-      () => name.value.trim() === '' ? 'La identidad necesita un nombre.'
-        : activeKind === 'agent' && principal.value === '' ? 'Un agente necesita un principal humano.' : null,
+      () => name.value.trim() === '' ? 'La identidad necesita un nombre.' : null,
     );
     name.focus();
   }
@@ -195,6 +205,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
   const draw = (): void => {
     list.replaceChildren();
     declare.textContent = activeKind === 'human' ? 'Declarar persona' : 'Declarar agente';
+    declare.hidden = activeKind === 'human' ? !canAdministerPeople : !canDeclareAgents;
     const term = search.value.trim().toLocaleLowerCase();
     const visible = people.filter((one) => one.kind === activeKind &&
       (term === '' || one.name.toLocaleLowerCase().includes(term) || one.id.toLocaleLowerCase().includes(term)));
@@ -239,10 +250,10 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
       }
 
       const actions = document.createElement('div'); actions.className = 'participant-directory-actions';
-      if (one.kind === 'agent') actions.append(action(one.id, 'configure', 'Constitución y territorio', () => {
+      if (one.kind === 'agent' && one.canManage) actions.append(action(one.id, 'configure', 'Constitución y territorio', () => {
         window.location.href = `/agentes?participante=${encodeURIComponent(one.id)}`;
       }));
-      actions.append(action(one.id, 'rename', 'Renombrar', () => {
+      if (one.canManage) actions.append(action(one.id, 'rename', 'Renombrar', () => {
         const name = document.createElement('input'); name.value = one.name;
         participantDialog(`Renombrar ${one.name}`, [name], 'Guardar nombre', () => {
           const next = name.value.trim();
@@ -258,8 +269,8 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
         name.select();
       }));
 
-      const candidates = people.filter((candidate) => candidate.id !== one.id && candidate.kind === one.kind);
-      if (candidates.length > 0) actions.append(action(one.id, 'merge', 'Fusionar…', () => {
+      const candidates = people.filter((candidate) => candidate.id !== one.id && candidate.kind === one.kind && candidate.canManage);
+      if (one.canManage && candidates.length > 0) actions.append(action(one.id, 'merge', 'Fusionar…', () => {
         const explanation = document.createElement('p'); explanation.textContent = 'La identidad elegida será la canónica. Esta fila quedará como alias histórico y la autoría conserva su procedencia.';
         const target = document.createElement('select');
         for (const candidate of candidates) {
@@ -281,7 +292,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
         }, () => reason.value.trim() === '' ? 'La fusión necesita una razón auditable.' : null);
       }));
 
-      if (one.status === 'active' && !one.roles.includes('root_custodian')) actions.append(action(one.id, 'suspend', 'Suspender', () => {
+      if (one.canManage && one.status === 'active' && !one.roles.includes('root_custodian')) actions.append(action(one.id, 'suspend', 'Suspender', () => {
         const warning = document.createElement('p'); warning.textContent = 'La suspensión revoca sus accesos activos y conserva su identidad e historia.';
         participantDialog(`Suspender ${one.name}`, [warning], 'Suspender accesos', () => {
           commit(
@@ -295,7 +306,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
         });
       }));
 
-      if (one.canErase) actions.append(action(one.id, 'erase', 'Eliminar identidad vacía', () => {
+      if (one.canManage && one.canErase) actions.append(action(one.id, 'erase', 'Eliminar identidad vacía', () => {
         const warning = document.createElement('p');
         warning.textContent = `Vera comprobó que esta identidad carece de autoría, operaciones, exposiciones, decisiones y reconciliaciones. La eliminación retira también ${one.credentials.active + one.credentials.revoked} credenciales, ${one.activeSessions} sesiones activas y ${one.permissions} permisos.`;
         participantDialog(`Eliminar ${one.name}`, [warning], 'Eliminar definitivamente', () => {
@@ -305,7 +316,7 @@ export async function renderParticipantAdministration(host: HTMLElement): Promis
           );
         });
       }, 'danger'));
-      else if (!one.roles.includes('root_custodian')) {
+      else if (one.canManage && !one.roles.includes('root_custodian')) {
         const retained = document.createElement('p'); retained.className = 'participant-directory-retained';
         retained.textContent = `Conserva ${one.retainedBy.join(', ') || 'historia'}.`;
         actions.append(retained);

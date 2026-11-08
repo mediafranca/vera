@@ -145,6 +145,83 @@ describe('autenticación de una instancia colectiva', () => {
     assert.equal(operation?.submission.submittedBy, editor.participant);
   });
 
+  it('cada persona constituye y gobierna sólo sus agentes', async () => {
+    const ownerCookie = sessionCookie(OWNER);
+    const reader = await inviteAndRedeem(ownerCookie, 'reader', 'Principal de agentes');
+
+    const directory = await call('/participants', 'GET', undefined, reader.cookie);
+    assert.equal(directory.status, 200, JSON.stringify(directory.json));
+    assert.equal(directory.json['profile'], 'collective');
+    assert.equal(directory.json['self'], reader.participant);
+    assert.equal(directory.json['canAdministerPeople'], false);
+    assert.equal(directory.json['canDeclareAgents'], true);
+
+    assert.equal((await call('/participants', 'POST', {
+      name: 'Persona indebida', kind: 'human',
+    }, reader.cookie)).status, 403);
+    assert.equal((await call('/participants', 'POST', {
+      name: 'Agente ajeno', kind: 'agent', principal: OWNER,
+    }, reader.cookie)).status, 403);
+
+    const own = await call('/participants', 'POST', {
+      name: 'Agente propio', kind: 'agent', principal: reader.participant,
+    }, reader.cookie);
+    assert.equal(own.status, 201, JSON.stringify(own.json));
+    const ownId = own.json['participant'].id as string;
+    assert.equal(own.json['participant'].canManage, true);
+    assert.equal(own.json['participant'].principal.id, reader.participant);
+
+    const ownerAgent = await call('/participants', 'POST', {
+      name: 'Agente de la custodia', kind: 'agent', principal: OWNER,
+    }, ownerCookie);
+    assert.equal(ownerAgent.status, 201, JSON.stringify(ownerAgent.json));
+    const ownerAgentId = ownerAgent.json['participant'].id as string;
+
+    const administration = await call('/agent-administration', 'GET', undefined, reader.cookie);
+    assert.equal(administration.status, 200, JSON.stringify(administration.json));
+    assert.deepEqual((administration.json['agents'] as any[]).map((one) => one.agent.id), [ownId]);
+    assert.equal((await call(`/participants/${encodeURIComponent(ownerAgentId)}`, 'PATCH', {
+      name: 'No lo gobierna',
+    }, reader.cookie)).status, 403);
+    assert.equal((await call(`/participants/${encodeURIComponent(ownId)}`, 'PATCH', {
+      name: 'Agente propio renombrado',
+    }, reader.cookie)).status, 200);
+
+    const source = await call('/operations', 'POST', {
+      originId: 'collective:agent-source',
+      change: { kind: 'create_page', title: 'Constitución compartida', visibility: 'private' },
+    }, ownerCookie);
+    assert.equal(source.status, 201, JSON.stringify(source.json));
+    const chosen = await call(`/agents/${encodeURIComponent(ownId)}/constitution`, 'PUT', {
+      sources: [{ page: source.json['subjectId'], role: 'identity' }],
+    }, reader.cookie);
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.json));
+    assert.equal((await call(`/agents/${encodeURIComponent(ownId)}/manifests`, 'POST', undefined,
+      reader.cookie)).status, 201);
+
+    const territories = await call('/territories', 'GET', undefined, reader.cookie);
+    assert.equal(territories.status, 200, JSON.stringify(territories.json));
+    assert.deepEqual((territories.json['policies'] as any[]).map((one) => one.participant), [ownId]);
+    assert.equal((await call(`/territories/${encodeURIComponent(ownId)}`, 'PUT', {
+      mode: 'selected', includeGeneral: true, rules: [],
+    }, reader.cookie)).status, 200);
+    assert.equal((await call(`/territories/${encodeURIComponent(ownerAgentId)}`, 'PUT', {
+      mode: 'selected', includeGeneral: true, rules: [],
+    }, reader.cookie)).status, 403);
+
+    const credential = await call('/agents/credentials', 'POST', {
+      participant: ownId, scopes: ['read'], label: 'Credencial propia',
+    }, reader.cookie);
+    assert.equal(credential.status, 201, JSON.stringify(credential.json));
+    assert.equal(credential.json['issuedBy'], reader.participant);
+    assert.equal((await call('/agents/credentials', 'POST', {
+      participant: ownerAgentId, scopes: ['read'], label: 'Credencial ajena',
+    }, reader.cookie)).status, 403);
+    const credentials = await call('/agents/credentials', 'GET', undefined, reader.cookie);
+    assert.equal(credentials.status, 200, JSON.stringify(credentials.json));
+    assert.deepEqual((credentials.json as any[]).map((one) => one.participant), [ownId]);
+  });
+
   it('revocar la sesión corta el acceso futuro', async () => {
     const ownerCookie = sessionCookie(OWNER);
     const editor = await inviteAndRedeem(ownerCookie, 'editor', 'Editora revocable');
