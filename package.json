@@ -1,6 +1,6 @@
 {
   "name": "vera",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "type": "module",
   "description": "Biblioteca soberana: corpus versionado, editable, replicable y auditable",
@@ -28,6 +28,7 @@
     "build": "npm run build --workspace @vera/web",
     "build:desktop": "npm run build && node scripts/build-desktop.mjs",
     "build:desktop:legacy": "VERA_DESKTOP_NODE_TARGET=node20 VERA_LEGACY_SQLITE=1 npm run build:desktop && node scripts/stage-macos-legacy.mjs",
+    "verify:desktop-package": "node scripts/verify-desktop-package.mjs",
     "pack:windows": "npm run build:desktop && electron-builder --win nsis portable --x64",
     "pack:mac": "npm run build:desktop && electron-builder --mac dmg zip --universal",
     "pack:mac:legacy": "npm run build:desktop:legacy && npm install --prefix dist/legacy-macos --omit=dev --package-lock=false && electron-builder --projectDir dist/legacy-macos --mac dmg --x64 -c.electronVersion=32.3.3",
@@ -47,6 +48,7 @@
     "voice:setup": "bash scripts/setup-local-voice.sh"
   },
   "devDependencies": {
+    "@electron/asar": "4.1.1",
     "@types/node": "^24.0.0",
     "electron": "^44.1.1",
     "electron-builder": "27.0.0-alpha.3",
@@ -57,7 +59,11 @@
   "build": {
     "appId": "net.mediafranca.vera",
     "productName": "Vera",
-    "asar": true,
+    "asar": {
+      "unpack": [
+        "node_modules/@napi-rs/canvas*/**/*"
+      ]
+    },
     "directories": {
       "output": "release"
     },
@@ -135,6 +141,7 @@
     }
   },
   "dependencies": {
+    "@napi-rs/canvas": "0.1.80",
     "electron-updater": "^6.8.9"
   }
 }

@@ -88,6 +88,9 @@ jobs:
         shell: pwsh
         run: npm run pack:windows -- --publish never
 
+      - name: Verificar cierre de dependencias nativas
+        run: npm run verify:desktop-package
+
       - name: Marcar y limpiar artefactos sin firmar
         if: steps.sign-check.outputs.signed == 'false'
         shell: pwsh
@@ -168,6 +171,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run pack:mac -- --publish never -c.mac.notarize=false
 
+      - name: Verificar cierre de dependencias nativas
+        run: npm run verify:desktop-package
+
       - name: Marcar y limpiar artefactos sin firmar
         if: steps.sign-check.outputs.signed == 'false'
         run: |
@@ -212,6 +218,9 @@ jobs:
 
       - name: Construir AppImage, paquete deb y manifiesto
         run: npm run pack:linux -- --publish never
+
+      - name: Verificar cierre de dependencias nativas
+        run: npm run verify:desktop-package
 
       - name: Checksums
         run: |

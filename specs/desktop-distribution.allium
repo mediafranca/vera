@@ -32,6 +32,11 @@ contract DesktopUpdateSafety {
         -- La versión nueva debe arrancar y demostrar después del reinicio que
         -- la memoria abre y que las capacidades configuradas siguen listas.
 
+    @invariant DistributedRuntimeIsClosed
+        -- Cada paquete contiene las dependencias de ejecución y binarios nativos
+        -- de su plataforma. Una capacidad secundaria como importar PDF se carga
+        -- cuando se usa y nunca puede impedir abrir una biblioteca existente.
+
     @invariant FailedReplacementKeepsLastWorkingProgramRecoverable
         -- Si la prueba posterior al reinicio falla, la última versión operativa
         -- sigue disponible para recuperar el servicio sin tocar la memoria ni

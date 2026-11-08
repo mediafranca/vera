@@ -339,7 +339,18 @@ async function enableAutomaticUpdates(): Promise<void> {
     releaseChannel: process.env['VERA_LEGACY_DESKTOP'] === '1' ? 'legacy' : 'stable',
   })) return;
 
-  const { autoUpdater } = await import('electron-updater');
+  /*
+   * electron-updater es CommonJS. En el paquete ESM, Node puede exponerlo como
+   * exportación nombrada o debajo de `default` según la plataforma y la versión
+   * del cargador. Tratar una forma como universal dejó `autoUpdater` indefinido
+   * en macOS y convirtió una capacidad secundaria en otro bloqueo de arranque.
+   */
+  const updaterModule = await import('electron-updater');
+  const autoUpdater = updaterModule.autoUpdater ?? updaterModule.default?.autoUpdater;
+  if (autoUpdater === undefined) {
+    console.warn('La actualización automática no está disponible en este paquete.');
+    return;
+  }
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
