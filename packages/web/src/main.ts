@@ -97,7 +97,7 @@ import {
   type GraphViewMode,
   type WorkspaceLayout,
 } from './tokens.ts';
-import type { GraphLens } from './graph/types.ts';
+import { graphBalance, graphBalanceLabel } from './graph/balance.ts';
 import { repaintMermaid } from './mermaid.ts';
 import {
   clearTrace,
@@ -148,8 +148,8 @@ interface Workspace {
   graphJournals: boolean;
   /** Si la cámara de la vista 3D orbita lentamente por sí sola. */
   graphAutoRotate: boolean;
-  /** Si los conceptos compartidos participan en la geometría espacial. */
-  graphLens: GraphLens;
+  /** Mezcla visible entre fuerza de enlaces y gravedad conceptual. */
+  graphBalance: number;
 }
 
 const workspace: Workspace = {
@@ -164,7 +164,7 @@ const workspace: Workspace = {
   depth: session.reach(),
   graphJournals: session.graphJournals(),
   graphAutoRotate: session.graphAutoRotate(),
-  graphLens: session.graphLens(),
+  graphBalance: session.graphBalance(),
 };
 
 /**
@@ -543,9 +543,9 @@ function applyLayout(): void {
   $('#map-auto-rotate-field').hidden = workspace.graphView !== 'graph_3d';
   $('#map-lens-field').hidden = workspace.graphView === 'graph_d4';
   $('#map-reorganize').hidden = workspace.graphView === 'graph_d4';
-  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-graph-lens]')) {
-    button.setAttribute('aria-pressed', String(button.dataset['graphLens'] === workspace.graphLens));
-  }
+  const lens = $<HTMLInputElement>('#map-lens');
+  lens.value = String(workspace.graphBalance);
+  $<HTMLOutputElement>('#map-lens-value').value = graphBalanceLabel(workspace.graphBalance);
 
   if (effective !== 'text_only') drawGraph();
   else cleanupGraph3D();
@@ -2857,7 +2857,7 @@ async function drawGraph(reach = 1): Promise<void> {
     showEdges: true,
     showTitles: true,
     autoRotate: workspace.graphAutoRotate,
-    graphLens: workspace.graphLens,
+    graphBalance: workspace.graphBalance,
     openExternalResource: (url: string) => {
       const destination = externalDestination(url);
       if (destination !== null) openExternalLink(destination);
@@ -3771,23 +3771,26 @@ function wireTheme(): void {
   });
   showJournals();
 
-  /* Las tres geometrías son lugares recordados, no un interruptor que sacude el
-   * mismo dibujo. Reorganizar es la única acción que descarta un lugar.
+  /* La lente es una mezcla continua. Mientras se arrastra sólo se leen los
+   * multiplicadores; al soltar se recalcula el mismo vecindario desde su lugar
+   * actual. Reorganizar es la única acción que descarta ese lugar.
    * @guarantee ConceptualGravityCanStepAside. */
-  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-graph-lens]')) {
-    button.addEventListener('click', () => {
-      const lens = button.dataset['graphLens'] as GraphLens;
-      if (lens === workspace.graphLens) return;
-      workspace.graphLens = lens;
-      session.setGraphLens(lens);
-      applyLayout();
-    });
-  }
+  const lens = $<HTMLInputElement>('#map-lens');
+  const lensValue = $<HTMLOutputElement>('#map-lens-value');
+  lens.addEventListener('input', () => {
+    lensValue.value = graphBalanceLabel(Number(lens.value));
+  });
+  lens.addEventListener('change', () => {
+    workspace.graphBalance = graphBalance(Number(lens.value)).value;
+    session.setGraphBalance(workspace.graphBalance);
+    applyLayout();
+  });
   const reorganize = $<HTMLButtonElement>('#map-reorganize');
   reorganize.innerHTML = icon('refresh-cw');
   reorganize.addEventListener('click', () => {
-    forgetPositions(workspace.graphLens);
-    forgetCamera(workspace.graphLens);
+    const activeLens = graphBalance(workspace.graphBalance).lens;
+    forgetPositions(activeLens);
+    forgetCamera(activeLens);
     void refreshGraph();
   });
 

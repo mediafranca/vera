@@ -29,6 +29,7 @@ import type { EmbeddedMap3DCamera } from "@vera/core";
 import { forceCenter, forceLink, forceManyBody, forceSimulation } from "d3-force-3d";
 import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
+import { graphBalance } from './balance.ts';
 import type { GraphData, GraphLens, GraphNode, GraphResource } from "./types.ts";
 import { resourceOrbit, type RenderSettings } from "./render.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
@@ -270,7 +271,8 @@ export function renderGraph3D(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {},
 ): void {
-  const graphLens = settings.graphLens ?? 'hybrid';
+  const balance = graphBalance(settings.graphBalance ?? 50);
+  const graphLens = balance.lens;
   const positions = positionsFor(graphLens);
   cleanupGraph3D();
   container.innerHTML = "";
@@ -626,7 +628,7 @@ export function renderGraph3D(
     group.setAttribute('aria-label', `Enlace externo: ${resource.domain}`);
     group.style.cursor = 'pointer';
     const circle = document.createElementNS(SVG_NS, 'circle');
-    circle.setAttribute('r', '4.5');
+    circle.setAttribute('r', '6');
     circle.setAttribute('fill', 'var(--bg)');
     circle.setAttribute('stroke', colors.accent);
     circle.setAttribute('stroke-width', '1.4');
@@ -1064,7 +1066,7 @@ export function renderGraph3D(
       };
       const from = project(focusPoint, orbit, lens);
       resources.forEach((drawnResource, index) => {
-        const offset = resourceOrbit(index);
+        const offset = resourceOrbit(index, resources.length);
         const to = project({
           x: focusPoint.x + offset.x,
           y: focusPoint.y + offset.y,
@@ -1178,13 +1180,14 @@ export function renderGraph3D(
   const LINK_DISTANCE = settings.linkDistance ?? 60;
   const sim = forceSimulation(nodes, 3)
     .force("charge", forceManyBody().strength(settings.chargeStrength ?? -260));
-  if (graphLens !== 'concepts') {
+  if (balance.links > 0) {
     sim.force("link", forceLink(links)
       .id((d: { id: string }) => d.id)
-      .distance(LINK_DISTANCE));
+      .distance(LINK_DISTANCE)
+      .strength(balance.links));
   }
-  if (graphLens !== 'links') {
-    sim.force("concepts", conceptGravity(3, graphLens === 'concepts' ? 2.8 : 1) as never);
+  if (balance.concepts > 0) {
+    sim.force("concepts", conceptGravity(3, balance.concepts) as never);
   }
 
   /*

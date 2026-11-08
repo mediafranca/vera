@@ -2005,16 +2005,17 @@ surface VeraWorkspace {
         -- as pages, cannot be opened and are never retained as corpus objects.
 
     @guarantee ConceptualGravityCanStepAside
-        -- The spatial-map controls offer three remembered lenses: Enlaces uses
-        -- explicit relationships, Conceptos uses declared conceptual centres,
-        -- and Híbrida lets relationships dominate while concepts exert a
-        -- secondary attraction. Híbrida is the initial lens.
+        -- The spatial-map controls offer one remembered continuous slider from
+        -- Enlaces through Híbrida to Conceptos. Its visible readout states the
+        -- two effective force multipliers so calibration is inspectable rather
+        -- than hidden in code; the centre begins with both forces at 2.0× and
+        -- either extreme reaches 4.0× while switching the other force off.
 
-        -- Each lens preserves its own positions. Switching lenses revisits its
-        -- remembered place rather than repeatedly rearranging the map; an
-        -- explicit Reorganizar action discards the current lens's positions and
-        -- computes them again. The controls are absent in D4, whose geometry is
-        -- an argument and never uses conceptual gravity.
+        -- Releasing the slider recalculates the same neighbourhood from its
+        -- current positions. An explicit Reorganizar action discards positions
+        -- for the active link, hybrid or concept regime and computes them again.
+        -- The controls are absent in D4, whose geometry is an argument and never
+        -- uses conceptual gravity.
 
     @guarantee ExternalResourcesOrbitTheFocusedPage
         -- In 2D and 3D, safe HTTP or HTTPS destinations cited by the focused

@@ -6,6 +6,7 @@ import { icon } from "../icons.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
+import { graphBalance } from './balance.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -50,8 +51,8 @@ export interface RenderSettings {
   autoRotate?: boolean;
   /** Conserva hacia dónde se mira cuando una entrega progresiva amplía el mapa. */
   preserveDirection?: boolean;
-  /** Qué relaciones gobiernan la geometría espacial. */
-  graphLens?: GraphLens;
+  /** Posición del deslizador entre enlaces (0) y conceptos (100). */
+  graphBalance?: number;
   /** Abre el diálogo seguro de un satélite externo. */
   openExternalResource?: (url: string) => void;
   /** Cámara declarada por una incrustación; si falta, el mapa se encuadra solo. */
@@ -83,12 +84,12 @@ const MAX_LABEL_CHARS = 24;
 const COLLISION_PAD = 6;
 
 /** Sitio estable de un recurso alrededor de la página en foco. */
-export function resourceOrbit(index: number): { x: number; y: number; z: number } {
-  const ring = Math.floor(index / 12);
-  const within = index % 12;
-  const count = 12;
+export function resourceOrbit(index: number, total = 12): { x: number; y: number; z: number } {
+  const count = Math.max(1, Math.min(12, total));
+  const ring = Math.floor(index / count);
+  const within = index % count;
   const angle = (within / count) * Math.PI * 2 + ring * 0.31;
-  const radius = 38 + ring * 22;
+  const radius = 82 + ring * 28;
   return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: (within % 3 - 1) * 8 };
 }
 
@@ -281,7 +282,8 @@ export function renderGraph(
   onClickPage: (pageName: string) => void,
   settings: RenderSettings = {}
 ) {
-  const graphLens = settings.graphLens ?? 'hybrid';
+  const balance = graphBalance(settings.graphBalance ?? 50);
+  const graphLens = balance.lens;
   const positions = positionsFor(graphLens);
   // Clean up previous listeners
   for (const { event, fn } of active2dListeners) {
@@ -399,7 +401,7 @@ export function renderGraph(
     .attr('aria-label', (resource) => `Enlace externo: ${resource.domain}`)
     .attr('cursor', 'pointer');
   resourceNodes.append('circle')
-    .attr('r', 4.5)
+    .attr('r', 6)
     .attr('fill', 'var(--bg)')
     .attr('stroke', colors.hoverAccent)
     .attr('stroke-width', 1.4);
@@ -799,10 +801,10 @@ export function renderGraph(
     resourceLinks
       .attr('x1', focusX)
       .attr('y1', focusY)
-      .attr('x2', (_resource, index) => focusX + resourceOrbit(index).x)
-      .attr('y2', (_resource, index) => focusY + resourceOrbit(index).y);
+      .attr('x2', (_resource, index) => focusX + resourceOrbit(index, resources.length).x)
+      .attr('y2', (_resource, index) => focusY + resourceOrbit(index, resources.length).y);
     resourceNodes.attr('transform', (_resource, index) => {
-      const offset = resourceOrbit(index);
+      const offset = resourceOrbit(index, resources.length);
       return `translate(${focusX + offset.x},${focusY + offset.y})`;
     });
 
@@ -855,13 +857,14 @@ export function renderGraph(
     .force("charge", d3.forceManyBody().strength(charge))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collide", collisionForce as any);
-  if (graphLens !== 'concepts') {
+  if (balance.links > 0) {
     sim.force("link", d3.forceLink<GraphNode, any>(data.links)
       .id((d) => d.id)
-      .distance(linkDist));
+      .distance(linkDist)
+      .strength(balance.links));
   }
-  if (graphLens !== 'links') {
-    sim.force("concepts", conceptGravity(2, graphLens === 'concepts' ? 2.8 : 1) as any);
+  if (balance.concepts > 0) {
+    sim.force("concepts", conceptGravity(2, balance.concepts) as any);
   }
 
   /*

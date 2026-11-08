@@ -122,16 +122,16 @@ describe('superficies especiales', () => {
     assert.match(graph3d, /setAutoRotation\(false\)/);
   });
 
-  it('ofrece tres lentes espaciales y reorganiza sólo por petición', () => {
-    assert.match(html, /data-graph-lens="links"[^>]*>Enlaces/);
-    assert.match(html, /data-graph-lens="concepts"[^>]*>Conceptos/);
-    assert.match(html, /data-graph-lens="hybrid"[^>]*>Híbrida/);
+  it('ofrece una lente continua con calibración visible y reorganiza sólo por petición', () => {
+    assert.match(html, /id="map-lens" type="range" min="0" max="100" step="5"/);
+    assert.match(html, /Enlaces<\/span><span>Híbrida<\/span><span>Conceptos/);
+    assert.match(html, /id="map-lens-value"/);
     assert.match(html, /id="map-reorganize"/);
     assert.match(main, /map-lens-field'\)\.hidden = workspace\.graphView === 'graph_d4'/);
-    assert.match(main, /graphLens: workspace\.graphLens/);
-    assert.match(main, /session\.setGraphLens\(lens\)/);
-    assert.match(main, /forgetPositions\(workspace\.graphLens\)/);
-    assert.match(main, /forgetCamera\(workspace\.graphLens\)/);
+    assert.match(main, /graphBalance: workspace\.graphBalance/);
+    assert.match(main, /session\.setGraphBalance\(workspace\.graphBalance\)/);
+    assert.match(main, /forgetPositions\(activeLens\)/);
+    assert.match(main, /forgetCamera\(activeLens\)/);
   });
 
   it('entrega el mapa por alcances crecientes sin retirar el que ya llegó', () => {

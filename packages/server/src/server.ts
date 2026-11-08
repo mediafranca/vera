@@ -124,6 +124,7 @@ import {
   librarianRequestsFor,
   markLibrarianDispatched,
   pendingLibrarianDispatches,
+  recoverStaleLibrarianRequests,
   removeLibrarianRequest,
   type LibrarianRequest,
 } from './librarian.ts';
@@ -1017,6 +1018,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
   };
   const retryLibrarianDispatches = setInterval(() => {
+    recoverStaleLibrarianRequests(store);
     void dispatchNextLibrarianRequest();
   }, 30_000);
   retryLibrarianDispatches.unref();
@@ -1748,7 +1750,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     void executeLibrarianRoutine();
   }, 60_000);
   librarianRoutineTimer.unref();
+  recoverStaleLibrarianRequests(store);
   refreshEmbeddedRuntime();
+  // El puente externo también funciona sin runtime embebido configurado.
+  // Tras recuperar un arriendo no debe esperar treinta segundos para despertar.
+  void dispatchNextLibrarianRequest();
 
   const webRoot = options.webRoot === undefined ? null : resolve(options.webRoot);
   const objectsRoot = options.objectsRoot === undefined ? null : resolve(options.objectsRoot);

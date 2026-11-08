@@ -374,6 +374,30 @@ export function pendingLibrarianDispatches(store: Store, now = Date.now()): stri
   return [oldest.id];
 }
 
+/**
+ * Devuelve a la cola un turno cuyo worker desapareció sin responder.
+ *
+ * Un progreso reciente renueva el arriendo: una tarea larga sigue viva; una
+ * tarea silenciosa durante quince minutos deja de bloquear toda la cola.
+ */
+export function recoverStaleLibrarianRequests(
+  store: Store,
+  now = Date.now(),
+  leaseMs = 15 * 60_000,
+): number {
+  const recovered = store.db.prepare(`UPDATE agent_requests
+    SET status='queued', dispatch_status='pending', dispatch_attempts=0,
+      started_at=NULL, last_dispatch_at=NULL,
+      failure_reason='la ejecución anterior perdió su arriendo; Vera recuperó la solicitud'
+    WHERE graph_id=? AND status='working'
+      AND COALESCE(
+        (SELECT MAX(created_at) FROM agent_request_events WHERE request_id=agent_requests.id),
+        started_at,
+        created_at
+      ) < ?`).run(store.graphId, now - leaseMs);
+  return Number(recovered.changes);
+}
+
 export function claimLibrarianRequest(store: Store, id: string): LibrarianRequest | undefined {
   store.db.prepare(`UPDATE agent_requests SET status='working', started_at=?, failure_reason=NULL
     WHERE graph_id=? AND id=? AND status='queued'
