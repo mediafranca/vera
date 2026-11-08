@@ -40,6 +40,11 @@ contract InstanceProfileChoice {
     @invariant InvitingPeopleDoesNotChangeTheProfile
         -- A personal instance may have several writers through shared spaces and
         -- remains personal until an explicit governed migration is completed.
+
+    @invariant PersonalAgentsRemainUnderTheOwner
+        -- In a personal Vera, inviting another person or giving access to a
+        -- shared space never lets that person constitute agents in the instance.
+        -- Agent government remains with the sovereign owner.
 }
 
 contract CollectiveAuthority {
@@ -67,6 +72,13 @@ contract CollectiveAuthority {
         -- placed under its declared government. Becoming a student, employee,
         -- patient or collaborator never gives the collective custody of that
         -- person's whole identity, personal Vera or unrelated history.
+
+    @invariant EachCollectivePersonGovernsOnlyTheirAgents
+        -- Every active human participant may constitute agents in a collective
+        -- Vera. The principal recorded at birth is that same person, and only
+        -- that principal may rename, constitute, delimit, credential, suspend,
+        -- reconcile or remove the agent. Administrative office never silently
+        -- transfers this personal authority to another participant.
 }
 
 contract ProfileAuthenticationBoundary {

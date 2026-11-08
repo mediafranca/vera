@@ -281,9 +281,12 @@ function runtimeReceipts(store: Store, agent: string): AgentRuntimeReceipt[] {
   }));
 }
 
-export function agentAdministration(store: Store, graph: VeraGraph): AgentAdministrationRow[] {
-  const agents = store.db.prepare("SELECT id,name,status FROM participants WHERE kind='agent' ORDER BY lower(name),id")
-    .all() as Array<{ id: string; name: string; status: string }>;
+export function agentAdministration(store: Store, graph: VeraGraph, principal?: string): AgentAdministrationRow[] {
+  const agents = (principal === undefined
+    ? store.db.prepare("SELECT id,name,status FROM participants WHERE kind='agent' ORDER BY lower(name),id").all()
+    : store.db.prepare(`SELECT p.id,p.name,p.status FROM participants p JOIN agent_principals a ON a.agent_id=p.id
+        WHERE p.kind='agent' AND a.human_id=? AND a.status='active' ORDER BY lower(p.name),p.id`).all(principal)
+  ) as Array<{ id: string; name: string; status: string }>;
   return agents.map((agent) => {
     const principalId = humanPrincipal(store, agent.id);
     const human = principalId === null ? null : participant(store, principalId) ?? null;

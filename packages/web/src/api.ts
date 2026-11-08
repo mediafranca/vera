@@ -666,6 +666,15 @@ export interface ParticipantIdentityView {
   canErase: boolean;
   retainedBy: string[];
   principal: { id: string; name: string; status: 'active' | 'suspended' } | null;
+  canManage: boolean;
+}
+
+export interface ParticipantDirectoryView {
+  profile: 'personal' | 'collective';
+  self: string;
+  canAdministerPeople: boolean;
+  canDeclareAgents: boolean;
+  participants: ParticipantIdentityView[];
 }
 
 export type ConstitutionRole = 'identity' | 'purpose' | 'practice' | 'memory' | 'governance';
@@ -1638,7 +1647,7 @@ export const api = {
   participantProfile: (participant: string) =>
     json<ParticipantProfileView>(`/participants/${encodeURIComponent(participant)}`),
 
-  participants: () => json<{ participants: ParticipantIdentityView[] }>('/participants'),
+  participants: () => json<ParticipantDirectoryView>('/participants'),
 
   declareParticipant: (name: string, kind: 'human' | 'agent', principal?: string) =>
     json<{ participant: ParticipantIdentityView }>('/participants', {

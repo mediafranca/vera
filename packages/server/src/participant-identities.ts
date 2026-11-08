@@ -93,13 +93,9 @@ const retainedLabel = (table: string): string => ({
   participant_name_history: 'historia de nombres',
 }[table] ?? table.replaceAll('_', ' '));
 
-export function declareParticipant(store: Store, declaredBy: string, name: string,
-  kind: ParticipantKind): ParticipantIdentity {
+export function declareParticipant(store: Store, name: string, kind: ParticipantKind): ParticipantIdentity {
   const clean = name.trim();
   if (clean === '') throw new Error('la identidad necesita un nombre');
-  const authority = store.db.prepare(`SELECT 1 FROM instances WHERE graph_id=? AND owner_id=?`)
-    .get(store.graphId, declaredBy);
-  if (authority === undefined) throw new Error('sólo el dueño puede declarar participantes');
   const id = identifier(kind === 'human' ? 'participant:person' : 'participant:agent');
   store.db.exec('BEGIN');
   try {
