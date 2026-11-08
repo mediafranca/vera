@@ -165,6 +165,8 @@ describe('runtime embebido de la bibliotecaria', () => {
       const renamedRuntime = await call('/librarian/runtime');
       assert.equal((renamedRuntime.json['librarian'] as Record<string, string>).name, 'Aster');
       assert.equal((renamedRuntime.json['librarian'] as Record<string, string>).agent, librarianAgent);
+      const renamedHealth = await call('/health');
+      assert.deepEqual(renamedHealth.json['librarian'], { id: librarianAgent, name: 'Aster' });
       const renamedConversation = await call('/librarian/conversation');
       assert.equal((renamedConversation.json['agent'] as Record<string, string>).name, 'Aster');
 

@@ -2981,6 +2981,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     // Cotito permanece sólo como compatibilidad para instalaciones anteriores,
     // nunca como identidad prestada a Lucienne.
     const librarianAgent = (activeOwnerLibrarian(store)?.agent ?? 'participant:cotito') as ParticipantId;
+    const effectiveLibrarianName = graph.participant(librarianAgent)?.name;
+    const librarianSubject = effectiveLibrarianName ?? 'El agente de biblioteca';
+    const librarianObject = effectiveLibrarianName ?? 'el agente de biblioteca';
     if (activeOwnerLibrarian(store) === null && graph.participant(librarianAgent) !== undefined) {
       // Compatibilidad de la transición: el antiguo puente de Cotito atendía
       // toda la biblioteca antes de que existieran territorios. No se le reduce
@@ -3434,7 +3437,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     if (request.method === 'GET' && path === '/librarian/conversation') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
-        send(response, 403, { error: 'sólo una persona puede leer su conversación con el agente de biblioteca' });
+        send(response, 403, { error: `sólo una persona puede leer su conversación con ${librarianObject}` });
         return;
       }
       const requestedConversation = url.searchParams.get('id');
@@ -3475,7 +3478,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     if (request.method === 'POST' && path === '/librarian/requests') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
-        send(response, 403, { error: 'sólo una persona puede solicitar al agente de biblioteca' });
+        send(response, 403, { error: `sólo una persona puede solicitar a ${librarianObject}` });
         return;
       }
       let body: Record<string, unknown>;
@@ -3502,7 +3505,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 409, { error: 'no hay un umbral formativo que franquear' }); return;
       }
       if (activeGate?.status === 'responding') {
-        send(response, 409, { error: 'el agente de biblioteca ya está respondiendo al umbral formativo' }); return;
+        send(response, 409, { error: `${librarianSubject} ya está respondiendo al umbral formativo` }); return;
       }
       if (recordingId !== null && recordingById(store, recordingId) === null) {
         send(response, 404, { error: 'la grabación no existe' }); return;
@@ -3520,7 +3523,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (readerRefusal !== null) { send(response, 403, { error: readerRefusal }); return; }
         const librarianClearance = clearanceForPage(store, graph, librarianAgent, page.id, 'read');
         if (librarianClearance.outcome === 'refused') {
-          send(response, 409, { error: `el agente de biblioteca no puede leer este contexto: ${librarianClearance.explanation}` });
+          send(response, 409, { error: `${librarianSubject} no puede leer este contexto: ${librarianClearance.explanation}` });
           return;
         }
       }
@@ -3687,7 +3690,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const source = current.sourceBlockId === null ? undefined : graph.block(current.sourceBlockId);
           if (source === undefined || focus?.id !== source.stableId || focus.content !== source.content) {
             send(response, 409, {
-              error: 'el bloque cambió después del pedido; el agente de biblioteca no puede reemplazar una versión antigua',
+              error: `el bloque cambió después del pedido; ${librarianSubject} no puede reemplazar una versión antigua`,
             });
             return;
           }
@@ -8857,6 +8860,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
       if (path === '/health') {
         const visiblePages = graph.pages().filter((page) => isReadablePage(page.id));
+        const canAskResident = publicAccess
+          ? publicScopedSpace !== null && scopedParticipant !== null && scopedGrant !== undefined
+          : true;
+        const librarianParticipant = canAskResident ? graph.participant(librarianAgent) : undefined;
           const siteEntry = pageShare?.page ?? (publicScopedSpace === null
             ? (publicSite()?.entryPoint ?? null)
             : (publicScopedSpace.entryPoint !== null && isPublicPage(publicScopedSpace.entryPoint)
@@ -8866,12 +8873,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         send(response, 200, {
           graph: graph.name,
           libraryName: instanceLibraryName(store),
+          librarian: librarianParticipant === undefined
+            ? null
+            : { id: librarianParticipant.id, name: librarianParticipant.name },
           access: publicAccess ? 'anybody' : (who.participant === owner.id ? 'owner' : 'participant'),
           canEdit: publicAccess ? canEditScopedSpace : true,
           canContribute: publicAccess ? canContributeScopedSpace : false,
-          canAskLibrarian: publicAccess
-            ? publicScopedSpace !== null && scopedParticipant !== null && scopedGrant !== undefined
-            : true,
+          canAskLibrarian: canAskResident,
           canViewOwner: !publicOrigin,
           sharedSpace: publicAccess && publicScopedSpace !== null
             ? { slug: publicScopedSpace.slug, name: publicScopedSpace.name }

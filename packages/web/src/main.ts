@@ -360,6 +360,12 @@ function useCorpus(health: CorpusHealth): void {
   }
   $('#insert-voice').hidden = isAnybody();
   $('#sync-state').hidden = isAnybody();
+  const librarianButton = $<HTMLButtonElement>('#librarian');
+  const librarianLabel = health.librarian === null || health.librarian === undefined
+    ? 'Hablar con el agente de biblioteca'
+    : `Hablar con ${health.librarian.name}`;
+  librarianButton.title = librarianLabel;
+  librarianButton.setAttribute('aria-label', librarianLabel);
   if (health.names !== undefined) nameProperties(health.names);
   if (health.embedHosts !== undefined) allowEmbedsFrom(health.embedHosts);
 }
@@ -1692,6 +1698,7 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
       corpus?.lastSequence ?? 0,
     ),
     canAskLibrarian: corpus?.canAskLibrarian === true,
+    ...(corpus?.librarian?.name === undefined ? {} : { librarianName: corpus.librarian.name }),
     scheme: () => workspace.scheme,
     onScheme: (next) => {
       if (next === workspace.scheme) return;
@@ -3644,6 +3651,12 @@ function wireTheme(): void {
   $('#search-close').innerHTML = icon('x');
   $('#settings').innerHTML = icon('settings');
   $('#librarian').innerHTML = icon('message-square');
+  document.addEventListener('vera:librarian-identity', (event) => {
+    if (corpus === null) return;
+    const detail = (event as CustomEvent<{ id?: unknown; name?: unknown }>).detail;
+    if (typeof detail?.id !== 'string' || typeof detail.name !== 'string') return;
+    useCorpus({ ...corpus, librarian: { id: detail.id, name: detail.name } });
+  });
 
   const theme = $<HTMLButtonElement>('#theme');
   const drawTheme = (): void => {
@@ -3667,7 +3680,9 @@ function wireTheme(): void {
   const librarian = $<HTMLButtonElement>('#librarian');
   librarian.addEventListener('click', () => {
     if (openView === null || corpus?.canAskLibrarian !== true) {
-      notice('El agente de biblioteca estará disponible cuando esta Vera tenga uno conectado.');
+      notice(corpus?.librarian?.name === undefined
+        ? 'El agente de biblioteca estará disponible cuando esta Vera tenga uno conectado.'
+        : `${corpus.librarian.name} no está disponible en esta superficie.`);
       return;
     }
     void openLibrarianConversation(openView, callbacksFor(openView));

@@ -995,6 +995,8 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
  */
 export interface CorpusHealth {
   graph: string;
+  /** Identidad efectiva de quien ocupa el oficio, visible sólo donde se puede conversar. */
+  librarian?: { id: string; name: string } | null;
   /** `anybody` es la sesión pública anónima y nunca puede escribir. */
   access?: 'owner' | 'anybody';
   /** Una sesión invitada puede escribir sin dejar de estar cercada al espacio. */
