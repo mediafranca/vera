@@ -133,6 +133,12 @@ contract SpokenContent {
         -- origin: the block does not merely happen to have come from somewhere,
         -- it says where. It keeps saying it after the audio is discarded, because
         -- what was spoken was spoken.
+
+    @invariant ToolbarVoiceUsesTheWritingPoint
+        -- The persistent microphone and `/audio` name the same action. When a
+        -- writing cursor exists, both capture into that position; the toolbar
+        -- never diverts speech to the end of today's journal. Without a writing
+        -- cursor Vera asks for one instead of choosing a hidden destination.
 }
 
 contract AppellationOfOrigin {

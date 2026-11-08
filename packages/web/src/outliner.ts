@@ -396,6 +396,23 @@ export function reloadAfterDerivedWriting(): ReloadOptions {
  */
 let speakingIn: { block: string; destination: string } | null = null;
 
+/*
+ * La barra superior vive fuera del outliner, pero hablar sigue perteneciendo al
+ * punto de escritura. Guardar la acción en el propio editor evita que la barra
+ * tenga que reconstruir página, bloque o vecindad mirando el DOM.
+ */
+const cursorSpeakers = new WeakMap<HTMLTextAreaElement, () => void>();
+
+/** Habla donde está el cursor, por el mismo camino que `/audio`. */
+export function speakAtCursor(): boolean {
+  const editor = document.activeElement;
+  if (!(editor instanceof HTMLTextAreaElement)) return false;
+  const speak = cursorSpeakers.get(editor);
+  if (speak === undefined) return false;
+  speak();
+  return true;
+}
+
 function stamp(milliseconds: number): string {
   const total = Math.floor(milliseconds / 1000);
   const hours = Math.floor(total / 3600);
@@ -8870,6 +8887,9 @@ function startEditing(
   const editor = document.createElement('textarea');
   editor.className = 'editor';
   editor.enterKeyHint = 'enter';
+  cursorSpeakers.set(editor, () => {
+    void callbacks.onSpeak?.(block.stableId, editor.value.trim());
+  });
   /*
    * El fuente, sin el blanco del final.
    *
@@ -9426,7 +9446,7 @@ function startEditing(
     // ocurre en el grafo. Lo que quedara escrito se guarda antes, porque la
     // grabación necesita un bloque vacío que le guarde el lugar.
     if (acts === 'hablar') {
-      void callbacks.onSpeak?.(block.stableId, editor.value.trim());
+      cursorSpeakers.get(editor)?.();
       return;
     }
 
