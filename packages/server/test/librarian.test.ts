@@ -169,7 +169,7 @@ describe('solicitudes al bibliotecario', () => {
       })).status, 200);
 
       assert.equal((await queueCall(`/librarian/requests/${encodeURIComponent(firstId)}/reply`, {
-        method: 'POST', secret: queueSecret, body: { text: 'Primera respuesta', changes: [] },
+        method: 'POST', secret: queueSecret, body: { text: 'Primera respuesta', changes: [], lineageRelation: 'direct' },
       })).status, 201);
       await waitForWakes(3);
       assert.deepEqual(wakes, [firstId, firstId, secondId]);
@@ -200,12 +200,13 @@ describe('solicitudes al bibliotecario', () => {
     assert.equal(claimed.status, 200, JSON.stringify(claimed.json));
     assert.equal(claimed.json['status'], 'working');
     const commentary = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
-      method: 'POST', secret, body: { text: 'Propongo separar evidencia e interpretación.', changes: [] },
+      method: 'POST', secret, body: { text: 'Propongo separar evidencia e interpretación.', changes: [], lineageRelation: 'direct' },
     });
     assert.equal(commentary.status, 400);
     const answered = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
       method: 'POST', secret, body: {
         text: 'Separé evidencia e interpretación.',
+        lineageRelation: 'derived',
         changes: [{ kind: 'edit_block', block, content: 'Evidencia. Interpretación.' }],
       },
     });
@@ -232,7 +233,7 @@ describe('solicitudes al bibliotecario', () => {
     const content = `Lectura editorial\n${'pasaje documentado '.repeat(4_000)}`;
     const answered = await call(`/librarian/requests/${encodeURIComponent(largeRequestId)}/reply`, {
       method: 'POST', secret,
-      body: { text: 'Añadí la lectura.', changes: [{ kind: 'edit_block', block: largeBlock, content }] },
+      body: { text: 'Añadí la lectura.', changes: [{ kind: 'edit_block', block: largeBlock, content }], lineageRelation: 'derived' },
     });
     assert.equal(answered.status, 201, JSON.stringify(answered.json));
     const pageView = await call(`/pages/${encodeURIComponent(page)}`);
@@ -300,7 +301,7 @@ describe('solicitudes al bibliotecario', () => {
     assert.equal(events[0]?.['text'], 'Contrastando el corpus');
     assert.equal(events[0]?.['kind'], 'tool');
     assert.equal((await call(`/librarian/requests/${encodeURIComponent(id)}/reply`, {
-      method: 'POST', secret, body: { text: 'Trabajo visible.', changes: [] },
+      method: 'POST', secret, body: { text: 'Trabajo visible.', changes: [], lineageRelation: 'direct' },
     })).status, 201);
 
     const reopened = await call(`/librarian/conversations/${encodeURIComponent(previous)}/activate`, { method: 'POST' });
@@ -322,7 +323,7 @@ describe('solicitudes al bibliotecario', () => {
       method: 'POST', secret,
     })).status, 200);
     const answered = await call(`/librarian/requests/${encodeURIComponent(pageRequest)}/reply`, {
-      method: 'POST', secret, body: { text: 'Respuesta extensa del bibliotecario.', changes: [] },
+      method: 'POST', secret, body: { text: 'Respuesta extensa del bibliotecario.', changes: [], lineageRelation: 'direct' },
     });
     assert.equal(answered.status, 201, JSON.stringify(answered.json));
 

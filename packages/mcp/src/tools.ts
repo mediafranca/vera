@@ -310,6 +310,11 @@ export const TOOLS: readonly VeraTool[] = [
       type: 'object', properties: {
         solicitud: { type: 'string', minLength: 1 },
         texto: { type: 'string', minLength: 1, maxLength: 1200, description: 'Recibo breve para la conversación.' },
+        relacion: {
+          type: 'string',
+          enum: ['propia', 'voz_de_la_persona', 'derivada_de_la_persona', 'coautoria'],
+          description: 'Relación autoral: Lucienne; Herbert por Lucienne; Lucienne a partir de Herbert; o Herbert con Lucienne.',
+        },
         bloques: { type: 'array', default: [], items: {
           type: 'object', additionalProperties: false, properties: {
             clave: { type: 'string', minLength: 1 },
@@ -330,12 +335,18 @@ export const TOOLS: readonly VeraTool[] = [
             motivo: { type: 'string', minLength: 1 },
           }, required: ['sujeto', 'motivo'],
         } },
-      }, required: ['solicitud', 'texto'], additionalProperties: false,
+      }, required: ['solicitud', 'texto', 'relacion'], additionalProperties: false,
     },
     async run(args, _ask, _write, _batch, _query, _propose, action) {
       if (action === undefined) return 'Esta conexión no habilitó acciones del runtime.';
       const id = say(args.solicitud).trim(); const text = say(args.texto).trim();
-      if (id === '' || text === '') return 'La solicitud y la respuesta no pueden quedar vacías.';
+      const relations: Record<string, string> = {
+        propia: 'direct', voz_de_la_persona: 'mediated', derivada_de_la_persona: 'derived', coautoria: 'coauthored',
+      };
+      const lineageRelation = relations[say(args.relacion).trim()];
+      if (id === '' || text === '' || lineageRelation === undefined) {
+        return 'La solicitud, la respuesta y su relación autoral deben ser válidas.';
+      }
       const blocks = Array.isArray(args.bloques) ? args.bloques.map((one) => {
         const input = one as Record<string, unknown>;
         return {
@@ -362,7 +373,7 @@ export const TOOLS: readonly VeraTool[] = [
         return { subject: input['sujeto'], reason: input['motivo'] };
       }) : [];
       const result = await action(`/librarian/requests/${encodeURIComponent(id)}/reply`, {
-        text, blocks, changes, ifRevisions, removals,
+        text, blocks, changes, ifRevisions, removals, lineageRelation,
       });
       if (failed(result)) return `No pude responder: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
       return `Respuesta final depositada en ${id} por la identidad efectiva de esta conexión.`;

@@ -118,7 +118,7 @@ describe('ciclo de la bibliotecaria residente', () => {
       solicitud: 'agent-request:1', tipo: 'tool', texto: 'Leí la ontología',
     }, ask, undefined, undefined, undefined, action), /registrado/);
     assert.match(await run('vera_responder_solicitud_bibliotecaria', {
-      solicitud: 'agent-request:1', texto: 'Síntesis fundada',
+      solicitud: 'agent-request:1', texto: 'Síntesis fundada', relacion: 'derivada_de_la_persona',
       bloques: [
         { clave: 'sintesis', pagina: 'bitacora_hoy', contenido: 'PICTOS articula doctorado y talleres.' },
         { clave: 'talleres', padre: 'sintesis', contenido: 'Los talleres organizan tres frentes.' },
@@ -143,7 +143,7 @@ describe('ciclo de la bibliotecaria residente', () => {
       changes: [
         { kind: 'move_block', block: 'block:uno', page: 'page:uno', parent: null, position: 3 },
       ],
-      ifRevisions: { 'block:uno': 'op:vigente' }, removals: [],
+      ifRevisions: { 'block:uno': 'op:vigente' }, removals: [], lineageRelation: 'derived',
     });
   });
 });

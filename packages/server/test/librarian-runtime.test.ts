@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { VeraGraph } from '@vera/core';
 
 import { initializeStarterMemory } from '../src/starter-memory.ts';
 import { listen } from '../src/server.ts';
 import { readLibrarianToolCall } from '../src/librarian-tools.ts';
+import { composeLibrarianContext } from '../src/librarian-context.ts';
 import {
   compactLibrarianManifestDocument,
   compactLibrarianPromptContext,
@@ -19,6 +21,43 @@ import {
 const directories: string[] = [];
 
 describe('frontera formativa de la dialéctica', () => {
+  it('compone microcontexto de la página y macrocontexto explicable de la biblioteca', () => {
+    const graph = VeraGraph.create({ name: 'Vera de prueba' });
+    graph.addParticipant({ id: 'participant:herbert', name: 'Herbert', kind: 'human' });
+    graph.addParticipant({ id: 'participant:lucienne', name: 'Lucienne', kind: 'agent' });
+    graph.admit('participant:herbert'); graph.admit('participant:lucienne');
+    const write = (originId: string, change: Parameters<typeof graph.submitOperation>[0]['change']): void => {
+      const result = graph.submitOperation({ originId, participant: 'participant:herbert', change });
+      assert.notEqual(result.status, 'rejected');
+    };
+    write('page:source', { kind: 'create_page', stableId: 'page:source', title: 'Fuente', visibility: 'private' });
+    write('page:macro', { kind: 'create_page', stableId: 'page:macro', title: 'Diseño participativo', visibility: 'private' });
+    write('page:search', { kind: 'create_page', stableId: 'page:search', title: 'Talleres', visibility: 'private' });
+    write('block:parent', { kind: 'create_block', stableId: 'block:parent', page: 'page:source', parent: null, position: 0,
+      content: 'Marco del proyecto [[Diseño participativo]]' });
+    write('block:focus', { kind: 'create_block', stableId: 'block:focus', page: 'page:source', parent: 'block:parent', position: 0,
+      content: 'La solicitud nace en este pasaje.' });
+    write('block:sibling', { kind: 'create_block', stableId: 'block:sibling', page: 'page:source', parent: 'block:parent', position: 1,
+      content: 'Este hermano aclara el microcontexto.' });
+    write('block:macro', { kind: 'create_block', stableId: 'block:macro', page: 'page:macro', parent: null, position: 0,
+      content: 'Los talleres conectan investigación y práctica.' });
+    write('block:search', { kind: 'create_block', stableId: 'block:search', page: 'page:search', parent: null, position: 0,
+      content: 'Un inventario independiente de talleres.' });
+    const parsed = JSON.parse(composeLibrarianContext({
+      graph, participant: 'participant:lucienne', page: 'page:source', focus: 'block:focus',
+      request: 'Relaciona este pasaje con los talleres de diseño participativo.',
+      policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
+    })) as { version: number; focus: { id: string }; blocks: Array<{ id: string; reason: string }>;
+      library: { pages: Array<{ id: string; reasons: string[] }> }; selection: { budgetCharacters: number } };
+    assert.equal(parsed.version, 2);
+    assert.equal(parsed.focus.id, 'block:focus');
+    assert.ok(parsed.blocks.some((block) => block.id === 'block:parent'));
+    assert.ok(parsed.blocks.some((block) => block.id === 'block:sibling'));
+    assert.ok(parsed.library.pages.some((page) => page.id === 'page:macro' && page.reasons.some((reason) => reason.includes('vecindad'))));
+    assert.ok(parsed.library.pages.some((page) => page.id === 'page:search' && page.reasons.includes('coincidencia textual con la solicitud')));
+    assert.equal(parsed.selection.budgetCharacters, 8_000);
+  });
+
   it('distingue mediación, derivación, coautoría y juicio propio antes de escribir', () => {
     const request = (text: string, modality: 'audio' | 'page' = 'page') => ({
       id: 'agent-request:1', askedBy: 'participant:herbert', text, modality,
@@ -30,6 +69,15 @@ describe('frontera formativa de la dialéctica', () => {
     assert.equal(librarianContributionLineageFor(request('Escribamos juntos esta sección')).relation, 'coauthored');
     assert.deepEqual(librarianContributionLineageFor(request('Investiga el origen y juzga la evidencia')), {
       relation: 'direct', sourceKind: 'conversation', sourceReference: 'agent-request:1',
+    });
+    const pageRequest = { ...request('Resume esto'), sourcePageId: 'page:contexto' };
+    assert.deepEqual(librarianContributionLineageFor(pageRequest, 'derived'), {
+      relation: 'derived', relatedParticipant: 'participant:herbert',
+      sourceKind: 'page', sourceReference: 'page:contexto',
+    });
+    assert.deepEqual(librarianContributionLineageFor(pageRequest, 'coauthored'), {
+      relation: 'coauthored', relatedParticipant: 'participant:herbert',
+      sourceKind: 'page', sourceReference: 'page:contexto',
     });
   });
   it('reconoce las seis prácticas y deja fluidas las tareas operativas', () => {
@@ -182,7 +230,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       });
       assert.equal(configured.status, 200, JSON.stringify(configured.json));
       assert.equal(configured.json['status'], 'ready');
-      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:4');
+      assert.equal((configured.json['harness'] as any).version, 'vera-librarian-harness:5');
       assert.deepEqual((configured.json['harness'] as any).capabilities.map((one: any) => one.name), [
         'search_memory', 'survey_topic', 'read_page', 'query_graph', 'inspect_relations',
         'inspect_ontology', 'inspect_page_schema', 'check_invariants', 'reply_to_request',
@@ -695,7 +743,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       })).status, 200);
       const malformedMove = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
         method: 'POST', secret, body: {
-          text: 'Moví el bloque.', blocks: [],
+          text: 'Moví el bloque.', blocks: [], lineageRelation: 'direct',
           changes: [{ kind: 'move_block', page, parent: null, position: 0 }],
           ifRevisions: {}, removals: [],
         },
@@ -705,6 +753,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       const answered = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
         method: 'POST', secret, body: {
           text: 'Organicé la respuesta en la Bitácora de Lucienne.',
+          lineageRelation: 'direct',
           blocks: [
             { key: 'respuesta', page: 'bitacora_hoy', content: 'PICTOS en el doctorado' },
             { key: 'cobertura', parent: 'respuesta', position: 0, content: 'Cobertura investigada' },
@@ -741,6 +790,13 @@ describe('runtime embebido de la bibliotecaria', () => {
         block.parent === workshops.stableId && block.content === 'Planificación y coordinación logística'));
       assert.equal((answered.json['reply'] as Record<string, unknown>)['text'],
         'Organicé la respuesta en la Bitácora de Lucienne.');
+      const observed = await call('/librarian/runtime');
+      const externalRun = (observed.json['runs'] as Array<Record<string, unknown>>)
+        .find((run) => run['request'] === requestId);
+      assert.equal(externalRun?.['status'], 'completed');
+      assert.equal(typeof externalRun?.['queueMilliseconds'], 'number');
+      assert.equal(typeof externalRun?.['workMilliseconds'], 'number');
+      assert.equal(typeof externalRun?.['totalMilliseconds'], 'number');
 
       const rootRevision = running.vera.graph.operations().filter((operation) => operation.subjectId === root.stableId).at(-1)?.id;
       const protectedRoot = await call('/operations', { method: 'POST', secret, body: {
@@ -784,7 +840,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       })).status, 200);
       const silentRemoval = await call(`/librarian/requests/${encodeURIComponent(deletionId)}/reply`, {
         method: 'POST', secret, body: {
-          text: 'Listo.', blocks: [],
+          text: 'Listo.', blocks: [], lineageRelation: 'direct',
           changes: [{ kind: 'remove_block', block: disposableBlock }],
           ifRevisions: {}, removals: [],
         },
@@ -794,7 +850,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       const revision = running.vera.graph.operations().filter((operation) => operation.subjectId === disposableBlock).at(-1)?.id;
       const declaredRemoval = await call(`/librarian/requests/${encodeURIComponent(deletionId)}/reply`, {
         method: 'POST', secret, body: {
-          text: `Retiré ${disposableBlock}: era un bloque descartable de prueba.`, blocks: [],
+          text: `Retiré ${disposableBlock}: era un bloque descartable de prueba.`, blocks: [], lineageRelation: 'direct',
           changes: [{ kind: 'remove_block', block: disposableBlock }],
           ifRevisions: { [disposableBlock]: revision },
           removals: [{ subject: disposableBlock, reason: 'era un bloque descartable de prueba' }],

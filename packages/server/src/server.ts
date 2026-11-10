@@ -12,6 +12,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
 
 import { observeServiceStatuses } from './service-status.ts';
+import { composeLibrarianContext } from './librarian-context.ts';
 
 import {
   TESTIMONY_KEY,
@@ -53,6 +54,7 @@ import type {
   Operation,
   OriginEvidence,
   ParticipantId,
+  ContributionRelation,
 } from '@vera/core';
 import {
   createRecording,
@@ -1122,6 +1124,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     removals: readonly LibrarianRemovalInput[],
     credential: Credential | null,
     instruction = turn.text,
+    declaredLineage?: ContributionRelation,
   ): string | null => {
     if (summary.length > 1_200) return 'el recibo del chat debe ser breve (máximo 1200 caracteres)';
     if (blocks.length > 500 || changes.length > 500) return 'la inscripción excede 500 bloques u operaciones';
@@ -1160,7 +1163,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     const trial = graph.replayFromLog();
     const applied: Operation[] = [];
-    const lineage = librarianContributionLineageFor(turn);
+    const lineage = librarianContributionLineageFor(turn, declaredLineage);
     const fence = credential === null ? null : confinementOf(store, credential.id);
     const apply = (change: Change, origin: string): string | null => {
       const known = trial.operations().find((operation) => operation.originId === origin);
@@ -3272,6 +3275,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             permissions: ['read_request_context', 'reply', 'daily_round'],
             dialectic: { enabled: true },
             routine: { enabled: false, hour: 9, timezone: 'local' },
+            context: { budgetCharacters: 24_000, neighbourDepth: 1, searchLimit: 8 },
           });
         }
         refreshEmbeddedRuntime();
@@ -3313,6 +3317,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           : [];
         const routine = body['routine'] !== null && typeof body['routine'] === 'object'
           ? body['routine'] as Record<string, unknown> : {};
+        const context = body['context'] !== null && typeof body['context'] === 'object'
+          ? body['context'] as Record<string, unknown> : {};
         saveLibrarianRuntimeConfiguration(store, {
           updatedBy: owner.id,
           enabled: body['enabled'] === true,
@@ -3331,6 +3337,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             enabled: routine['enabled'] === true,
             hour: typeof routine['hour'] === 'number' ? routine['hour'] : 9,
             timezone: typeof routine['timezone'] === 'string' ? routine['timezone'] : 'local',
+          },
+          context: {
+            budgetCharacters: typeof context['budgetCharacters'] === 'number' ? context['budgetCharacters'] : 24_000,
+            neighbourDepth: typeof context['neighbourDepth'] === 'number' ? context['neighbourDepth'] : 1,
+            searchLimit: typeof context['searchLimit'] === 'number' ? context['searchLimit'] : 8,
           },
         });
         refreshEmbeddedRuntime();
@@ -3544,15 +3555,15 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           return;
         }
       }
-      const blocks = graph.blocksOf(page.id);
-      const snapshot = JSON.stringify({
-        page: {
-          id: page.id,
-          title: page.title,
-          revision: graph.revisions().filter((one) => one.page === page.id).at(-1)?.operation ?? null,
-        },
-        focus: block === undefined ? null : { id: block.stableId, content: block.content, parent: block.parent },
-        blocks: blocks.map((one) => ({ id: one.stableId, parent: one.parent, position: one.position, content: one.content })),
+      const runtime = librarianRuntimeConfiguration(store);
+      const snapshot = composeLibrarianContext({
+        graph,
+        participant: librarianAgent,
+        page: page.id,
+        focus: block?.stableId ?? null,
+        request: text,
+        policy: runtime?.context ?? { budgetCharacters: 24_000, neighbourDepth: 1, searchLimit: 8 },
+        canRead: (candidate) => clearanceForPage(store, graph, librarianAgent, candidate, 'read').outcome !== 'refused',
       });
       const created = createLibrarianRequest(store, {
         askedBy: conversationalHuman,
@@ -3640,6 +3651,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (!canAnswerAsLibrarian()) { send(response, 403, { error: 'se necesita la credencial del agente de biblioteca con escritura' }); return; }
         const claimed = claimLibrarianRequest(store, id);
         if (claimed?.status !== 'working') { send(response, 409, { error: 'la solicitud ya no está en cola' }); return; }
+        const runtime = librarianRuntimeConfiguration(store);
+        if (runtime?.adapter === 'external_agent' && runtime.model !== null) {
+          beginLibrarianRuntimeRun(store, { kind: 'request', request: id, model: runtime.model });
+        }
         send(response, 200, librarianRequestView(claimed));
         return;
       }
@@ -3676,6 +3691,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           ? body.ifRevisions as Record<string, unknown>
           : {};
         const removals = Array.isArray(body.removals) ? body.removals as LibrarianRemovalInput[] : [];
+        const declaredLineage = ['direct', 'mediated', 'derived', 'coauthored'].includes(String(body.lineageRelation))
+          ? body.lineageRelation as ContributionRelation
+          : null;
+        if (declaredLineage === null) {
+          send(response, 400, { error: 'declara la procedencia: direct, mediated, derived o coauthored' }); return;
+        }
+        const lineage = librarianContributionLineageFor(current, declaredLineage);
         let blocks: LibrarianOutputBlockInput[];
         if (Array.isArray(body.blocks)) blocks = body.blocks as LibrarianOutputBlockInput[];
         else {
@@ -3715,7 +3737,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             originId: `librarian:${current.id}:replacement`,
             participant: who.participant,
             channel: 'agent_generation',
-            lineage: librarianContributionLineageFor(current),
+            lineage,
             change: replacement,
           });
           if (outcome.status === 'rejected') {
@@ -3727,11 +3749,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           }
           const answered = answerLibrarianRequest(store, {
             id, answeredBy: who.participant, text, changes: [],
-            lineage: librarianContributionLineageFor(current),
+            lineage,
           });
           if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
+          const externalRun = librarianRuntimeRuns(store, 100)
+            .find((run) => run.request === id && run.status === 'running');
+          if (externalRun !== undefined) finishLibrarianRuntimeRun(store, externalRun.id, { output: text });
           send(response, 201, answered);
           void dispatchNextLibrarianRequest();
+          return;
+        }
+        if (current.modality !== 'block' && blocks.length === 0 && changes.length === 0) {
+          send(response, 400, { error: 'una respuesta sobre página necesita bloques nativos u operaciones estructuradas' });
           return;
         }
         /*
@@ -3751,13 +3780,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           ifRevisions,
           removals,
           who.credential === null ? null : credentialById(store, who.credential),
+          current.text,
+          declaredLineage,
         );
         if (writingFailure !== null) { send(response, 422, { error: writingFailure }); return; }
         const answered = answerLibrarianRequest(store, {
           id, answeredBy: who.participant, text, changes: [],
-          lineage: librarianContributionLineageFor(current),
+          lineage,
         });
         if (answered === undefined) { send(response, 409, { error: 'la solicitud no está esperando respuesta' }); return; }
+        const externalRun = librarianRuntimeRuns(store, 100)
+          .find((run) => run.request === id && run.status === 'running');
+        if (externalRun !== undefined) finishLibrarianRuntimeRun(store, externalRun.id, { output: text });
         send(response, 201, answered);
         void dispatchNextLibrarianRequest();
         return;

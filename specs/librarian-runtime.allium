@@ -30,6 +30,20 @@ contract ResidentLibrarianExecution {
         -- task or are available through built-in tools. They are part of the
         -- resident office, not optional MCP lore.
 
+    @invariant SourcePageAndFocusAreAlwaysMicroContext
+        -- Every request made from a page carries that page's identity,
+        -- properties and revision plus a bounded, ordered projection of its
+        -- blocks. A block request also carries the exact focus, ancestors,
+        -- siblings and descendants needed to read it in place. The snapshot
+        -- records its selection reason, budget and omissions instead of
+        -- presenting a truncation as the whole page.
+
+    @invariant RelevantLibraryNeighbourhoodIsMacroContext
+        -- Before inference, Vera deterministically composes a bounded macro
+        -- context from visible graph neighbours and text-search candidates.
+        -- Every included page records why it was selected. The model may read
+        -- more through tools, but it never has to guess that a library exists.
+
     @invariant ToolProtocolNeverBecomesLibraryContent
         -- A valid or malformed tool request is protocol, never a final reply and
         -- never a block. Markdown fences around structured calls do not turn
@@ -141,6 +155,9 @@ entity LibrarianRuntimeConfiguration {
     routine_enabled: Boolean
     routine_hour: Integer
     routine_timezone: String
+    context_budget_characters: Integer
+    context_neighbour_depth: Integer
+    context_search_limit: Integer
     updated_by: core/Participant
     updated_at: Timestamp
 }
@@ -176,11 +193,14 @@ actor LibrarianOwner {
 }
 
 rule OwnerConfiguresResidentRuntime {
-    when: ConfigureLibrarianRuntime(owner, librarian, enabled, adapter, external_agent_id, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
+    when: ConfigureLibrarianRuntime(owner, librarian, enabled, adapter, external_agent_id, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone, context_budget_characters, context_neighbour_depth, context_search_limit)
     requires: librarian.owner = owner
     requires: not enabled or model_id != null
     requires: not enabled or adapter != external_agent or external_agent_id != null
     requires: routine_hour >= 0 and routine_hour <= 23
+    requires: context_budget_characters >= 8000 and context_budget_characters <= 60000
+    requires: context_neighbour_depth >= 0 and context_neighbour_depth <= 2
+    requires: context_search_limit >= 0 and context_search_limit <= 20
     requires: not enabled or (permissions.contains(read_request_context) and permissions.contains(reply))
     requires: not routine_enabled or permissions.contains(daily_round)
     ensures: LibrarianRuntimeConfiguration.created(
@@ -196,6 +216,9 @@ rule OwnerConfiguresResidentRuntime {
         routine_enabled: routine_enabled,
         routine_hour: routine_hour,
         routine_timezone: routine_timezone,
+        context_budget_characters: context_budget_characters,
+        context_neighbour_depth: context_neighbour_depth,
+        context_search_limit: context_search_limit,
         updated_by: owner,
         updated_at: now
     )
@@ -304,12 +327,15 @@ rule EmbeddedRuntimeAnswersOneClaimedRequest {
 }
 
 rule ResidentLibrarianInscribesStructuredWork {
-    when: InscribeLibrarianWork(configuration, request, summary, blocks, changes, removals)
+    when: InscribeLibrarianWork(configuration, request, summary, blocks, changes, removals, lineage)
     requires: configuration.enabled
     requires: configuration.permissions.contains(reply)
     requires: request.conversation.agent = configuration.librarian.librarian
     requires: request.status = working
     requires: summary != ""
+    requires: blocks.count > 0 or changes.count > 0
+    requires: lineage.relation = direct or lineage.related_participant = request.asked_by
+    requires: lineage.source_reference != null
     requires: blocks.all(block => block.content != "")
     requires: blocks.all(block => block.parent_key = null or blocks.any(parent => parent.key = block.parent_key))
     requires: blocks.all(block => not flattened_outline(block.content))
@@ -320,7 +346,7 @@ rule ResidentLibrarianInscribesStructuredWork {
             request: request,
             answered_by: configuration.librarian.librarian,
             text: summary,
-            lineage: direct,
+            lineage: lineage,
             written_block: null,
             created_at: now
         )
@@ -393,6 +419,9 @@ surface LibrarianRuntimeAdministration {
         configuration.routine_enabled
         configuration.routine_hour
         configuration.routine_timezone
+        configuration.context_budget_characters
+        configuration.context_neighbour_depth
+        configuration.context_search_limit
         for run in LibrarianRuntimeRuns where librarian = configuration.librarian:
             run.kind
             run.model_id
@@ -403,7 +432,7 @@ surface LibrarianRuntimeAdministration {
             run.error
 
     provides:
-        ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone)
+        ConfigureLibrarianRuntime(owner, configuration.librarian, enabled, adapter, external_agent_id, model_id, endpoint, secret_reference, permissions, dialectic_enabled, routine_enabled, routine_hour, routine_timezone, context_budget_characters, context_neighbour_depth, context_search_limit)
         RunLibrarianRoutine(owner, configuration)
 
     contracts:
@@ -442,6 +471,18 @@ surface LibrarianRuntimeAdministration {
     @guarantee EveryRunLeavesPublicOperationalEvidence
         -- Vera conserva modelo, manifiesto, comienzo, término, estado, salida o
         -- error. No conserva razonamiento privado ni el valor del secreto.
+
+    @guarantee ExternalClaimsLeaveTheSameRuntimeEvidence
+        -- Claiming an external request starts a run and replying or failing it
+        -- closes that run. Administration exposes queue, work and total elapsed
+        -- time from the durable request and run timestamps; an external adapter
+        -- is not an observability exception.
+
+    @guarantee ProvenanceIsDeclaredBeforeInscription
+        -- The responder explicitly chooses direct, mediated, derived or
+        -- coauthored for every substantive inscription. Vera preserves the
+        -- request page, block, recording or conversation as source and refuses
+        -- a non-direct relation that omits the requesting participant.
 
     @guarantee BroadLibraryQuestionsBeginWithARecordedSurvey
         -- Una petición sobre conjuntos de páginas, proyectos, tareas o relaciones
