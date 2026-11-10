@@ -324,6 +324,13 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const routine = document.createElement('input'); routine.type = 'checkbox'; routine.checked = config.routine.enabled;
   const hour = document.createElement('input'); hour.type = 'number'; hour.min = '0'; hour.max = '23';
   hour.value = String(config.routine.hour);
+  const contextBudget = document.createElement('input'); contextBudget.type = 'number';
+  contextBudget.min = '8000'; contextBudget.max = '60000'; contextBudget.step = '1000';
+  contextBudget.value = String(config.context.budgetCharacters);
+  const contextDepth = document.createElement('input'); contextDepth.type = 'number';
+  contextDepth.min = '0'; contextDepth.max = '2'; contextDepth.value = String(config.context.neighbourDepth);
+  const contextSearch = document.createElement('input'); contextSearch.type = 'number';
+  contextSearch.min = '0'; contextSearch.max = '20'; contextSearch.value = String(config.context.searchLimit);
   const key = document.createElement('input'); key.type = 'password'; key.autocomplete = 'new-password';
   key.placeholder = view.secret.available ? 'clave guardada; deja vacío para conservarla' : 'clave de inferencia';
   const desktop = (window as unknown as { veraLibrarianSecret?: DesktopLibrarianSecretBridge }).veraLibrarianSecret;
@@ -349,6 +356,11 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const dialecticNote = document.createElement('p'); dialecticNote.className = 'settings-note';
   dialecticNote.textContent = `Ante una delegación de lectura o juicio, ${view.librarian.name} pide primero una tentativa. La persona puede franquear ese umbral de forma explícita.`;
   const routineLabel = document.createElement('label'); routineLabel.append(routine, document.createTextNode('Ronda diaria activa'));
+  const contract = document.createElement('section'); contract.className = 'agent-runtime-contract';
+  const contractHeading = document.createElement('h3'); contractHeading.textContent = 'Contrato de respuesta';
+  const contractText = document.createElement('p'); contractText.className = 'settings-note';
+  contractText.textContent = 'Cada turno recibe la página y el bloque de origen, más una vecindad y búsqueda acotadas de la biblioteca. La respuesta separa el recibo breve de los bloques nativos y declara si es de Lucienne, Herbert por Lucienne, Lucienne a partir de Herbert o Herbert con Lucienne.';
+  contract.append(contractHeading, contractText);
   const effective = document.createElement('p'); effective.className = 'settings-note agent-runtime-effective';
   const describeEffectiveRuntime = (): void => {
     const target = adapter.value === 'external_agent'
@@ -364,7 +376,9 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     models, field('Runtime de ejecución', adapter), field('Agente de OpenClaw', externalAgent),
     field('Proveedor y modelo', model), field('Endpoint de inferencia (sólo modo embebido)', endpoint),
     field('Referencia del secreto', reference), field('Clave (sólo Desktop)', key),
-    effective, permissionList, activeLabel, dialecticLabel, dialecticNote, routineLabel, field('Hora local de la ronda', hour),
+    effective, contract, field('Presupuesto de contexto (caracteres)', contextBudget),
+    field('Profundidad de vecindad', contextDepth), field('Resultados de búsqueda', contextSearch),
+    permissionList, activeLabel, dialecticLabel, dialecticNote, routineLabel, field('Hora local de la ronda', hour),
   );
   describeEffectiveRuntime();
   form.append(control('Guardar configuración', async () => {
@@ -381,6 +395,10 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
       permissions: [...permissionControls].filter(([, box]) => box.checked).map(([permission]) => permission),
       dialectic: { enabled: dialectic.checked },
       routine: { enabled: routine.checked, hour: Number(hour.value), timezone: 'local' },
+      context: {
+        budgetCharacters: Number(contextBudget.value), neighbourDepth: Number(contextDepth.value),
+        searchLimit: Number(contextSearch.value),
+      },
     });
     await refresh();
   }, 'primary'));
@@ -390,12 +408,18 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   section.append(form);
 
   const history = document.createElement('ol'); history.className = 'agent-runtime-runs';
+  const elapsed = (milliseconds: number | null): string => milliseconds === null ? '—' : `${(milliseconds / 1000).toFixed(1)} s`;
   for (const run of view.runs.slice(0, 8)) {
     const item = document.createElement('li');
     const label = document.createElement('strong'); label.textContent = run.kind === 'request' ? 'Solicitud' : 'Ronda';
     const meta = document.createElement('span');
     meta.textContent = ` · ${run.agent.name} · ${run.status} · ${new Date(run.startedAt).toLocaleString('es-CL')} · ${run.model}`;
     item.append(label, meta);
+    if (run.kind === 'request') {
+      const timing = document.createElement('p'); timing.className = 'settings-note';
+      timing.textContent = `Cola ${elapsed(run.queueMilliseconds)} · trabajo ${elapsed(run.workMilliseconds)} · total ${elapsed(run.totalMilliseconds)}`;
+      item.append(timing);
+    }
     if (run.error !== null) { const error = document.createElement('p'); error.textContent = run.error; item.append(error); }
     else if (run.output !== null) { const output = document.createElement('p'); output.textContent = run.output; item.append(output); }
     history.append(item);

@@ -1449,6 +1449,30 @@ const addStructuredLibrarianInscription: Migration = {
   },
 };
 
+/** 40 — el contexto residente es explícito, acotado y administrable. */
+const addLibrarianContextPolicy: Migration = {
+  version: 40,
+  name: 'política de contexto bibliotecario v2',
+  apply(db) {
+    const table = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='librarian_runtime_configs'",
+    ).get();
+    if (table === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(librarian_runtime_configs)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'context_budget_characters')) {
+      db.exec('ALTER TABLE librarian_runtime_configs ADD COLUMN context_budget_characters INTEGER NOT NULL DEFAULT 24000 CHECK (context_budget_characters BETWEEN 8000 AND 60000)');
+    }
+    if (!columns.some((column) => column.name === 'context_neighbour_depth')) {
+      db.exec('ALTER TABLE librarian_runtime_configs ADD COLUMN context_neighbour_depth INTEGER NOT NULL DEFAULT 1 CHECK (context_neighbour_depth BETWEEN 0 AND 2)');
+    }
+    if (!columns.some((column) => column.name === 'context_search_limit')) {
+      db.exec('ALTER TABLE librarian_runtime_configs ADD COLUMN context_search_limit INTEGER NOT NULL DEFAULT 8 CHECK (context_search_limit BETWEEN 0 AND 20)');
+    }
+    db.exec(`UPDATE librarian_harnesses SET version='vera-librarian-harness:5'
+      WHERE status='active' AND version='vera-librarian-harness:4'`);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1489,6 +1513,7 @@ export const MIGRATIONS: readonly Migration[] = [
   upgradeResidentLibrarianHarness,
   addConfigurableLibrarianExecutionAdapter,
   addStructuredLibrarianInscription,
+  addLibrarianContextPolicy,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

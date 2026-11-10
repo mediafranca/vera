@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Store } from '@vera/store';
-import type { ContributionLineage } from '@vera/core';
+import type { ContributionLineage, ContributionRelation } from '@vera/core';
 import { activeManifest, type AgentManifestDocument } from './agent-manifests.ts';
 import { librarianRequest, librarianRequestsInConversation, type LibrarianRequest } from './librarian.ts';
 import { activeOwnerLibrarian } from './owner-librarian.ts';
@@ -32,6 +32,7 @@ export interface LibrarianRuntimeConfiguration {
   permissions: LibrarianRuntimePermission[];
   dialectic: { enabled: boolean };
   routine: { enabled: boolean; hour: number; timezone: string };
+  context: { budgetCharacters: number; neighbourDepth: number; searchLimit: number };
   updatedBy: string;
   updatedAt: number;
 }
@@ -137,20 +138,26 @@ export function librarianResearchQueryFor(text: string): string | null {
  * La decisión es del harness: el modelo no puede darse a sí mismo una autoría
  * humana ni borrar la fuente que recibió.
  */
-export function librarianContributionLineageFor(request: LibrarianRequest): ContributionLineage {
+export function librarianContributionLineageFor(
+  request: LibrarianRequest,
+  declared?: ContributionRelation,
+): ContributionLineage {
   const said = folded(request.text);
-  const relation = /\b(en mi nombre|como si fuera yo|con mi voz|firma(?:do)? por mi|redacta (?:una |un )?(?:carta|correo|mensaje)|escribe por mi)\b/.test(said)
+  const inferred = /\b(en mi nombre|como si fuera yo|con mi voz|firma(?:do)? por mi|redacta (?:una |un )?(?:carta|correo|mensaje)|escribe por mi)\b/.test(said)
     ? 'mediated'
     : /\b(escribamos|construyamos|desarrollemos|trabajemos juntos|coautor|entre los dos|conmigo)\b/.test(said)
       ? 'coauthored'
       : /\b(ordena|resume|resumen|sintetiza|sintesis|estructura|pasa en limpio|convierte|extrae|organiza|reformula)\b/.test(said)
         ? 'derived'
         : 'direct';
+  const relation = declared ?? inferred;
   const source = request.recordingId !== null
     ? { sourceKind: 'recording' as const, sourceReference: request.recordingId }
     : request.modality === 'block' && request.sourceBlockId !== null
       ? { sourceKind: 'block' as const, sourceReference: request.sourceBlockId }
-      : { sourceKind: 'conversation' as const, sourceReference: request.id };
+      : typeof request.sourcePageId === 'string'
+        ? { sourceKind: 'page' as const, sourceReference: request.sourcePageId }
+        : { sourceKind: 'conversation' as const, sourceReference: request.id };
   return relation === 'direct'
     ? { relation, ...source }
     : { relation, relatedParticipant: request.askedBy, ...source };
@@ -192,6 +199,9 @@ export interface LibrarianRuntimeRun {
   finishedAt: number | null;
   output: string | null;
   error: string | null;
+  queueMilliseconds: number | null;
+  workMilliseconds: number | null;
+  totalMilliseconds: number | null;
 }
 
 interface BindingRow {
@@ -222,11 +232,13 @@ export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeCon
   const binding = activeBinding(store);
   if (binding === null) return null;
   const row = store.db.prepare(`SELECT enabled,execution_adapter,external_agent_id,model_id,endpoint,secret_reference,permissions_json,
-      dialectic_enabled,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at
+      dialectic_enabled,routine_enabled,routine_hour,routine_timezone,
+      context_budget_characters,context_neighbour_depth,context_search_limit,updated_by,updated_at
     FROM librarian_runtime_configs WHERE instance_id=?`).get(binding.instance_id) as {
       enabled: number; execution_adapter: LibrarianExecutionAdapter; external_agent_id: string | null;
       model_id: string | null; endpoint: string | null; secret_reference: string | null;
       permissions_json: string; dialectic_enabled: number; routine_enabled: number; routine_hour: number; routine_timezone: string;
+      context_budget_characters: number; context_neighbour_depth: number; context_search_limit: number;
       updated_by: string; updated_at: number;
     } | undefined;
   if (row === undefined) return null;
@@ -243,6 +255,11 @@ export function librarianRuntimeConfiguration(store: Store): LibrarianRuntimeCon
     permissions: parsePermissions(row.permissions_json),
     dialectic: { enabled: row.dialectic_enabled === 1 },
     routine: { enabled: row.routine_enabled === 1, hour: row.routine_hour, timezone: row.routine_timezone },
+    context: {
+      budgetCharacters: row.context_budget_characters,
+      neighbourDepth: row.context_neighbour_depth,
+      searchLimit: row.context_search_limit,
+    },
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
   };
@@ -259,6 +276,7 @@ export function saveLibrarianRuntimeConfiguration(store: Store, input: {
   permissions: LibrarianRuntimePermission[];
   dialectic: { enabled: boolean };
   routine: { enabled: boolean; hour: number; timezone: string };
+  context?: { budgetCharacters: number; neighbourDepth: number; searchLimit: number };
 }): LibrarianRuntimeConfiguration {
   const binding = activeBinding(store);
   if (binding === null) throw new Error('esta Vera todavía no tiene agente de biblioteca constituido');
@@ -281,6 +299,16 @@ export function saveLibrarianRuntimeConfiguration(store: Store, input: {
   if (!Number.isInteger(input.routine.hour) || input.routine.hour < 0 || input.routine.hour > 23) {
     throw new Error('la hora de la ronda debe estar entre 0 y 23');
   }
+  const context = input.context ?? { budgetCharacters: 24_000, neighbourDepth: 1, searchLimit: 8 };
+  if (!Number.isInteger(context.budgetCharacters) || context.budgetCharacters < 8_000 || context.budgetCharacters > 60_000) {
+    throw new Error('el presupuesto de contexto debe estar entre 8000 y 60000 caracteres');
+  }
+  if (!Number.isInteger(context.neighbourDepth) || context.neighbourDepth < 0 || context.neighbourDepth > 2) {
+    throw new Error('la profundidad de vecindad debe estar entre 0 y 2');
+  }
+  if (!Number.isInteger(context.searchLimit) || context.searchLimit < 0 || context.searchLimit > 20) {
+    throw new Error('el límite de búsqueda debe estar entre 0 y 20 páginas');
+  }
   const permissions = [...new Set(input.permissions)].filter((one) => PERMISSIONS.has(one));
   if (input.enabled && (!permissions.includes('read_request_context') || !permissions.includes('reply'))) {
     throw new Error('un runtime activo necesita leer el contexto solicitado y responder');
@@ -302,18 +330,23 @@ export function saveLibrarianRuntimeConfiguration(store: Store, input: {
   }
   store.db.prepare(`INSERT INTO librarian_runtime_configs
     (instance_id,librarian_id,agent_id,enabled,execution_adapter,external_agent_id,model_id,endpoint,secret_reference,permissions_json,
-      dialectic_enabled,routine_enabled,routine_hour,routine_timezone,updated_by,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      dialectic_enabled,routine_enabled,routine_hour,routine_timezone,
+      context_budget_characters,context_neighbour_depth,context_search_limit,updated_by,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(instance_id) DO UPDATE SET librarian_id=excluded.librarian_id,agent_id=excluded.agent_id,
       enabled=excluded.enabled,execution_adapter=excluded.execution_adapter,external_agent_id=excluded.external_agent_id,
       model_id=excluded.model_id,endpoint=excluded.endpoint,
       secret_reference=excluded.secret_reference,permissions_json=excluded.permissions_json,
       dialectic_enabled=excluded.dialectic_enabled,
       routine_enabled=excluded.routine_enabled,routine_hour=excluded.routine_hour,
-      routine_timezone=excluded.routine_timezone,updated_by=excluded.updated_by,updated_at=excluded.updated_at`).run(
+      routine_timezone=excluded.routine_timezone,
+      context_budget_characters=excluded.context_budget_characters,
+      context_neighbour_depth=excluded.context_neighbour_depth,context_search_limit=excluded.context_search_limit,
+      updated_by=excluded.updated_by,updated_at=excluded.updated_at`).run(
         binding.instance_id, binding.librarian_id, binding.agent_id, input.enabled ? 1 : 0, adapter, externalAgent, model,
         endpoint, secretReference, JSON.stringify(permissions), input.dialectic.enabled ? 1 : 0, input.routine.enabled ? 1 : 0,
-        input.routine.hour, input.routine.timezone.trim() || 'local', input.updatedBy, now,
+        input.routine.hour, input.routine.timezone.trim() || 'local', context.budgetCharacters,
+        context.neighbourDepth, context.searchLimit, input.updatedBy, now,
       );
   return librarianRuntimeConfiguration(store)!;
 }
@@ -453,19 +486,25 @@ export function librarianRuntimeRuns(store: Store, limit = 20): LibrarianRuntime
   const binding = activeBinding(store);
   if (binding === null) return [];
   const rows = store.db.prepare(`SELECT r.id,r.agent_id,p.name AS agent_name,r.kind,r.request_id,r.model_id,
-      r.manifest_id,r.status,r.started_at,r.finished_at,r.output,r.error
+      r.manifest_id,r.status,r.started_at,r.finished_at,r.output,r.error,q.created_at AS request_created_at
     FROM librarian_runtime_runs r JOIN participants p ON p.id=r.agent_id
+    LEFT JOIN agent_requests q ON q.id=r.request_id
     WHERE r.instance_id=? ORDER BY r.started_at DESC,r.id DESC LIMIT ?`)
     .all(binding.instance_id, Math.max(1, Math.min(100, limit))) as Array<{
       id: string; agent_id: string; agent_name: string; kind: 'request' | 'routine'; request_id: string | null; model_id: string;
       manifest_id: string | null; status: 'running' | 'completed' | 'failed'; started_at: number;
       finished_at: number | null; output: string | null; error: string | null;
+      request_created_at: number | null;
     }>;
   return rows.map((row) => ({
     id: row.id, agent: { id: row.agent_id, name: row.agent_name },
     kind: row.kind, request: row.request_id, model: row.model_id, manifest: row.manifest_id,
     status: row.status, startedAt: row.started_at, finishedAt: row.finished_at,
     output: row.output, error: row.error,
+    queueMilliseconds: row.request_created_at === null ? null : Math.max(0, row.started_at - row.request_created_at),
+    workMilliseconds: row.finished_at === null ? null : Math.max(0, row.finished_at - row.started_at),
+    totalMilliseconds: row.request_created_at === null || row.finished_at === null
+      ? null : Math.max(0, row.finished_at - row.request_created_at),
   }));
 }
 
@@ -488,7 +527,8 @@ export function beginLibrarianRuntimeRun(store: Store, input: {
     { name: string } | undefined;
   return { id, agent: { id: binding.agent_id, name: agentName?.name ?? binding.agent_id },
     kind: input.kind, request: input.request ?? null, model: input.model, manifest,
-    status: 'running', startedAt, finishedAt: null, output: null, error: null };
+    status: 'running', startedAt, finishedAt: null, output: null, error: null,
+    queueMilliseconds: null, workMilliseconds: null, totalMilliseconds: null };
 }
 
 export function finishLibrarianRuntimeRun(store: Store, id: string, outcome: {

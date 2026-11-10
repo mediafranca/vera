@@ -192,6 +192,9 @@ CREATE TABLE IF NOT EXISTS librarian_runtime_configs (
     routine_enabled   INTEGER NOT NULL DEFAULT 0 CHECK (routine_enabled IN (0,1)),
     routine_hour      INTEGER NOT NULL DEFAULT 9 CHECK (routine_hour BETWEEN 0 AND 23),
     routine_timezone  TEXT NOT NULL DEFAULT 'local',
+    context_budget_characters INTEGER NOT NULL DEFAULT 24000 CHECK (context_budget_characters BETWEEN 8000 AND 60000),
+    context_neighbour_depth INTEGER NOT NULL DEFAULT 1 CHECK (context_neighbour_depth BETWEEN 0 AND 2),
+    context_search_limit INTEGER NOT NULL DEFAULT 8 CHECK (context_search_limit BETWEEN 0 AND 20),
     updated_by        TEXT NOT NULL REFERENCES participants (id),
     updated_at        INTEGER NOT NULL
 ) STRICT;

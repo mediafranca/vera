@@ -740,6 +740,7 @@ export interface LibrarianRuntimeView {
     permissions: LibrarianRuntimePermission[];
     dialectic: { enabled: boolean };
     routine: { enabled: boolean; hour: number; timezone: string };
+    context: { budgetCharacters: number; neighbourDepth: number; searchLimit: number };
     updatedBy: string;
     updatedAt: number;
   };
@@ -757,6 +758,7 @@ export interface LibrarianRuntimeView {
     kind: 'request' | 'routine'; request: string | null; model: string;
     manifest: string | null; status: 'running' | 'completed' | 'failed';
     startedAt: number; finishedAt: number | null; output: string | null; error: string | null;
+    queueMilliseconds: number | null; workMilliseconds: number | null; totalMilliseconds: number | null;
   }[];
 }
 
@@ -1686,6 +1688,7 @@ export const api = {
     permissions: LibrarianRuntimePermission[];
     dialectic: { enabled: boolean };
     routine: { enabled: boolean; hour: number; timezone: string };
+    context: { budgetCharacters: number; neighbourDepth: number; searchLimit: number };
   }) => json<LibrarianRuntimeView>('/librarian/runtime', {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(configuration),
   }),
