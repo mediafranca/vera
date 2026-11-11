@@ -52,6 +52,25 @@ describe('readRelationDeclarations', () => {
     assert.equal(said?.symmetric, true);
     assert.equal(said?.transitive, null);
   });
+
+  it('declara una norma heredable sin confundirla con transitividad universal', () => {
+    const [said] = readRelationDeclarations([
+      block('rige', {
+        'rótulo es': 'rige',
+        'label en': 'governs',
+        función: 'normativa',
+        alcance: 'heredado',
+        'hereda por': 'forma parte de',
+        'verifica con': 'satisface',
+      }),
+    ]);
+    assert.deepEqual(said?.labels, { es: 'rige', en: 'governs' });
+    assert.equal(said?.function, 'normativa');
+    assert.equal(said?.scope, 'heredado');
+    assert.equal(said?.inheritedThrough, 'forma parte de');
+    assert.equal(said?.verifiedBy, 'satisface');
+    assert.equal(said?.transitive, null);
+  });
 });
 
 describe('namesFromRelationRoles', () => {
@@ -73,6 +92,15 @@ describe('readPropertyDeclarations', () => {
     assert.equal(said?.many, true);
     assert.equal(said?.role, 'topic');
     assert.equal(said?.says, 'de qué trata');
+  });
+
+  it('conserva una identidad y reúne sus rótulos por idioma', () => {
+    const [said] = readPropertyDeclarations([
+      block('autor', { 'rótulo es': 'autor', 'label en': 'author', campo: 'enlace' }),
+    ]);
+    assert.equal(said?.block.startsWith('block:'), true);
+    assert.deepEqual(said?.labels, { es: 'autor', en: 'author' });
+    assert.deepEqual(said?.labelKeys, { es: 'rótulo es', en: 'label en' });
   });
 
   it('nadie está obligado a decir de qué clase es', () => {
@@ -161,6 +189,8 @@ describe('missingFor', () => {
   const persona = {
     block: 'block:persona',
     name: 'Persona',
+    labels: {},
+    labelKeys: {},
     properties: ['org', 'cargo', 'email'],
     carrier: 'página' as const,
     composition: null,

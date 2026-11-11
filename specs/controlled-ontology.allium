@@ -17,6 +17,17 @@ use "./core.allium" as core
 use "./agent-participation.allium" as agent
 
 ------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+-- La identidad de una palabra no es su grafía. Una misma propiedad, objeto o
+-- relación puede decirse de varias maneras sin duplicarse en la ontología.
+value LocalizedLabel {
+    language: String
+    text: String
+}
+
+------------------------------------------------------------
 -- Contracts
 ------------------------------------------------------------
 
@@ -95,6 +106,14 @@ enum ObjectCarrier { page | block }
 -- orden, sin quitar a esos miembros su propia clase.
 enum ObjectForm { simple | composition }
 
+-- Qué efecto tiene una relación más allá de describir que dos cosas se tocan.
+enum RelationFunction { descriptive | normative | evidentiary }
+
+-- Una norma puede alcanzar sólo su destino o propagarse por una relación de
+-- pertenencia declarada. No es transitividad universal: el camino que hereda el
+-- alcance queda nombrado y por eso siempre se puede explicar por qué aplica.
+enum RelationScope { direct | inherited_by_membership }
+
 ------------------------------------------------------------
 -- Entities and Variants
 ------------------------------------------------------------
@@ -111,7 +130,11 @@ entity Ontology {
 
 entity ObjectTemplate {
     ontology: Ontology
+    -- La declaración es el bloque estable que identifica esta plantilla aunque
+    -- cambien todos sus rótulos. El nombre visible nunca es su clave primaria.
+    declaration: core/Block
     name: String
+    labels: Set<LocalizedLabel>
     description: String
     carrier: ObjectCarrier
     form: ObjectForm
@@ -210,7 +233,9 @@ entity ConceptRelation {
 -- reconstruible, nunca un dato que alguien edite.
 entity RelationDefinition {
     ontology: Ontology
+    declaration: core/Block
     name: String
+    labels: Set<LocalizedLabel>
     description: String
     -- Desde qué tipo sale y hacia cuáles puede apuntar.
     domain: ObjectTemplate?
@@ -225,6 +250,14 @@ entity RelationDefinition {
     -- «forma parte de» por otra expresión. La palabra es del corpus; el papel es
     -- la obligación estable del programa.
     role: String?
+    function: RelationFunction
+    scope: RelationScope
+    -- Sólo tiene valor cuando scope = inherited_by_membership. Nombra la
+    -- relación que lleva desde el destino normado hacia sus miembros.
+    inherited_through: RelationDefinition?
+    -- Relación que une un requisito con la evidencia que lo satisface o
+    -- contradice. Es vocabulario de la biblioteca, no un veredicto del núcleo.
+    verified_by: RelationDefinition?
     status: VocabularyStatus
 }
 
@@ -270,10 +303,14 @@ entity AffectedCitation {
 -- blanco que hay que rellenar de memoria.
 entity PropertyDefinition {
     ontology: Ontology
+    -- El bloque que declara la propiedad es su identidad durable. `name` es la
+    -- clave textual vigente de la proyección; cambiarla no crea otra propiedad.
+    declaration: core/Block
     -- Algunas propiedades, como `lang`, se ofrecen a toda la biblioteca. Las
     -- demás llegan a una instancia mediante ObjectPropertyExpectation.
     applies_globally: Boolean
     name: String
+    labels: Set<LocalizedLabel>
     description: String
     value_kind: PropertyValueKind
     -- Si admite varias respuestas a la vez. `tags` sí, `lang` no.
@@ -287,6 +324,25 @@ entity PropertyDefinition {
 
     -- Lo que se puede ofrecer sin que nadie escriba nada.
     offerable: options where status = approved
+}
+
+-- Una migración del rótulo canónico de una propiedad, calculada antes de tocar
+-- el corpus. Traducción y renombrado son actos distintos: añadir `en=author` no
+-- reescribe `autor`; cambiar el rótulo canónico español sí puede migrar la clave
+-- textual con que las páginas portables la proyectan.
+entity PropertyRenameMigration {
+    ontology: Ontology
+    definition: PropertyDefinition
+    language: String
+    from_label: String
+    to_label: String
+    affected_assignments: Set<core/PropertyAssignment>
+    affected_templates: Set<ObjectTemplate>
+    conflicts: Set<core/PropertyAssignment>
+    status: MigrationStatus
+    proposed_by: core/Participant
+    applied_by: core/Participant?
+    applied_at: Timestamp?
 }
 
 -- Una respuesta admisible para una propiedad.
@@ -361,14 +417,16 @@ config {
 ------------------------------------------------------------
 
 rule ParticipantDeclaresObjectTemplate {
-    when: DeclareObjectTemplate(participant, ontology, name, description, carrier, form)
+    when: DeclareObjectTemplate(participant, ontology, declaration, name, labels, description, carrier, form)
 
     requires: participant.kind = human
     requires: not exists ObjectTemplate{ontology: ontology, name: name}
 
     ensures: ObjectTemplate.created(
         ontology: ontology,
+        declaration: declaration,
         name: name,
+        labels: labels,
         description: description,
         carrier: carrier,
         form: form,
@@ -422,8 +480,9 @@ rule ParticipantDeclaresCompositionRole {
 
 rule ParticipantDeclaresRelationDefinition {
     when: DeclareRelationDefinition(
-        participant, ontology, name, description, domain, range,
-        derived_inverse, symmetric, transitive, role
+        participant, ontology, declaration, name, labels, description, domain, range,
+        derived_inverse, symmetric, transitive, role, function, scope,
+        inherited_through, verified_by
     )
 
     requires: participant.kind = human
@@ -433,7 +492,9 @@ rule ParticipantDeclaresRelationDefinition {
 
     ensures: RelationDefinition.created(
         ontology: ontology,
+        declaration: declaration,
         name: name,
+        labels: labels,
         description: description,
         domain: domain,
         range: range,
@@ -441,6 +502,10 @@ rule ParticipantDeclaresRelationDefinition {
         symmetric: symmetric,
         transitive: transitive,
         role: role,
+        function: function,
+        scope: scope,
+        inherited_through: inherited_through,
+        verified_by: verified_by,
         status: approved
     )
 }
@@ -453,7 +518,8 @@ rule ParticipantDeclaresRelationDefinition {
 -- distinto de corregirlos por su cuenta.
 rule DeclarePropertyDomain {
     when: DefinePropertyDomain(
-        participant, ontology, name, value_kind, multiple, applies_globally, description
+        participant, ontology, declaration, name, labels,
+        value_kind, multiple, applies_globally, description
     )
 
     -- Una persona, o un agente al que una persona autorizó este acto sobre esta
@@ -467,8 +533,10 @@ rule DeclarePropertyDomain {
 
     ensures: PropertyDefinition.created(
         ontology: ontology,
+        declaration: declaration,
         applies_globally: applies_globally,
         name: name,
+        labels: labels,
         description: description,
         value_kind: value_kind,
         multiple: multiple,
@@ -481,6 +549,108 @@ rule DeclarePropertyDomain {
         -- admit. A property that has been answered in eleven different ways for
         -- years is evidence about the vocabulary, and evidence that gets
         -- corrected on contact is evidence destroyed.
+}
+
+-- Ver antes de renombrar. La vista previa cuenta asignaciones y plantillas
+-- estructurales, y separa los conflictos: nunca sustituye texto libre ni citas
+-- que sólo contienen la misma secuencia de caracteres.
+rule ParticipantPreviewsPropertyRename {
+    when: PreviewPropertyRename(participant, definition, language, to_label)
+
+    let membership = core/Membership{
+        graph: definition.ontology.graph, participant: participant
+    }
+
+    requires: exists membership
+    requires: membership.status = active
+    requires: to_label != ""
+
+    ensures: PropertyRenameMigration.created(
+        ontology: definition.ontology,
+        definition: definition,
+        language: language,
+        from_label: definition.name,
+        to_label: to_label,
+        affected_assignments: assignments_named(definition.ontology.graph, definition.name),
+        affected_templates: templates_naming(definition.ontology, definition.name),
+        conflicts: conflicting_assignments(
+            definition.ontology.graph, definition.name, to_label
+        ),
+        status: previewed,
+        proposed_by: participant,
+        applied_by: null,
+        applied_at: null
+    )
+}
+
+-- Aplicar la migración cambia la clave portátil vigente y sus referencias
+-- estructurales en un solo lote. La identidad sigue siendo `definition` y la
+-- historia conserva las operaciones antiguas con el rótulo que tenían entonces.
+rule ParticipantAppliesPropertyRename {
+    when: ApplyPropertyRename(participant, migration)
+
+    let delegation = agent/Delegation{
+        granted_to: participant, act: "ApplyPropertyRename", subject: migration.id
+    }
+
+    requires: migration.status = previewed
+    requires: migration.conflicts.count = 0
+    requires: participant.kind = human or (exists delegation and not delegation.spent)
+
+    ensures:
+        for assignment in migration.affected_assignments:
+            if assignment.page != null:
+                core/ParticipantSubmits(
+                    participant: participant,
+                    graph: migration.ontology.graph,
+                    origin_id: migration.id + assignment.page + "set",
+                    change: set_property(assignment.page, migration.to_label, assignment.value),
+                    channel: typed_text
+                )
+                core/ParticipantSubmits(
+                    participant: participant,
+                    graph: migration.ontology.graph,
+                    origin_id: migration.id + assignment.page + "remove",
+                    change: remove_property(assignment.page, migration.from_label),
+                    channel: typed_text
+                )
+            if assignment.block != null:
+                core/ParticipantSubmits(
+                    participant: participant,
+                    graph: migration.ontology.graph,
+                    origin_id: migration.id + assignment.block + "set",
+                    change: set_property(assignment.block, migration.to_label, assignment.value),
+                    channel: typed_text
+                )
+                core/ParticipantSubmits(
+                    participant: participant,
+                    graph: migration.ontology.graph,
+                    origin_id: migration.id + assignment.block + "remove",
+                    change: remove_property(assignment.block, migration.from_label),
+                    channel: typed_text
+                )
+        migration.definition.name = migration.to_label
+        migration.definition.labels = labels_with(
+            migration.definition.labels, migration.language, migration.to_label
+        )
+        migration.status = applied
+        migration.applied_by = participant
+        migration.applied_at = now
+
+    @invariant RenameIsAtomicAcrossCurrentState
+        -- La declaración, las asignaciones y las referencias estructurales de
+        -- plantillas cambian juntas o no cambia ninguna. Un corte no puede dejar
+        -- media biblioteca preguntando `año` y la otra media `fecha de inicio`.
+
+    @invariant RenamePreservesOperationHistory
+        -- Las operaciones pasadas no se reescriben. Al reconstruir una revisión
+        -- anterior se lee el nombre que regía entonces; la migración explica el
+        -- momento en que la clave vigente cambió.
+
+    @invariant RenameNeverRewritesProseByCoincidence
+        -- Sólo cambian asignaciones de propiedad y referencias estructurales a
+        -- esa definición. Una frase, cita o título que contenga la misma palabra
+        -- no es por eso una propiedad y queda intacto.
 }
 
 rule ParticipantAddsPropertyToObject {
@@ -929,6 +1099,17 @@ invariant ObjectPropertiesBelongToTheSameLibrary {
         expectation.object_template.ontology = expectation.definition.ontology
 }
 
+invariant InheritedScopeNamesItsMembershipPath {
+    for relation in RelationDefinitions:
+        (relation.scope = inherited_by_membership) = (relation.inherited_through != null)
+}
+
+invariant NormativeVerificationStaysInsideOneLibrary {
+    for relation in RelationDefinitions:
+        relation.verified_by != null implies
+            relation.verified_by.ontology = relation.ontology
+}
+
 invariant AnObjectExpectsAPropertyAtMostOnce {
     for expectation in ObjectPropertyExpectations:
         ObjectPropertyExpectations.all(other =>
@@ -970,9 +1151,10 @@ surface LibraryGovernment {
         ontology.assignments
         ontology.property_definitions
         ontology.relations
+        PropertyRenameMigrations where ontology = ontology
 
     provides:
-        DeclareObjectTemplate(participant, ontology, name, description, carrier, form)
+        DeclareObjectTemplate(participant, ontology, declaration, name, labels, description, carrier, form)
         ReviseObjectTemplate(participant, object_template, name, description)
         DeclareObjectComposition(participant, object_template, ordered)
         DeclareCompositionRole(
@@ -980,12 +1162,16 @@ surface LibraryGovernment {
             admitted_objects, multiple, required
         )
         DeclareRelationDefinition(
-            participant, ontology, name, description, domain, range,
-            derived_inverse, symmetric, transitive, role
+            participant, ontology, declaration, name, labels, description, domain, range,
+            derived_inverse, symmetric, transitive, role, function, scope,
+            inherited_through, verified_by
         )
         DefinePropertyDomain(
-            participant, ontology, name, value_kind, multiple, applies_globally, description
+            participant, ontology, declaration, name, labels,
+            value_kind, multiple, applies_globally, description
         )
+        PreviewPropertyRename(participant, definition, language, to_label)
+        ApplyPropertyRename(participant, migration)
         AddPropertyToObject(participant, object_template, definition, required)
         RemovePropertyFromObject(participant, expectation)
         ReadPropertyUsage(participant, ontology, definition)
@@ -1065,6 +1251,29 @@ surface LibraryGovernment {
         -- se derivan de capacidades genéricas declaradas —por ejemplo una
         -- composición ordenada— y siguen siendo seguras si el vocabulario se
         -- renombra o se retira.
+
+    @guarantee VocabularyIdentitySurvivesEveryLabel
+        -- El bloque de declaración identifica al objeto, propiedad o relación.
+        -- Sus rótulos pertenecen a idiomas y pueden cambiar; ninguna traducción
+        -- ni renombrado crea por accidente otra entidad ontológica.
+
+    @guarantee PageLanguageInterfaceLanguageAndOntologyLanguageAreDistinct
+        -- El idioma de una página describe su contenido; el de interfaz nombra
+        -- controles; el de ontología elige cómo se muestran objetos, propiedades
+        -- y relaciones. Cambiar el tercero traduce la ficha semántica, no finge
+        -- haber traducido la prosa de la página.
+
+    @guarantee NormativeScopeIsExplainableAndNotCopied
+        -- Una relación normativa de alcance heredado aplica a miembros por el
+        -- camino de pertenencia que declara. Vera deriva ese alcance y puede
+        -- explicar `Bases rigen Proyecto, Entregable forma parte de Proyecto`;
+        -- no copia cientos de aristas ni llama transitiva a toda relación.
+
+    @guarantee ComplianceIsEvidenceAndNeverSilentCorrection
+        -- Verificar una norma produce un diagnóstico trazable a requisito,
+        -- evidencia y página afectada. El bibliotecario propone acciones y
+        -- señala faltas o contradicciones; no corrige el proyecto en silencio ni
+        -- convierte una inferencia en decisión de su dueño.
 
     @guarantee LibraryGovernmentCannotRelaxTheKernel
         -- La ontología puede describir un objeto activo y sus entradas, salidas

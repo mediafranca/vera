@@ -128,6 +128,14 @@ function fieldSays(field: string | null, many: boolean, values: readonly string[
   return values.length === 0 ? said : `${said}: ${values.join(', ')}`;
 }
 
+/** Los rótulos lingüísticos, en una forma breve que también se puede corregir. */
+function labelsSays(labels: Readonly<Record<string, string>>): string {
+  return Object.entries(labels)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([language, label]) => `${language}: ${label}`)
+    .join(' · ');
+}
+
 /**
  * Dibuja la tabla de una página que gobierna.
  *
@@ -236,6 +244,102 @@ export async function renderGoverning(
         : { kind: 'set_property', block, propertyKey: key, propertyValue: next.trim() },
     );
 
+  /**
+   * Renombrar una propiedad es una migración, no una edición de texto aislada.
+   * La identidad es el bloque; antes de enviar el lote se enseña cuántas
+   * asignaciones y plantillas cambiarían y se detiene ante cualquier colisión.
+   */
+  const renameProperty = (block: string) => async (next: string): Promise<boolean> => {
+    let impact: Awaited<ReturnType<typeof api.propertyRenameImpact>>;
+    try {
+      impact = await api.propertyRenameImpact(block, next.trim(), 'es');
+    } catch {
+      window.alert('No se pudo calcular el impacto del renombrado. No se cambió nada.');
+      return false;
+    }
+    if (impact.conflicts.length > 0) {
+      window.alert(
+        `No se puede renombrar «${impact.from}» como «${impact.to}»: ` +
+        `${impact.conflicts.length} ${impact.conflicts.length === 1 ? 'página o bloque ya usa' : 'páginas o bloques ya usan'} ambas claves.`,
+      );
+      return false;
+    }
+    const assignments = impact.assignments.pages + impact.assignments.blocks;
+    const accepted = window.confirm(
+      `Renombrar «${impact.from}» como «${impact.to}» cambiará ` +
+      `${assignments} ${assignments === 1 ? 'asignación' : 'asignaciones'} y ` +
+      `${impact.templates} ${impact.templates === 1 ? 'plantilla' : 'plantillas'}. ` +
+      'La prosa y la historia anterior permanecerán intactas. ¿Aplicar el lote?',
+    );
+    if (!accepted) return false;
+    const applied = await api.submitCanonicalBatch(
+      impact.changes.map((change) => ({ change })),
+      undefined,
+      impact.ifRevisions,
+    );
+    if (applied.status === 'rejected') {
+      window.alert(`No se aplicó el renombrado: ${applied.reason}`);
+      return false;
+    }
+    return true;
+  };
+
+  /**
+   * Corrige los nombres visibles sin tocar la identidad estable del bloque.
+   *
+   * La celda acepta `es: Persona · en: Person`. Conservamos la clave exacta que
+   * ya estaba escrita (`rótulo es`, `label en`, etc.) al quitar un idioma; al
+   * crear uno nuevo usamos la forma canónica española del metamodelo.
+   */
+  const editLabels = (
+    block: string,
+    current: Readonly<Record<string, string>>,
+    currentKeys: Readonly<Record<string, string>>,
+  ) => async (next: string): Promise<boolean> => {
+    const parsed: Record<string, string> = {};
+    for (const part of next.split(/[·;]/u).map((one) => one.trim()).filter(Boolean)) {
+      const match = /^([a-z]{2,3}(?:-[A-Za-z0-9]+)*)\s*:\s*(.+)$/u.exec(part);
+      if (match === null) {
+        window.alert('Escribe cada rótulo como «es: nombre · en: name». No se cambió nada.');
+        return false;
+      }
+      const language = match[1]!.toLowerCase();
+      if (parsed[language] !== undefined) {
+        window.alert(`El idioma «${language}» aparece más de una vez. No se cambió nada.`);
+        return false;
+      }
+      parsed[language] = match[2]!.trim();
+    }
+
+    const changes: Change[] = [];
+    for (const language of Object.keys(current)) {
+      if (parsed[language] === undefined) {
+        changes.push({
+          kind: 'remove_property',
+          block,
+          propertyKey: currentKeys[language] ?? `rótulo ${language}`,
+        });
+      }
+    }
+    for (const [language, label] of Object.entries(parsed)) {
+      if (current[language] !== label) {
+        changes.push({
+          kind: 'set_property',
+          block,
+          propertyKey: currentKeys[language] ?? `rótulo ${language}`,
+          propertyValue: label,
+        });
+      }
+    }
+    if (changes.length === 0) return true;
+    const applied = await api.submitCanonicalBatch(changes.map((change) => ({ change })));
+    if (applied.status === 'rejected') {
+      window.alert(`No se cambiaron los rótulos: ${applied.reason}`);
+      return false;
+    }
+    return true;
+  };
+
   if (kind === 'objects') {
     /*
      * La columna del papel sólo si alguna clase cumple uno.
@@ -248,8 +352,8 @@ export async function renderGoverning(
     const withRole = said.objects.some((one) => one.role !== null);
     const roles: Choice[] = ROLES.map((one) => ({ value: one, hint: 'papel del código' }));
     const headers = withRole
-      ? ['Objeto', 'Propiedades', 'Papel', 'Descripción']
-      : ['Objeto', 'Propiedades', 'Descripción'];
+      ? ['Objeto', 'Rótulos', 'Propiedades', 'Papel', 'Descripción']
+      : ['Objeto', 'Rótulos', 'Propiedades', 'Descripción'];
     const body = sectionIn(null, null, headers);
 
     for (const object of said.objects) {
@@ -261,6 +365,16 @@ export async function renderGoverning(
         { shows: object.name, label: 'el nombre de la clase', placeholder: 'sin nombre' },
         (next) => write({ kind: 'edit_block', block: object.block, content: next.trim() }),
       ));
+
+      editableCell(
+        cellIn(row, at++),
+        {
+          shows: labelsSays(object.labels),
+          label: 'los rótulos por idioma',
+          placeholder: 'sin rótulos',
+        },
+        editLabels(object.block, object.labels, object.labelKeys),
+      );
 
       chipsCell(
         cellIn(row, at++),
@@ -316,8 +430,18 @@ export async function renderGoverning(
       nameEditors.set(property.block, editableCell(
         cellIn(row, at++),
         { shows: property.name, label: 'el nombre de la propiedad', placeholder: 'sin nombre' },
-        (next) => write({ kind: 'edit_block', block: property.block, content: next.trim() }),
+        renameProperty(property.block),
       ));
+
+      editableCell(
+        cellIn(row, at++),
+        {
+          shows: labelsSays(property.labels),
+          label: 'los rótulos por idioma',
+          placeholder: 'sin rótulos',
+        },
+        editLabels(property.block, property.labels, property.labelKeys),
+      );
 
       editableCell(
         cellIn(row, at++),
@@ -373,7 +497,7 @@ export async function renderGoverning(
       const body = sectionIn(
         'Lo que Vera necesita',
         'Cada una cumple un papel que el código lee por su nombre. Cambiarles el nombre está bien —el papel viaja con ellas—; quitarlas deja a Vera sin saber leer lo que ya está escrito.',
-        ['Nombre', 'Cuelga de', 'Tipo de dato', 'Papel', 'Descripción'],
+        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Papel', 'Descripción'],
       );
       for (const property of machinery) written(property, body, true);
     }
@@ -382,7 +506,7 @@ export async function renderGoverning(
       const body = sectionIn(
         'El vocabulario de este corpus',
         'Las que pusiste tú. Vera las guarda, las enseña y deja consultarlas, y no las entiende: lo que significan lo dice esta página.',
-        ['Nombre', 'Cuelga de', 'Tipo de dato', 'Descripción'],
+        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Descripción'],
       );
       for (const property of vocabulary) written(property, body, false);
     }
@@ -403,7 +527,10 @@ export async function renderGoverning(
     const body = sectionIn(
       null,
       'Cada fila declara una arista del corpus: cómo se llama desde ambos extremos, qué puede unir y qué comportamiento tiene.',
-      ['Relación', 'Inversa', 'Dominio', 'Rango', 'Simétrica', 'Transitiva', 'Estado', 'Descripción'],
+      [
+        'Relación', 'Rótulos', 'Inversa', 'Dominio', 'Rango', 'Función', 'Alcance',
+        'Hereda por', 'Verifica con', 'Simétrica', 'Transitiva', 'Estado', 'Descripción',
+      ],
     );
 
     for (const relation of said.relations) {
@@ -414,6 +541,15 @@ export async function renderGoverning(
         { shows: relation.name, label: 'el nombre de la relación', placeholder: 'sin nombre' },
         (next) => write({ kind: 'edit_block', block: relation.block, content: next.trim() }),
       ));
+      editableCell(
+        cellIn(row, at++),
+        {
+          shows: labelsSays(relation.labels),
+          label: 'los rótulos por idioma',
+          placeholder: 'sin rótulos',
+        },
+        editLabels(relation.block, relation.labels, relation.labelKeys),
+      );
       editableCell(
         cellIn(row, at++),
         { shows: relation.inverse, label: 'cómo se lee en sentido inverso', placeholder: 'sin inversa' },
@@ -431,6 +567,38 @@ export async function renderGoverning(
         relation.range,
         { offered: objectChoices, label: 'objeto de destino', add: '+ objeto' },
         (next) => put(relation.block, 'rango')(next.join(', ')),
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.function, label: 'qué función cumple', placeholder: 'descriptiva' },
+        put(relation.block, 'función'),
+        [{ value: 'descriptiva' }, { value: 'normativa' }, { value: 'probatoria' }],
+      );
+      editableCell(
+        cellIn(row, at++),
+        { shows: relation.scope, label: 'qué alcance tiene', placeholder: 'directo' },
+        put(relation.block, 'alcance'),
+        [{ value: 'directo' }, { value: 'heredado' }],
+      );
+      editableCell(
+        cellIn(row, at++),
+        {
+          shows: relation.inheritedThrough ?? '',
+          label: 'por qué relación hereda su alcance',
+          placeholder: '—',
+        },
+        put(relation.block, 'hereda por'),
+        relationChoices,
+      );
+      editableCell(
+        cellIn(row, at++),
+        {
+          shows: relation.verifiedBy ?? '',
+          label: 'qué relación aporta evidencia',
+          placeholder: '—',
+        },
+        put(relation.block, 'verifica con'),
+        relationChoices,
       );
       editableCell(
         cellIn(row, at++),

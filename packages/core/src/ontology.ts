@@ -137,6 +137,10 @@ export interface PropertyDeclaration {
   block: string;
   /** Cómo se llama la propiedad en este corpus. */
   name: string;
+  /** Rótulos alternativos por idioma; la identidad sigue siendo `block`. */
+  labels: Record<string, string>;
+  /** Claves exactas que los guardan, para editarlas sin adivinar su grafía. */
+  labelKeys: Record<string, string>;
   /** Qué clase de campo es. Nulo cuando no se dijo: nadie está obligado a decirlo. */
   field: FieldKind | null;
   /** Si admite varias respuestas separadas por coma. */
@@ -172,6 +176,31 @@ const yes = (said: string | null): boolean =>
   said !== null && /^(sí|si|yes|true|varios|varias)$/i.test(said.trim());
 
 /**
+ * Rótulos lingüísticos escritos como `rótulo es:: autor`, `label en:: author`.
+ *
+ * La clave del mapa usa la etiqueta BCP 47 tal como fue escrita, normalizada a
+ * minúsculas. No inventamos traducciones ni tratamos dos idiomas como aliases.
+ */
+function labelsIn(block: DeclaredBlock): {
+  labels: Record<string, string>;
+  labelKeys: Record<string, string>;
+} {
+  const labels: Record<string, string> = {};
+  const labelKeys: Record<string, string> = {};
+  for (const property of block.properties) {
+    const matched = /^(?:rótulo|rotulo|label)\s+(.+)$/iu.exec(property.key.trim());
+    if (matched === null) continue;
+    const language = matched[1]!.trim().toLowerCase();
+    const text = property.value.trim();
+    if (language !== '' && text !== '') {
+      labels[language] = text;
+      labelKeys[language] = property.key;
+    }
+  }
+  return { labels, labelKeys };
+}
+
+/**
  * El nombre de una propiedad, tomado del texto del bloque.
  *
  * Se le quita el marcado —negrita, código— porque quien escribe una lista de
@@ -195,9 +224,11 @@ export function readPropertyDeclarations(blocks: readonly DeclaredBlock[]): Prop
     const name = nameIn(block.content);
     if (name === '') continue;
     const role = valueOf(block, 'papel');
+    const localized = labelsIn(block);
     said.push({
       block: block.block,
       name,
+      ...localized,
       subject:
         SUBJECT_ALIASES[(valueOf(block, 'sujeto') ?? '').toLowerCase()] ??
         (role === null ? 'página' : (SUBJECT_BY_ROLE[role.trim().toLowerCase()] ?? 'página')),
@@ -216,6 +247,9 @@ export interface ObjectDeclaration {
   block: string;
   /** La clase de cosa: «Persona», «Referencia», «Proyecto». */
   name: string;
+  /** Rótulos alternativos por idioma; la identidad sigue siendo `block`. */
+  labels: Record<string, string>;
+  labelKeys: Record<string, string>;
   /** Qué propiedades la constituyen, en el orden en que se declararon. */
   properties: string[];
   /** El soporte canónico de sus instancias; describe la biblioteca, no el núcleo. */
@@ -251,9 +285,11 @@ export function readObjectDeclarations(blocks: readonly DeclaredBlock[]): Object
   for (const block of blocks) {
     const name = nameIn(block.content);
     if (name === '') continue;
+    const localized = labelsIn(block);
     said.push({
       block: block.block,
       name,
+      ...localized,
       properties: listOf(valueOf(block, 'propiedades')),
       carrier: /^(bloque|block)$/i.test(valueOf(block, 'soporte') ?? '') ? 'bloque' : 'página',
       composition: /^(composición|composicion|composition)$/i.test(valueOf(block, 'forma') ?? '')
@@ -281,6 +317,9 @@ export function readObjectDeclarations(blocks: readonly DeclaredBlock[]): Object
 export interface RelationDeclaration {
   block: string;
   name: string;
+  /** Rótulos alternativos por idioma; la identidad sigue siendo `block`. */
+  labels: Record<string, string>;
+  labelKeys: Record<string, string>;
   inverse: string;
   domain: string[];
   range: string[];
@@ -289,6 +328,12 @@ export interface RelationDeclaration {
   status: string | null;
   /** Qué papel del dominio cumple, cuando no es sólo vocabulario editorial. */
   role: string | null;
+  /** Si describe, rige o aporta evidencia. */
+  function: 'descriptiva' | 'normativa' | 'probatoria';
+  /** Si vale sólo sobre el destino o se hereda por pertenencia. */
+  scope: 'directo' | 'heredado';
+  inheritedThrough: string | null;
+  verifiedBy: string | null;
   says: string | null;
   external: string[];
 }
@@ -308,9 +353,11 @@ export function readRelationDeclarations(blocks: readonly DeclaredBlock[]): Rela
     if (name === '') continue;
     const symmetric = truth(valueOf(block, 'simétrica') ?? valueOf(block, 'simetrica'));
     const declaredInverse = valueOf(block, 'inversa');
+    const localized = labelsIn(block);
     said.push({
       block: block.block,
       name,
+      ...localized,
       inverse: declaredInverse ?? (symmetric === true ? name : name),
       domain: listOf(valueOf(block, 'dominio')),
       range: listOf(valueOf(block, 'rango')),
@@ -318,6 +365,16 @@ export function readRelationDeclarations(blocks: readonly DeclaredBlock[]): Rela
       transitive: truth(valueOf(block, 'transitiva')),
       status: valueOf(block, 'estado'),
       role: valueOf(block, 'papel'),
+      function: /^(normativa|normative)$/i.test(valueOf(block, 'función') ?? valueOf(block, 'funcion') ?? '')
+        ? 'normativa'
+        : /^(probatoria|evidentiary)$/i.test(valueOf(block, 'función') ?? valueOf(block, 'funcion') ?? '')
+          ? 'probatoria'
+          : 'descriptiva',
+      scope: /^(heredado|heredada|inherited)$/i.test(valueOf(block, 'alcance') ?? '')
+        ? 'heredado'
+        : 'directo',
+      inheritedThrough: valueOf(block, 'hereda por'),
+      verifiedBy: valueOf(block, 'verifica con'),
       says: valueOf(block, 'definición') ?? valueOf(block, 'definicion') ?? valueOf(block, 'qué') ?? valueOf(block, 'nota'),
       external: listOf(valueOf(block, 'equivalente externo')),
     });

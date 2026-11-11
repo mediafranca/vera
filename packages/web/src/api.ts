@@ -394,6 +394,8 @@ export interface PropertyDeclared {
    */
   block: string;
   name: string;
+  labels: Record<string, string>;
+  labelKeys: Record<string, string>;
   field: string | null;
   many: boolean;
   role: string | null;
@@ -421,6 +423,8 @@ export interface ObjectDeclared {
   /** El bloque que la declara. Ver `PropertyDeclared.block`. */
   block: string;
   name: string;
+  labels: Record<string, string>;
+  labelKeys: Record<string, string>;
   properties: string[];
   carrier: 'página' | 'bloque';
   composition: null | { ordered: boolean; members: string[] };
@@ -442,12 +446,18 @@ export interface OntologyView {
   relations: {
     block: string;
     name: string;
+    labels: Record<string, string>;
+    labelKeys: Record<string, string>;
     inverse: string;
     domain: string[];
     range: string[];
     symmetric: boolean | null;
     transitive: boolean | null;
     status: string | null;
+    function: 'descriptiva' | 'normativa' | 'probatoria';
+    scope: 'directo' | 'heredado';
+    inheritedThrough: string | null;
+    verifiedBy: string | null;
     says: string | null;
     external: string[];
   }[];
@@ -455,6 +465,18 @@ export interface OntologyView {
   fields: string[];
   /** Las que el corpus usa sin haberlas declarado, con cuántas veces. */
   undeclared: { key: string; uses: number }[];
+}
+
+export interface PropertyRenameImpact {
+  definition: string;
+  from: string;
+  to: string;
+  language: string;
+  assignments: { pages: number; blocks: number };
+  templates: number;
+  conflicts: { subject: string; current: string; target: string }[];
+  changes: Change[];
+  ifRevisions: Record<string, string>;
 }
 
 /** Lo que se sabe de una clave guardada sin enseñarla. */
@@ -1269,6 +1291,16 @@ export const api = {
   ontology: () => json<OntologyView>('/ontology'),
 
   /**
+   * Qué cambiaría al renombrar una propiedad por su identidad de declaración.
+   * Devuelve cambios canónicos, pero no los aplica: la persona ve el alcance y
+   * recién entonces puede enviarlos como un lote atómico ordinario.
+   */
+  propertyRenameImpact: (block: string, to: string, language = 'es') =>
+    json<PropertyRenameImpact>(
+      `/ontology/properties/${encodeURIComponent(block)}/rename?to=${encodeURIComponent(to)}&language=${encodeURIComponent(language)}`,
+    ),
+
+  /**
    * Todo lo que un bloque dijo, y cuándo.
    *
    * Sale del registro, que ya lo tenía. No había forma de mirarlo sin abrir la
@@ -1773,6 +1805,7 @@ export const api = {
       channel?: 'typed_text' | 'drawn' | 'walked';
     }[],
     expectedSequence?: number,
+    ifRevisions?: Record<string, string>,
   ): Promise<SubmitBatchResult> {
     if (entries.length === 0) return { status: 'rejected', reason: 'el lote está vacío' };
     if (proposeInsteadOfWriting) {
@@ -1791,6 +1824,7 @@ export const api = {
           changes: entries.map((entry) => named(entry.change)),
           channels: entries.map((entry) => entry.channel ?? 'typed_text'),
           ...(expectedSequence === undefined ? {} : { expectedSequence }),
+          ...(ifRevisions === undefined ? {} : { ifRevisions }),
         }),
       });
     } catch (error) {

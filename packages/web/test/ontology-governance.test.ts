@@ -11,20 +11,21 @@ import {
 
 const ontology: OntologyView = {
   objects: [
-    { block: 'person', name: 'Persona', properties: ['nombre'], carrier: 'página', composition: null, stageProperty: null, capability: null, role: null, says: null },
-    { block: 'unit', name: 'Unidad', properties: ['nombre'], carrier: 'página', composition: null, stageProperty: null, capability: null, role: null, says: null },
+    { block: 'person', name: 'Persona', labels: {}, labelKeys: {}, properties: ['nombre'], carrier: 'página', composition: null, stageProperty: null, capability: null, role: null, says: null },
+    { block: 'unit', name: 'Unidad', labels: {}, labelKeys: {}, properties: ['nombre'], carrier: 'página', composition: null, stageProperty: null, capability: null, role: null, says: null },
   ],
   properties: [
     {
-      block: 'name', name: 'nombre', field: 'texto', many: false, role: null,
+      block: 'name', name: 'nombre', labels: {}, labelKeys: {}, field: 'texto', many: false, role: null,
       subject: 'página', values: [], says: null, uses: 2,
     },
   ],
   relations: [
     {
-      block: 'directs', name: 'dirige', inverse: 'es dirigida por',
+      block: 'directs', name: 'dirige', labels: {}, labelKeys: {}, inverse: 'es dirigida por',
       domain: ['Persona'], range: ['Unidad'], symmetric: false, transitive: false,
-      status: 'aprobada', says: null, external: [],
+      status: 'aprobada', function: 'descriptiva', scope: 'directo',
+      inheritedThrough: null, verifiedBy: null, says: null, external: [],
     },
   ],
   names: {}, fields: ['texto'], undeclared: [],
@@ -47,6 +48,22 @@ describe('gobierno ontológico facetado', () => {
     assert.match(styles, /governing-facet\.selected[\s\S]*?color-mix\(in srgb, var\(--ontology-kind\)/);
     assert.match(readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8'),
       /header\.after\(facets\)/);
+  });
+
+  it('trata renombrar una propiedad como migración previsualizada y atómica', () => {
+    assert.match(governing, /api\.propertyRenameImpact\(block, next\.trim\(\), 'es'\)/);
+    assert.match(governing, /impact\.assignments\.pages \+ impact\.assignments\.blocks/);
+    assert.match(governing, /api\.submitCanonicalBatch\([\s\S]*?impact\.ifRevisions/);
+    assert.match(governing, /La prosa y la historia anterior permanecerán intactas/);
+  });
+
+  it('edita rótulos multilingües sin cambiar la identidad del bloque', () => {
+    assert.match(governing, /function labelsSays/);
+    assert.match(governing, /es: nombre · en: name/);
+    assert.match(governing, /currentKeys\[language\] \?\? `rótulo \$\{language\}`/);
+    assert.match(governing, /api\.submitCanonicalBatch\(changes\.map/);
+    assert.match(governing, /\['Objeto', 'Rótulos', 'Propiedades'/);
+    assert.match(governing, /'Relación', 'Rótulos', 'Inversa'/);
   });
 
   it('proyecta objetos sin inventar relaciones', () => {

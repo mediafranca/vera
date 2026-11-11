@@ -158,6 +158,8 @@ describe('ontología rectora de relaciones', () => {
     assert.deepEqual(contradice, {
       block,
       name: 'contradice',
+      labels: {},
+      labelKeys: {},
       inverse: 'es contradicha por',
       domain: ['Afirmación', 'Publicación'],
       range: [],
@@ -165,6 +167,10 @@ describe('ontología rectora de relaciones', () => {
       transitive: null,
       status: 'aprobada',
       role: null,
+      function: 'descriptiva',
+      scope: 'directo',
+      inheritedThrough: null,
+      verifiedBy: null,
       says: null,
       external: [],
     });
@@ -212,6 +218,88 @@ describe('dominios declarados de propiedades', () => {
     ]);
   });
 
+  it('previsualiza y aplica un renombrado por identidad sin tocar la prosa', async () => {
+    const objectsPage = await write({
+      kind: 'create_page',
+      stableId: 'page:test-kind-objects',
+      title: 'VERA: Objetos',
+      visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: objectsPage, propertyKey: 'special-kind', propertyValue: 'objects' });
+    const declaration = await write({
+      kind: 'create_block',
+      stableId: 'block:test-property-start-year',
+      page: 'page:test-properties-governing',
+      parent: null,
+      position: 9,
+      content: 'año de partida — una clave migrable',
+    });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'campo', propertyValue: 'fecha' });
+    const object = await write({
+      kind: 'create_block',
+      stableId: 'block:test-object-with-start-year',
+      page: 'page:test-kind-objects',
+      parent: null,
+      position: 9,
+      content: 'Iniciativa',
+    });
+    await write({
+      kind: 'set_property', block: object,
+      propertyKey: 'propiedades', propertyValue: 'año de partida, responsable',
+    });
+    const page = await write({ kind: 'create_page', title: 'Iniciativa migrable', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'año de partida', propertyValue: '2026' });
+    await write({
+      kind: 'create_block', page, parent: null, position: 0,
+      content: 'El año de partida se discute aquí y esta frase no se reescribe.',
+    });
+
+    const impact = await get(
+      `/ontology/properties/${encodeURIComponent(declaration)}/rename?to=${encodeURIComponent('fecha de inicio')}&language=es`,
+    ) as {
+      from: string;
+      to: string;
+      assignments: { pages: number; blocks: number };
+      templates: number;
+      conflicts: unknown[];
+      changes: unknown[];
+      ifRevisions: Record<string, string>;
+    };
+    assert.equal(impact.from, 'año de partida');
+    assert.equal(impact.to, 'fecha de inicio');
+    assert.deepEqual(impact.assignments, { pages: 1, blocks: 0 });
+    assert.equal(impact.templates, 1);
+    assert.deepEqual(impact.conflicts, []);
+
+    const applied = await postBatch({
+      originId: 'rename-property-start-year',
+      participant: OWNER,
+      changes: impact.changes,
+      ifRevisions: impact.ifRevisions,
+    });
+    assert.equal(applied.status, 201, JSON.stringify(applied.json));
+
+    const detail = await get(`/pages/${encodeURIComponent(page)}`) as {
+      properties: { key: string; value: string }[];
+      blocks: { content: string }[];
+    };
+    assert.equal(detail.properties.some((one) => one.key === 'año de partida'), false);
+    assert.equal(detail.properties.find((one) => one.key === 'fecha de inicio')?.value, '2026');
+    assert.equal(detail.blocks.some((one) => one.content.includes('El año de partida')), true);
+
+    const ontology = await get('/ontology') as {
+      properties: { block: string; name: string; labels: Record<string, string> }[];
+      objects: { block: string; properties: string[] }[];
+    };
+    const renamed = ontology.properties.find((one) => one.block === declaration);
+    assert.equal(renamed?.name, 'fecha de inicio');
+    assert.deepEqual(renamed?.labels, { es: 'fecha de inicio' });
+    assert.deepEqual(
+      ontology.objects.find((one) => one.block === object)?.properties,
+      ['fecha de inicio', 'responsable'],
+    );
+  });
+
   it('toma todos los tipos de Objetos y colapsa sus variantes de caja', async () => {
     const kind = await write({
       kind: 'create_block',
@@ -224,13 +312,7 @@ describe('dominios declarados de propiedades', () => {
     await write({ kind: 'set_property', block: kind, propertyKey: 'campo', propertyValue: 'una de' });
     await write({ kind: 'set_property', block: kind, propertyKey: 'papel', propertyValue: 'kind' });
 
-    const objects = await write({
-      kind: 'create_page',
-      stableId: 'page:test-kind-objects',
-      title: 'VERA: Objetos',
-      visibility: 'private',
-    });
-    await write({ kind: 'set_property', page: objects, propertyKey: 'special-kind', propertyValue: 'objects' });
+    const objects = 'page:test-kind-objects';
     for (const [position, name] of ['Nota', 'Persona', 'Proyecto', 'Argumento'].entries()) {
       const declaration = await write({
         kind: 'create_block',
@@ -256,7 +338,7 @@ describe('dominios declarados de propiedades', () => {
     const detail = (await get(`/pages/${encodeURIComponent(page)}`)) as {
       domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
     };
-    assert.deepEqual(detail.domains['tipo']?.slice(0, 3), [
+    assert.deepEqual(detail.domains['tipo']?.filter((one) => ['Nota', 'Persona', 'Proyecto'].includes(one.value)), [
       { value: 'Nota', uses: 2, declared: true },
       { value: 'Persona', uses: 0, declared: true },
       { value: 'Proyecto', uses: 0, declared: true },

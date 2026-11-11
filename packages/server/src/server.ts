@@ -504,8 +504,11 @@ interface LibrarianRemovalInput {
   reason: string;
 }
 
-const MAX_BATCH_CHANGES = 1_000;
-const MAX_BATCH_BYTES = 2 * 1024 * 1024;
+// Una migración ontológica puede tocar una clave usada en más de mil sujetos.
+// El lote sigue acotado, pero el límite debe permitir que el renombrado sea
+// realmente atómico en una biblioteca de este tamaño.
+const MAX_BATCH_CHANGES = 5_000;
+const MAX_BATCH_BYTES = 8 * 1024 * 1024;
 
 /** Quién resultó ser quien escribe, y por qué canal se registra lo que escriba. */
 interface Submitter {
@@ -2178,6 +2181,112 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
   /** Cada tipo de arista que este corpus ofrece al escribir una relación. */
   const declaredRelations = () => readRelationDeclarations(declaredIn('relations'));
+
+  /** Cambia sólo el nombre de la primera línea y conserva su explicación. */
+  const renamedDeclarationContent = (content: string, next: string): string => {
+    const lines = content.split('\n');
+    const first = lines[0] ?? '';
+    const prefix = first.match(/^\s*[-*·]\s*/u)?.[0] ?? '';
+    const marked = first.slice(prefix.length).trim();
+    const suffix = marked.match(/\s+[—–:]\s+.*$/u)?.[0] ?? '';
+    lines[0] = `${prefix}${next}${suffix}`;
+    return lines.join('\n');
+  };
+
+  /**
+   * Plan de renombrado de una propiedad identificada por su bloque rector.
+   *
+   * Sólo toca asignaciones y referencias estructurales. Encontrar la palabra en
+   * una frase no convierte esa frase en propiedad, de modo que el texto libre no
+   * entra jamás al plan.
+   */
+  const propertyRenameImpact = (blockId: string, next: string, language: string) => {
+    const definition = declaredProperties().find((one) => one.block === blockId);
+    const block = graph.block(blockId);
+    if (definition === undefined || block === undefined) return null;
+    const fromKey = titleKey(definition.name);
+    const toKey = titleKey(next);
+    const changes: Change[] = [];
+    const conflicts: { subject: string; current: string; target: string }[] = [];
+    let pages = 0;
+    let blocks = 0;
+
+    const migrateSubject = (subject: string, kind: 'page' | 'block'): void => {
+      const properties = graph.propertiesOf(subject);
+      const sources = properties.filter((one) => titleKey(one.key) === fromKey);
+      if (sources.length === 0) return;
+      const source = sources[0]!;
+      const target = properties.find((one) => titleKey(one.key) === toKey && !sources.includes(one));
+      // Dos variantes de la misma clave sobre un sujeto colapsarían en una sola
+      // asignación. Aunque coincidan en valor, eso requiere una conciliación
+      // explícita; un renombrado no decide cuál de las dos era canónica.
+      if (sources.length > 1 || target !== undefined) {
+        conflicts.push({ subject, current: source.value, target: target?.value ?? sources[1]?.value ?? source.value });
+        return;
+      }
+      if (source.key === next) return;
+      const targetSubject = kind === 'page' ? { page: subject } : { block: subject };
+      changes.push({
+        kind: 'set_property', ...targetSubject,
+        propertyKey: next, propertyValue: source.value,
+      });
+      changes.push({ kind: 'remove_property', ...targetSubject, propertyKey: source.key });
+      if (kind === 'page') pages += 1;
+      else blocks += 1;
+    };
+
+    for (const page of graph.pages()) migrateSubject(page.id, 'page');
+    for (const one of graph.allBlocks()) migrateSubject(one.stableId, 'block');
+
+    let templates = 0;
+    for (const object of declaredObjects()) {
+      const declaredBlock = graph.block(object.block);
+      if (declaredBlock === undefined) continue;
+      const properties = graph.propertiesOf(object.block);
+      const held = properties.find((one) => titleKey(one.key) === 'propiedades');
+      if (held !== undefined) {
+        const listed = held.value.split(',').map((one) => one.trim()).filter(Boolean);
+        if (listed.some((one) => titleKey(one) === fromKey)) {
+          const rewritten = listed.map((one) => titleKey(one) === fromKey ? next : one).join(', ');
+          changes.push({
+            kind: 'set_property', block: object.block,
+            propertyKey: held.key, propertyValue: rewritten,
+          });
+          templates += 1;
+        }
+      }
+      const stage = properties.find((one) => titleKey(one.key) === 'etapa');
+      if (stage !== undefined && titleKey(stage.value) === fromKey) {
+        changes.push({
+          kind: 'set_property', block: object.block,
+          propertyKey: stage.key, propertyValue: next,
+        });
+        templates += 1;
+      }
+    }
+
+    changes.push({
+      kind: 'edit_block', block: blockId,
+      content: renamedDeclarationContent(block.content, next),
+    });
+    changes.push({
+      kind: 'set_property', block: blockId,
+      propertyKey: `rótulo ${language}`, propertyValue: next,
+    });
+
+    const revision = latestBlockRevision(graph, blockId);
+    return {
+      definition: blockId,
+      from: definition.name,
+      to: next,
+      language,
+      assignments: { pages, blocks },
+      templates,
+      conflicts,
+      changes,
+      ifRevisions: revision === null ? {} : { [blockId]: revision },
+    };
+  };
 
   /*
    * Cómo llama este corpus a lo que el dominio necesita conocer.
@@ -7821,6 +7930,29 @@ export function createVeraServer(options: ServerOptions): VeraServer {
        * se editan como cualquier otra página y cambiarlas no debería pedir
        * reiniciar. Ver specs/controlled-ontology.allium.
        */
+      if (request.method === 'GET' && path.startsWith('/ontology/properties/') && path.endsWith('/rename')) {
+        const blockId = decodeURIComponent(
+          path.slice('/ontology/properties/'.length, -'/rename'.length),
+        );
+        const next = (url.searchParams.get('to') ?? '').trim();
+        const language = (url.searchParams.get('language') ?? 'es').trim().toLowerCase();
+        if (next === '') {
+          send(response, 400, { error: 'el nuevo rótulo no puede quedar vacío' });
+          return;
+        }
+        if (language === '') {
+          send(response, 400, { error: 'el idioma del rótulo no puede quedar vacío' });
+          return;
+        }
+        const impact = propertyRenameImpact(blockId, next, language);
+        if (impact === null) {
+          send(response, 404, { error: 'no existe esa declaración de propiedad' });
+          return;
+        }
+        send(response, 200, impact);
+        return;
+      }
+
       if (path === '/ontology') {
         /*
          * Cuántas veces usa el corpus cada clave, declarada o no.
