@@ -590,5 +590,8 @@ open question "Which participant and which precondition produce a rejected submi
 -- corresponde, el segundo participante como voz mediada, fuente o coautor. Una
 -- edición posterior crea otro linaje; nunca reescribe el de la revisión previa.
 open question "When the exceptional case occurs and two devices changed the same block offline, which changes may Vera merge automatically and which require explicit human resolution?"
-open question "Are pages and blocks sufficient as Vera's canonical content model, or are typed nodes needed?"
+-- Resuelta: Page y Block bastan como soportes canónicos del software. Los
+-- objetos tipados pertenecen a la ontología de cada biblioteca y se asignan a
+-- esos soportes según controlled-ontology.allium; no nace una tercera entidad
+-- interna cada vez que una biblioteca declara una clase de cosa.
 open question "Which historical metadata and asset behaviours from herbertspencer.net must Vera preserve exactly?"

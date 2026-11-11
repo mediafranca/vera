@@ -1,14 +1,17 @@
 -- allium: 3
 -- controlled-ontology.allium
 
--- Scope: Centrally governed semantic types for Vera content
--- Includes: Composable types, pending classification suggestions, curator
---   confirmation, human correction, and a deliberately small starter ontology
+-- Scope: Gobierno de la ontología de una biblioteca Vera: las clases de cosas
+--   con que trabaja esa biblioteca, sus propiedades, relaciones y composiciones
+-- Includes: Objetos-plantilla para páginas o bloques, meta-objetos componibles,
+--   sugerencias de clasificación, confirmación curatorial y corrección humana
 -- Excludes:
+--   - La ontología del software, sus entidades internas y sus capacidades
+--   - La activación de funciones de Vera por nombres mágicos de objetos
 --   - Automated classification models and confidence algorithms
 --   - Free-form tags
 --   - Query syntax and visual presentation
---   - Domain-specific lifecycle rules for individual semantic types
+--   - La ejecución, permisos y aislamiento de comportamientos activos
 
 use "./core.allium" as core
 use "./agent-participation.allium" as agent
@@ -17,7 +20,7 @@ use "./agent-participation.allium" as agent
 -- Contracts
 ------------------------------------------------------------
 
-contract OntologyAwareCorpusWriting {
+contract LibraryOntologyAwareWriting {
     inspect_page: (ontology: Ontology, page: core/Page) -> Set<PropertyDefinition>
     validate_property: (ontology: Ontology, page: core/Page, name: String, value: String) -> Boolean
 
@@ -32,7 +35,7 @@ contract OntologyAwareCorpusWriting {
         -- prose; values such as `[[PICTOS]]` or `[[PICTOS|proyecto]]` are rejected
         -- or normalised before a proposal is made.
 
-    @invariant SemanticTypeAndTopicRemainDifferentQuestions
+    @invariant ObjectTemplateAndTopicRemainDifferentQuestions
         -- `tipo` answers what a page is; `concepto` answers what it discusses.
         -- Classification and tagging do not exchange these roles merely because
         -- the same word would look plausible in both places.
@@ -82,25 +85,67 @@ enum PropertyValueKind {
     boolean | one_of | concept | page_reference | external_url | date | number | free_text
 }
 
+-- Dónde vive una instancia de un objeto de la biblioteca. Esto describe el
+-- soporte canónico de la cosa; no convierte Page ni Block en objetos
+-- gobernables del software.
+enum ObjectCarrier { page | block }
+
+-- Un objeto simple se describe por sus propiedades y relaciones. Un
+-- meta-objeto compuesto conserva además una estructura de miembros con roles y
+-- orden, sin quitar a esos miembros su propia clase.
+enum ObjectForm { simple | composition }
+
 ------------------------------------------------------------
 -- Entities and Variants
 ------------------------------------------------------------
 
 entity Ontology {
     graph: core/Graph
-    types: SemanticType with ontology = this
+    objects: ObjectTemplate with ontology = this
     categories: Category with ontology = this
     concepts: Concept with ontology = this
     relations: RelationDefinition with ontology = this
-    assignments: TypeAssignment with ontology = this
+    assignments: ObjectAssignment with ontology = this
     property_definitions: PropertyDefinition with ontology = this
 }
 
-entity SemanticType {
+entity ObjectTemplate {
     ontology: Ontology
     name: String
     description: String
-    property_definitions: PropertyDefinition with semantic_type = this
+    carrier: ObjectCarrier
+    form: ObjectForm
+    property_expectations: ObjectPropertyExpectation with object_template = this
+    composition: CompositionDefinition?
+}
+
+-- La forma genérica de un meta-objeto. `Argumento` puede declarar una de estas
+-- composiciones, pero Vera no conoce ese nombre ni obtiene de él una función
+-- privada: conoce miembros, roles y orden como mecanismos generales.
+entity CompositionDefinition {
+    ontology: Ontology
+    object_template: ObjectTemplate
+    ordered: Boolean
+    roles: CompositionRole with composition = this
+}
+
+entity CompositionRole {
+    composition: CompositionDefinition
+    name: String
+    description: String
+    admitted_objects: Set<ObjectTemplate>
+    multiple: Boolean
+    required: Boolean
+}
+
+-- La propiedad se define una vez en el vocabulario y cada objeto decide si la
+-- espera y si la considera requerida. Separar definición de expectativa permite
+-- que `nombre`, `estado` o `autoría` aparezcan en varias plantillas sin copiar
+-- ni divergir su clase de valor.
+entity ObjectPropertyExpectation {
+    object_template: ObjectTemplate
+    definition: PropertyDefinition
+    required: Boolean
 }
 
 -- Una clasificación taxonómica. Cada categoría tiene como máximo una categoría
@@ -168,8 +213,8 @@ entity RelationDefinition {
     name: String
     description: String
     -- Desde qué tipo sale y hacia cuáles puede apuntar.
-    domain: SemanticType?
-    range: Set<SemanticType>
+    domain: ObjectTemplate?
+    range: Set<ObjectTemplate>
     -- El nombre de la inversa, cuando tiene sentido preguntar al revés. No se
     -- almacena: se calcula.
     derived_inverse: String?
@@ -225,14 +270,11 @@ entity AffectedCitation {
 -- blanco que hay que rellenar de memoria.
 entity PropertyDefinition {
     ontology: Ontology
-    -- Nulo cuando la propiedad rige en todo el grafo y no sólo en un tipo. Hace
-    -- falta que pueda serlo: el corpus declara `lang` en seiscientas páginas de
-    -- las que once tienen tipo, y una definición que colgara sólo de un tipo
-    -- dejaría sin gobierno justamente a la propiedad más usada.
-    semantic_type: SemanticType?
+    -- Algunas propiedades, como `lang`, se ofrecen a toda la biblioteca. Las
+    -- demás llegan a una instancia mediante ObjectPropertyExpectation.
+    applies_globally: Boolean
     name: String
     description: String
-    required: Boolean
     value_kind: PropertyValueKind
     -- Si admite varias respuestas a la vez. `tags` sí, `lang` no.
     --
@@ -271,9 +313,9 @@ entity PropertyOption {
     observed_uses: Integer
 }
 
-entity TypeAssignment {
+entity ObjectAssignment {
     ontology: Ontology
-    semantic_type: SemanticType
+    object_template: ObjectTemplate
     page: core/Page?
     block: core/Block?
     status: AssignmentStatus
@@ -291,7 +333,7 @@ config {
     --
     -- No es una asignación: es lo que la página dice de sí misma mientras nadie
     -- haya dicho otra cosa. Ver @guarantee AnUnclassifiedPageReadsAsANote.
-    default_semantic_type: String = "nota"
+    default_object_template: String = "nota"
 
     -- Cuántas veces tiene que aparecer un valor en el corpus para que Vera lo
     -- proponga como respuesta admisible. Por debajo de esto es una errata tan
@@ -318,6 +360,91 @@ config {
 -- Rules
 ------------------------------------------------------------
 
+rule ParticipantDeclaresObjectTemplate {
+    when: DeclareObjectTemplate(participant, ontology, name, description, carrier, form)
+
+    requires: participant.kind = human
+    requires: not exists ObjectTemplate{ontology: ontology, name: name}
+
+    ensures: ObjectTemplate.created(
+        ontology: ontology,
+        name: name,
+        description: description,
+        carrier: carrier,
+        form: form,
+        composition: null
+    )
+}
+
+rule ParticipantRevisesObjectTemplate {
+    when: ReviseObjectTemplate(participant, object_template, name, description)
+
+    requires: participant.kind = human
+
+    ensures:
+        object_template.name = name
+        object_template.description = description
+}
+
+rule ParticipantDeclaresObjectComposition {
+    when: DeclareObjectComposition(participant, object_template, ordered)
+
+    requires: participant.kind = human
+    requires: object_template.form = composition
+    requires: object_template.composition = null
+
+    ensures:
+        let declared = CompositionDefinition.created(
+            ontology: object_template.ontology,
+            object_template: object_template,
+            ordered: ordered
+        )
+        object_template.composition = declared
+}
+
+rule ParticipantDeclaresCompositionRole {
+    when: DeclareCompositionRole(
+        participant, composition, name, description, admitted_objects, multiple, required
+    )
+
+    requires: participant.kind = human
+    requires: admitted_objects.all(template => template.ontology = composition.ontology)
+
+    ensures: CompositionRole.created(
+        composition: composition,
+        name: name,
+        description: description,
+        admitted_objects: admitted_objects,
+        multiple: multiple,
+        required: required
+    )
+}
+
+rule ParticipantDeclaresRelationDefinition {
+    when: DeclareRelationDefinition(
+        participant, ontology, name, description, domain, range,
+        derived_inverse, symmetric, transitive, role
+    )
+
+    requires: participant.kind = human
+    requires: domain = null or domain.ontology = ontology
+    requires: range.all(template => template.ontology = ontology)
+    requires: not exists RelationDefinition{ontology: ontology, name: name}
+
+    ensures: RelationDefinition.created(
+        ontology: ontology,
+        name: name,
+        description: description,
+        domain: domain,
+        range: range,
+        derived_inverse: derived_inverse,
+        symmetric: symmetric,
+        transitive: transitive,
+        role: role,
+        status: approved
+    )
+}
+
 -- Decir con qué se contesta una propiedad.
 --
 -- El acto que convierte un campo de texto en un control. Nada más: no reescribe
@@ -326,7 +453,7 @@ config {
 -- distinto de corregirlos por su cuenta.
 rule DeclarePropertyDomain {
     when: DefinePropertyDomain(
-        participant, ontology, name, semantic_type, value_kind, multiple, required, description
+        participant, ontology, name, value_kind, multiple, applies_globally, description
     )
 
     -- Una persona, o un agente al que una persona autorizó este acto sobre esta
@@ -336,15 +463,13 @@ rule DeclarePropertyDomain {
     }
 
     requires: participant.kind = human or (exists delegation and not delegation.spent)
-    requires: semantic_type = null or semantic_type.ontology = ontology
     requires: not exists PropertyDefinition{ontology: ontology, name: name}
 
     ensures: PropertyDefinition.created(
         ontology: ontology,
-        semantic_type: semantic_type,
+        applies_globally: applies_globally,
         name: name,
         description: description,
-        required: required,
         value_kind: value_kind,
         multiple: multiple,
         status: approved
@@ -356,6 +481,35 @@ rule DeclarePropertyDomain {
         -- admit. A property that has been answered in eleven different ways for
         -- years is evidence about the vocabulary, and evidence that gets
         -- corrected on contact is evidence destroyed.
+}
+
+rule ParticipantAddsPropertyToObject {
+    when: AddPropertyToObject(participant, object_template, definition, required)
+
+    requires: participant.kind = human
+    requires: object_template.ontology = definition.ontology
+    requires: not exists ObjectPropertyExpectation{
+        object_template: object_template, definition: definition
+    }
+
+    ensures: ObjectPropertyExpectation.created(
+        object_template: object_template,
+        definition: definition,
+        required: required
+    )
+}
+
+rule ParticipantRemovesPropertyFromObject {
+    when: RemovePropertyFromObject(participant, expectation)
+
+    requires: participant.kind = human
+
+    ensures: not exists expectation
+
+    @invariant RemovingAnExpectationPreservesWrittenValues
+        -- Quitar una propiedad de la plantilla deja de ofrecerla como base del
+        -- objeto. No borra esa propiedad de ninguna página o bloque existente:
+        -- el contenido puede sobrevivir a la clasificación que lo explicaba.
 }
 
 -- Leer el corpus y decir qué respuestas ya se están dando.
@@ -496,15 +650,15 @@ rule ParticipantAnswersWithANewWord {
         -- shorter path to the graph.
 }
 
-rule SuggestPageSemanticType {
-    when: SuggestPageType(participant, ontology, semantic_type, page, rationale)
+rule SuggestPageObjectAssignment {
+    when: SuggestPageObject(participant, ontology, object_template, page, rationale)
 
-    requires: semantic_type.ontology = ontology
+    requires: object_template.ontology = ontology
     requires: page.graph = ontology.graph
 
-    ensures: TypeAssignment.created(
+    ensures: ObjectAssignment.created(
         ontology: ontology,
-        semantic_type: semantic_type,
+        object_template: object_template,
         page: page,
         block: null,
         status: suggested,
@@ -514,15 +668,15 @@ rule SuggestPageSemanticType {
     )
 }
 
-rule SuggestBlockSemanticType {
-    when: SuggestBlockType(participant, ontology, semantic_type, block, rationale)
+rule SuggestBlockObjectAssignment {
+    when: SuggestBlockObject(participant, ontology, object_template, block, rationale)
 
-    requires: semantic_type.ontology = ontology
+    requires: object_template.ontology = ontology
     requires: block.page.graph = ontology.graph
 
-    ensures: TypeAssignment.created(
+    ensures: ObjectAssignment.created(
         ontology: ontology,
-        semantic_type: semantic_type,
+        object_template: object_template,
         page: null,
         block: block,
         status: suggested,
@@ -553,9 +707,9 @@ rule ParticipantProcessesAPage {
 
     ensures:
         for finding in readings_of(page):
-            TypeAssignment.created(
+            ObjectAssignment.created(
                 ontology: ontology,
-                semantic_type: finding.semantic_type,
+                object_template: finding.object_template,
                 page: page,
                 block: null,
                 status: suggested,
@@ -622,7 +776,7 @@ rule MergeConcepts {
         -- cita escrita hace dos años siga resolviendo sin haberla tocado.
         surviving.alt_labels = surviving.alt_labels + absorbed.preferred_label + absorbed.alt_labels
         absorbed.status = deprecated
-        for assignment in TypeAssignments where concept = absorbed:
+        for assignment in ObjectAssignments where concept = absorbed:
             assignment.concept = surviving
         for relation in ConceptRelations where from = absorbed:
             relation.from = surviving
@@ -707,8 +861,8 @@ rule MigrateCitations {
         -- dejar el corpus a medio migrar, y se reanuda sin repetir lo hecho.
 }
 
-rule CuratorConfirmsSemanticType {
-    when: ConfirmTypeAssignment(participant, assignment)
+rule CuratorConfirmsObjectAssignment {
+    when: ConfirmObjectAssignment(participant, assignment)
 
     requires: assignment.status = suggested
 
@@ -717,8 +871,8 @@ rule CuratorConfirmsSemanticType {
         assignment.decided_by = participant
 }
 
-rule CuratorRejectsSemanticType {
-    when: RejectTypeAssignment(participant, assignment)
+rule CuratorRejectsObjectAssignment {
+    when: RejectObjectAssignment(participant, assignment)
 
     requires: assignment.status = suggested
 
@@ -727,8 +881,8 @@ rule CuratorRejectsSemanticType {
         assignment.decided_by = participant
 }
 
-rule HumanCorrectsSemanticTypeDecision {
-    when: CorrectTypeAssignment(participant, assignment, status)
+rule HumanCorrectsObjectAssignment {
+    when: CorrectObjectAssignment(participant, assignment, status)
 
     requires: participant.kind = human
     requires: status = confirmed or status = rejected
@@ -743,14 +897,45 @@ rule HumanCorrectsSemanticTypeDecision {
 ------------------------------------------------------------
 
 invariant AssignmentTargetsOneContentEntity {
-    for assignment in TypeAssignments:
+    for assignment in ObjectAssignments:
         (assignment.page != null or assignment.block != null) and
         not (assignment.page != null and assignment.block != null)
 }
 
-invariant MultipleTypesMayDescribeOnePage {
-    for assignment in TypeAssignments:
-        assignment.page != null implies assignment.semantic_type.ontology = assignment.ontology
+invariant MultipleObjectsMayDescribeOnePage {
+    for assignment in ObjectAssignments:
+        assignment.page != null implies assignment.object_template.ontology = assignment.ontology
+}
+
+invariant CompositionBelongsToItsTemplateOntology {
+    for composition in CompositionDefinitions:
+        composition.object_template.ontology = composition.ontology
+}
+
+invariant OnlyCompositeObjectsDeclareComposition {
+    for template in ObjectTemplates:
+        (template.form = composition) = (template.composition != null)
+}
+
+invariant CompositionRolesAdmitObjectsFromTheSameLibrary {
+    for role in CompositionRoles:
+        role.admitted_objects.all(template =>
+            template.ontology = role.composition.ontology
+        )
+}
+
+invariant ObjectPropertiesBelongToTheSameLibrary {
+    for expectation in ObjectPropertyExpectations:
+        expectation.object_template.ontology = expectation.definition.ontology
+}
+
+invariant AnObjectExpectsAPropertyAtMostOnce {
+    for expectation in ObjectPropertyExpectations:
+        ObjectPropertyExpectations.all(other =>
+            other.object_template != expectation.object_template or
+            other.definition != expectation.definition or
+            other = expectation
+        )
 }
 
 invariant ACategoryParentBelongsToTheSameOntology {
@@ -767,7 +952,7 @@ invariant ACategoryIsNotItsOwnParent {
 -- Actor Declarations
 ------------------------------------------------------------
 
-actor OntologyParticipant {
+actor LibraryGovernor {
     within: Ontology
     identified_by: core/Participant where core/Membership{participant: this, graph: within.graph}.status = active
 }
@@ -776,35 +961,49 @@ actor OntologyParticipant {
 -- Surfaces
 ------------------------------------------------------------
 
-surface OntologyCuration {
-    facing participant: OntologyParticipant
+surface LibraryGovernment {
+    facing participant: LibraryGovernor
     context ontology: Ontology
 
     exposes:
-        ontology.types
+        ontology.objects
         ontology.assignments
         ontology.property_definitions
+        ontology.relations
 
     provides:
-        DefinePropertyDomain(
-            participant, ontology, name, semantic_type, value_kind, multiple, required, description
+        DeclareObjectTemplate(participant, ontology, name, description, carrier, form)
+        ReviseObjectTemplate(participant, object_template, name, description)
+        DeclareObjectComposition(participant, object_template, ordered)
+        DeclareCompositionRole(
+            participant, composition, name, description,
+            admitted_objects, multiple, required
         )
+        DeclareRelationDefinition(
+            participant, ontology, name, description, domain, range,
+            derived_inverse, symmetric, transitive, role
+        )
+        DefinePropertyDomain(
+            participant, ontology, name, value_kind, multiple, applies_globally, description
+        )
+        AddPropertyToObject(participant, object_template, definition, required)
+        RemovePropertyFromObject(participant, expectation)
         ReadPropertyUsage(participant, ontology, definition)
         ApproveOption(participant, option)
         AnswerProperty(participant, ontology, definition, page, value)
         AdoptGovernedProperty(participant, ontology, page)
         ProcessPage(participant, ontology, page)
-        SuggestPageType(participant, ontology, semantic_type, page, rationale)
-        SuggestBlockType(participant, ontology, semantic_type, block, rationale)
+        SuggestPageObject(participant, ontology, object_template, page, rationale)
+        SuggestBlockObject(participant, ontology, object_template, block, rationale)
         RelateConcept(participant, ontology, from, to, kind)
         MergeConcept(participant, ontology, absorbed, surviving)
         MigrateCitationsTo(participant, migration)
-        ConfirmTypeAssignment(participant, assignment) when assignment.ontology = ontology
-        RejectTypeAssignment(participant, assignment) when assignment.ontology = ontology
-        CorrectTypeAssignment(participant, assignment, status) when assignment.ontology = ontology
+        ConfirmObjectAssignment(participant, assignment) when assignment.ontology = ontology
+        RejectObjectAssignment(participant, assignment) when assignment.ontology = ontology
+        CorrectObjectAssignment(participant, assignment, status) when assignment.ontology = ontology
 
     contracts:
-        fulfils OntologyAwareCorpusWriting
+        fulfils LibraryOntologyAwareWriting
 
     @guarantee SuggestionsAreNotSilentAssignments
         -- Automated classification creates a visible pending suggestion.
@@ -832,8 +1031,46 @@ surface OntologyCuration {
         -- owner never published it, which is what every page is until someone
         -- decides otherwise.
 
-    @guarantee ComposableTypes
-        -- A page or block may have multiple confirmed semantic types.
+    @guarantee ComposableObjects
+        -- Una página o bloque puede participar de más de un objeto confirmado.
+        -- Las plantillas se componen en la instancia; no heredan comportamiento
+        -- del software ni se fusionan en una clase privada nueva.
+
+    @guarantee ObjectsAreTemplatesAndNotSoftwareClasses
+        -- Un objeto declara qué propiedades se esperan, qué relaciones tienen
+        -- sentido y si sus instancias componen otras cosas. No redefine Page,
+        -- Block, Operation ni ninguna entidad con que Vera implementa esas
+        -- posibilidades.
+
+    @guarantee ExpectedPropertiesAppearBeforeTheyHaveValues
+        -- Al abrir una instancia, la ficha reúne las propiedades que su objeto
+        -- declara aunque todavía estén vacías. Añadir o quitar una propiedad de
+        -- la plantilla cambia lo que se ofrece y se espera; nunca inventa un
+        -- valor ni borra una asignación ya escrita.
+
+    @guarantee RelationsAreSuggestedByDomainAndRange
+        -- La ficha de una instancia enseña relaciones existentes y las que la
+        -- biblioteca considera posibles según dominio y rango. La declaración
+        -- ayuda a escribir y a detectar discrepancias, pero no convierte una
+        -- relación previa en inexistente cuando el Gobierno cambia.
+
+    @guarantee MetaObjectsComposeObjectsWithoutAbsorbingThem
+        -- Los miembros de una composición conservan su identidad, soporte y
+        -- objetos asignados. Un Argumento puede ordenar Ideas, Afirmaciones,
+        -- Evidencias u Objeciones sin convertirlas a todas en Argumento.
+
+    @guarantee ObjectNamesHaveNoOperationalPrivilege
+        -- Ningún nombre de objeto, propiedad, relación u opción activa por sí
+        -- solo una función privada del programa. Las superficies especializadas
+        -- se derivan de capacidades genéricas declaradas —por ejemplo una
+        -- composición ordenada— y siguen siendo seguras si el vocabulario se
+        -- renombra o se retira.
+
+    @guarantee LibraryGovernmentCannotRelaxTheKernel
+        -- La ontología puede describir un objeto activo y sus entradas, salidas
+        -- y relaciones. No puede conceder credenciales, ampliar acceso, abrir
+        -- red, evitar revisión humana ni cambiar los límites de ejecución que
+        -- protegen a Vera y a su corpus.
 
     @guarantee HumanFinalAuthority
         -- A human participant can correct a confirmed or rejected assignment.
@@ -866,7 +1103,7 @@ surface OntologyCuration {
         -- A category places a page in one explicit taxonomic tree whose nodes
         -- may have subcategories. A concept is a non-exclusive keyword or tag:
         -- concepts may overlap freely on the same page and do not determine the
-        -- page's object type. Neither one is a synonym for semantic type.
+        -- page's object template. Neither one is a synonym for an object.
 
     @guarantee ACategoryPageListsItsMembers
         -- Reaching a category shows its subcategories and every page assigned
@@ -915,7 +1152,7 @@ surface OntologyCuration {
         -- stored value remains visible and can still be rewritten deliberately.
 
     @guarantee AnUnclassifiedPageReadsAsANote
-        -- A page with no confirmed semantic type reads as a note. That reading
+        -- A page with no confirmed object template reads as a note. That reading
         -- is not stored: no assignment is created, no participant is credited
         -- with a decision they did not make, and the difference between "this is
         -- a note" and "nobody has classified this yet" stays askable — which is
@@ -997,20 +1234,20 @@ surface OntologyCuration {
         -- this is the same rule applied to the vocabulary.
 
     @guarantee TheSameQuestionsOpenEveryPage
-        -- Every page is asked what it is, what it is about, when it was written
-        -- and when it was last touched — in that order, present even when
-        -- unanswered. A header whose shape depends on what happens to be filled
-        -- in cannot be learned, and an absent question reads as a question that
-        -- does not apply rather than one nobody has answered.
+        -- Toda instancia enseña las propiedades globales y las que esperan sus
+        -- objetos, presentes incluso cuando todavía no tienen respuesta. La
+        -- ficha puede variar entre Organización, Persona o Argumento porque la
+        -- biblioteca declaró preguntas distintas; dentro de cada plantilla su
+        -- forma es estable y aprendible.
 }
 
 ------------------------------------------------------------
 -- Dónde se declara todo esto
 ------------------------------------------------------------
 
--- La ontología se escribe en dos páginas, y son dos porque son dos preguntas.
+-- La ontología se escribe en tres páginas, una por clase de declaración.
 --
--- Había una sola —«Ontología»— con todo dentro: los tipos, unas propiedades
+-- Había una sola —«Ontología»— con todo dentro: los objetos, unas propiedades
 -- sueltas, el vocabulario de relaciones y las reglas de gobierno. Se parte porque
 -- las dos preguntas que contiene se hacen en momentos distintos y se responden
 -- mirando cosas distintas:
@@ -1032,11 +1269,11 @@ surface OntologyCuration {
 contract TheOntologyIsWrittenWhereItCanBeRead {
     declare: (page: core/Page) -> Ontology
 
-    @invariant OneQuestionPerPage
+    @invariant OneDeclarationKindPerPage
         -- Una página declara las propiedades, otra los objetos y otra los tipos
-        -- de relación. Juntarlas
-        -- obligaba a leer la mitad que no importaba para encontrar la que sí, y
-        -- era el motivo por el que casi nada llegaba a declararse.
+        -- de relación. Juntarlas obligaba a leer lo que no importaba para
+        -- encontrar lo que sí, y era el motivo por el que casi nada llegaba a
+        -- declararse.
 
     @invariant AnEdgeMayBeWrittenBeforeItIsTyped
         -- La relación concreta no es su tipo. Tiene identidad, extremos y
@@ -1056,10 +1293,9 @@ contract TheOntologyIsWrittenWhereItCanBeRead {
         -- lo que decidió.
 
     @invariant EachPropertySaysItsOwnRole
-        -- Qué papel de los que el código conoce cumple una propiedad se declara
-        -- pegado a ella —`papel:: kind` bajo el bloque `tipo`— y no en una lista
-        -- aparte. Es donde alguien lo va a buscar: quien se pregunta qué es
-        -- `tipo` mira `tipo`.
+        -- El papel semántico de una propiedad se declara pegado a ella y no en
+        -- una lista aparte. Ese papel ayuda a proyectar y consultar la
+        -- biblioteca; no activa funciones privadas del software.
 
     @invariant TheShapeIsSaidAndNeverEnforced
         -- Declarar describe y no obliga. Vera no rechaza una página por llevar
@@ -1087,16 +1323,19 @@ open question "What does processing do with an address it cannot reach — say n
 -- una lista de validaciones que alguien tendría que escribir y mantener.
 open question "¿Hace falta alguna clase de campo más —duración, cantidad con unidad, rango de fechas— o lo que parece faltar se resuelve declarando los valores conocidos de «una de»?"
 
-open question "What happens when two composed semantic types define incompatible properties or lifecycles?"
-open question "Are semantic types assigned to pages and blocks equally, or do some types permit only one target kind?"
+open question "Cuando una instancia participa en varios objetos cuyas plantillas declaran propiedades incompatibles, ¿la ficha enseña ambas expectativas como una discrepancia o exige que el Gobierno resuelva primero la incompatibilidad?"
+open question "¿Una composición puede admitir simultáneamente páginas y bloques en un mismo rol, o cada rol debe fijar un solo soporte para que su orden sea legible?"
+open question "¿Cómo declara un objeto activo que usa una capacidad genérica del núcleo —por ejemplo ejecutar un proceso— sin convertir esa declaración en permiso ni acoplarla a una palabra mágica?"
 -- Contestada: vive como página del corpus, la que lleva su nombre, y lo que
 -- muestra de más es derivado. Ver @guarantee AVocabularyWordIsAnOrdinaryPage.
 
 -- Lo que abre gobernar el front matter con controles. Está aquí y no en una
 -- lista aparte porque son decisiones sin tomar, no trabajo sin hacer.
 open question "Cuando una propiedad ya escrita no admite el dominio que después se le declaró — el `type` cuyo valor es `\": \"`, el que empaqueta cinco tipos con barras — ¿se enseña como discrepancia junto a su control, se deja sólo como texto, o se propone una migración por valor?"
-open question "¿Quién decide que una propiedad rige en todo el grafo y no en un tipo: se declara así, o se infiere de que la usan páginas de tipos distintos?"
-open question "Una propiedad definida como requerida por un tipo, ¿qué hace en las páginas de ese tipo que no la tienen — se enseña vacía y exigible, se propone un valor, o requerida sólo significa que no se puede borrar una vez puesta?"
+-- Resuelta: `applies_globally` lo declara; el uso observado puede proponerlo,
+-- pero nunca convertirlo en global por frecuencia.
+-- Resuelta: una propiedad requerida se enseña vacía y pendiente. No inventa un
+-- valor, no impide escribir y retirarla de la plantilla no borra lo ya escrito.
 open question "El valor de una propiedad que nombra vocabulario, ¿tiene que ser el título de una página existente, o puede nombrar una que todavía no se ha escrito, como hace una cita?"
 -- Resuelta: dominio y rango aconsejan y hacen visible la discrepancia, pero no
 -- impiden escribir una arista. Ver @invariant DomainAndRangeAdviseAndNeverRefuse.

@@ -1,9 +1,9 @@
 -- allium: 3
 -- argument-workbench.allium
 
--- Scope: El objeto Argumento mientras una persona reúne páginas y bloques ya
---   existentes, los dispone, los anota en contexto, escoge un recorrido y
---   declara su madurez hasta volverlo publicable
+-- Scope: La mesa genérica de un meta-objeto compuesto, probada con el objeto
+--   bibliotecario Argumento mientras una persona reúne páginas y bloques,
+--   los dispone, anota y ordena
 -- Includes: Material canónico referido sin copiarlo, anotación y función
 --   locales a la mesa, disposición todavía no argumental, secuencia como
 --   esqueleto y edición de la fuente desde su ventana en la mesa
@@ -12,23 +12,16 @@
 --   - La captura desde el navegador antes de que el material entre al corpus
 --   - El vocabulario definitivo de funciones retóricas, todavía por decidir
 --   - La apariencia concreta, el tamaño y el gesto de cada control
--- Dependencies: Page, Block, Graph y Participant los gobierna core.allium; el
---   argumento como recorrido y sus conectivas, trail.allium
+-- Dependencies: Page, Block, Graph y Participant los gobierna core.allium; los
+--   objetos, propiedades y composiciones de la biblioteca,
+--   controlled-ontology.allium; el recorrido y sus conectivas, trail.allium
 
 use "./core.allium" as core
+use "./controlled-ontology.allium" as ontology
 
 ------------------------------------------------------------
 -- Lo que se dispone en la mesa
 ------------------------------------------------------------
-
--- Una escala compacta y gobernable de estados de la obra, inspirada por el
--- ciclo escolástico sin convertir sus nueve operaciones en nueve casillas
--- obligatorias. El estado es opcional porque la procedencia del material no
--- puede declararlo por la persona. `argument` es el estado terminal publicable
--- del mismo objeto, no otra clase de página.
-enum ArgumentMaturity {
-    context | structure | composition | validation | argument
-}
 
 -- Una colocación no es una tercera clase de contenido. Es la presencia
 -- contextual de una página o un bloque que ya existe en el corpus. Puede decir
@@ -39,15 +32,18 @@ value WorkbenchSource {
     block: core/Block?
 }
 
-entity ArgumentWorkbench {
+entity CompositionWorkbench {
     page: core/Page
     held_by: core/Participant
-    phase: ArgumentMaturity?
+    object_template: ontology/ObjectTemplate
+    composition: ontology/CompositionDefinition
+    stage_expectation: ontology/ObjectPropertyExpectation?
+    stage: ontology/PropertyOption?
     placements: WorkbenchPlacement with workbench = this
 }
 
 entity WorkbenchPlacement {
-    workbench: ArgumentWorkbench
+    workbench: CompositionWorkbench
     source: WorkbenchSource
     position: Integer
     contextual_note: String?
@@ -60,53 +56,49 @@ entity WorkbenchPlacement {
 ------------------------------------------------------------
 
 contract WorkbenchComposition {
-    choose_phase: (workbench: ArgumentWorkbench, phase: ArgumentMaturity?) -> ArgumentWorkbench
-    finish_argument: (workbench: ArgumentWorkbench) -> core/Page
-    find_pages: (workbench: ArgumentWorkbench, query: String) -> List<core/Page>
-    inspect_blocks: (workbench: ArgumentWorkbench, page: core/Page) -> List<core/Block>
-    collect_page: (workbench: ArgumentWorkbench, page: core/Page) -> WorkbenchPlacement
-    collect_block: (workbench: ArgumentWorkbench, block: core/Block) -> WorkbenchPlacement
+    choose_stage: (workbench: CompositionWorkbench, stage: ontology/PropertyOption?) -> CompositionWorkbench
+    finish_composition: (workbench: CompositionWorkbench) -> core/Page
+    find_pages: (workbench: CompositionWorkbench, query: String) -> List<core/Page>
+    inspect_blocks: (workbench: CompositionWorkbench, page: core/Page) -> List<core/Block>
+    collect_page: (workbench: CompositionWorkbench, page: core/Page) -> WorkbenchPlacement
+    collect_block: (workbench: CompositionWorkbench, block: core/Block) -> WorkbenchPlacement
     arrange: (placement: WorkbenchPlacement, position: Integer) -> WorkbenchPlacement
     annotate: (placement: WorkbenchPlacement, note: String?, role: String?) -> WorkbenchPlacement
-    choose_sequence: (workbench: ArgumentWorkbench, placements: List<WorkbenchPlacement>) -> List<WorkbenchPlacement>
+    choose_sequence: (workbench: CompositionWorkbench, placements: List<WorkbenchPlacement>) -> List<WorkbenchPlacement>
     edit_source: (participant: core/Participant, placement: WorkbenchPlacement, content: String) -> core/Change
 
-    @invariant TheWorkbenchIsTheSamePageThatCanBecomeAnArgument
-        -- La obra tiene página, título, enlace e historia propios y pertenece al
-        -- objeto canónico `Argumento` desde que nace. Al terminar no se crea
-        -- otra página ni cambia de clase: la misma identidad conserva título,
-        -- bloques, colocaciones e historia. Reabrirla cambia sólo su madurez.
-        -- «Mesa de trabajo» nombra la superficie donde se manipula, no un
-        -- segundo objeto que después haya que reconciliar.
+    @invariant TheWorkbenchBelongsToADeclaredComposition
+        -- La mesa aparece porque el objeto de la biblioteca declara una
+        -- composición, no porque su nombre sea `Argumento`. La obra conserva
+        -- página, título, enlace e historia; «Mesa de trabajo» nombra una
+        -- superficie para manipularla, no otro objeto.
 
-    @invariant ThePhaseIsDeclaredAtTheTop
-        -- La cabecera hace visible el grado de madurez escolástica declarado y
-        -- permite actualizarlo directamente. El estado no se esconde en un menú
-        -- de sistema: explicita hasta dónde llevó la persona el trabajo y puede
-        -- orientar las acciones que la mesa ofrece sin ejecutarlas por ella.
+    @invariant AnOptionalStageComesFromAnObjectProperty
+        -- Si la plantilla declara una propiedad de etapa, la cabecera ofrece sus
+        -- opciones en el orden gobernado. Una composición sin esa propiedad
+        -- sigue siendo componible y no recibe una escala privada del software.
 
-    @invariant PreparationUsesACompactStateScale
-        -- El Gobierno declara Contexto, Estructura, Composición, Validación y
-        -- Argumento como estados ordenados de madurez de la obra. La mesa lee
-        -- esa declaración en vez de conservar una escala privada. Los verbos
-        -- nombran acciones; estos sustantivos dicen dónde está el trabajo.
+    @invariant ArgumentMaturityIsLibraryVocabulary
+        -- La biblioteca de Herbert puede declarar Contexto, Estructura,
+        -- Composición, Validación y Argumento como opciones de `madurez
+        -- argumental`. Es vocabulario de esa plantilla; Vera no lo incorpora
+        -- como enumeración universal ni lo exige a otro meta-objeto.
 
     @invariant MaturityIsAnExplicitHumanDeclaration
         -- Vera no deduce madurez por cantidad de fuentes, extensión, tiempo ni
         -- actividad de agentes. La persona adelanta el estado paso a paso cuando
         -- reconoce que la preparación alcanzó el grado siguiente.
 
-    @invariant ArgumentIsTheTerminalPublishableState
-        -- El último valor declarado en la escala gobernada es el estado final
-        -- del flujo: una pieza articulada por la que alguien responde y que puede
-        -- presentarse a otros. Llegar a él hace explícita la condición de
-        -- publicable; no publica por sí solo. Final nombra su suficiencia
-        -- presente, no una clausura irreversible.
+    @invariant NoStageValueHasPrivateSoftwareMeaning
+        -- La última opción puede significar «argumento» para esa biblioteca,
+        -- pero no activa por su nombre publicación, permisos ni otra capacidad.
+        -- Si una acción depende de suficiencia o cierre, esa condición debe
+        -- declararse como parte del modelo general de composición.
 
-    @invariant FinishingAndReopeningAreAtomic
-        -- Terminar y reabrir escriben sólo `madurez argumental`; `tipo` permanece
-        -- `Argumento`. Una lectura nunca tiene que inferir el estado de la obra
-        -- a partir de un cambio de clase ni reconciliar dos fuentes de verdad.
+    @invariant StageNeverChangesTheObjectAssignment
+        -- Elegir o retirar una etapa escribe sólo la propiedad elegida. La
+        -- instancia no cambia de objeto y Vera nunca infiere su plantilla desde
+        -- el nombre de una opción.
 
     @invariant MaturityCanMoveBackward
         -- La persona puede volver desde cualquier grado a uno anterior, incluso
@@ -220,11 +212,26 @@ invariant EveryPlacementNamesOneCanonicalSource {
         (placement.source.page = null and placement.source.block != null)
 }
 
+invariant EveryWorkbenchUsesItsObjectsComposition {
+    for workbench in CompositionWorkbenches:
+        workbench.object_template.form = composition and
+        workbench.composition.object_template = workbench.object_template
+}
+
+invariant AStageBelongsToTheDeclaredStageProperty {
+    for workbench in CompositionWorkbenches:
+        workbench.stage != null implies
+            workbench.stage_expectation != null and
+            workbench.stage.definition = workbench.stage_expectation.definition and
+            workbench.stage_expectation.object_template = workbench.object_template
+}
+
 ------------------------------------------------------------
 -- Preguntas que la conversación todavía no ha decidido
 ------------------------------------------------------------
 
-open question "¿Cómo se explican Collectio, Lectio, Excerptio, Ordinatio, Collatio, Disputatio, Compositio, Probatio y Traditio dentro de los cuatro estados compactos sin fingir una correspondencia uno a uno?"
+open question "¿Cómo declara una plantilla cuál de sus propiedades cumple el papel opcional de etapa sin reservar el nombre `madurez argumental` ni introducir un selector de capacidades del software?"
+open question "¿Cómo se explican Collectio, Lectio, Excerptio, Ordinatio, Collatio, Disputatio, Compositio, Probatio y Traditio dentro de las opciones de la biblioteca de Herbert sin fingir una correspondencia uno a uno?"
 open question "¿Puede una persona mantener varias mesas abiertas y alternar entre ellas, o hay una sola mesa activa aunque existan varios argumentos en preparación?"
 open question "¿Qué vocabulario inicial nombra la función contextual de una fuente —premisa, evidencia, objeción, ejemplo, transición— y cuáles de esas palabras son gobernadas en vez de libres?"
 open question "Cuando se coloca un bloque, ¿la ventana muestra sólo ese bloque, su subárbol completo o una profundidad elegida en cada colocación?"
