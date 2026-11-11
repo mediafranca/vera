@@ -1,5 +1,5 @@
-// La preparación argumental: la página donde una posición todavía se reúne,
-// ordena, compone y contrasta antes de poder llamarse argumento.
+// El Argumento conserva una sola identidad mientras una posición se reúne,
+// ordena, compone, contrasta y llega a ser publicable.
 //
 // El tipo nombra la cosa; «Mesa de trabajo» nombra la superficie donde se la
 // manipula. Mantenerlos separados evita que una actividad de interfaz se vuelva
@@ -7,31 +7,22 @@
 
 import type { PageId, PropertyAssignment } from './types.ts';
 
-/** El tipo canónico de una página de preparación. */
+/** El valor legado que distinguía la preparación como otra clase de página. */
 export const ARGUMENT_PREPARATION_KIND = 'preparación argumental';
 
-/** El tipo canónico que declara que la misma obra ya es publicable. */
+/** El objeto canónico que conserva la misma identidad durante todo el trabajo. */
 export const ARGUMENT_KIND = 'argumento';
 
 /** La propiedad explícita —y por tanto histórica— que declara su madurez. */
 export const ARGUMENT_MATURITY_KEY = 'madurez argumental';
 
 /**
- * Los estados que pertenecen todavía a la preparación.
- *
- * `argumento` no entra aquí: no es una quinta etiqueta de la mesa sino el
- * producto publicable. Falta decidir si llegar a él transforma esta página o
- * produce otra, y la interfaz no debe resolver esa ontología por accidente.
+ * La madurez es vocabulario del corpus, no una unión cerrada del programa.
+ * `VERA: Propiedades` decide sus valores y su orden; el último es el estado
+ * publicable. El tipo sólo expresa que la operación transporta una de esas
+ * palabras gobernadas.
  */
-export const ARGUMENT_PREPARATION_PHASES = [
-  'contexto',
-  'estructura',
-  'composición',
-  'validación',
-] as const;
-
-export type ArgumentPreparationPhase = (typeof ARGUMENT_PREPARATION_PHASES)[number];
-export type ArgumentMaturity = ArgumentPreparationPhase | typeof ARGUMENT_KIND;
+export type ArgumentMaturity = string;
 export type ArgumentMaturityChange =
   | {
       readonly kind: 'set_property'; readonly page: PageId;
@@ -42,19 +33,14 @@ export type ArgumentMaturityChange =
       readonly propertyKey: string;
     };
 
-export function argumentPreparationPhase(
-  properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],
-): ArgumentPreparationPhase | null {
-  const raw = properties.find((one) => one.key === ARGUMENT_MATURITY_KEY)?.value.trim().toLowerCase();
-  return ARGUMENT_PREPARATION_PHASES.find((phase) => phase === raw) ?? null;
-}
-
 export function isArgumentPreparation(
   properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],
   kindKey = 'tipo',
 ): boolean {
-  return properties.some((one) =>
-    one.key === kindKey && one.value.trim().toLowerCase() === ARGUMENT_PREPARATION_KIND);
+  if (!isArgumentWork(properties, kindKey)) return false;
+  const maturity = properties.find((one) =>
+    one.key.trim().toLowerCase() === ARGUMENT_MATURITY_KEY)?.value.trim().toLowerCase();
+  return maturity !== ARGUMENT_KIND;
 }
 
 /** ¿La página es la misma obra argumental, esté preparándose o ya publicable? */
@@ -63,7 +49,7 @@ export function isArgumentWork(
   kindKey = 'tipo',
 ): boolean {
   return properties.some((one) => {
-    if (one.key !== kindKey) return false;
+    if (one.key.trim().toLowerCase() !== kindKey.trim().toLowerCase()) return false;
     const kind = one.value.trim().toLowerCase();
     return kind === ARGUMENT_PREPARATION_KIND || kind === ARGUMENT_KIND;
   });
@@ -72,18 +58,19 @@ export function isArgumentWork(
 /**
  * El estado que se muestra en la cabecera.
  *
- * `argumento` vive en el tipo de la página, no como una segunda propiedad
- * redundante. Los estados anteriores sí viven en `madurez argumental` mientras
- * la página siga siendo una preparación.
+ * `tipo` permanece en `argumento`; la madurez completa vive en la propiedad
+ * gobernada. La lista recibida conserva la grafía y el orden declarados.
  */
 export function argumentMaturity(
   properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],
   kindKey = 'tipo',
+  governed: readonly string[] = [],
 ): ArgumentMaturity | null {
-  const kind = properties.find((one) => one.key === kindKey)?.value.trim().toLowerCase();
-  if (kind === ARGUMENT_KIND) return ARGUMENT_KIND;
-  if (kind !== ARGUMENT_PREPARATION_KIND) return null;
-  return argumentPreparationPhase(properties);
+  if (!isArgumentWork(properties, kindKey)) return null;
+  const raw = properties.find((one) =>
+    one.key.trim().toLowerCase() === ARGUMENT_MATURITY_KEY)?.value.trim() ?? '';
+  if (raw === '') return null;
+  return governed.find((one) => one.trim().toLowerCase() === raw.toLowerCase()) ?? raw;
 }
 
 /** Los cambios atómicos que llevan la misma página a otra madurez. */
@@ -93,15 +80,22 @@ export function argumentMaturityChanges(
   maturity: ArgumentMaturity | null,
   kindKey = 'tipo',
 ): ArgumentMaturityChange[] {
-  const hasMaturity = properties.some((one) => one.key === ARGUMENT_MATURITY_KEY);
+  const currentKind = properties.find((one) =>
+    one.key.trim().toLowerCase() === kindKey.trim().toLowerCase())?.value.trim().toLowerCase();
+  const currentMaturity = properties.find((one) =>
+    one.key.trim().toLowerCase() === ARGUMENT_MATURITY_KEY)?.value.trim() ?? null;
+  const hasMaturity = properties.some((one) =>
+    one.key.trim().toLowerCase() === ARGUMENT_MATURITY_KEY);
   return [
-    {
-      kind: 'set_property',
-      page,
-      propertyKey: kindKey,
-      propertyValue: maturity === ARGUMENT_KIND ? ARGUMENT_KIND : ARGUMENT_PREPARATION_KIND,
-    },
-    ...(maturity === ARGUMENT_KIND || maturity === null
+    ...(currentKind === ARGUMENT_KIND
+      ? []
+      : [{
+          kind: 'set_property' as const,
+          page,
+          propertyKey: kindKey,
+          propertyValue: ARGUMENT_KIND,
+        }]),
+    ...(maturity === null
       ? (hasMaturity
           ? [{
               kind: 'remove_property' as const,
@@ -109,11 +103,13 @@ export function argumentMaturityChanges(
               propertyKey: ARGUMENT_MATURITY_KEY,
             }]
           : [])
-      : [{
+      : (currentMaturity?.toLowerCase() === maturity.trim().toLowerCase()
+        ? []
+        : [{
           kind: 'set_property' as const,
           page,
           propertyKey: ARGUMENT_MATURITY_KEY,
           propertyValue: maturity,
-        }]),
+        }])),
   ];
 }

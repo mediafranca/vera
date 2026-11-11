@@ -1164,20 +1164,16 @@ surface TrailOnTheMap {
         -- cuando alguien lo enfoque.
 
     @guarantee PromotionArrivesAsAnArgumentAndNotAsAQueue
-        -- DEUDA DE CONSOLIDACIÓN: esta garantía describe la llegada atómica del
-        -- flujo legado, pero su destino `argumento` fue superado por la página de
-        -- preparación. Al consolidar se conservará la atomicidad y cambiará la
-        -- entidad que nace; no se aceptará una preparación parcialmente sembrada.
-        --
-        -- Promover un breadcrumb confirma en orden la página, `tipo=argumento`,
-        -- sus paradas y sus testimonios antes de abrirla. La vista nunca se
-        -- adelanta a esa secuencia mostrando una página nacida sin tipo o un
-        -- argumento al que todavía le faltan nodos en el registro canónico.
+        -- Promover un breadcrumb confirma en orden la página, `tipo=Argumento`,
+        -- su madurez inicial, sus paradas y sus testimonios antes de abrirla. La
+        -- vista nunca se adelanta a esa secuencia mostrando una página nacida sin
+        -- tipo o un argumento al que todavía le faltan nodos en el registro
+        -- canónico. Madurarla no crea otra entidad ni cambia su tipo.
 
     @guarantee RefocusingRestoresTheWholeThread
         -- Volver a enfocar la página vuelve a derivar su ruta de los bloques
         -- vigentes y enciende de una vez el hilo que conecta todas sus paradas,
-        -- tanto durante `preparación argumental` como al llegar a `argumento`.
+        -- durante toda la maduración declarada del objeto `Argumento`.
         -- No depende del breadcrumb local que lo originó ni de que aquella
         -- sesión siga abierta; la madurez cambia, la disposición no se pierde.
 

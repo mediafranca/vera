@@ -118,7 +118,7 @@ import {
   blocksFor,
   fillTraceCrossings,
   provisionalTitle,
-  seedArgumentPreparation,
+  seedArgument,
 } from './promote.ts';
 import { renderMarkdown } from '@vera/core';
 import { handlesSharedAccess, offerPasskeyEnrollment } from './shared-access.ts';
@@ -3144,7 +3144,7 @@ function drawTrail(): void {
       // viene a leer. Lo que dice la palabra va en el título, donde no estorba.
       keep.innerHTML = icon('feather');
       keep.title = 'abrir una mesa de trabajo con todo lo andado';
-      keep.setAttribute('aria-label', 'crear una preparación argumental');
+      keep.setAttribute('aria-label', 'crear un argumento desde el rastro');
       keep.addEventListener('click', () => void promoteTrace(null));
       trail.append(keep);
     }
@@ -3217,10 +3217,10 @@ async function exportTraceBooklet(): Promise<void> {
 }
 
 /**
- * Siembra una preparación argumental, desde una parada o desde el principio.
+ * Siembra un argumento inmaduro, desde una parada o desde el principio.
  *
  * Sembrar un tramo no vacía el rastro ni lo marca: se sigue andando y se sigue
- * acumulando, y el mismo tramo puede alimentar dos preparaciones distintas.
+ * acumulando, y el mismo tramo puede alimentar dos argumentos distintos.
  * @invariant TheTraceItselfIsNotConsumed.
  */
 async function promoteTrace(from: number | null): Promise<void> {
@@ -3255,7 +3255,7 @@ async function promoteTrace(from: number | null): Promise<void> {
     pages.some((one) => one.title.trim().toLowerCase() === name.trim().toLowerCase()),
   );
 
-  const seed = seedArgumentPreparation(trace, { title });
+  const seed = seedArgument(trace, { title });
   const page = mint('page');
   const entries: {
     change: Parameters<typeof api.submitCanonicalBatch>[0][number]['change'];

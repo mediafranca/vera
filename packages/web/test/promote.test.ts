@@ -15,7 +15,7 @@ import {
   blocksFor,
   fillTraceCrossings,
   provisionalTitle,
-  seedArgumentPreparation,
+  seedArgument,
   testimonyFor,
 } from '../src/promote.ts';
 import type { TraceStep } from '../src/trace.ts';
@@ -62,15 +62,15 @@ describe('el nombre con que nace', () => {
   it('es un andamio con la fecha, para que la página pueda existir', () => {
     assert.equal(
       provisionalTitle(new Date('2026-08-09T12:00:00Z'), () => false),
-      'Preparación argumental del 2026-08-09',
+      'Argumento del 2026-08-09',
     );
   });
 
   it('no pisa una página que ya se llamaba así', () => {
-    const taken = new Set(['Preparación argumental del 2026-08-09']);
+    const taken = new Set(['Argumento del 2026-08-09']);
     assert.equal(
       provisionalTitle(new Date('2026-08-09T12:00:00Z'), (name) => taken.has(name)),
-      'Preparación argumental del 2026-08-09 (2)',
+      'Argumento del 2026-08-09 (2)',
     );
   });
 });
@@ -85,22 +85,22 @@ describe('lo que nace', () => {
   it('nace privado, porque haber andado no es haber decidido enseñarlo', () => {
     // @invariant ADraftTrailIsBornPrivate: un rastro que se publicara solo
     // convertiría el mapa en una cámara.
-    const seed = seedArgumentPreparation(trace, { title: 'Preparación argumental del 2026-08-09' });
+    const seed = seedArgument(trace, { title: 'Argumento del 2026-08-09' });
     assert.deepEqual(seed.page, {
       kind: 'create_page',
-      title: 'Preparación argumental del 2026-08-09',
+      title: 'Argumento del 2026-08-09',
       visibility: 'private',
     });
   });
 
-  it('nace como preparación y no anticipa la madurez que debe declarar la persona', () => {
-    const properties = seedArgumentPreparation(trace, { title: 'X' }).properties('page:9');
+  it('nace como Argumento y no anticipa la madurez que debe declarar la persona', () => {
+    const properties = seedArgument(trace, { title: 'X' }).properties('page:9');
     assert.deepEqual(properties, [
       {
         kind: 'set_property',
         page: 'page:9',
         propertyKey: 'tipo',
-        propertyValue: 'preparación argumental',
+        propertyValue: 'argumento',
       },
     ]);
   });

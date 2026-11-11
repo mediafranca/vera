@@ -1,14 +1,14 @@
 -- allium: 3
 -- argument-workbench.allium
 
--- Scope: La página de preparación argumental donde una persona reúne páginas y
---   bloques ya existentes, los dispone, los anota en contexto y escoge un
---   recorrido antes de escribir un argumento
+-- Scope: El objeto Argumento mientras una persona reúne páginas y bloques ya
+--   existentes, los dispone, los anota en contexto, escoge un recorrido y
+--   declara su madurez hasta volverlo publicable
 -- Includes: Material canónico referido sin copiarlo, anotación y función
 --   locales a la mesa, disposición todavía no argumental, secuencia como
 --   esqueleto y edición de la fuente desde su ventana en la mesa
 -- Excludes:
---   - La gramática y persistencia del recorrido terminado (ver trail.allium)
+--   - La gramática y persistencia del recorrido (ver trail.allium)
 --   - La captura desde el navegador antes de que el material entre al corpus
 --   - El vocabulario definitivo de funciones retóricas, todavía por decidir
 --   - La apariencia concreta, el tamaño y el gesto de cada control
@@ -21,13 +21,13 @@ use "./core.allium" as core
 -- Lo que se dispone en la mesa
 ------------------------------------------------------------
 
--- Una escala compacta de estados de la obra, inspirada por el ciclo escolástico
--- sin convertir sus nueve operaciones en nueve casillas obligatorias. El estado
--- es opcional porque la procedencia del material no puede declararlo por la
--- persona. `argumento` queda fuera de esta enum: es el tipo publicable que
--- alcanza la misma página, no otra fase preparatoria.
-enum PreparationMaturity {
-    context | structure | composition | validation
+-- Una escala compacta y gobernable de estados de la obra, inspirada por el
+-- ciclo escolástico sin convertir sus nueve operaciones en nueve casillas
+-- obligatorias. El estado es opcional porque la procedencia del material no
+-- puede declararlo por la persona. `argument` es el estado terminal publicable
+-- del mismo objeto, no otra clase de página.
+enum ArgumentMaturity {
+    context | structure | composition | validation | argument
 }
 
 -- Una colocación no es una tercera clase de contenido. Es la presencia
@@ -42,7 +42,7 @@ value WorkbenchSource {
 entity ArgumentWorkbench {
     page: core/Page
     held_by: core/Participant
-    phase: PreparationMaturity?
+    phase: ArgumentMaturity?
     placements: WorkbenchPlacement with workbench = this
 }
 
@@ -60,7 +60,7 @@ entity WorkbenchPlacement {
 ------------------------------------------------------------
 
 contract WorkbenchComposition {
-    choose_phase: (workbench: ArgumentWorkbench, phase: PreparationMaturity?) -> ArgumentWorkbench
+    choose_phase: (workbench: ArgumentWorkbench, phase: ArgumentMaturity?) -> ArgumentWorkbench
     finish_argument: (workbench: ArgumentWorkbench) -> core/Page
     find_pages: (workbench: ArgumentWorkbench, query: String) -> List<core/Page>
     inspect_blocks: (workbench: ArgumentWorkbench, page: core/Page) -> List<core/Block>
@@ -72,11 +72,10 @@ contract WorkbenchComposition {
     edit_source: (participant: core/Participant, placement: WorkbenchPlacement, content: String) -> core/Change
 
     @invariant TheWorkbenchIsTheSamePageThatCanBecomeAnArgument
-        -- La preparación tiene página, título, enlace e historia propios, pero
-        -- pertenece al tipo canónico `preparación argumental`, distinto de
-        -- `argumento`. Al terminar no se crea otra página: esa misma identidad
-        -- cambia a `argumento`, conservando título, bloques, colocaciones e
-        -- historia. Reabrirla devuelve esa misma página a preparación.
+        -- La obra tiene página, título, enlace e historia propios y pertenece al
+        -- objeto canónico `Argumento` desde que nace. Al terminar no se crea
+        -- otra página ni cambia de clase: la misma identidad conserva título,
+        -- bloques, colocaciones e historia. Reabrirla cambia sólo su madurez.
         -- «Mesa de trabajo» nombra la superficie donde se manipula, no un
         -- segundo objeto que después haya que reconciliar.
 
@@ -87,11 +86,10 @@ contract WorkbenchComposition {
         -- orientar las acciones que la mesa ofrece sin ejecutarlas por ella.
 
     @invariant PreparationUsesACompactStateScale
-        -- La mesa ofrece Contexto, Estructura, Composición y Validación como
-        -- estados de madurez de la obra. Los verbos nombran acciones; estos
-        -- sustantivos dicen dónde está el trabajo. La reducción no elimina las
-        -- operaciones del ciclo escolástico: evita volverlas una aduana fina y
-        -- lineal que la persona deba completar casilla por casilla.
+        -- El Gobierno declara Contexto, Estructura, Composición, Validación y
+        -- Argumento como estados ordenados de madurez de la obra. La mesa lee
+        -- esa declaración en vez de conservar una escala privada. Los verbos
+        -- nombran acciones; estos sustantivos dicen dónde está el trabajo.
 
     @invariant MaturityIsAnExplicitHumanDeclaration
         -- Vera no deduce madurez por cantidad de fuentes, extensión, tiempo ni
@@ -99,17 +97,16 @@ contract WorkbenchComposition {
         -- reconoce que la preparación alcanzó el grado siguiente.
 
     @invariant ArgumentIsTheTerminalPublishableState
-        -- `argumento` no es otro grado de preparación ni un nombre anticipado
-        -- para la mesa. Es el estado final del flujo: una pieza articulada por la
-        -- que alguien responde y que puede presentarse a otros. Llegar a él hace
-        -- explícita la condición de publicable; no publica por sí solo. Final
-        -- nombra su suficiencia presente, no una clausura irreversible.
+        -- El último valor declarado en la escala gobernada es el estado final
+        -- del flujo: una pieza articulada por la que alguien responde y que puede
+        -- presentarse a otros. Llegar a él hace explícita la condición de
+        -- publicable; no publica por sí solo. Final nombra su suficiencia
+        -- presente, no una clausura irreversible.
 
     @invariant FinishingAndReopeningAreAtomic
-        -- Tipo y madurez cambian como un solo hecho. Al terminar, `tipo` pasa a
-        -- `argumento` y deja de sostener un grado preparatorio paralelo; al
-        -- reabrir, `tipo` vuelve a `preparación argumental` y el grado escogido
-        -- vuelve a ser visible. Ninguna lectura observa una mitad contradictoria.
+        -- Terminar y reabrir escriben sólo `madurez argumental`; `tipo` permanece
+        -- `Argumento`. Una lectura nunca tiene que inferir el estado de la obra
+        -- a partir de un cambio de clase ni reconciliar dos fuentes de verdad.
 
     @invariant MaturityCanMoveBackward
         -- La persona puede volver desde cualquier grado a uno anterior, incluso

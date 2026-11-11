@@ -2,63 +2,41 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  ARGUMENT_KIND,
-  ARGUMENT_PREPARATION_PHASES,
   argumentMaturity,
   argumentMaturityChanges,
-  argumentPreparationPhase,
   isArgumentPreparation,
   isArgumentWork,
 } from '../src/index.ts';
 
 describe('la preparación argumental', () => {
-  it('es un tipo propio y no una variante implícita de argumento', () => {
+  it('acepta la clase antigua sólo para migrarla y reconoce Argumento como objeto estable', () => {
     assert.equal(
       isArgumentPreparation([{ key: 'tipo', value: 'preparación argumental' }]),
       true,
     );
-    assert.equal(isArgumentPreparation([{ key: 'tipo', value: 'argumento' }]), false);
+    assert.equal(isArgumentPreparation([{ key: 'tipo', value: 'Argumento' }]), true);
+    assert.equal(isArgumentPreparation([
+      { key: 'tipo', value: 'Argumento' },
+      { key: 'madurez argumental', value: 'argumento' },
+    ]), false);
   });
 
-  it('puede nacer sin que el origen del material decida su madurez', () => {
-    assert.equal(
-      argumentPreparationPhase([{ key: 'tipo', value: 'preparación argumental' }]),
-      null,
-    );
-  });
-
-  it('limita la mesa a estados preparatorios y deja argumento para la transición final', () => {
-    assert.deepEqual(ARGUMENT_PREPARATION_PHASES, [
-      'contexto',
-      'estructura',
-      'composición',
-      'validación',
-    ]);
-    assert.equal(
-      argumentPreparationPhase([{ key: 'madurez argumental', value: 'Composición' }]),
-      'composición',
-    );
-    assert.equal(
-      argumentPreparationPhase([{ key: 'madurez argumental', value: 'argumento' }]),
-      null,
-    );
-  });
-
-  it('reconoce una sola obra antes y después de alcanzar el estado publicable', () => {
+  it('toma la escala del Gobierno y conserva su grafía canónica', () => {
+    const governed = ['contexto', 'estructura', 'composición', 'validación', 'argumento'];
     assert.equal(isArgumentWork([{ key: 'tipo', value: 'preparación argumental' }]), true);
-    assert.equal(isArgumentWork([{ key: 'tipo', value: 'argumento' }]), true);
+    assert.equal(isArgumentWork([{ key: 'tipo', value: 'Argumento' }]), true);
     assert.equal(isArgumentWork([{ key: 'tipo', value: 'nota' }]), false);
     assert.equal(
       argumentMaturity([
-        { key: 'tipo', value: 'preparación argumental' },
+        { key: 'tipo', value: 'Argumento' },
         { key: 'madurez argumental', value: 'Validación' },
-      ]),
+      ], 'tipo', governed),
       'validación',
     );
-    assert.equal(argumentMaturity([{ key: 'tipo', value: 'argumento' }]), ARGUMENT_KIND);
+    assert.equal(argumentMaturity([{ key: 'tipo', value: 'Argumento' }]), null);
   });
 
-  it('termina y reabre la misma página mediante cambios atómicos de estado', () => {
+  it('cambia sólo la madurez y migra el tipo legado en el mismo lote', () => {
     const prepared = [
       { key: 'tipo', value: 'preparación argumental' },
       { key: 'madurez argumental', value: 'validación' },
@@ -68,16 +46,16 @@ describe('la preparación argumental', () => {
         kind: 'set_property', page: 'page:work', propertyKey: 'tipo', propertyValue: 'argumento',
       },
       {
-        kind: 'remove_property', page: 'page:work', propertyKey: 'madurez argumental',
+        kind: 'set_property', page: 'page:work', propertyKey: 'madurez argumental',
+        propertyValue: 'argumento',
       },
     ]);
     assert.deepEqual(argumentMaturityChanges(
-      'page:work', [{ key: 'tipo', value: 'argumento' }], 'contexto',
+      'page:work', [
+        { key: 'tipo', value: 'argumento' },
+        { key: 'madurez argumental', value: 'argumento' },
+      ], 'contexto',
     ), [
-      {
-        kind: 'set_property', page: 'page:work', propertyKey: 'tipo',
-        propertyValue: 'preparación argumental',
-      },
       {
         kind: 'set_property', page: 'page:work', propertyKey: 'madurez argumental',
         propertyValue: 'contexto',

@@ -257,6 +257,48 @@ describe('dominios declarados de propiedades', () => {
       { value: 'Proyecto', uses: 0, declared: true },
     ]);
   });
+
+  it('ofrece el dominio de una propiedad constitutiva antes de que tenga valor', async () => {
+    const maturity = await write({
+      kind: 'create_block',
+      stableId: 'block:test-argument-maturity',
+      page: 'page:test-properties-governing',
+      parent: null,
+      position: 2,
+      content: 'madurez argumental',
+    });
+    await write({ kind: 'set_property', block: maturity, propertyKey: 'campo', propertyValue: 'una de' });
+    await write({
+      kind: 'set_property', block: maturity, propertyKey: 'valores',
+      propertyValue: 'contexto, estructura, composición, validación, argumento',
+    });
+    const argument = await write({
+      kind: 'create_block',
+      stableId: 'block:test-argument-object',
+      page: 'page:test-kind-objects',
+      parent: null,
+      position: 3,
+      content: 'Argumento',
+    });
+    await write({
+      kind: 'set_property', block: argument, propertyKey: 'propiedades',
+      propertyValue: 'madurez argumental',
+    });
+
+    const page = await write({ kind: 'create_page', title: 'Argumento naciente', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'tipo', propertyValue: 'Argumento' });
+
+    const detail = (await get(`/pages/${encodeURIComponent(page)}`)) as {
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+    };
+    assert.deepEqual(detail.domains['madurez argumental'], [
+      { value: 'contexto', uses: 0, declared: true },
+      { value: 'estructura', uses: 0, declared: true },
+      { value: 'composición', uses: 0, declared: true },
+      { value: 'validación', uses: 0, declared: true },
+      { value: 'argumento', uses: 0, declared: true },
+    ]);
+  });
 });
 
 describe('modelos de procesamiento', () => {

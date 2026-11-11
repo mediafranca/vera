@@ -1,24 +1,25 @@
-// Cabecera de la preparación argumental.
+// Cabecera del argumento mientras madura en la mesa de trabajo.
 //
 // No reemplaza al outliner: hace visible en qué estado se encuentra el trabajo
 // y deja debajo los bloques ordinarios, que siguen siendo la materia editable.
 
 import {
-  ARGUMENT_KIND,
-  ARGUMENT_PREPARATION_PHASES,
+  ARGUMENT_MATURITY_KEY,
   argumentMaturity,
   isArgumentWork,
   type ArgumentMaturity,
 } from '@vera/core';
 import type { PageView } from './api.ts';
 
-const LABELS: Record<ArgumentMaturity, string> = {
-  contexto: 'Contexto',
-  estructura: 'Estructura',
-  composición: 'Composición',
-  validación: 'Validación',
-  argumento: 'Argumento',
-};
+const labelOf = (value: string): string =>
+  value === '' ? value : `${value[0]!.toLocaleUpperCase('es')}${value.slice(1)}`;
+
+/** La escala, en el orden que `VERA: Propiedades` declara. */
+export function governedArgumentMaturities(page: Pick<PageView, 'domains'>): string[] {
+  return (page.domains[ARGUMENT_MATURITY_KEY] ?? [])
+    .filter((one) => one.declared === true)
+    .map((one) => one.value);
+}
 
 export function renderArgumentWorkbenchBand(
   page: PageView,
@@ -27,8 +28,10 @@ export function renderArgumentWorkbenchBand(
   choose: (phase: ArgumentMaturity | null) => Promise<boolean>,
 ): HTMLElement | null {
   if (!isArgumentWork(page.properties, kindKey)) return null;
-  const current = argumentMaturity(page.properties, kindKey);
-  const finished = current === ARGUMENT_KIND;
+  const phases = governedArgumentMaturities(page);
+  const current = argumentMaturity(page.properties, kindKey, phases);
+  const terminal = phases.at(-1) ?? null;
+  const finished = terminal !== null && current?.toLocaleLowerCase('es') === terminal.toLocaleLowerCase('es');
 
   const band = document.createElement('section');
   band.className = 'argument-workbench-band';
@@ -50,10 +53,12 @@ export function renderArgumentWorkbenchBand(
   maturity.className = 'argument-workbench-maturity';
   const label = document.createElement('span');
   label.textContent = 'Madurez';
-  if (readOnly) {
+  if (readOnly || phases.length === 0) {
     const value = document.createElement('span');
     value.className = 'argument-workbench-phase';
-    value.textContent = current === null ? 'Sin declarar' : LABELS[current];
+    value.textContent = current === null
+      ? (phases.length === 0 ? 'Escala sin declarar' : 'Sin declarar')
+      : labelOf(current);
     maturity.append(label, value);
   } else {
     const select = document.createElement('select');
@@ -62,16 +67,12 @@ export function renderArgumentWorkbenchBand(
     undecided.value = '';
     undecided.textContent = 'Sin declarar';
     select.append(undecided);
-    for (const phase of ARGUMENT_PREPARATION_PHASES) {
+    for (const phase of phases) {
       const option = document.createElement('option');
       option.value = phase;
-      option.textContent = LABELS[phase];
+      option.textContent = labelOf(phase);
       select.append(option);
     }
-    const publishable = document.createElement('option');
-    publishable.value = ARGUMENT_KIND;
-    publishable.textContent = LABELS[ARGUMENT_KIND];
-    select.append(publishable);
     select.value = current ?? '';
     select.addEventListener('change', () => {
       const before = current ?? '';

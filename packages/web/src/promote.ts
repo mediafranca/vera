@@ -1,4 +1,4 @@
-// Sembrar una preparación argumental con un tramo del rastro.
+// Sembrar un argumento con un tramo del rastro.
 //
 // Componer un recorrido empieza por haberlo andado. Lo que el taller ofrece no
 // es un compositor de rutas —una lista donde arrastrar nodos, un panel donde
@@ -12,15 +12,15 @@
 // convoca algo que falta. Por eso promover no pide saber el argumento de
 // antemano: es lo que uno hace mientras se entera de cuál era.
 //
-// Lo que nace no es aún un argumento: es la mesa donde sus fuentes y huecos
-// quedan disponibles para ser podados, ordenados, anotados y articulados. Vera
+// Lo que nace es un Argumento todavía inmaduro: la mesa donde sus fuentes y
+// huecos quedan disponibles para ser podados, ordenados, anotados y articulados. Vera
 // transcribe el testimonio y no escribe la conectiva nunca: un «y después» de
 // plantilla tendría la forma de una conectiva sin afirmar nada, y ocuparía el
 // sitio donde va lo que alguien tiene que escribir.
 //
 // Ver specs/trail.allium, regla PromoteTheTraceAsAnArgument.
 
-import { ARGUMENT_PREPARATION_KIND, TESTIMONY_KEY } from '@vera/core';
+import { ARGUMENT_KIND, TESTIMONY_KEY } from '@vera/core';
 import type { NavigationGesture, TraceStep } from './trace.ts';
 
 /**
@@ -60,10 +60,10 @@ export function testimonyFor(step: TraceStep, titleOf: (page: string) => string)
  */
 export function provisionalTitle(at: Date, taken: (title: string) => boolean): string {
   const day = at.toISOString().slice(0, 10);
-  const first = `Preparación argumental del ${day}`;
+  const first = `Argumento del ${day}`;
   if (!taken(first)) return first;
   for (let n = 2; n < 100; n += 1) {
-    const other = `Preparación argumental del ${day} (${n})`;
+    const other = `Argumento del ${day} (${n})`;
     if (!taken(other)) return other;
   }
   return `${first} · ${at.getTime()}`;
@@ -106,7 +106,7 @@ export function fillTraceCrossings(
 }
 
 /**
- * Los cambios que hacen nacer una preparación a partir de un tramo del rastro.
+ * Los cambios que hacen nacer un argumento inmaduro a partir de un tramo del rastro.
  *
  * Devuelve la lista y no la manda: quién la manda sabe de páginas nuevas y de
  * errores, y esta función sabe de recorridos. Se prueba entera sin servidor.
@@ -114,7 +114,7 @@ export function fillTraceCrossings(
  * `page` es el identificador que tendrá la página, que quien manda conoce sólo
  * después de crearla; por eso los bloques se piden aparte, con `blocksFor`.
  */
-export function seedArgumentPreparation(
+export function seedArgument(
   trace: readonly TraceStep[],
   said: { title: string; intent?: string | null },
 ): { page: CreatePageChange; properties: (page: string) => Change[] } {
@@ -126,7 +126,7 @@ export function seedArgumentPreparation(
           kind: 'set_property',
           page,
           propertyKey: 'tipo',
-          propertyValue: ARGUMENT_PREPARATION_KIND,
+          propertyValue: ARGUMENT_KIND,
         },
       ];
       if (said.intent != null && said.intent !== '') {
