@@ -1,11 +1,10 @@
 -- allium: 3
 -- special-pages.allium
 
--- Scope: The pages by which Vera makes its governance visible — including
---   rector pages, administrative surfaces, derived registers and documentation
--- Includes: What makes a page special, what a special page may and may not
---   decide, who may change one, and what happens when what it says cannot be
---   understood
+-- Scope: Las páginas especiales con que Vera hace visibles el Gobierno de la
+--   biblioteca, la administración operativa y la documentación del software
+-- Includes: La frontera entre declaraciones bibliotecarias rectoras y páginas
+--   que sólo administran, proyectan o documentan capacidades del núcleo
 -- Excludes:
 --   - The meaning of each particular setting (see workspace-interface.allium,
 --     controlled-ontology.allium)
@@ -20,16 +19,13 @@ use "./core.allium" as core
 -- Contracts
 ------------------------------------------------------------
 
--- Vera described inside Vera.
+-- Vera y su biblioteca descritas dentro de Vera, sin fingir que son lo mismo.
 --
--- What the corpus truly governs — such as its vocabulary and service
--- declarations — remains visible in pages with the same provenance and history
--- as everything else. Configuration presents the structured declarations as
--- controls over those pages; it does not ask a person to infer operational
--- state from prose. Other special pages may administer state held elsewhere,
--- project derived records or document behaviour not yet wired to the program.
--- Their status is visible: being special never silently claims that prose is
--- executable configuration.
+-- El corpus gobierna su vocabulario bibliotecario —objetos, propiedades y
+-- relaciones— mediante páginas con la misma procedencia e historia que todo lo
+-- demás. Otras páginas especiales administran estado operativo, proyectan
+-- registros o documentan el software. Su modo es visible: ser especial nunca
+-- convierte prosa sobre Vera en configuración ejecutable de Vera.
 --
 -- The reason is not elegance. A configuration file has no history, no author and
 -- no provenance: it says what it says now, and nothing about who decided it or
@@ -62,6 +58,13 @@ contract SelfDescription {
         -- Es un piso universal y editable, no una copia del corpus de quien
         -- distribuye Vera: las decisiones situadas se añaden después y cada
         -- declaración inicial conserva la procedencia de la distribución.
+
+    @invariant LibraryGovernmentAndSoftwareAdministrationAreDifferent
+        -- Sólo Objetos, Propiedades y Relaciones definen la ontología de la
+        -- biblioteca. Conexiones, publicación, actividad, presentación,
+        -- instrucciones y servicios administran o documentan el núcleo; no son
+        -- objetos de la biblioteca ni amplían por sí solos el comportamiento de
+        -- Vera.
 
     @invariant ASpecialPageCannotBreakVera
         -- What a special page says is validated when read, never when written.
@@ -290,10 +293,14 @@ invariant EachSpecialKindHasAnHonestMode {
 -- El índice no se mantiene dos veces. La página es una dirección estable dentro
 -- del grafo; sus renglones se derivan de todas las declaraciones `special-kind`
 -- vigentes, incluida cualquier clase que este cliente todavía no conozca.
-invariant GovernanceIndexesEverySpecialPage {
+invariant LibraryGovernmentIndexesEveryRectorPage {
     for governance_page in SpecialPages where governance_page.kind = governance:
         governance_page.page.title = "VERA: Gobierno" and
-        SpecialPages.all(special => governance_index(governance_page).contains(special))
+        SpecialPages.all(special =>
+            special.graph != governance_page.graph or
+            special.kind not in {objects, properties, relations} or
+            governance_index(governance_page).contains(special)
+        )
 }
 
 -- La publicación tiene una sola puerta de gobierno por grafo. Su título no es
@@ -377,7 +384,7 @@ surface SpecialPageAdministration {
         -- as a second source of truth.
 }
 
-surface GovernanceIndex {
+surface LibraryGovernmentIndex {
     facing participant: core/Participant
     context governance_page: SpecialPage where governance_page.kind = governance
 
@@ -386,20 +393,26 @@ surface GovernanceIndex {
         governance_index(governance_page)
 
     @guarantee TheIndexIsDerivedAndFollowable
-        -- Cada renglón enlaza a la página especial real y dice su clase, modo y
-        -- efecto. No copia sus bloques ni guarda una segunda lista que pueda
-        -- quedarse atrás. Una declaración desconocida se muestra como tal en vez
-        -- de desaparecer.
+        -- Cada renglón enlaza a la página rectora real de Objetos, Propiedades o
+        -- Relaciones. No copia sus bloques ni guarda una segunda lista que pueda
+        -- quedarse atrás.
+
+    @guarantee GovernmentLivesUnderLibrary
+        -- La entrada Gobierno pertenece a Biblioteca porque define las clases
+        -- de cosas con que trabaja esa biblioteca. Administración del software
+        -- conserva sus propias superficies y no aparece como una cuarta faceta
+        -- ontológica.
 
     @guarantee ConfigurationAndThePageReadTheSameDeclarations
-        -- Configuración y `VERA: Gobierno` son dos superficies de los mismos
-        -- `special-kind`; ninguna mantiene un inventario privado distinto.
+        -- Biblioteca → Gobierno y `VERA: Gobierno` son dos superficies de las
+        -- mismas declaraciones bibliotecarias; ninguna mantiene un inventario
+        -- privado distinto.
 
     @guarantee AFirstVisitHasSomethingToGovern
         -- Antes de que exista contenido propio, el índice ya permite alcanzar
-        -- las páginas rectoras del vocabulario y la puerta de conexiones. Una
-        -- lista vacía en una instalación nueva es un defecto de arranque, no
-        -- una invitación a conocer de antemano la ontología interna de Vera.
+        -- las páginas rectoras de Objetos, Propiedades y Relaciones. Una lista
+        -- vacía en una instalación nueva es un defecto de arranque, no una
+        -- invitación a conocer de antemano el modelo interno del software.
 }
 
 ------------------------------------------------------------

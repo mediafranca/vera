@@ -1,8 +1,9 @@
 -- allium: 3
 -- executable-process-blocks.allium
 
--- Scope: Bloques que invocan transformaciones registradas sobre entradas
---   canónicas y producen resultados revisables dentro de una página de Vera.
+-- Scope: Objetos activos de la biblioteca, soportados por bloques que invocan
+--   transformaciones registradas sobre entradas canónicas y producen resultados
+--   revisables dentro de una página de Vera.
 -- Includes: definición e invocación separadas, una transformación por bloque,
 --   cadenas explícitas mediante salidas aceptadas, entradas por puerto,
 --   ejecución confinada, propuesta hija, aceptación como bloque hermano y
@@ -12,10 +13,12 @@
 --   - El diseño definitivo del selector o del editor de procesos.
 --   - La correspondencia semántico–geométrica de PICTOS, que sigue siendo un
 --     problema de investigación del proceso y no una obligación general de Vera.
--- Dependencies: Page, Block y Participant los gobierna core.allium; las formas
+-- Dependencies: Page, Block y Participant los gobierna core.allium; el objeto
+--   activo y su ficha bibliotecaria, controlled-ontology.allium; las formas
 --   interpretativas existentes permanecen en processing-forms.allium.
 
 use "./core.allium" as core
+use "./controlled-ontology.allium" as ontology
 
 ------------------------------------------------------------
 -- Contracts
@@ -70,6 +73,19 @@ contract ExecutableProcess {
         -- Si una salida anterior cambia, la traza existente sigue siendo cierta
         -- para aquella revisión pero no se presenta como actual ni se reejecuta
         -- silenciosamente.
+
+    @invariant GovernmentDeclaresShapeAndTheKernelKeepsAuthority
+        -- La biblioteca puede declarar que una clase de bloque es un proceso,
+        -- sus propiedades, puertos, relaciones, entradas y salidas. Esa ficha no
+        -- concede credenciales, acceso al grafo, red arbitraria ni tiempo de
+        -- ejecución: tales límites pertenecen al núcleo y ninguna edición del
+        -- Gobierno puede relajarlos.
+
+    @invariant ExecutabilityIsNotAReservedObjectName
+        -- Un bloque es ejecutable porque una definición de proceso explícita se
+        -- asocia a su objeto, no porque el objeto se llame Proceso, Lambda o de
+        -- otra forma reconocida en código. Renombrar el vocabulario conserva la
+        -- declaración; quitarla retira la acción sin borrar el bloque.
 }
 
 contract ProcessResultLifecycle {
@@ -131,6 +147,7 @@ enum ProcessRunStatus { running | proposed | accepted | rejected | superseded | 
 
 -- Una capacidad reutilizable y versionada. Puede tener uno o varios puertos.
 entity ProcessDefinition {
+    object_template: ontology/ObjectTemplate
     name: String
     purpose: String
     version: Integer
@@ -153,6 +170,7 @@ value ProcessInput {
 -- El bloque visible que elige una definición y conecta sus entradas.
 entity ProcessInvocation {
     block: core/Block
+    object_assignment: ontology/ObjectAssignment
     definition: ProcessDefinition
     inputs: List<ProcessInput>
 }
@@ -197,6 +215,7 @@ rule ParticipantRunsAProcessBlock {
 
     requires: invocation.definition.enabled = true
     requires: invocation.inputs.count > 0
+    requires: invocation.object_assignment.status = confirmed
 
     ensures:
         let run = ProcessRun.created(
@@ -212,6 +231,18 @@ rule ParticipantRunsAProcessBlock {
             explanation: null
         )
         ExecutableProcess.execute(invocation, participant) = run
+}
+
+invariant ProcessObjectsAreBlockTemplates {
+    for definition in ProcessDefinitions:
+        definition.object_template.carrier = block
+}
+
+invariant InvocationAndAssignmentNameTheSameBlockAndObject {
+    for invocation in ProcessInvocations:
+        invocation.object_assignment.block = invocation.block and
+        invocation.object_assignment.page = null and
+        invocation.object_assignment.object_template = invocation.definition.object_template
 }
 
 rule AValidResultBecomesAChildProposal {
@@ -313,6 +344,12 @@ surface ProcessBlockExecution {
         -- viñeta, el asa, el plegado, el menú, los hijos, el movimiento y las
         -- referencias siguen siendo los de cualquier bloque de Vera.
 
+    @guarantee TheInspectorComesFromLibraryGovernment
+        -- La ficha del bloque reúne las propiedades y relaciones declaradas por
+        -- su objeto como haría con cualquier otra instancia. Ejecutar es una
+        -- capacidad adicional del núcleo enlazada explícitamente a esa
+        -- plantilla, no una ontología paralela escondida en `/proceso`.
+
     @guarantee TheSharedSourceControlOpensTheInvocationSource
         -- El mismo control de fuente que acompaña a las demás representaciones
         -- derivadas devuelve el proceso a su declaración completa dentro del
@@ -375,3 +412,5 @@ open question "¿Qué tipos de salida además de texto y SVG autocontenido debe 
 open question "Cuando cambia una entrada ya usada, ¿cómo debe señalar Vera que las ejecuciones aguas abajo están desactualizadas y desde qué punto ofrece volver a correr la cadena?"
 
 open question "¿Cómo generalizar la solicitud persistente al bibliotecario para que `/proceso` conserve solicitud, reclamo y propuesta antes de aceptar, sin imponer que Cotito sea el ejecutor de todo proceso?"
+
+open question "¿Qué declaración genérica enlaza un objeto activo con una capacidad del núcleo sin permitir que el Gobierno invente capacidades nuevas ni amplíe sus permisos?"

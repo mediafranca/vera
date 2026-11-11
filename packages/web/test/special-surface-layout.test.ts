@@ -65,7 +65,8 @@ describe('superficies especiales', () => {
   });
 
   it('distingue gobierno efectivo, superficies, proyecciones y documentación', () => {
-    assert.match(settings, /Gobierno de Vera/);
+    assert.match(settings, /governmentSummary\.textContent = 'Gobierno'/);
+    assert.match(settings, /Objetos-plantilla, propiedades, relaciones y composiciones/);
     assert.match(main, /kind\.mode !== 'documentación'/);
     assert.match(main, /item\.disabled = true/);
     assert.match(main, /state\.textContent = 'Pendiente'/);

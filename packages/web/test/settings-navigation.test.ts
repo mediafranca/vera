@@ -10,9 +10,11 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Biblioteca', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Gobierno', 'Apariencia']) {
+    for (const label of ['Biblioteca', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Apariencia']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
+    assert.doesNotMatch(settings, /\{ id: 'gobierno'/);
+    assert.match(settings, /governmentSummary\.textContent = 'Gobierno'/);
     assert.doesNotMatch(settings, /label: 'Sistema'/);
     assert.doesNotMatch(settings, /label: 'Ayuda'/);
     assert.doesNotMatch(settings, /label: 'Inicio'/);
@@ -147,7 +149,8 @@ describe('arquitectura de configuración', () => {
     assert.match(styles, /\.settings-action\s*\{[\s\S]*?border-radius:\s*var\(--form-control-radius\)/);
   });
 
-  it('reúne el gobierno ontológico en un destino y conserva Gobierno como inventario', () => {
+  it('reúne el Gobierno dentro de Biblioteca y conserva un solo destino ontológico', () => {
+    assert.match(settings, /section: 'biblioteca', label: 'Gobierno'/);
     assert.match(main, /row\('Ontología', 'Objetos, propiedades y relaciones en un visor facetado'\)/);
     assert.match(main, /ontologyKinds = new Set\(\['objects', 'properties', 'relations'\]\)/);
     assert.match(main, /page\.kind === 'objects'/);

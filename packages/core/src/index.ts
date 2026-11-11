@@ -142,6 +142,9 @@ export {
   ARGUMENT_PREPARATION_KIND,
   argumentMaturity,
   argumentMaturityChanges,
+  compositionStage,
+  compositionStageChanges,
+  compositionTemplateFor,
   isArgumentPreparation,
   isArgumentWork,
 } from './argument-workbench.ts';

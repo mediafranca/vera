@@ -42,6 +42,7 @@
 -- que existe y no se ha declarado.
 
 use "./core.allium" as core
+use "./controlled-ontology.allium" as ontology
 use "./graph-navigation.allium" as nav
 use "./workspace-interface.allium" as workspace
 
@@ -373,6 +374,8 @@ contract ComposedRoute {
 entity Trail {
     graph: core/Graph
     page: core/Page
+    object_assignment: ontology/ObjectAssignment
+    composition: ontology/CompositionDefinition
 
     -- Para qué se compuso esta ruta, escrito por quien la compuso. Vive como la
     -- propiedad `intent::` de la página, y por tanto se edita escribiendo.
@@ -463,17 +466,15 @@ entity Trail {
 -- componiendo. Es la primera mitad del gesto, ocurre sin ceremonia y se puede
 -- deshacer no haciendo nada.
 --
--- Uno. Alguien mira ese rastro y le parece que eso decía algo. Lo promueve. Nace
--- una página privada, con `type:: argumento`, un bloque por cita y un bloque
--- vacío entre cada dos —los cruces, que son lo que hay que escribir—, ningún
--- texto propio y un título provisional. Es PromoteTheTraceAsAnArgument, y es el
--- único acto de esta spec que no es escribir.
+-- Uno. Alguien mira ese rastro y le parece que eso decía algo. Lo promueve a un
+-- meta-objeto compuesto y ordenado que la biblioteca ofrece —Argumento en la
+-- biblioteca de Herbert—. Nace una página privada, un bloque por cita y un
+-- bloque vacío entre cada dos, ningún texto propio y un título provisional.
 --
 -- Uno bis. O no hubo rastro ninguno: alguien estaba escribiendo una página, se dio
--- cuenta a mitad de que lo que tenía entre manos era un argumento, y le puso la
--- propiedad. Es DeclaringAPageToBeAnArgument. Los dos nacimientos acaban en lo mismo
--- —una página que lleva la propiedad— y por eso no hay un acto de crear
--- recorridos: hay dos maneras de que una página resulte serlo.
+-- cuenta a mitad de que lo que tenía entre manos era una composición y le asigna
+-- ese objeto. Los dos nacimientos acaban en lo mismo —una página cuya plantilla
+-- declara composición ordenada— sin que Vera reconozca el nombre Argumento.
 --
 -- Dos. Se escribe. Podar, reordenar, partir un bloque en dos, afinar un nodo hasta
 -- un bloque, y sobre todo escribir las conectivas, que es donde está todo lo que
@@ -506,7 +507,7 @@ entity Trail {
 -- argument-workbench.allium: se conserva el tramo completo, ya podado y
 -- ordenado en el mapa, pero cambia la clase y la madurez de la página que nace.
 --
--- Promover el rastro a argumento (comportamiento legado pendiente de migración).
+-- Promover el rastro a una composición ordenada.
 --
 -- El mapa ya lleva el rastro: dónde ha estado un participante, acumulado solo, sin
 -- que nadie lo componga, y desde ahí podado y reordenado a mano si a alguien le
@@ -536,8 +537,8 @@ entity Trail {
 -- breadcrumb no tiene nombre y no puede tenerlo: por eso no se puede [[enlazar]],
 -- ni citar, ni ser el nodo de otro recorrido, ni entregárselo a nadie. Es dónde
 -- está uno, y sólo sirve mientras uno está ahí.
-rule PromoteTheTraceAsAnArgument {
-    when: PromoteTraceAsArgument(participant, workspace, from_step)
+rule PromoteTheTraceAsAComposition {
+    when: PromoteTraceAsComposition(participant, workspace, from_step, object_template)
 
     let graph = workspace.graph
     let membership = core/Membership{graph, participant}
@@ -552,6 +553,11 @@ rule PromoteTheTraceAsAnArgument {
     requires: participant.kind = human
     requires: trace.count >= 1
     requires: not exists core/Page{graph: graph, title_key: title_key(title)}
+    requires: object_template.ontology.graph = graph
+    requires: object_template.carrier = page
+    requires: object_template.form = composition
+    requires: object_template.composition != null
+    requires: object_template.composition.ordered = true
 
     ensures:
         core/ParticipantSubmits(
@@ -561,12 +567,15 @@ rule PromoteTheTraceAsAnArgument {
             change: create_page(title, private),
             channel: typed_text
         )
-        core/ParticipantSubmits(
-            participant: participant,
-            graph: graph,
-            origin_id: origin_id_for_declaration(participant, trace),
-            change: set_property("type", "argumento"),
-            channel: typed_text
+        ontology/ObjectAssignment.created(
+            ontology: object_template.ontology,
+            object_template: object_template,
+            page: page_created_by(origin_id_for_trace(participant, trace)),
+            block: null,
+            status: confirmed,
+            rationale: "Composición creada desde un rastro elegido por la persona",
+            suggested_by: participant,
+            decided_by: participant
         )
         for step in trace:
             core/ParticipantSubmits(
@@ -728,7 +737,8 @@ rule PromoteTheTraceAsAnArgument {
         -- taller, y esta spec gobierna el argumento.
 }
 
--- Una página se vuelve un recorrido cuando alguien lo escribe.
+-- Una página se vuelve recorrido cuando se confirma para ella un objeto cuya
+-- plantilla declara una composición ordenada.
 --
 -- Y lo que escribe no crea nada: nota algo. Cualquier buen texto es ya un
 -- recorrido —va por sitios, en un orden, y lo que pone entre ellos es lo que
@@ -736,36 +746,30 @@ rule PromoteTheTraceAsAnArgument {
 -- La propiedad no añade estructura, porque la estructura ya estaba: añade una
 -- afirmación del autor sobre ella, que es que el orden estaba pensado.
 --
--- La palabra es `argumento` y no `trail`, y la elección dice algo. `trail` nombra
--- la forma —una línea por el mapa— y `argumento` nombra lo que se está
--- afirmando. Como esta spec sostiene desde la primera línea que la forma es el
--- argumento, la palabra que se escribe en la página debería ser la segunda: es la
--- que hace que ponerla se sienta como lo que es, que no es clasificar un texto
--- sino responder por él.
---
--- Que el corpus mezcle castellano e inglés en sus propiedades no cuesta nada
--- aquí: controlled-ontology.allium absorbe las variantes como alt_labels del
--- mismo tipo semántico, que es lo que ya hace con `lang` y `language`. Lo que se
--- escribió `trail` antes de esta decisión sigue valiendo y sigue siendo lo mismo.
-rule DeclaringAPageToBeAnArgument {
-    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+-- `Argumento` es una declaración de una biblioteca concreta y `Trail` es la
+-- proyección genérica de toda composición ordenada. El código no compara el
+-- nombre del objeto ni una propiedad `type`; observa la forma declarada por su
+-- plantilla.
+rule ConfirmedOrderedCompositionBecomesTrail {
+    when: assignment: ontology/ObjectAssignment.status becomes confirmed
 
-    requires: change.kind = set_property
-    requires: change.property_key = "type"
-    requires: change.property_value = "argumento"
+    requires: assignment.page != null
+    requires: assignment.object_template.form = composition
+    requires: assignment.object_template.composition != null
+    requires: assignment.object_template.composition.ordered = true
 
     ensures: Trail.created(
-        graph: graph,
-        page: change.page,
-        intent: property_value(change.page, "intent")
+        graph: assignment.ontology.graph,
+        page: assignment.page,
+        object_assignment: assignment,
+        composition: assignment.object_template.composition,
+        intent: property_value(assignment.page, "intent")
     )
 
     @invariant DeclaringNoticesAndDoesNotCreate
-        -- Poner la propiedad no reordena nada, no crea bloques, no toca una
-        -- referencia y no cambia el mapa de nadie. Lo único que cambia es que a
-        -- partir de ahí el orden de esta página se puede leer como ruta, con sus
-        -- números y su hilo, porque alguien ha dicho que ese orden era a propósito.
-        -- Quitarla no destruye el texto por la misma razón: no había puesto nada.
+        -- Confirmar el objeto no reordena, no crea bloques y no toca referencias.
+        -- Hace legible como ruta una estructura que la página ya conserva. Retirar
+        -- la asignación no destruye el texto por la misma razón.
 
     @invariant AnyPageCouldBeSeenAsAThread
         -- La maquinaria no es privativa de los recorridos, porque no hay
@@ -783,7 +787,7 @@ rule DeclaringAPageToBeAnArgument {
         -- resultó ser un recorrido sin haber empezado siéndolo.
 }
 
--- Retirar un recorrido es quitarle la propiedad, y lo que queda es el texto.
+-- Retirar el objeto compuesto deja el texto.
 --
 -- No hay estado terminal, ni papelera, ni recorridos jubilados. Un argumento que
 -- uno ya no sostiene sigue siendo una página que dice lo que decía, con su
@@ -793,18 +797,16 @@ rule DeclaringAPageToBeAnArgument {
 -- Es la forma barata de dejar de sostener algo, y hace falta que lo sea. La
 -- alternativa —borrar el recorrido— pediría destruir un texto para retirar una
 -- opinión sobre él, y entonces nadie lo retiraría nunca.
-rule RemovingTheDeclarationLeavesTheText {
-    when: core/ParticipantSubmits(participant, graph, origin_id, change, channel, evidence?)
+rule RejectingTheObjectAssignmentLeavesTheText {
+    when: assignment: ontology/ObjectAssignment.status transitions_to rejected
 
-    let trail = Trail{page: change.page}
+    let trail = Trail{object_assignment: assignment}
 
-    requires: change.kind = remove_property
-    requires: change.property_key = "type"
     requires: exists trail
 
     ensures:
         not exists trail
-        TrailRetired(page: change.page, retired_by: participant)
+        TrailRetired(page: trail.page, retired_by: assignment.decided_by)
 
     @invariant RetiringDestroysNothing
         -- La página, sus bloques, sus revisiones, sus enlaces y su sitio en el mapa
@@ -914,6 +916,14 @@ invariant ATrailIsAPageOfItsGraph {
         trail.page.graph = trail.graph
 }
 
+invariant ATrailComesFromAConfirmedOrderedComposition {
+    for trail in Trails:
+        trail.object_assignment.status = confirmed and
+        trail.object_assignment.page = trail.page and
+        trail.composition = trail.object_assignment.object_template.composition and
+        trail.composition.ordered = true
+}
+
 -- Un cruce de siete nodos son seis pasos. Es aritmética y está escrita porque es
 -- lo que impide que los cruces se conviertan en una lista aparte capaz de tener
 -- más o menos elementos que la ruta de la que salen.
@@ -991,7 +1001,7 @@ surface TrailComposition {
         workspace.navigation_history
 
     provides:
-        PromoteTraceAsArgument(guide, workspace, from_step)
+        PromoteTraceAsComposition(guide, workspace, from_step, object_template)
 
     -- Los cruces del borrador que se está componiendo, con la cara que el corpus
     -- pone y la que falta por poner.

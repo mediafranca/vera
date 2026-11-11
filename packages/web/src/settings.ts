@@ -50,7 +50,6 @@ export type Section =
   | 'personas'
   | 'bibliotecario'
   | 'conexiones'
-  | 'gobierno'
   | 'apariencia';
 
 export interface SettingsHandlers {
@@ -91,7 +90,6 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'personas', label: 'Participantes' },
   { id: 'bibliotecario', label: 'Agente de biblioteca' },
   { id: 'conexiones', label: 'Conexiones' },
-  { id: 'gobierno', label: 'Gobierno' },
   { id: 'apariencia', label: 'Apariencia' },
 ];
 
@@ -114,7 +112,7 @@ const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'conexiones', label: 'Agentes y clientes MCP', note: 'Identidad, alcance, estado y revocación', terms: 'mcp inteligencia credencial', open: (h) => h.onOpenPage('VERA: Conexiones') },
   { section: 'conexiones', label: 'Zotero', note: 'Biblioteca, credencial y acceso de lectura o escritura', terms: 'bibliografía citas servicio' },
   { section: 'conexiones', label: 'Editores externos', note: 'Aplicaciones predeterminadas para cada archivo', terms: 'markdown pdf imagen audio' },
-  { section: 'gobierno', label: 'Gobierno de Vera', note: 'Páginas rectoras y superficies administrativas', terms: 'ontología objetos propiedades relaciones' },
+  { section: 'biblioteca', label: 'Gobierno', note: 'Objetos, propiedades y relaciones de la biblioteca', terms: 'ontología plantillas composiciones' },
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
   { section: 'biblioteca', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
   { section: 'biblioteca', label: 'Esta biblioteca', note: 'Nombre, perfil y ubicación de datos', terms: 'instancia identidad' },
@@ -299,7 +297,6 @@ export function renderSettings(
   else if (active === 'personas') drawPeople(body, handlers);
   else if (active === 'bibliotecario') void drawLibrarian(body, handlers);
   else if (active === 'conexiones') void drawConnections(body, handlers);
-  else if (active === 'gobierno') drawGovernment(body, handlers);
   else drawAppearance(body, tokens, handlers);
 }
 
@@ -1703,6 +1700,19 @@ async function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): Promi
     handlers.onOpenActivity,
   ));
   host.append(actions);
+  const government = document.createElement('details');
+  government.className = 'settings-library-government';
+  const governmentSummary = document.createElement('summary');
+  governmentSummary.textContent = 'Gobierno';
+  const governmentBody = document.createElement('div');
+  governmentBody.className = 'settings-government';
+  const governmentNote = document.createElement('p');
+  governmentNote.className = 'settings-note';
+  governmentNote.textContent = 'Objetos-plantilla, propiedades, relaciones y composiciones de esta biblioteca.';
+  governmentBody.append(governmentNote);
+  handlers.drawMemory?.(governmentBody);
+  government.append(governmentSummary, governmentBody);
+  host.append(government);
   if (shared === null) drawPortability(host);
 }
 
@@ -1963,20 +1973,6 @@ async function drawVoiceConfiguration(host: HTMLElement): Promise<void> {
   } catch (error) {
     loading.textContent = error instanceof Error ? error.message : 'No se pudo leer la configuración de voz.';
   }
-}
-
-function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {
-
-  heading(
-    host,
-    'Gobierno de Vera',
-    'Las páginas reservadas que definen cómo funciona esta instancia.',
-  );
-  const government = document.createElement('div');
-  government.className = 'settings-government';
-  host.append(government);
-  handlers.drawMemory?.(government);
-
 }
 
 async function drawInstanceConfiguration(host: HTMLElement): Promise<void> {

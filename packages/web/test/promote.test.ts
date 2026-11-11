@@ -85,7 +85,7 @@ describe('lo que nace', () => {
   it('nace privado, porque haber andado no es haber decidido enseñarlo', () => {
     // @invariant ADraftTrailIsBornPrivate: un rastro que se publicara solo
     // convertiría el mapa en una cámara.
-    const seed = seedArgument(trace, { title: 'Argumento del 2026-08-09' });
+    const seed = seedArgument(trace, { title: 'Argumento del 2026-08-09', kind: 'Ensayo' });
     assert.deepEqual(seed.page, {
       kind: 'create_page',
       title: 'Argumento del 2026-08-09',
@@ -93,14 +93,14 @@ describe('lo que nace', () => {
     });
   });
 
-  it('nace como Argumento y no anticipa la madurez que debe declarar la persona', () => {
-    const properties = seedArgument(trace, { title: 'X' }).properties('page:9');
+  it('nace con la plantilla elegida y no anticipa la etapa que debe declarar la persona', () => {
+    const properties = seedArgument(trace, { title: 'X', kind: 'Ensayo' }).properties('page:9');
     assert.deepEqual(properties, [
       {
         kind: 'set_property',
         page: 'page:9',
         propertyKey: 'tipo',
-        propertyValue: 'argumento',
+        propertyValue: 'Ensayo',
       },
     ]);
   });

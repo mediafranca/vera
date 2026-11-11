@@ -380,6 +380,13 @@ describe('publicación del sitio personal', () => {
     const makePage = async (title: string, visibility: 'public' | 'private') => (
       await write({ kind: 'create_page', title, visibility })
     ).subjectId;
+    const objects = await makePage('VERA: Objetos publicados', 'private');
+    await write({ kind: 'set_property', page: objects, propertyKey: 'special-kind', propertyValue: 'objects' });
+    const template = (await write({
+      kind: 'create_block', page: objects, parent: null, position: 0, content: 'Argumento',
+    })).subjectId;
+    await write({ kind: 'set_property', block: template, propertyKey: 'forma', propertyValue: 'composición' });
+    await write({ kind: 'set_property', block: template, propertyKey: 'ordenada', propertyValue: 'sí' });
     const argument = await makePage('Argumento público', 'public');
     const first = await makePage('Primera parada pública', 'public');
     const hidden = await makePage('Parada privada', 'private');

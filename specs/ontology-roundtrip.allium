@@ -1,8 +1,8 @@
 -- allium: 3
 -- ontology-roundtrip.allium
 
--- Scope: Round-trip government of Vera's controlled ontology by enriching the
---   three existing rector pages (Objects, Properties and Relations) with two
+-- Scope: Gobierno reversible de la ontología de la biblioteca, enriqueciendo
+--   las tres páginas rectoras (Objetos, Propiedades y Relaciones) con dos
 --   equally authoritative notations: readable declarations and a spatial map
 -- Includes: Shared focus, proposals from either notation, validation, impact,
 --   publication through Vera's canonical operation history, and lossless
@@ -12,7 +12,8 @@
 --   - Layout algorithms and rendering technology
 --   - A second ontology store, RDF migration or an OWL editor
 --   - Automatic approval by an agent
---   - Domain-specific university ontology content
+--   - La ontología del software y la configuración de capacidades del núcleo
+--   - Contenido ontológico propio de una biblioteca particular
 -- Dependencies: The governed ontology is defined in controlled-ontology.allium;
 --   participants, membership and canonical operations in core.allium
 
@@ -69,6 +70,12 @@ contract RoundTripNotation {
         -- Moving or framing a visual element changes a participant's view, not
         -- the governed meaning. Creating or reconnecting a semantic edge does
         -- create a proposal, because that gesture changes meaning.
+
+    @invariant TheMapShowsLibrarySemanticsNotProgramArchitecture
+        -- Los nodos del mapa son objetos, propiedades y relaciones que una
+        -- biblioteca decidió reconocer. Page, Block, Operation, D4, ejecución,
+        -- federación y demás piezas internas de Vera no aparecen por pertenecer
+        -- al software ni pueden editarse desde esta superficie.
 }
 
 ------------------------------------------------------------
@@ -220,7 +227,7 @@ rule ParticipantDiscardsDraft {
 -- Actor Declarations
 ------------------------------------------------------------
 
-actor OntologyGovernor {
+actor LibraryGovernmentParticipant {
     within: ontology/Ontology
     identified_by: core/Participant where core/Membership{participant: this, graph: within.graph}.status = active
 }
@@ -229,15 +236,15 @@ actor OntologyGovernor {
 -- Surfaces
 ------------------------------------------------------------
 
-surface RoundTripOntologyGovernment {
-    facing participant: OntologyGovernor
+surface RoundTripLibraryGovernment {
+    facing participant: LibraryGovernmentParticipant
     context governed: ontology/Ontology
 
     contracts:
         fulfils RoundTripNotation
 
     exposes:
-        governed.types
+        governed.objects
         governed.property_definitions
         governed.relations
         for draft in OntologyDrafts where governed = governed:
@@ -285,6 +292,13 @@ surface RoundTripOntologyGovernment {
         -- pointing device or spatial perception. Visual government broadens the
         -- available cognitive styles; it never makes vision a condition of
         -- sovereignty.
+
+    @guarantee SelectionOpensTheObjectTemplate
+        -- Seleccionar un objeto en el mapa abre a la derecha su plantilla: el
+        -- soporte de sus instancias, las propiedades esperadas, las relaciones
+        -- posibles de entrada y salida y, si es un meta-objeto, su composición.
+        -- Abrir la plantilla no cambia el foco espacial hasta que la persona lo
+        -- pide explícitamente.
 }
 
 ------------------------------------------------------------

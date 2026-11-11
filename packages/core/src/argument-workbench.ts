@@ -5,7 +5,9 @@
 // manipula. Mantenerlos separados evita que una actividad de interfaz se vuelva
 // accidentalmente una clase del corpus. Ver specs/argument-workbench.allium.
 
+import type { ObjectDeclaration } from './ontology.ts';
 import type { PageId, PropertyAssignment } from './types.ts';
+import { answersIn } from './vocabulary.ts';
 
 /** El valor legado que distinguía la preparación como otra clase de página. */
 export const ARGUMENT_PREPARATION_KIND = 'preparación argumental';
@@ -32,6 +34,54 @@ export type ArgumentMaturityChange =
       readonly kind: 'remove_property'; readonly page: PageId;
       readonly propertyKey: string;
     };
+
+/** La plantilla compuesta que una instancia declara mediante su tipo. */
+export function compositionTemplateFor(
+  properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],
+  objects: readonly ObjectDeclaration[],
+  kindKey = 'tipo',
+): ObjectDeclaration | null {
+  const kinds = properties
+    .filter((one) => one.key.trim().toLowerCase() === kindKey.trim().toLowerCase())
+    .flatMap((one) => answersIn(one.value))
+    .map((one) => one.trim().toLocaleLowerCase('es'));
+  return objects.find((object) =>
+    object.composition !== null && kinds.includes(object.name.trim().toLocaleLowerCase('es')),
+  ) ?? null;
+}
+
+/** La etapa actual de cualquier composición cuya plantilla declare una. */
+export function compositionStage(
+  properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],
+  template: Pick<ObjectDeclaration, 'stageProperty'>,
+  governed: readonly string[] = [],
+): string | null {
+  const key = template.stageProperty?.trim() ?? '';
+  if (key === '') return null;
+  const raw = properties.find((one) =>
+    one.key.trim().toLowerCase() === key.toLowerCase())?.value.trim() ?? '';
+  if (raw === '') return null;
+  return governed.find((one) => one.trim().toLowerCase() === raw.toLowerCase()) ?? raw;
+}
+
+/** Cambia la etapa sin tocar el tipo ni la identidad de la composición. */
+export function compositionStageChanges(
+  page: PageId,
+  properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],
+  template: Pick<ObjectDeclaration, 'stageProperty'>,
+  stage: string | null,
+): ArgumentMaturityChange[] {
+  const key = template.stageProperty?.trim() ?? '';
+  if (key === '') return [];
+  const current = properties.find((one) =>
+    one.key.trim().toLowerCase() === key.toLowerCase())?.value.trim() ?? null;
+  if (stage === null) {
+    return current === null ? [] : [{ kind: 'remove_property', page, propertyKey: key }];
+  }
+  return current?.toLowerCase() === stage.trim().toLowerCase()
+    ? []
+    : [{ kind: 'set_property', page, propertyKey: key, propertyValue: stage }];
+}
 
 export function isArgumentPreparation(
   properties: readonly Pick<PropertyAssignment, 'key' | 'value'>[],

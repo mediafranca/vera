@@ -20,7 +20,7 @@
 //
 // Ver specs/trail.allium, regla PromoteTheTraceAsAnArgument.
 
-import { ARGUMENT_KIND, TESTIMONY_KEY } from '@vera/core';
+import { TESTIMONY_KEY } from '@vera/core';
 import type { NavigationGesture, TraceStep } from './trace.ts';
 
 /**
@@ -116,7 +116,7 @@ export function fillTraceCrossings(
  */
 export function seedArgument(
   trace: readonly TraceStep[],
-  said: { title: string; intent?: string | null },
+  said: { title: string; kind: string; intent?: string | null },
 ): { page: CreatePageChange; properties: (page: string) => Change[] } {
   return {
     page: { kind: 'create_page', title: said.title, visibility: 'private' },
@@ -126,7 +126,7 @@ export function seedArgument(
           kind: 'set_property',
           page,
           propertyKey: 'tipo',
-          propertyValue: ARGUMENT_KIND,
+          propertyValue: said.kind,
         },
       ];
       if (said.intent != null && said.intent !== '') {
