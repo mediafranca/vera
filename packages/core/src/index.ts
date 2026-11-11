@@ -140,17 +140,14 @@ export {
   ARGUMENT_KIND,
   ARGUMENT_MATURITY_KEY,
   ARGUMENT_PREPARATION_KIND,
-  ARGUMENT_PREPARATION_PHASES,
   argumentMaturity,
   argumentMaturityChanges,
-  argumentPreparationPhase,
   isArgumentPreparation,
   isArgumentWork,
 } from './argument-workbench.ts';
 export type {
   ArgumentMaturity,
   ArgumentMaturityChange,
-  ArgumentPreparationPhase,
 } from './argument-workbench.ts';
 
 export {

@@ -203,22 +203,13 @@ permisos y reconciliación. Estas decisiones viven desde ahora en
 `argument-workbench.allium`; la transclusión será una capacidad compartida con
 la mesa de trabajo, no un parche visual aislado.
 
-### E-10. La promoción del breadcrumb todavía crea directamente un argumento
+### E-10. Resuelta: Argumento conserva tipo e identidad durante su maduración
 
-`trail.allium`, `workspace-interface.allium` y la implementación vigente
-conservan el modelo anterior: promover un tramo del breadcrumb crea de inmediato
-una página `tipo:: argumento`. La exploración conceptual del 2026-09-28 decidió
-otra frontera: el tramo sólo reúne material y debe sembrar una página de
-preparación argumental, cuyo estado de madurez declara la persona y cuyo término
-publicable es `Argumento`.
-
-**Deuda deliberada:** no se reescribe todavía el flujo legado. Primero se
-cerrarán el nombre canónico de la página, la escala compacta de maduración y el
-resto de sus interacciones. Después se consolidarán las tres specs y la
-implementación como una sola migración. Ya quedó decidido que el tramo entra
-completo, en el orden visible después de las podas y arrastres hechos en el
-breadcrumb; se conservan además el gesto pequeño desde el mapa y la creación
-atómica de una página completamente sembrada.
+La consolidación de noviembre de 2026 resolvió la ambigüedad: promover un tramo
+crea atómicamente un objeto `Argumento`; la propiedad gobernada `madurez
+argumental` declara hasta dónde llegó. Madurar o reabrir modifica esa propiedad,
+no el tipo ni la identidad de la página. El tramo sigue entrando completo y en
+el orden visible después de las podas y arrastres hechos en el breadcrumb.
 
 ## Preguntas ya declaradas en specs, citadas aquí por ser bloqueantes de la fase 1
 

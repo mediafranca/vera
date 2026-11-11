@@ -2154,6 +2154,28 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     return [...declared, ...observed.filter((one) => !named.has(titleKey(one.value)))];
   };
 
+  /**
+   * Las claves que una página ya escribe y las que su objeto declara que le
+   * corresponden. Esto permite que una propiedad gobernada ofrezca su dominio
+   * antes de tener valor: precisamente cuando hace falta elegir el primero.
+   */
+  const domainKeysOf = (page: string): string[] => {
+    const keys = new Map<string, string>();
+    for (const property of graph.propertiesOf(page)) {
+      keys.set(titleKey(property.key), property.key);
+    }
+    const names = propertyNames();
+    const kinds = graph.propertiesOf(page)
+      .filter((one) => titleKey(one.key) === titleKey(names.kind))
+      .flatMap((one) => answersIn(one.value))
+      .map(titleKey);
+    for (const object of declaredObjects()) {
+      if (!kinds.includes(titleKey(object.name))) continue;
+      for (const property of object.properties) keys.set(titleKey(property), property);
+    }
+    return [...keys.values()];
+  };
+
   /** Cada tipo de arista que este corpus ofrece al escribir una relación. */
   const declaredRelations = () => readRelationDeclarations(declaredIn('relations'));
 
@@ -9481,7 +9503,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           domains: publicAccess
             ? {}
             : Object.fromEntries(
-                [...new Set(graph.propertiesOf(page.id).map((p) => p.key))].map((key) => [
+                domainKeysOf(page.id).map((key) => [
                   key,
                   domainOf(key),
                 ]),

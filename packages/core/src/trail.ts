@@ -1,8 +1,8 @@
 // El recorrido: la lectura ordenada de una preparación o argumento.
 //
-// No hay entidad que mantener y no hay tabla nueva. Un recorrido es una página
-// con `tipo:: preparación argumental` o `tipo:: argumento`, y todo lo demás se
-// calcula mirándola: los nodos son las
+// No hay entidad que mantener y no hay tabla nueva. Un recorrido es un objeto
+// `Argumento`, cualquiera sea su madurez, y todo lo demás se calcula mirándolo:
+// los nodos son las
 // referencias que su texto lleva, en el orden en que se leen; las conectivas son
 // lo que queda del texto cuando se le quitan las referencias; los cruces son los
 // pares de nodos consecutivos. Un recorrido de siete nodos tiene seis cruces, y

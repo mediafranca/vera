@@ -23,7 +23,7 @@ import {
   suggestTitles,
   titleKey,
   uniqueAnchors,
-  isArgumentPreparation,
+  isArgumentWork,
   isTrail,
   argumentMaturityChanges,
   type ArgumentMaturity,
@@ -2108,9 +2108,9 @@ async function submitAndReload(
 /**
  * Cambia la madurez sin partir la identidad de la obra.
  *
- * El estado terminal vive en `tipo:: argumento`; reabrir vuelve a
- * `tipo:: preparación argumental`. Tipo y madurez preparatoria cambian en un
- * solo lote, para que ninguna lectura alcance a ver una mitad contradictoria.
+ * El tipo permanece `argumento`. La escala y su estado terminal viven en
+ * `madurez argumental`, declarada por el Gobierno; reabrir cambia sólo esa
+ * propiedad y conserva la identidad ontológica de la obra.
  */
 async function submitArgumentMaturity(
   page: PageView,
@@ -4304,7 +4304,7 @@ export function renderOutliner(
   };
   const folded = new Set(page.folded);
   const special = isSpecialPage(page.properties);
-  const preparation = isArgumentPreparation(page.properties, corpusNames().kind);
+  const argumentWork = isArgumentWork(page.properties, corpusNames().kind);
   // @invariant SpokenContentNamesItsRecording: un bloque hablado lo dice.
   const spoken = new Map((page.spokenOrigins ?? []).map((o) => [o.block, o.recording]));
   // Lo hablado que tiene lugar en esta página, por el bloque que se lo guarda.
@@ -5488,7 +5488,7 @@ export function renderOutliner(
         icon: 'corner-up-right',
         run: () => void callbacks.onUndo?.('rehacer'),
       },
-      ...(preparation ? [] : [{
+      ...(argumentWork ? [] : [{
         /*
          * Declarar que el orden de esta página es un argumento, o retirarlo.
          *

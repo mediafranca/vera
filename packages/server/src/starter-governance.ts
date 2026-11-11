@@ -75,6 +75,7 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
   { id: 'collections', name: 'colecciones', field: 'texto', many: true, says: 'qué colecciones del servicio se sincronizan' },
   { id: 'theme', name: 'tema', field: 'enlace', says: 'hoja de estilo gobernada que aplica una presentación' },
   { id: 'epistemic-role', name: 'rol epistémico', field: 'una de', values: ['fuente', 'testimonio', 'análisis', 'síntesis', 'pregunta', 'afirmación'], says: 'función principal que cumple una página en el conocimiento' },
+  { id: 'argument-maturity', name: 'madurez argumental', field: 'una de', values: ['contexto', 'estructura', 'composición', 'validación', 'argumento'], says: 'hasta dónde ha madurado un argumento; el último valor lo declara publicable' },
 ];
 
 export const STARTER_OBJECT_DEFINITIONS: readonly StarterObjectDefinition[] = [
@@ -94,6 +95,7 @@ export const STARTER_OBJECT_DEFINITIONS: readonly StarterObjectDefinition[] = [
   { id: 'service', name: 'Servicio', properties: ['servicio', 'biblioteca', 'colecciones'], says: 'una conexión con algo de fuera' },
   { id: 'stylesheet', name: 'Hoja de estilo', properties: ['concepto', 'idioma'], says: 'una página cuyo CSS es fuente versionada y confinada de apariencia' },
   { id: 'work', name: 'Obra', properties: ['estado', 'concepto', 'url'], says: 'un horizonte duradero que reúne proyectos y otras piezas relacionadas' },
+  { id: 'argument', name: 'Argumento', properties: ['tema', 'madurez argumental', 'estado'], says: 'una posición construida mediante paradas y conectivas, legible como texto y como recorrido sobre el mapa' },
 ];
 
 export const STARTER_RELATION_DEFINITIONS: readonly StarterRelationDefinition[] = [
