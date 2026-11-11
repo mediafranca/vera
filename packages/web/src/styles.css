@@ -6612,6 +6612,18 @@ body.settings-open #text {
 }
 
 .settings-government-list { margin-bottom: 0; }
+.settings-library-government {
+  margin-block: 1.25rem;
+  border-block: 1px solid var(--line);
+  padding-block: .75rem;
+}
+.settings-library-government > summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: var(--form-control-height);
+  align-content: center;
+}
+.settings-library-government[open] > summary { margin-bottom: .5rem; }
 
 .governance-index {
   margin: 1rem 0 1.5rem;

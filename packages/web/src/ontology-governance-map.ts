@@ -70,6 +70,22 @@ export function reflectOntologyChange(said: OntologyView, change: Change): boole
   const object = said.objects.find((one) => one.block === change.block);
   if (object !== undefined) {
     if (property === 'propiedades') object.properties = listed(value);
+    else if (property === 'soporte') object.carrier = /^(bloque|block)$/i.test(value ?? '') ? 'bloque' : 'página';
+    else if (property === 'forma') {
+      object.composition = /^(composición|composicion|composition)$/i.test(value ?? '')
+        ? { ordered: false, members: [] }
+        : null;
+    }
+    else if (property === 'ordenada' || property === 'ordenado') {
+      if (object.composition === null) return false;
+      object.composition.ordered = truth(value) === true;
+    }
+    else if (property === 'miembros') {
+      if (object.composition === null) return false;
+      object.composition.members = listed(value);
+    }
+    else if (property === 'etapa') object.stageProperty = value;
+    else if (property === 'capacidad') object.capability = value;
     else if (property === 'papel') object.role = value;
     else if (property === 'qué' || property === 'nota') object.says = value;
     else return false;
@@ -114,7 +130,10 @@ export function governanceDiagram(said: OntologyView, facet: GoverningKind): Gov
         block: object.block,
         kind: 'objects',
         title: object.name,
-        details: object.properties.length === 0 ? ['sin propiedades declaradas'] : object.properties,
+        details: [
+          `${object.carrier}${object.composition === null ? '' : object.composition.ordered ? ' · composición ordenada' : ' · composición'}`,
+          ...(object.properties.length === 0 ? ['sin propiedades declaradas'] : object.properties),
+        ],
       });
     }
     return { nodes, edges };

@@ -23,9 +23,8 @@ import {
   suggestTitles,
   titleKey,
   uniqueAnchors,
-  isArgumentWork,
-  isTrail,
-  argumentMaturityChanges,
+  compositionStageChanges,
+  compositionTemplateFor,
   type ArgumentMaturity,
   type MarkdownTable,
   type RenderOptions,
@@ -42,6 +41,7 @@ import {
   type LibrarianRequestView,
   type PageSummary,
   type PageView,
+  type ObjectDeclared,
   type SubmitResult,
   type YoutubeTranscriptChoice,
   type YoutubeTranscriptResult,
@@ -84,7 +84,6 @@ import {
   DEADLINE_KEY,
   LIST_KEY,
   NUMBERED,
-  TRAIL_KIND,
   readChildListStyle,
   readTask,
   withoutTypedOrdinal,
@@ -2114,12 +2113,12 @@ async function submitAndReload(
  */
 async function submitArgumentMaturity(
   page: PageView,
-  kindKey: string,
+  template: ObjectDeclared,
   maturity: ArgumentMaturity | null,
   callbacks: OutlinerCallbacks,
 ): Promise<boolean> {
   const entries: Parameters<typeof api.submitCanonicalBatch>[0] =
-    argumentMaturityChanges(page.id, page.properties, maturity, kindKey)
+    compositionStageChanges(page.id, page.properties, template, maturity)
       .map((change) => ({ change }));
   let result;
   try {
@@ -4304,7 +4303,12 @@ export function renderOutliner(
   };
   const folded = new Set(page.folded);
   const special = isSpecialPage(page.properties);
-  const argumentWork = isArgumentWork(page.properties, corpusNames().kind);
+  const compositionTemplate = compositionTemplateFor(
+    page.properties,
+    page.objectTemplates ?? [],
+    corpusNames().kind,
+  );
+  const argumentWork = compositionTemplate !== null;
   // @invariant SpokenContentNamesItsRecording: un bloque hablado lo dice.
   const spoken = new Map((page.spokenOrigins ?? []).map((o) => [o.block, o.recording]));
   // Lo hablado que tiene lugar en esta página, por el bloque que se lo guarda.
@@ -5488,7 +5492,7 @@ export function renderOutliner(
         icon: 'corner-up-right',
         run: () => void callbacks.onUndo?.('rehacer'),
       },
-      ...(argumentWork ? [] : [{
+      ...((page.objectTemplates ?? []).filter((one) => one.composition?.ordered === true).length === 0 ? [] : [{
         /*
          * Declarar que el orden de esta página es un argumento, o retirarlo.
          *
@@ -5505,7 +5509,9 @@ export function renderOutliner(
          * barato o nadie lo retiraría nunca.
          * @invariant RetiringDestroysNothing.
          */
-        label: trail === null ? 'Leer su orden como un recorrido' : 'Dejar de leerlo como recorrido',
+        label: trail === null
+          ? `Leer su orden como ${(page.objectTemplates ?? []).find((one) => one.composition?.ordered === true)?.name ?? 'composición'}`
+          : 'Dejar de leerlo como composición',
         icon: 'steps-1',
         ...(special ? { blocked: 'una página especial gobierna Vera y no se lee como recorrido' } : {}),
         run: () => {
@@ -5515,7 +5521,7 @@ export function renderOutliner(
                   kind: 'set_property',
                   page: page.id,
                   propertyKey: corpusNames().kind,
-                  propertyValue: TRAIL_KIND,
+                  propertyValue: (page.objectTemplates ?? []).find((one) => one.composition?.ordered === true)?.name ?? '',
                 }
               : { kind: 'remove_property', page: page.id, propertyKey: corpusNames().kind },
           ).then((applied) => {
@@ -5575,7 +5581,9 @@ export function renderOutliner(
     page,
     corpusNames().kind,
     readOnly,
-    async (phase) => submitArgumentMaturity(page, corpusNames().kind, phase, callbacks),
+    async (phase) => compositionTemplate === null
+      ? false
+      : submitArgumentMaturity(page, compositionTemplate, phase, callbacks),
   );
   if (workbench !== null) header.after(workbench);
 
@@ -5611,11 +5619,10 @@ export function renderOutliner(
    * que el texto tiene que seguir siendo el texto. Ver trail-page.ts.
    */
   const trail = page.trail ?? null;
-  const finalArgument = isTrail(page.properties, corpusNames());
-  const marks: Map<string, TrailMark> = trail === null || !finalArgument
+  const marks: Map<string, TrailMark> = trail === null
     ? new Map()
     : trailMarks(trail);
-  if (trail !== null && finalArgument) {
+  if (trail !== null) {
     container.classList.add('is-trail');
     header.after(renderTrailBand(trail));
   }

@@ -4,9 +4,8 @@
 // y deja debajo los bloques ordinarios, que siguen siendo la materia editable.
 
 import {
-  ARGUMENT_MATURITY_KEY,
-  argumentMaturity,
-  isArgumentWork,
+  compositionStage,
+  compositionTemplateFor,
   type ArgumentMaturity,
 } from '@vera/core';
 import type { PageView } from './api.ts';
@@ -15,8 +14,17 @@ const labelOf = (value: string): string =>
   value === '' ? value : `${value[0]!.toLocaleUpperCase('es')}${value.slice(1)}`;
 
 /** La escala, en el orden que `VERA: Propiedades` declara. */
-export function governedArgumentMaturities(page: Pick<PageView, 'domains'>): string[] {
-  return (page.domains[ARGUMENT_MATURITY_KEY] ?? [])
+export function governedArgumentMaturities(
+  page: Pick<PageView, 'domains' | 'properties' | 'objectTemplates'>,
+  kindKey = 'tipo',
+): string[] {
+  const template = compositionTemplateFor(
+    page.properties,
+    page.objectTemplates ?? [],
+    kindKey,
+  );
+  const key = template?.stageProperty ?? '';
+  return (page.domains[key] ?? [])
     .filter((one) => one.declared === true)
     .map((one) => one.value);
 }
@@ -27,21 +35,26 @@ export function renderArgumentWorkbenchBand(
   readOnly: boolean,
   choose: (phase: ArgumentMaturity | null) => Promise<boolean>,
 ): HTMLElement | null {
-  if (!isArgumentWork(page.properties, kindKey)) return null;
-  const phases = governedArgumentMaturities(page);
-  const current = argumentMaturity(page.properties, kindKey, phases);
+  const template = compositionTemplateFor(page.properties, page.objectTemplates ?? [], kindKey);
+  if (template === null) return null;
+  const phases = template.stageProperty === null
+    ? []
+    : (page.domains[template.stageProperty] ?? [])
+      .filter((one) => one.declared === true)
+      .map((one) => one.value);
+  const current = compositionStage(page.properties, template, phases);
   const terminal = phases.at(-1) ?? null;
   const finished = terminal !== null && current?.toLocaleLowerCase('es') === terminal.toLocaleLowerCase('es');
 
   const band = document.createElement('section');
   band.className = 'argument-workbench-band';
-  band.setAttribute('aria-label', 'Mesa de trabajo argumental');
+  band.setAttribute('aria-label', `Mesa de composición: ${template.name}`);
 
   const heading = document.createElement('div');
   heading.className = 'argument-workbench-heading';
   const what = document.createElement('span');
   what.className = 'argument-workbench-what';
-  what.textContent = finished ? 'Argumento' : 'Mesa de trabajo';
+  what.textContent = finished ? template.name : `Mesa de ${template.name}`;
   const explanation = document.createElement('span');
   explanation.className = 'argument-workbench-explanation';
   explanation.textContent = finished
@@ -52,7 +65,7 @@ export function renderArgumentWorkbenchBand(
   const maturity = document.createElement('label');
   maturity.className = 'argument-workbench-maturity';
   const label = document.createElement('span');
-  label.textContent = 'Madurez';
+  label.textContent = template.stageProperty === null ? 'Etapa' : labelOf(template.stageProperty);
   if (readOnly || phases.length === 0) {
     const value = document.createElement('span');
     value.className = 'argument-workbench-phase';
@@ -62,7 +75,7 @@ export function renderArgumentWorkbenchBand(
     maturity.append(label, value);
   } else {
     const select = document.createElement('select');
-    select.setAttribute('aria-label', 'Madurez argumental');
+    select.setAttribute('aria-label', template.stageProperty ?? 'Etapa de la composición');
     const undecided = document.createElement('option');
     undecided.value = '';
     undecided.textContent = 'Sin declarar';

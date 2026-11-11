@@ -218,6 +218,17 @@ export interface ObjectDeclaration {
   name: string;
   /** Qué propiedades la constituyen, en el orden en que se declararon. */
   properties: string[];
+  /** El soporte canónico de sus instancias; describe la biblioteca, no el núcleo. */
+  carrier: 'página' | 'bloque';
+  /** La composición es una capacidad genérica declarada, nunca un nombre mágico. */
+  composition: null | {
+    ordered: boolean;
+    members: string[];
+  };
+  /** Propiedad opcional cuyas opciones se presentan como etapas de la composición. */
+  stageProperty: string | null;
+  /** Capacidad cerrada del núcleo asociada explícitamente a un objeto activo. */
+  capability: string | null;
   /**
    * Qué papel del código cumple esta clase, si cumple alguno.
    *
@@ -244,6 +255,15 @@ export function readObjectDeclarations(blocks: readonly DeclaredBlock[]): Object
       block: block.block,
       name,
       properties: listOf(valueOf(block, 'propiedades')),
+      carrier: /^(bloque|block)$/i.test(valueOf(block, 'soporte') ?? '') ? 'bloque' : 'página',
+      composition: /^(composición|composicion|composition)$/i.test(valueOf(block, 'forma') ?? '')
+        ? {
+            ordered: yes(valueOf(block, 'ordenada') ?? valueOf(block, 'ordenado')),
+            members: listOf(valueOf(block, 'miembros')),
+          }
+        : null,
+      stageProperty: valueOf(block, 'etapa'),
+      capability: valueOf(block, 'capacidad'),
       role: valueOf(block, 'papel'),
       says: valueOf(block, 'qué') ?? valueOf(block, 'nota'),
     });

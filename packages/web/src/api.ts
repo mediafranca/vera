@@ -134,6 +134,8 @@ export interface PageView {
   originCreatedAt: number | null;
   lastEditedAt: number | null;
   properties: { key: string; value: string }[];
+  /** Plantillas de la biblioteca; describen objetos, no capacidades del núcleo. */
+  objectTemplates?: ObjectDeclared[];
   /**
    * Lo que cuelga de cada bloque, por su identidad.
    *
@@ -420,6 +422,10 @@ export interface ObjectDeclared {
   block: string;
   name: string;
   properties: string[];
+  carrier: 'página' | 'bloque';
+  composition: null | { ordered: boolean; members: string[] };
+  stageProperty: string | null;
+  capability: string | null;
   /**
    * Qué papel del código cumple esta clase, si cumple alguno.
    *

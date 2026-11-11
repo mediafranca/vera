@@ -231,7 +231,7 @@ describe('dominios declarados de propiedades', () => {
       visibility: 'private',
     });
     await write({ kind: 'set_property', page: objects, propertyKey: 'special-kind', propertyValue: 'objects' });
-    for (const [position, name] of ['Nota', 'Persona', 'Proyecto'].entries()) {
+    for (const [position, name] of ['Nota', 'Persona', 'Proyecto', 'Argumento'].entries()) {
       const declaration = await write({
         kind: 'create_block',
         stableId: `block:test-kind-${name.toLowerCase()}`,
@@ -241,6 +241,11 @@ describe('dominios declarados de propiedades', () => {
         content: name,
       });
       await write({ kind: 'set_property', block: declaration, propertyKey: 'qué', propertyValue: name });
+      if (name === 'Argumento') {
+        await write({ kind: 'set_property', block: declaration, propertyKey: 'forma', propertyValue: 'composición' });
+        await write({ kind: 'set_property', block: declaration, propertyKey: 'ordenada', propertyValue: 'sí' });
+        await write({ kind: 'set_property', block: declaration, propertyKey: 'etapa', propertyValue: 'madurez argumental' });
+      }
     }
 
     const page = await write({ kind: 'create_page', title: 'Una nota', visibility: 'private' });
@@ -1135,7 +1140,7 @@ describe('lecturas', () => {
     });
     await write({
       kind: 'set_property', page: workbench, propertyKey: 'tipo',
-      propertyValue: 'preparación argumental',
+      propertyValue: 'Argumento',
     });
     await write({
       kind: 'create_block', page: workbench, parent: null, position: 0,

@@ -17,7 +17,7 @@ import { composeLibrarianContext } from './librarian-context.ts';
 import {
   TESTIMONY_KEY,
   VeraGraph,
-  isArgumentWork,
+  compositionTemplateFor,
   projectTrail,
   readTrail,
   type Trail,
@@ -2324,7 +2324,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   const trailOf = (pageId: string): Trail | null => {
     if (isSpecialPage(pageId)) return null;
     const names = propertyNames();
-    if (!isArgumentWork(graph.propertiesOf(pageId), names.kind)) return null;
+    const template = compositionTemplateFor(
+      graph.propertiesOf(pageId),
+      declaredObjects(),
+      names.kind,
+    );
+    if (template?.composition?.ordered !== true) return null;
     const intent = graph
       .propertiesOf(pageId)
       .find((one) => one.key.trim().toLowerCase() === 'propósito');
@@ -9497,6 +9502,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           originCreatedAt: page.originCreatedAt,
           lastEditedAt: graph.lastEditedAt(page.id),
           properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
+          objectTemplates: publicAccess ? [] : declaredObjects(),
           // Lo que puede contestarse a cada una de estas claves. El vocabulario
           // declarado gobierna el control; lo observado conserva la evidencia
           // de uso y la cola aún no curada. Sólo viajan las claves de esta página.

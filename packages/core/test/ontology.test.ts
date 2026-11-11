@@ -115,7 +115,22 @@ describe('readObjectDeclarations', () => {
     ]);
     assert.equal(said?.name, 'Persona');
     assert.deepEqual(said?.properties, ['org', 'cargo', 'email']);
+    assert.equal(said?.carrier, 'página');
+    assert.equal(said?.composition, null);
     assert.equal(said?.says, 'alguien');
+  });
+
+  it('lee una plantilla compuesta sin convertir su nombre en lógica del programa', () => {
+    const [said] = readObjectDeclarations([
+      block('Ensayo', {
+        soporte: 'página', forma: 'composición', ordenada: 'sí',
+        miembros: 'Idea, Evidencia', etapa: 'avance', capacidad: 'evaluar',
+      }),
+    ]);
+    assert.equal(said?.carrier, 'página');
+    assert.deepEqual(said?.composition, { ordered: true, members: ['Idea', 'Evidencia'] });
+    assert.equal(said?.stageProperty, 'avance');
+    assert.equal(said?.capability, 'evaluar');
   });
 
   it('una clase puede no constituirse de nada', () => {
@@ -147,6 +162,10 @@ describe('missingFor', () => {
     block: 'block:persona',
     name: 'Persona',
     properties: ['org', 'cargo', 'email'],
+    carrier: 'página' as const,
+    composition: null,
+    stageProperty: null,
+    capability: null,
     role: null,
     says: null,
   };

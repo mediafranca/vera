@@ -3144,7 +3144,7 @@ function drawTrail(): void {
       // viene a leer. Lo que dice la palabra va en el título, donde no estorba.
       keep.innerHTML = icon('feather');
       keep.title = 'abrir una mesa de trabajo con todo lo andado';
-      keep.setAttribute('aria-label', 'crear un argumento desde el rastro');
+      keep.setAttribute('aria-label', 'crear una composición desde el rastro');
       keep.addEventListener('click', () => void promoteTrace(null));
       trail.append(keep);
     }
@@ -3224,6 +3224,12 @@ async function exportTraceBooklet(): Promise<void> {
  * @invariant TheTraceItselfIsNotConsumed.
  */
 async function promoteTrace(from: number | null): Promise<void> {
+  const ontology = await api.ontology();
+  const template = ontology.objects.find((one) => one.composition?.ordered === true);
+  if (template === undefined) {
+    notice('La biblioteca no declara una composición ordenada en Gobierno.');
+    return;
+  }
   const walkedTrace = workspace.trace.slice(from === null ? 0 : Math.max(0, from));
   const sourcePages = await Promise.all(
     [...new Set(walkedTrace.slice(0, -1).map((step) => step.page))]
@@ -3255,7 +3261,7 @@ async function promoteTrace(from: number | null): Promise<void> {
     pages.some((one) => one.title.trim().toLowerCase() === name.trim().toLowerCase()),
   );
 
-  const seed = seedArgument(trace, { title });
+  const seed = seedArgument(trace, { title, kind: template.name });
   const page = mint('page');
   const entries: {
     change: Parameters<typeof api.submitCanonicalBatch>[0][number]['change'];

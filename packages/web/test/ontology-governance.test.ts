@@ -11,8 +11,8 @@ import {
 
 const ontology: OntologyView = {
   objects: [
-    { block: 'person', name: 'Persona', properties: ['nombre'], role: null, says: null },
-    { block: 'unit', name: 'Unidad', properties: ['nombre'], role: null, says: null },
+    { block: 'person', name: 'Persona', properties: ['nombre'], carrier: 'página', composition: null, stageProperty: null, capability: null, role: null, says: null },
+    { block: 'unit', name: 'Unidad', properties: ['nombre'], carrier: 'página', composition: null, stageProperty: null, capability: null, role: null, says: null },
   ],
   properties: [
     {
@@ -135,6 +135,10 @@ describe('gobierno ontológico facetado', () => {
       kind: 'set_property', block: 'person', propertyKey: 'propiedades', propertyValue: 'nombre, equipo',
     }), true);
     assert.deepEqual(local.objects[0]?.properties, ['nombre', 'equipo']);
+    assert.equal(reflectOntologyChange(local, {
+      kind: 'set_property', block: 'person', propertyKey: 'forma', propertyValue: 'composición',
+    }), true);
+    assert.deepEqual(local.objects[0]?.composition, { ordered: false, members: [] });
     assert.match(table, /cell\.focus\(\{ preventScroll: true \}\)/);
     assert.match(table, /current = \[\.\.\.next\][\s\S]*?draw\(\)[\s\S]*?focusCurrent/);
     assert.doesNotMatch(
