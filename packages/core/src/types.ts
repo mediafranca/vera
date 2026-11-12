@@ -394,11 +394,31 @@ export type SearchableField =
   | 'audio_transcript'
   | 'gloss_content';
 
+export type SearchSignalKind =
+  | 'alias_exact'
+  | 'exact_phrase'
+  | 'coverage'
+  | 'rarity'
+  | 'exact_token'
+  | 'prefix'
+  | 'morphology'
+  | 'substring'
+  | 'field_class'
+  | 'governed_type';
+
+export interface SearchSignal {
+  readonly kind: SearchSignalKind;
+  readonly contribution: number;
+  readonly detail: string;
+}
+
 export interface SearchHit {
   readonly page: PageId;
   readonly block: BlockId | null;
   readonly field: SearchableField;
   readonly excerpt: string;
+  readonly score: number;
+  readonly signals: readonly SearchSignal[];
   readonly rank: number;
 }
 

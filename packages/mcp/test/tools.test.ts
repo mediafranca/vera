@@ -385,7 +385,9 @@ describe('buscar', () => {
   it('cada extracto viaja con su página y su bloque, para poder citarlo', async () => {
     const { ask, asked } = fakeVera({
       '/search': [
-        { page: 'page:1', block: 'block:9', field: 'content', excerpt: 'la memoria es del dueño', rank: 1 },
+        { page: 'page:1', block: 'block:9', field: 'content', excerpt: 'la memoria es del dueño',
+          score: 410, signals: [{ kind: 'coverage', contribution: 300, detail: '1/1' },
+            { kind: 'field_class', contribution: 110, detail: 'contenido' }], rank: 1 },
       ],
     });
     const said = await run('vera_buscar', { consulta: 'memoria' }, ask);
@@ -393,6 +395,8 @@ describe('buscar', () => {
     assert.match(said, /page:1/);
     assert.match(said, /block:9/);
     assert.match(said, /la memoria es del dueño/);
+    assert.match(said, /score 410/);
+    assert.match(said, /coverage \+300/);
   });
 
   it('cuando hay más de lo que cabe, dice cuánto no enseñó', async () => {
@@ -402,6 +406,8 @@ describe('buscar', () => {
       block: null,
       field: 'title',
       excerpt: `resultado ${at}`,
+      score: 100 - at,
+      signals: [{ kind: 'coverage', contribution: 100 - at, detail: '1/1' }],
       rank: at + 1,
     }));
     const { ask } = fakeVera({ '/search': many });

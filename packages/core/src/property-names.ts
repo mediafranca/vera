@@ -56,6 +56,12 @@ export type PropertyRole =
    * no pueden hacerse públicos. La palabra la gobierna VERA: Propiedades.
    */
   | 'publication_barrier'
+  /*
+   * Una frase alternativa gobernada para recuperar un pasaje en otra lengua o
+   * con otro vocabulario. No fusiona entidades ni reescribe lo dicho: sólo
+   * resuelve una consulta exacta al bloque o página que lleva la propiedad.
+   */
+  | 'search_alias'
   // Las tres derivadas: no se guardan en ninguna propiedad y aun así se leen y
   // se preguntan como si lo fueran. Ver DERIVED más abajo.
   | 'created'
@@ -81,6 +87,7 @@ export const DEFAULT_PROPERTY_NAMES: PropertyNames = {
   day: 'bitácora',
   'discard_request': 'por borrar',
   publication_barrier: 'publicación prohibida',
+  search_alias: 'frase alternativa',
   created: 'creación',
   updated: 'actualización',
   visible: 'público',
@@ -120,6 +127,7 @@ const ROLES: PropertyRole[] = [
   'day',
   'discard_request',
   'publication_barrier',
+  'search_alias',
   'created',
   'updated',
   'visible',

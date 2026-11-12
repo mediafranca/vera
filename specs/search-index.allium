@@ -3,10 +3,11 @@
 
 -- Scope: What free text search finds in a Vera graph and how it presents it
 -- Includes: Which content is searchable, what a hit is, ordering and its stability,
---   the excerpt that justifies a hit, and the index's obligation to follow content
+--   the excerpt that justifies a hit, transparent ranking signals, governed exact
+--   alternative phrases and the index's obligation to follow content
 -- Excludes:
 --   - Index structure, tokenizer, stemming and matching algorithm
---   - The relevance formula that produces the ordering
+--   - The exact numeric weights of the relevance formula
 --   - Structured selection by tag, property and link (see query-language.allium)
 --   - Public search over the projected personal website
 --   - Presentation of results in the workspace
@@ -58,6 +59,7 @@ contract GraphSearch {
 -- transcript participates in search as ordinary text; it becomes reachable when
 -- content-media.allium is implemented, and it never displaces its audio source.
 enum SearchableField { page_title | block_content | property_value | gloss_content | audio_transcript }
+enum SearchSignalKind { alias_exact | exact_phrase | coverage | rarity | exact_token | prefix | morphology | substring | field_class | governed_type }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -77,7 +79,16 @@ entity SearchHit {
     block: core/Block?
     field: SearchableField
     excerpt: String
+    score: Integer
+    signals: SearchSignal with hit = this
     rank: Integer
+}
+
+entity SearchSignal {
+    hit: SearchHit
+    kind: SearchSignalKind
+    contribution: Integer
+    detail: String
 }
 
 ------------------------------------------------------------
@@ -101,14 +112,22 @@ rule SearchGraphContent {
             searched_at: now
         )
         for hit in ranked_hits(graph, text, participant):
-            SearchHit.created(
+            let created_hit = SearchHit.created(
                 outcome: outcome,
                 page: hit.page,
                 block: hit.block,
                 field: hit.field,
                 excerpt: hit.excerpt,
+                score: hit.score,
                 rank: hit.rank
             )
+            for signal in hit.signals:
+                SearchSignal.created(
+                    hit: created_hit,
+                    kind: signal.kind,
+                    contribution: signal.contribution,
+                    detail: signal.detail
+                )
 
     @guidance
         -- ranked_hits is a black box because the relevance formula belongs to the
@@ -165,6 +184,19 @@ invariant RankIsPositive {
 invariant HitCarriesItsEvidence {
     for hit in SearchHits:
         hit.excerpt != ""
+}
+
+invariant ScoreIsPositive {
+    for hit in SearchHits:
+        hit.score >= 1
+}
+
+invariant ScoreIsExplained {
+    for hit in SearchHits:
+        hit.signals.count >= 1
+
+    -- The implementation also requires score to equal the sum of the visible
+    -- contributions. Allium does not hide a second relevance value here.
 }
 
 invariant PageTitleHitsHaveNoBlock {
@@ -226,6 +258,18 @@ surface GraphSearchAccess {
         -- Typing a query asks the resident search index and receives matching hits.
         -- The workspace does not download or scan the complete graph before it can
         -- present evidence from inside pages.
+
+    @guarantee AuthorizationPrecedesRanking
+        -- Rarity, coverage and ordering are computed only inside the universe
+        -- this participant may read. Hidden pages cannot change a visible score.
+
+    @guarantee GovernedAliasResolvesBeforeLexicalRanking
+        -- An exact alternative phrase declared by the corpus resolves to its
+        -- stable subject before incidental occurrences elsewhere are ranked.
+
+    @guarantee EveryContributionCanBeAblated
+        -- Each named signal can be disabled independently for measurement. A
+        -- disabled signal disappears from both the score and its explanation.
 }
 
 ------------------------------------------------------------
