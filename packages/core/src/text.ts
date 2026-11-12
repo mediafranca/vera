@@ -140,6 +140,73 @@ export function matches(haystack: string, needle: string): boolean {
   return titleKey(haystack).includes(titleKey(needle));
 }
 
+/**
+ * Palabras funcionales que no distinguen evidencia en una consulta libre.
+ * La lista es corta y versionada: quitar una palabra del ranking no debe
+ * depender de un modelo ni de la configuración regional del proceso.
+ */
+const SEARCH_STOP_WORDS = new Set([
+  'a', 'al', 'como', 'con', 'cual', 'de', 'del', 'el', 'en', 'es', 'esta', 'este',
+  'la', 'las', 'lo', 'los', 'on', 'para', 'por', 'que', 'qué', 'se', 'the', 'un',
+  'una', 'usa', 'use', 'uses', 'y',
+].map(titleKey));
+
+/** Tokens deterministas para ranking; conserva números y términos de código. */
+export function searchTokens(text: string): string[] {
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const token of titleKey(text).match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) ?? []) {
+    if (token.length < 2 || SEARCH_STOP_WORDS.has(token) || seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+  }
+  return tokens;
+}
+
+/**
+ * Raíz conservadora para variantes frecuentes en castellano e inglés técnico.
+ * No pretende analizar la lengua: sólo acerca flexiones cuyo prefijo largo ya
+ * aporta evidencia, como `reconstruible` y `reconstruirse`.
+ */
+export function searchStem(token: string): string {
+  let stem = titleKey(token);
+  for (const suffix of [
+    'amientos', 'imientos', 'aciones', 'uciones', 'amiento', 'imiento', 'acion',
+    'ucion', 'idades', 'mente', 'idad', 'ables', 'ibles', 'able', 'ible',
+    'ando', 'iendo', 'ados', 'idos', 'adas', 'idas', 'arse', 'erse', 'irse',
+  ]) {
+    if (stem.length - suffix.length >= 4 && stem.endsWith(suffix)) {
+      stem = stem.slice(0, -suffix.length);
+      break;
+    }
+  }
+  if (stem.length > 5 && stem.endsWith('es')) stem = stem.slice(0, -1);
+  else if (stem.length > 4 && stem.endsWith('s')) stem = stem.slice(0, -1);
+  for (const suffix of ['ar', 'er', 'ir']) {
+    if (stem.length - suffix.length >= 4 && stem.endsWith(suffix)) {
+      stem = stem.slice(0, -suffix.length);
+      break;
+    }
+  }
+  return stem;
+}
+
+export type SearchTokenMatch = 'exact_token' | 'prefix' | 'morphology' | 'substring';
+
+/** La señal léxica más fuerte que une dos tokens, o nulo si no se sostienen. */
+export function searchTokenMatch(asked: string, candidate: string): SearchTokenMatch | null {
+  if (asked === candidate) return 'exact_token';
+  const comparable = Math.min(asked.length, candidate.length) / Math.max(asked.length, candidate.length) >= 0.6;
+  if (comparable && Math.min(asked.length, candidate.length) >= 4 &&
+      (asked.startsWith(candidate) || candidate.startsWith(asked))) return 'prefix';
+  if (Math.min(asked.length, candidate.length) >= 4 && searchStem(asked) === searchStem(candidate)) {
+    return 'morphology';
+  }
+  if (comparable && Math.min(asked.length, candidate.length) >= 4 &&
+      (asked.includes(candidate) || candidate.includes(asked))) return 'substring';
+  return null;
+}
+
 /** Fragmento alrededor de la coincidencia, para justificar un acierto. */
 export function excerpt(source: string, needle: string, width = 80): string {
   const at = titleKey(source).indexOf(titleKey(needle));

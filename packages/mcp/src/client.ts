@@ -320,6 +320,8 @@ export interface Hit {
   block: string | null;
   field: string;
   excerpt: string;
+  score: number;
+  signals: readonly { kind: string; contribution: number; detail: string }[];
   rank: number;
 }
 

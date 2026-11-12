@@ -27,6 +27,9 @@ import {
   referencedTags,
   referencedTitles,
   retitleLinks,
+  searchStem,
+  searchTokenMatch,
+  searchTokens,
   titleKey,
 } from './text.ts';
 import type { QueryExpression } from './query.ts';
@@ -60,6 +63,8 @@ import type {
   Revision,
   SearchHit,
   SearchOutcome,
+  SearchSignal,
+  SearchSignalKind,
   SearchableField,
   Submission,
   SubmitOutcome,
@@ -74,6 +79,37 @@ const FIELD_ORDER: Record<SearchableField, number> = {
   audio_transcript: 3,
   gloss_content: 4,
 };
+
+const FIELD_SCORE: Record<SearchableField, number> = {
+  page_title: 80,
+  block_content: 50,
+  property_value: 35,
+  audio_transcript: 25,
+  gloss_content: 30,
+};
+
+const TOKEN_SCORE = {
+  exact_token: 50,
+  prefix: 30,
+  morphology: 25,
+  substring: 15,
+} as const;
+
+interface SearchCandidate {
+  page: PageId;
+  block: BlockId | null;
+  field: SearchableField;
+  text: string;
+  propertyKey: string | null;
+  tokens: string[];
+}
+
+interface SearchCandidateCache {
+  candidates: SearchCandidate[];
+  exact: Map<string, number[]>;
+  stems: Map<string, number[]>;
+  prefixes: Map<string, number[]>;
+}
 
 export class VeraGraph {
   readonly id: GraphId;
@@ -117,6 +153,8 @@ export class VeraGraph {
   }
 
   #pages = new Map<PageId, Page>();
+  /** Derivado descartable: se invalida ante toda operación aplicada. */
+  #searchCandidatesCache: SearchCandidateCache | null = null;
   /** Cuándo se tocó por última vez cada página. Ver #apply. */
   #updatedAt = new Map<PageId, number>();
   #blocks = new Map<BlockId, Block>();
@@ -1025,6 +1063,7 @@ export class VeraGraph {
   #apply(change: Change, recordedSubject: string | null, at: number): string {
     // Toda operación puede cambiar la selección o mover la consulta que la aloja.
     this.#queryResultLinksCache = null;
+    this.#searchCandidatesCache = null;
     const beforehand =
       'block' in change && typeof change.block === 'string'
         ? (this.#blocks.get(change.block)?.page ?? null)
@@ -1523,53 +1562,190 @@ export class VeraGraph {
   // Búsqueda (search-index.allium)
   // -------------------------------------------------------------------------
 
-  search(input: { text: string; participant: ParticipantId }): SearchOutcome {
+  #searchCandidates(): SearchCandidateCache {
+    if (this.#searchCandidatesCache !== null) return this.#searchCandidatesCache;
+    const candidates: SearchCandidate[] = [];
+    for (const page of this.pages()) {
+      candidates.push({
+        page: page.id, block: null, field: 'page_title', text: page.title,
+        propertyKey: null, tokens: searchTokens(page.title),
+      });
+    }
+    for (const block of this.allBlocks()) {
+      candidates.push({
+        page: block.page, block: block.stableId, field: 'block_content', text: block.content,
+        propertyKey: null, tokens: searchTokens(block.content),
+      });
+    }
+    for (const property of this.#allProperties()) {
+      const page = property.page ?? this.#blocks.get(property.block ?? '')?.page;
+      if (page === undefined) continue;
+      candidates.push({
+        page, block: property.block, field: 'property_value', text: property.value,
+        propertyKey: property.key, tokens: searchTokens(property.value),
+      });
+    }
+    for (const gloss of this.glosses()) {
+      const page = this.#blocks.get(gloss.block)?.page;
+      if (page === undefined) continue;
+      candidates.push({
+        page, block: gloss.block, field: 'gloss_content', text: gloss.content,
+        propertyKey: null, tokens: searchTokens(gloss.content),
+      });
+    }
+    const exact = new Map<string, number[]>();
+    const stems = new Map<string, number[]>();
+    const prefixes = new Map<string, number[]>();
+    const record = (index: Map<string, number[]>, key: string, at: number): void => {
+      const held = index.get(key);
+      if (held === undefined) index.set(key, [at]);
+      else if (held.at(-1) !== at) held.push(at);
+    };
+    candidates.forEach((candidate, at) => {
+      for (const token of candidate.tokens) {
+        record(exact, token, at);
+        record(stems, searchStem(token), at);
+        if (token.length >= 4) record(prefixes, token.slice(0, 4), at);
+      }
+    });
+    this.#searchCandidatesCache = { candidates, exact, stems, prefixes };
+    return this.#searchCandidatesCache;
+  }
+
+  search(input: {
+    text: string;
+    participant: ParticipantId;
+    canRead?: (page: PageId) => boolean;
+    without?: readonly SearchSignalKind[];
+  }): SearchOutcome {
     if (!this.#isActive(input.participant)) {
       throw new Error(`${input.participant} has no active membership in this graph`);
     }
 
-    const found: Omit<SearchHit, 'rank'>[] = [];
-    if (input.text !== '') {
-      for (const page of this.pages()) {
-        if (matches(page.title, input.text)) {
-          found.push({
-            page: page.id,
-            block: null,
-            field: 'page_title',
-            excerpt: excerpt(page.title, input.text),
+    const canRead = input.canRead ?? (() => true);
+    const disabled = new Set(input.without ?? []);
+    const asked = input.text.trim();
+    const askedKey = titleKey(asked);
+    const askedTokens = searchTokens(asked);
+    const aliasKey = titleKey(this.#names.search_alias);
+    const cache = asked === '' || askedTokens.length === 0 ? null : this.#searchCandidates();
+    const termCandidates = new Map<string, Set<number>>();
+    for (const term of askedTokens) {
+      const indexes = new Set<number>([
+        ...(cache?.exact.get(term) ?? []),
+        ...(cache?.stems.get(searchStem(term)) ?? []),
+        ...(term.length >= 4 ? (cache?.prefixes.get(term.slice(0, 4)) ?? []) : []),
+      ]);
+      if (cache !== null) {
+        // La subcadena es el último recurso: no paga un recorrido completo si
+        // exactitud, raíz o prefijo ya produjeron candidatos.
+        if (indexes.size === 0) {
+          cache.candidates.forEach((candidate, at) => {
+            if (candidate.tokens.some((token) => searchTokenMatch(term, token) !== null)) indexes.add(at);
           });
         }
       }
-      for (const block of this.allBlocks()) {
-        if (matches(block.content, input.text)) {
-          found.push({
-            page: block.page,
-            block: block.stableId,
-            field: 'block_content',
-            excerpt: excerpt(block.content, input.text),
-          });
-        }
-      }
-      for (const property of this.#allProperties()) {
-        if (!matches(property.value, input.text)) continue;
-        const page = property.page ?? this.#blocks.get(property.block ?? '')?.page;
-        if (page === undefined) continue;
-        found.push({
-          page,
-          block: property.block,
-          field: 'property_value',
-          excerpt: `${property.key}: ${property.value}`,
+      const readable = new Set([...indexes].filter((at) => {
+        const candidate = cache?.candidates[at];
+        return candidate !== undefined && canRead(candidate.page);
+      }));
+      termCandidates.set(term, readable);
+    }
+    const candidateCoverage = new Map<number, number>();
+    for (const indexes of termCandidates.values()) {
+      for (const at of indexes) candidateCoverage.set(at, (candidateCoverage.get(at) ?? 0) + 1);
+    }
+    const requiredCoverage = Math.ceil(askedTokens.length * 0.6);
+    const candidateIndexes = [...candidateCoverage.entries()]
+      .filter(([, coverage]) => coverage >= requiredCoverage)
+      .map(([at]) => at);
+    const candidates = cache === null ? [] : [...candidateIndexes].map((at) => cache.candidates[at]!);
+
+    const exactAliases = disabled.has('alias_exact') ? [] : candidates.filter((candidate) =>
+      candidate.propertyKey !== null && titleKey(candidate.propertyKey) === aliasKey &&
+      titleKey(candidate.text) === askedKey);
+
+    let found: Omit<SearchHit, 'rank'>[];
+    if (exactAliases.length > 0) {
+      /*
+       * Una equivalencia exacta escrita en el corpus resuelve identidad antes
+       * de recuperar por palabras. No se mezcla con coincidencias casuales de
+       * la frase en otras páginas: ésa es precisamente la decisión gobernada.
+       */
+      found = exactAliases.map((candidate) => ({
+        page: candidate.page,
+        block: candidate.block,
+        field: candidate.field,
+        excerpt: `${candidate.propertyKey}: ${candidate.text}`,
+        score: 1000,
+        signals: [{
+          kind: 'alias_exact', contribution: 1000,
+          detail: `equivalencia exacta declarada por ${candidate.propertyKey}`,
+        }],
+      }));
+    } else {
+      // Una frase gobernada sólo resuelve por igualdad exacta. Sus palabras no
+      // engordan la rareza ni se convierten en evidencia léxica por separado.
+      const lexicalCandidates = candidates.filter((candidate) =>
+        candidate.propertyKey === null || titleKey(candidate.propertyKey) !== aliasKey);
+      const lexicalUniverse = new Set<number>();
+      const documentFrequency = new Map<string, number>();
+      for (const term of askedTokens) {
+        const indexes = [...(termCandidates.get(term) ?? [])].filter((at) => {
+          const candidate = cache?.candidates[at];
+          return candidate !== undefined &&
+            (candidate.propertyKey === null || titleKey(candidate.propertyKey) !== aliasKey);
         });
+        for (const at of indexes) lexicalUniverse.add(at);
+        documentFrequency.set(term, indexes.length);
       }
-      for (const gloss of this.glosses()) {
-        if (!matches(gloss.content, input.text)) continue;
-        const page = this.#blocks.get(gloss.block)?.page;
-        if (page === undefined) continue;
+
+      found = [];
+      for (const candidate of lexicalCandidates) {
+        const matched = askedTokens.flatMap((term) => {
+          const kinds = candidate.tokens
+            .map((token) => ({ token, kind: searchTokenMatch(term, token) }))
+            .filter((one): one is { token: string; kind: keyof typeof TOKEN_SCORE } => one.kind !== null)
+            .sort((a, b) => TOKEN_SCORE[b.kind] - TOKEN_SCORE[a.kind]);
+          const best = kinds[0];
+          return best === undefined ? [] : [{ term, ...best }];
+        });
+        if (matched.length === 0 || matched.length < requiredCoverage) continue;
+
+        const signals: SearchSignal[] = [];
+        const add = (kind: SearchSignalKind, contribution: number, detail: string): void => {
+          if (!disabled.has(kind) && contribution > 0) signals.push({ kind, contribution, detail });
+        };
+        if (askedKey !== '' && titleKey(candidate.text).includes(askedKey)) {
+          add('exact_phrase', 320, 'la frase completa aparece en la evidencia');
+        }
+        add('coverage', Math.round(300 * matched.length / askedTokens.length),
+          `${matched.length}/${askedTokens.length} términos cubiertos`);
+        const rarity = Math.round(matched.reduce((sum, one) => {
+          const frequency = documentFrequency.get(one.term) ?? lexicalUniverse.size;
+          return sum + (Math.log((lexicalUniverse.size + 1) / (frequency + 1)) + 1) * 20;
+        }, 0));
+        add('rarity', rarity, `rareza acumulada de ${matched.map((one) => one.term).join(', ')}`);
+        for (const kind of Object.keys(TOKEN_SCORE) as Array<keyof typeof TOKEN_SCORE>) {
+          const terms = matched.filter((one) => one.kind === kind).map((one) => one.term);
+          add(kind, terms.length * TOKEN_SCORE[kind], `${kind}: ${terms.join(', ')}`);
+        }
+        add('field_class', FIELD_SCORE[candidate.field], `campo ${candidate.field}`);
+        if (candidate.propertyKey !== null &&
+            titleKey(candidate.propertyKey) === titleKey(this.#names.kind)) {
+          add('governed_type', 25, `tipo gobernado: ${candidate.text}`);
+        }
+        const score = signals.reduce((sum, signal) => sum + signal.contribution, 0);
+        if (score === 0) continue;
         found.push({
-          page,
-          block: gloss.block,
-          field: 'gloss_content',
-          excerpt: excerpt(gloss.content, input.text),
+          page: candidate.page,
+          block: candidate.block,
+          field: candidate.field,
+          excerpt: candidate.field === 'property_value'
+            ? `${candidate.propertyKey}: ${candidate.text}`
+            : excerpt(candidate.text, asked, 120),
+          score,
+          signals,
         });
       }
     }
@@ -1577,6 +1753,8 @@ export class VeraGraph {
     // @invariant StableOrdering: desempate determinista, para que dos búsquedas
     // idénticas no cambien de orden entre sí.
     found.sort((a, b) => {
+      const byScore = b.score - a.score;
+      if (byScore !== 0) return byScore;
       const byField = FIELD_ORDER[a.field] - FIELD_ORDER[b.field];
       if (byField !== 0) return byField;
       if (a.page !== b.page) return a.page < b.page ? -1 : 1;

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fc from 'fast-check';
 
 import {
+  DEFAULT_PROPERTY_NAMES,
   and,
   contentTerm,
   linkedFrom,
@@ -87,6 +88,86 @@ describe('search', () => {
       '@guarantee OneSearchReachesEverySearchableField',
     );
     assert.ok(outcome.hits.some((h) => h.page === byTitle));
+  });
+
+  it('ranks coverage, morphology and rarity and explains every contribution', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, 'org-roam');
+    const block = makeBlock(graph, page,
+      'SQLite funciona como caché e índice computado y puede reconstruirse desde los archivos.');
+    makeBlock(graph, makePage(graph, 'Ruido'), 'SQLite aparece aquí sin hablar del índice durable.');
+
+    const outcome = graph.search({
+      text: 'SQLite como índice reconstruible', participant: OWNER,
+    });
+
+    assert.equal(outcome.hits[0]?.block, block);
+    assert.ok(outcome.hits[0]!.score > 0);
+    assert.ok(outcome.hits[0]!.signals.some((signal) => signal.kind === 'coverage' && signal.detail.startsWith('3/3')));
+    assert.ok(outcome.hits[0]!.signals.some((signal) => signal.kind === 'morphology'));
+    assert.ok(outcome.hits[0]!.signals.some((signal) => signal.kind === 'rarity'));
+    assert.equal(outcome.hits[0]!.score,
+      outcome.hits[0]!.signals.reduce((sum, signal) => sum + signal.contribution, 0));
+  });
+
+  it('resolves an exact governed alternative phrase before lexical coincidence', () => {
+    const graph = inhabitedGraph();
+    graph.namesProperties({ ...DEFAULT_PROPERTY_NAMES, search_alias: 'kupu rapu' });
+    const wantedPage = makePage(graph, 'Federated Wiki');
+    const wanted = makeBlock(graph, wantedPage, 'Al editar una página ajena, la copia se bifurca.');
+    submit(graph, {
+      kind: 'set_property', block: wanted, propertyKey: 'kupu rapu', propertyValue: 'fork on edit',
+    });
+    const noise = makePage(graph, 'Roadmap');
+    makeBlock(graph, noise, 'El benchmark pregunta por fork on edit.');
+
+    const outcome = graph.search({ text: 'fork on edit', participant: OWNER });
+
+    assert.deepEqual(outcome.hits.map((hit) => [hit.page, hit.block]), [[wantedPage, wanted]]);
+    assert.deepEqual(outcome.hits[0]?.signals.map((signal) => signal.kind), ['alias_exact']);
+  });
+
+  it('permite ablacionar una señal sin volver opaco el score', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, 'Reconstrucción');
+    makeBlock(graph, page, 'SQLite es un índice reconstruible.');
+
+    const complete = graph.search({ text: 'SQLite índice reconstruible', participant: OWNER }).hits[0]!;
+    const ablated = graph.search({
+      text: 'SQLite índice reconstruible', participant: OWNER, without: ['rarity'],
+    }).hits[0]!;
+
+    assert.ok(complete.signals.some((signal) => signal.kind === 'rarity'));
+    assert.ok(!ablated.signals.some((signal) => signal.kind === 'rarity'));
+    assert.ok(ablated.score < complete.score);
+    assert.equal(ablated.score, ablated.signals.reduce((sum, signal) => sum + signal.contribution, 0));
+  });
+
+  it('autoriza antes de calcular rareza y ranking', () => {
+    const make = (withHidden: boolean) => {
+      const graph = inhabitedGraph();
+      const visible = makePage(graph, 'Visible');
+      makeBlock(graph, visible, 'índice reconstruible');
+      if (withHidden) {
+        for (let at = 0; at < 8; at += 1) {
+          const hidden = makePage(graph, `Oculta ${at}`);
+          makeBlock(graph, hidden, 'índice reconstruible');
+        }
+      }
+      return { graph, visible };
+    };
+    const crowded = make(true);
+    const alone = make(false);
+    const fromCrowded = crowded.graph.search({
+      text: 'índice reconstruible', participant: OWNER, canRead: (page) => page === crowded.visible,
+    });
+    const fromAlone = alone.graph.search({
+      text: 'índice reconstruible', participant: OWNER, canRead: (page) => page === alone.visible,
+    });
+
+    assert.deepEqual(fromCrowded.hits.map((hit) => [hit.field, hit.score, hit.signals]),
+      fromAlone.hits.map((hit) => [hit.field, hit.score, hit.signals]));
+    assert.ok(fromCrowded.hits.every((hit) => hit.page === crowded.visible));
   });
 
   it('finds nothing for an empty text', () => {

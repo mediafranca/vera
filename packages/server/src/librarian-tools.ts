@@ -170,9 +170,12 @@ export function runLibrarianTool(store: Store, graph: VeraGraph, agent: Particip
   if (call.name === 'search_memory') {
     const query = text(call.arguments['query']);
     if (query === '') return { ok: false, error: 'falta query' };
-    const hits = graph.search({ text: query, participant: agent }).hits
-      .filter((hit) => readable.has(hit.page)).slice(0, 12)
-      .map((hit) => ({ page: graph.page(hit.page)?.title ?? hit.page, block: hit.block, excerpt: hit.excerpt }));
+    const hits = graph.search({ text: query, participant: agent, canRead: (page) => readable.has(page) }).hits
+      .slice(0, 12)
+      .map((hit) => ({
+        page: graph.page(hit.page)?.title ?? hit.page, block: hit.block, excerpt: hit.excerpt,
+        score: hit.score, signals: hit.signals,
+      }));
     return { ok: true, result: JSON.stringify({ count: hits.length, hits }), evidenceCount: hits.length };
   }
   if (call.name === 'survey_topic') {
@@ -190,7 +193,9 @@ export function runLibrarianTool(store: Store, graph: VeraGraph, agent: Particip
         const bRank = bKey === key ? 0 : bKey.startsWith(key) ? 1 : 2;
         return aRank - bRank || a.title.localeCompare(b.title, 'es');
       });
-    const searched = graph.search({ text: primary, participant: agent }).hits.filter((hit) => readable.has(hit.page));
+    const searched = graph.search({
+      text: primary, participant: agent, canRead: (page) => readable.has(page),
+    }).hits;
     const ordered = new Map<string, { id: string; excerpt: string | null }>();
     for (const page of titled) ordered.set(page.id, { id: page.id, excerpt: null });
     for (const hit of searched) if (!ordered.has(hit.page)) ordered.set(hit.page, { id: hit.page, excerpt: hit.excerpt });

@@ -54,6 +54,7 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
   { id: 'date', name: 'fecha', field: 'fecha', says: 'la fecha de la cosa, cuando tiene una propia' },
   { id: 'url', name: 'url', says: 'dónde vive eso fuera de Vera' },
   { id: 'alias', name: 'alias', field: 'texto', many: true, says: 'otros nombres de la misma cosa' },
+  { id: 'search-alias', name: 'frase alternativa', subject: 'bloque', field: 'texto', many: true, role: 'search_alias', says: 'otra frase o lengua que recupera este pasaje sin cambiar lo que afirma' },
   { id: 'organization', name: 'org', field: 'enlace', many: true, says: 'a qué organización pertenece' },
   { id: 'position', name: 'cargo', field: 'texto', says: 'qué hace allí una persona' },
   { id: 'degree', name: 'grado', field: 'texto', says: 'qué estudió una persona' },

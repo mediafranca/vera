@@ -59,6 +59,13 @@ describe('frontera formativa de la dialéctica', () => {
     assert.ok(parsed.blocks.some((block) => block.id === 'block:sibling'));
     assert.ok(parsed.library.pages.some((page) => page.id === 'page:macro' && page.reasons.some((reason) => reason.includes('vecindad'))));
     assert.ok(parsed.library.pages.some((page) => page.id === 'page:search' && page.reasons.includes('coincidencia textual con la solicitud')));
+    assert.ok(parsed.library.pages.every((page) => page.score > 0 && page.signals.length > 0));
+    assert.ok(parsed.library.pages.every((page) => page.score ===
+      page.signals.reduce((sum, signal) => sum + signal.contribution, 0)));
+    assert.ok(parsed.library.pages.some((page) =>
+      page.signals.some((signal) => signal.kind === 'graph_distance')));
+    assert.ok(parsed.library.pages.some((page) =>
+      page.signals.some((signal) => signal.kind === 'text_relevance')));
     assert.equal(parsed.selection.budgetCharacters, 8_000);
     assert.equal(parsed.used.characters, snapshot.length);
     assert.equal(parsed.selection.usedCharacters, snapshot.length);

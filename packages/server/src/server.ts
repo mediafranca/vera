@@ -89,7 +89,6 @@ import {
   setPresentationFold,
   setTranscript,
   setSpokenOrigin,
-  searchPageSummaries,
   spokenOriginsOnPage,
   workspaceOf,
   type Store,
@@ -10099,8 +10098,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // La búsqueda pública usa el algoritmo canónico, pero la identidad de
         // frontera `anybody` no se admite al grafo. El resultado se recorta por
         // publicación antes de salir; no se inventa una membresía anónima.
-        const outcome = graph.search({ text: asked, participant: publicAccess ? owner.id : participant });
-        const hits = outcome.hits.filter((hit) => isReadablePage(hit.page));
+        const without = url.searchParams.getAll('without').filter((one) => [
+          'alias_exact', 'exact_phrase', 'coverage', 'rarity', 'exact_token', 'prefix',
+          'morphology', 'substring', 'field_class', 'governed_type',
+        ].includes(one)) as import('@vera/core').SearchSignalKind[];
+        const outcome = graph.search({
+          text: asked,
+          participant: publicAccess ? owner.id : participant,
+          canRead: isReadablePage,
+          without,
+        });
+        const hits = outcome.hits;
         /*
          * Una búsqueda que devolvió doce extractos expuso doce cosas, y el
          * registro tiene que poder nombrarlas: buscar es la manera barata de
@@ -10116,25 +10124,21 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
       if (path === '/search/pages') {
         const asked = url.searchParams.get('q') ?? '';
-        let hits;
-        if (asked.trim().length < 3) {
-          const outcome = graph.search({ text: asked, participant: publicAccess ? owner.id : participant });
-          const grouped = new Map<string, typeof outcome.hits[number] & { matches: number }>();
-          for (const hit of outcome.hits) {
-            if (hit.field === 'page_title') continue;
-            const previous = grouped.get(hit.page);
-            if (previous === undefined) grouped.set(hit.page, { ...hit, matches: 1 });
-            else previous.matches += 1;
-          }
-          hits = [...grouped.values()];
-        } else {
-          hits = searchPageSummaries(store, asked);
+        const outcome = graph.search({
+          text: asked, participant: publicAccess ? owner.id : participant, canRead: isReadablePage,
+        });
+        const grouped = new Map<string, typeof outcome.hits[number] & { matches: number }>();
+        for (const hit of outcome.hits) {
+          if (hit.field === 'page_title') continue;
+          const previous = grouped.get(hit.page);
+          if (previous === undefined) grouped.set(hit.page, { ...hit, matches: 1 });
+          else previous.matches += 1;
         }
-        const visible = hits.filter((hit) => isReadablePage(hit.page));
-        deliver(visible, {
+        const hits = [...grouped.values()];
+        deliver(hits, {
           surface: 'GET /search/pages',
           subject: asked,
-          delivered: visible.map((hit) => hit.page),
+          delivered: hits.map((hit) => hit.page),
         });
         return;
       }

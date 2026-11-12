@@ -35,8 +35,16 @@ interface ContextPage extends Provenance {
   reasons: string[];
   found_by: Array<'graph_neighbour' | 'text_match'>;
   distance: number | null;
+  score: number;
+  signals: ContextRankingSignal[];
   properties: Array<{ key: string; value: string }>;
   excerpts: ContextExcerpt[];
+}
+
+interface ContextRankingSignal {
+  kind: 'graph_distance' | 'text_relevance';
+  contribution: number;
+  detail: string;
 }
 
 export interface LibrarianContextReceipt {
@@ -168,7 +176,7 @@ export function composeLibrarianContextReceipt(input: {
   const macro = new Map<PageId, {
     id: PageId; title: string; reasons: string[];
     found_by: Array<'graph_neighbour' | 'text_match'>;
-    distance: number | null; excerpts: ContextExcerpt[];
+    distance: number | null; score: number; signals: ContextRankingSignal[]; excerpts: ContextExcerpt[];
   }>();
   for (const node of neighbourhood?.nodes ?? []) {
     if (node.page === page.id || !canRead(node.page)) continue;
@@ -177,20 +185,28 @@ export function composeLibrarianContextReceipt(input: {
     macro.set(node.page, {
       id: node.page, title: neighbour.title,
       reasons: ['vecindad del grafo a distancia ' + node.distance],
-      found_by: ['graph_neighbour'], distance: node.distance, excerpts: [],
+      found_by: ['graph_neighbour'], distance: node.distance,
+      score: Math.max(20, 140 - node.distance * 30),
+      signals: [{
+        kind: 'graph_distance', contribution: Math.max(20, 140 - node.distance * 30),
+        detail: `vecindad autorizada a distancia ${node.distance}`,
+      }],
+      excerpts: [],
     });
   }
   if (input.policy.searchLimit > 0 && terms.length > 0) {
     let textualPages = 0;
     search: for (const term of terms) {
-      for (const hit of input.graph.search({ text: term, participant: input.participant }).hits) {
+      for (const hit of input.graph.search({
+        text: term, participant: input.participant, canRead,
+      }).hits) {
         if (hit.page === page.id || !canRead(hit.page)) continue;
         const found = input.graph.page(hit.page);
         if (found === undefined) continue;
         const entry = macro.get(hit.page) ?? {
           id: hit.page, title: found.title, reasons: [],
           found_by: [] as Array<'graph_neighbour' | 'text_match'>,
-          distance: null, excerpts: [],
+          distance: null, score: 0, signals: [], excerpts: [],
         };
         if (!entry.reasons.includes('coincidencia textual con la solicitud')) {
           entry.reasons.push('coincidencia textual con la solicitud');
@@ -203,6 +219,14 @@ export function composeLibrarianContextReceipt(input: {
             ...provenance(input.graph, hit.block === null ? { page: hit.page } : { block: hit.block }),
           });
         }
+        const previousText = entry.signals.findIndex((signal) => signal.kind === 'text_relevance');
+        const textSignal: ContextRankingSignal = {
+          kind: 'text_relevance', contribution: hit.score,
+          detail: hit.signals.map((signal) => `${signal.kind} +${signal.contribution}`).join(', '),
+        };
+        if (previousText < 0) entry.signals.push(textSignal);
+        else if (entry.signals[previousText]!.contribution < hit.score) entry.signals[previousText] = textSignal;
+        entry.score = entry.signals.reduce((sum, signal) => sum + signal.contribution, 0);
         macro.set(hit.page, entry);
         if (textualPages >= input.policy.searchLimit) break search;
       }
@@ -211,7 +235,8 @@ export function composeLibrarianContextReceipt(input: {
 
   const macroPages: ContextPage[] = [];
   for (const entry of [...macro.values()].sort((a, b) =>
-    (a.distance ?? 99) - (b.distance ?? 99) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id))) {
+    b.score - a.score || (a.distance ?? 99) - (b.distance ?? 99) ||
+    a.title.localeCompare(b.title) || a.id.localeCompare(b.id))) {
     const candidate: ContextPage = {
       ...entry, ...provenance(input.graph, { page: entry.id }),
       properties: input.graph.propertiesOf(entry.id).map((one) => ({ key: one.key, value: one.value })),

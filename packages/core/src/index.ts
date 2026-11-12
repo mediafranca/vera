@@ -163,8 +163,12 @@ export {
   queryMacroText,
   referencedTags,
   referencedTitles,
+  searchStem,
+  searchTokenMatch,
+  searchTokens,
   titleKey,
 } from './text.ts';
+export type { SearchTokenMatch } from './text.ts';
 
 /*
  * Cómo se escribe la dirección pública de una publicación. En el dominio porque
@@ -222,6 +226,8 @@ export type {
   Revision,
   SearchHit,
   SearchOutcome,
+  SearchSignal,
+  SearchSignalKind,
   SearchableField,
   Submission,
   SubmitOutcome,

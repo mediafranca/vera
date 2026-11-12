@@ -1211,9 +1211,43 @@ describe('lecturas', () => {
 
   it('busca sobre el grafo', async () => {
     await write({ kind: 'create_page', title: 'Buscable', visibility: 'private' });
-    const hits = (await get('/search?q=Buscable')) as { page: string; field: string }[];
+    const hits = (await get('/search?q=Buscable')) as Array<{
+      page: string; field: string; score: number;
+      signals: Array<{ kind: string; contribution: number }>;
+    }>;
     assert.ok(hits.length >= 1);
     assert.equal(hits[0]?.field, 'page_title');
+    assert.equal(hits[0]?.score,
+      hits[0]?.signals.reduce((sum, signal) => sum + signal.contribution, 0));
+    assert.ok(hits[0]?.signals.some((signal) => signal.kind === 'exact_phrase'));
+  });
+
+  it('resuelve una frase alternativa gobernada y permite medirla por ablación', async () => {
+    const wanted = await write({ kind: 'create_page', title: 'Página bilingüe', visibility: 'private' });
+    const block = await write({
+      kind: 'create_block', page: wanted, parent: null, position: 0,
+      content: 'Al editar una página ajena, la copia se bifurca.',
+    });
+    await write({
+      kind: 'set_property', block, propertyKey: 'frase alternativa', propertyValue: 'fork on edit',
+    });
+    const noise = await write({ kind: 'create_page', title: 'Ruido de benchmark', visibility: 'private' });
+    await write({
+      kind: 'create_block', page: noise, parent: null, position: 0,
+      content: 'Una prueba menciona fork on edit.',
+    });
+
+    const resolved = (await get('/search?q=fork%20on%20edit')) as Array<{
+      page: string; block: string; signals: Array<{ kind: string }>;
+    }>;
+    assert.deepEqual(resolved.map((hit) => [hit.page, hit.block]), [[wanted, block]]);
+    assert.deepEqual(resolved[0]?.signals.map((signal) => signal.kind), ['alias_exact']);
+
+    const ablated = (await get('/search?q=fork%20on%20edit&without=alias_exact')) as Array<{
+      page: string; signals: Array<{ kind: string }>;
+    }>;
+    assert.ok(ablated.some((hit) => hit.page === noise));
+    assert.ok(ablated.every((hit) => !hit.signals.some((signal) => signal.kind === 'alias_exact')));
   });
 
   it('resume la búsqueda interactiva en una evidencia por página', async () => {

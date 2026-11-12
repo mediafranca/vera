@@ -41,8 +41,11 @@ contract ResidentLibrarianExecution {
     @invariant RelevantLibraryNeighbourhoodIsMacroContext
         -- Before inference, Vera deterministically composes a bounded macro
         -- context from visible graph neighbours and text-search candidates.
-        -- Every included page records why it was selected. The model may read
-        -- more through tools, but it never has to guess that a library exists.
+        -- Every included page records why it was selected, a score equal to its
+        -- visible signal contributions, and whether those contributions came
+        -- from authorised graph distance or transparent text relevance. The
+        -- model may read more through tools, but it never has to guess that a
+        -- library exists.
 
     @invariant ContextSelectionLeavesAnAuditableReceipt
         -- The frozen context names every selected page and block, how it was

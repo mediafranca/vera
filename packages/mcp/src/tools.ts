@@ -465,8 +465,9 @@ export const TOOLS: readonly VeraTool[] = [
       const shown = hits.slice(0, most);
       const lines = shown.map(
         (hit) =>
-          `${hit.rank}. [${hit.page}]${hit.block === null ? '' : ` bloque ${hit.block}`} · ${hit.field}\n` +
-          `   ${hit.excerpt}`,
+          `${hit.rank}. [${hit.page}]${hit.block === null ? '' : ` bloque ${hit.block}`} · ${hit.field} · score ${hit.score}\n` +
+          `   ${hit.excerpt}\n` +
+          `   señales: ${hit.signals.map((signal) => `${signal.kind} +${signal.contribution}`).join(', ')}`,
       );
       const more = hits.length > shown.length ? `\n\n(${hits.length - shown.length} más sin mostrar.)` : '';
       return cut(`${hits.length} coincidencias con «${asked}»:\n\n${lines.join('\n')}${more}`);
