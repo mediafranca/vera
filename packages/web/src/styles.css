@@ -2835,6 +2835,91 @@ html.presenting body {
   display: none;
 }
 
+/*
+ * La ficha de instancia pertenece al mismo front matter, pero no repite sus
+ * controles. Resume la plantilla, deja visibles las preguntas sin respuesta y
+ * permite añadir sólo esa clave. La semántica extra sigue siendo bienvenida.
+ */
+.template-inspector {
+  margin: 0.85rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--text-dim) 24%, transparent);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.template-inspector-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.template-inspector-head strong { color: var(--text); }
+.template-inspector-note { margin: 0.35rem 0; }
+.template-inspector h3 {
+  margin: 0.8rem 0 0.3rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.template-property-list,
+.template-relation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.template-property-list li,
+.template-relation-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.8rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--text-dim) 28%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
+}
+
+.template-property-list li.missing { border-style: dashed; }
+.template-property-name { color: var(--text); }
+.template-property-value { max-width: 22rem; overflow-wrap: anywhere; }
+.template-property-list button {
+  margin: 0;
+  padding: 0.08rem 0.3rem;
+  border: 0;
+  border-radius: 0.3rem;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.template-relation-list li.present {
+  border-color: color-mix(in srgb, var(--success) 48%, transparent);
+  color: var(--text);
+}
+
+.governing-adopt-property {
+  min-height: 1.8rem;
+  margin: 0;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  border-radius: 0.45rem;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+tr.adopted { opacity: 0.58; }
+
 .properties dt {
   color: var(--accent);
 }

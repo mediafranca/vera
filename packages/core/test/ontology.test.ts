@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   fieldKindOf,
   missingFor,
+  propertyDeclarationForKey,
   readObjectDeclarations,
   readPropertyDeclarations,
   readRelationDeclarations,
@@ -101,6 +102,23 @@ describe('readPropertyDeclarations', () => {
     assert.equal(said?.block.startsWith('block:'), true);
     assert.deepEqual(said?.labels, { es: 'autor', en: 'author' });
     assert.deepEqual(said?.labelKeys, { es: 'rótulo es', en: 'label en' });
+    assert.equal(said?.global, false);
+  });
+
+  it('declara una pregunta global para todas las plantillas', () => {
+    const [said] = readPropertyDeclarations([
+      block('idioma', { global: 'sí', 'rótulo es': 'idioma', 'label en': 'language' }),
+    ]);
+    assert.equal(said?.global, true);
+  });
+
+  it('resuelve un rótulo lingüístico a la misma identidad estable', () => {
+    const declarations = readPropertyDeclarations([
+      block('autor', { 'rótulo es': 'autor', 'label en': 'author' }),
+    ]);
+    assert.equal(propertyDeclarationForKey(declarations, 'author')?.name, 'autor');
+    assert.equal(propertyDeclarationForKey(declarations, 'AUTOR')?.name, 'autor');
+    assert.equal(propertyDeclarationForKey(declarations, 'authors'), undefined);
   });
 
   it('nadie está obligado a decir de qué clase es', () => {

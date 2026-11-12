@@ -54,6 +54,7 @@ export {
   FIELD_KINDS,
   fieldKindOf,
   missingFor,
+  propertyDeclarationForKey,
   readObjectDeclarations,
   readPropertyDeclarations,
   readRelationDeclarations,

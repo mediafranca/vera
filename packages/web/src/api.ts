@@ -411,6 +411,8 @@ export interface PropertyDeclared {
    */
   subject: 'bloque' | 'página';
   values: string[];
+  /** Si la pregunta se ofrece en toda página además de las plantillas. */
+  global: boolean;
   says: string | null;
   /**
    * Cuántas veces la usa el corpus. Declarar no es usar: de las declaradas aquí,

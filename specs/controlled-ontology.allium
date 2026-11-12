@@ -1448,6 +1448,23 @@ surface LibraryGovernment {
         -- ficha puede variar entre Organización, Persona o Argumento porque la
         -- biblioteca declaró preguntas distintas; dentro de cada plantilla su
         -- forma es estable y aprendible.
+        --
+        -- La ficha se abre dentro del front matter, nombra cuántas preguntas
+        -- tienen respuesta y permite añadir una ausente sin inventarle valor.
+        -- También enumera las relaciones cuyo dominio admite la plantilla y
+        -- distingue las que la instancia ya usa. Las propiedades adicionales
+        -- sobreviven: una plantilla orienta y nunca funciona como esquema que
+        -- rechaza escritura.
+
+    @guarantee UndeclaredVocabularyIsAStandingCurationQueue
+        -- Gobierno enseña todas las claves observadas que todavía no resuelven
+        -- a una declaración, ordenadas por uso. Adoptar una crea la declaración
+        -- estable y conserva cada asignación existente sin reescribirla.
+        --
+        -- Un rótulo lingüístico ya declarado resuelve a la misma identidad que
+        -- el nombre canónico: `author` deja de ser vocabulario huérfano cuando
+        -- es el rótulo inglés de `autor`; no hace falta duplicar la propiedad ni
+        -- fingir que el contenido de la página cambió de idioma.
 }
 
 ------------------------------------------------------------
