@@ -12,7 +12,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
 
 import { observeServiceStatuses } from './service-status.ts';
-import { composeLibrarianContext } from './librarian-context.ts';
+import { composeLibrarianContext, librarianContextExposure } from './librarian-context.ts';
 
 import {
   TESTIMONY_KEY,
@@ -1521,6 +1521,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         contextTokens: 6_144,
         timeoutMs: 300_000,
       };
+      const contextExposure = librarianContextExposure(claimed.contextSnapshot);
+      recordExposure(store, {
+        participant: config.agent,
+        credential: null,
+        client: 'resident-librarian',
+        surface: 'resident-librarian/context',
+        subject: claimed.id,
+        delivered: contextExposure.delivered,
+        volume: contextExposure.volume,
+        at: Date.now(),
+      });
       const basePrompt = `${librarianRequestPrompt(store, config, claimed, gate)}\n\n${librarianToolInstructions()}`;
       let transcript = basePrompt;
       let final = '';
@@ -3817,6 +3828,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         if (runtime?.adapter === 'external_agent' && runtime.model !== null) {
           beginLibrarianRuntimeRun(store, { kind: 'request', request: id, model: runtime.model });
         }
+        const contextExposure = librarianContextExposure(claimed.contextSnapshot);
+        note('external-librarian/context', id, contextExposure.volume, contextExposure.delivered);
         send(response, 200, librarianRequestView(claimed));
         return;
       }

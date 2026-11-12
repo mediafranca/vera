@@ -9,7 +9,11 @@ import { VeraGraph } from '@vera/core';
 import { initializeStarterMemory } from '../src/starter-memory.ts';
 import { listen } from '../src/server.ts';
 import { readLibrarianToolCall } from '../src/librarian-tools.ts';
-import { composeLibrarianContext } from '../src/librarian-context.ts';
+import {
+  composeLibrarianContext,
+  librarianContextExposure,
+  type LibrarianContextReceipt,
+} from '../src/librarian-context.ts';
 import {
   compactLibrarianManifestDocument,
   compactLibrarianPromptContext,
@@ -43,19 +47,71 @@ describe('frontera formativa de la dialéctica', () => {
       content: 'Los talleres conectan investigación y práctica.' });
     write('block:search', { kind: 'create_block', stableId: 'block:search', page: 'page:search', parent: null, position: 0,
       content: 'Un inventario independiente de talleres.' });
-    const parsed = JSON.parse(composeLibrarianContext({
+    const snapshot = composeLibrarianContext({
       graph, participant: 'participant:lucienne', page: 'page:source', focus: 'block:focus',
       request: 'Relaciona este pasaje con los talleres de diseño participativo.',
       policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
-    })) as { version: number; focus: { id: string }; blocks: Array<{ id: string; reason: string }>;
-      library: { pages: Array<{ id: string; reasons: string[] }> }; selection: { budgetCharacters: number } };
-    assert.equal(parsed.version, 2);
-    assert.equal(parsed.focus.id, 'block:focus');
+    });
+    const parsed = JSON.parse(snapshot) as LibrarianContextReceipt;
+    assert.equal(parsed.version, 3);
+    assert.equal(parsed.focus?.id, 'block:focus');
     assert.ok(parsed.blocks.some((block) => block.id === 'block:parent'));
     assert.ok(parsed.blocks.some((block) => block.id === 'block:sibling'));
     assert.ok(parsed.library.pages.some((page) => page.id === 'page:macro' && page.reasons.some((reason) => reason.includes('vecindad'))));
     assert.ok(parsed.library.pages.some((page) => page.id === 'page:search' && page.reasons.includes('coincidencia textual con la solicitud')));
     assert.equal(parsed.selection.budgetCharacters, 8_000);
+    assert.equal(parsed.used.characters, snapshot.length);
+    assert.equal(parsed.selection.usedCharacters, snapshot.length);
+    assert.ok(parsed.items.every((item) => parsed.within.includes(item.kind === 'block' ? item.page : item.id)));
+    assert.ok(parsed.relations.every((relation) =>
+      parsed.within.includes(relation.source) && parsed.within.includes(relation.target)));
+    assert.ok(parsed.items.every((item) => item.revision !== null && item.authoredBy !== null));
+    assert.ok(parsed.items.every((item) => item.found_by.length > 0));
+    const exposure = librarianContextExposure(snapshot);
+    assert.equal(exposure.volume, parsed.used.characters);
+    assert.equal(exposure.delivered.length, parsed.used.identities);
+    assert.equal(composeLibrarianContext({
+      graph, participant: 'participant:lucienne', page: 'page:source', focus: 'block:focus',
+      request: 'Relaciona este pasaje con los talleres de diseño participativo.',
+      policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
+    }), snapshot, 'la misma consulta sobre la misma revisión debe producir el mismo recibo');
+    for (const item of parsed.items.filter((one) => one.kind === 'page')) {
+      for (const excerpt of item.excerpts.filter((one) => one.block !== null)) {
+        const current = graph.block(excerpt.block!);
+        assert.ok(current?.content.includes(excerpt.content.replace(/^…|…$/g, '')),
+          'el extracto debe existir en el bloque cuya revisión cita');
+      }
+    }
+  });
+
+  it('excluye antes de componer y hace visibles presupuesto, omisiones y continuación', () => {
+    const graph = VeraGraph.create({ name: 'Vera cercada' });
+    graph.addParticipant({ id: 'participant:owner', name: 'Dueña', kind: 'human' });
+    graph.addParticipant({ id: 'participant:agent', name: 'Agente', kind: 'agent' });
+    graph.admit('participant:owner'); graph.admit('participant:agent');
+    const write = (originId: string, change: Parameters<typeof graph.submitOperation>[0]['change']): void => {
+      assert.notEqual(graph.submitOperation({ originId, participant: 'participant:owner', change }).status, 'rejected');
+    };
+    write('page:allowed', { kind: 'create_page', stableId: 'page:allowed', title: 'Permitida', visibility: 'private' });
+    write('page:hidden', { kind: 'create_page', stableId: 'page:hidden', title: 'Oculta', visibility: 'private' });
+    for (let index = 0; index < 24; index += 1) write('block:allowed:' + index, {
+      kind: 'create_block', stableId: 'block:allowed:' + index, page: 'page:allowed', parent: null, position: index,
+      content: 'Pasaje permitido ' + index + ' '.repeat(160),
+    });
+    write('block:hidden', { kind: 'create_block', stableId: 'block:hidden', page: 'page:hidden', parent: null, position: 0,
+      content: 'Secreto territorial enlazado desde [[Permitida]].' });
+    const snapshot = composeLibrarianContext({
+      graph, participant: 'participant:agent', page: 'page:allowed', request: 'secreto territorial',
+      policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
+      canRead: (page) => page === 'page:allowed',
+    });
+    const receipt = JSON.parse(snapshot) as LibrarianContextReceipt;
+    assert.ok(snapshot.length <= 8_000);
+    assert.deepEqual(receipt.within, ['page:allowed']);
+    assert.ok(!snapshot.includes('page:hidden'));
+    assert.ok(receipt.omitted.pageBlocks > 0);
+    assert.ok(receipt.warnings.length > 0);
+    assert.notEqual(receipt.continuation, null);
   });
 
   it('distingue mediación, derivación, coautoría y juicio propio antes de escribir', () => {
@@ -262,6 +318,13 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.match(inferencePrompt, /Eres Aster, agente de biblioteca residente de esta Vera/);
       const pageView = await call(`/pages/${encodeURIComponent(page)}`);
       assert.match(JSON.stringify(pageView.json), /Respuesta de Aster/);
+      const exposures = await call(`/exposures?participant=${encodeURIComponent(librarianAgent)}`);
+      const contextExposure = (exposures.json['exposures'] as Array<Record<string, unknown>>)
+        .find((one) => one['surface'] === 'resident-librarian/context' && one['subject'] === requestId);
+      assert.ok(contextExposure, 'la inferencia no dejó exposición de su recibo de contexto');
+      assert.equal(contextExposure['volume'], String(answered['contextSnapshot']).length);
+      assert.equal(contextExposure['deliveredCount'],
+        librarianContextExposure(String(answered['contextSnapshot'])).delivered.length);
 
       const routine = await call('/librarian/runtime/routine', { method: 'POST' });
       assert.equal(routine.status, 202, JSON.stringify(routine.json));
@@ -711,6 +774,7 @@ describe('runtime embebido de la bibliotecaria', () => {
     try {
       const constituted = await call('/librarian/runtime/constitute', { method: 'POST', body: {} });
       const lucienne = (constituted.json['librarian'] as Record<string, string>).agent;
+      assert.ok(lucienne);
       const issued = await call('/agents/credentials', {
         method: 'POST', body: { participant: lucienne, scopes: ['read', 'write', 'discard'], label: 'runtime externo' },
       });
@@ -738,9 +802,16 @@ describe('runtime embebido de la bibliotecaria', () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       assert.equal(wake, requestId);
-      assert.equal((await call(`/librarian/requests/${encodeURIComponent(requestId)}/claim`, {
+      const claimed = await call(`/librarian/requests/${encodeURIComponent(requestId)}/claim`, {
         method: 'POST', secret,
-      })).status, 200);
+      });
+      assert.equal(claimed.status, 200);
+      const bridgeExposures = await call(`/exposures?participant=${encodeURIComponent(lucienne)}`);
+      const bridgeContext = (bridgeExposures.json['exposures'] as Array<Record<string, unknown>>)
+        .find((one) => one['surface'] === 'external-librarian/context' && one['subject'] === requestId);
+      assert.equal(bridgeContext?.['volume'], String(claimed.json['contextSnapshot']).length);
+      assert.equal(bridgeContext?.['deliveredCount'],
+        librarianContextExposure(String(claimed.json['contextSnapshot'])).delivered.length);
       const malformedMove = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
         method: 'POST', secret, body: {
           text: 'Moví el bloque.', blocks: [], lineageRelation: 'direct',
