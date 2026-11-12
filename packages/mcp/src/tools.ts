@@ -32,6 +32,7 @@ export type Write = (
 export type WriteBatch = (
   origin: string,
   changes: readonly Record<string, unknown>[],
+  ifRevisions?: Readonly<Record<string, string>>,
 ) => Promise<{
   status: 'applied' | 'duplicate';
   operations: { sequence: number; subjectId: string }[];
@@ -1180,6 +1181,13 @@ export const TOOLS: readonly VeraTool[] = [
         return `La estructura cambió: se confirmaron ${confirmed} bloques y ahora desaparecerían ${removing.length}. ` +
           'No se borró nada; vuelve a leer la página.';
       }
+      const ifRevisions: Record<string, string> = {};
+      for (const block of removing) {
+        if (typeof block.revision !== 'string' || block.revision.trim() === '') {
+          return `El bloque ${block.stableId} no tiene una revisión canónica. No se borró nada; vuelve a leer la página.`;
+        }
+        ifRevisions[block.stableId] = block.revision;
+      }
       const changes: Record<string, unknown>[] = removing.map((block) => ({
         kind: 'remove_block', block: block.stableId,
       }));
@@ -1188,7 +1196,7 @@ export const TOOLS: readonly VeraTool[] = [
         return `Este descarte necesita ${changes.length} operaciones y el máximo atómico es 1000. ` +
           'Limpia primero uno o más subárboles.';
       }
-      const result = await writeBatch(origin, changes);
+      const result = await writeBatch(origin, changes, ifRevisions);
       if (failed(result)) return `No pude descartar eso: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
       return `${result.status === 'duplicate' ? 'Ese descarte ya estaba aplicado' : 'Descarte aplicado'}: ` +
         `${removing.length} bloques${blockId === '' ? ' y la página' : ''}, ` +

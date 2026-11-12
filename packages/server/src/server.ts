@@ -699,6 +699,38 @@ function agentMutationPrecondition(
 }
 
 /**
+ * Un retiro no puede borrar una versión que quien lo pidió nunca alcanzó a ver.
+ *
+ * Esta guarda es independiente de la identidad del participante: la interfaz
+ * humana y los agentes deben recibir el mismo conflicto antes de que el lote
+ * de descarte toque el grafo de prueba.
+ */
+function blockRemovalPrecondition(
+  graph: VeraGraph,
+  change: Change,
+  expected: unknown,
+): { status: number; reason: string; current?: { revision: string | null; content: string } } | null {
+  if (change.kind !== 'remove_block') return null;
+  const block = graph.block(change.block);
+  if (block === undefined) return { status: 404, reason: 'el bloque ya no existe' };
+  if (typeof expected !== 'string' || expected.trim() === '') {
+    return {
+      status: 428,
+      reason: `retirar ${change.block} exige su revisión vigente`,
+    };
+  }
+  const revision = latestBlockRevision(graph, change.block);
+  if (revision !== expected) {
+    return {
+      status: 409,
+      reason: `conflicto de revisión: se leyó ${expected}, pero ${change.block} está en ${revision ?? 'ninguna revisión'}`,
+      current: { revision, content: block.content },
+    };
+  }
+  return null;
+}
+
+/**
  * Detecta cuando una identidad agente intenta esconder varios nodos de outline
  * dentro del texto de un solo bloque.
  *
@@ -1192,13 +1224,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const expected = change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block'
         ? ifRevisions[change.block]
         : undefined;
-      if (change.kind === 'remove_block') {
-        if (typeof expected !== 'string' || expected.trim() === '') {
-          return `retirar ${change.block} exige su revisión vigente`;
-        }
-        const revision = latestBlockRevision(trial, change.block);
-        if (revision !== expected) return `conflicto de revisión: ${change.block} está en ${revision ?? 'ninguna revisión'}`;
-      }
+      const removalPrecondition = blockRemovalPrecondition(trial, change, expected);
+      if (removalPrecondition !== null) return removalPrecondition.reason;
       const precondition = agentMutationPrecondition(
         trial,
         { participant: agent, credential, channel: 'agent_generation' },
@@ -4074,13 +4101,24 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             return;
           }
           const fence = who.credential === null ? null : confinementOf(store, who.credential.id);
+          const expectedRevision =
+            input.change.kind === 'edit_block' || input.change.kind === 'move_block' || input.change.kind === 'remove_block'
+              ? ifRevisions[input.change.block]
+              : undefined;
+          const removalPrecondition = blockRemovalPrecondition(trial, input.change, expectedRevision);
+          if (removalPrecondition !== null) {
+            send(response, removalPrecondition.status, {
+              status: 'rejected',
+              reason: removalPrecondition.reason,
+              ...(removalPrecondition.current === undefined ? {} : { current: removalPrecondition.current }),
+            });
+            return;
+          }
           const precondition = agentMutationPrecondition(
             trial,
             who,
             input.change,
-            input.change.kind === 'edit_block' || input.change.kind === 'move_block' || input.change.kind === 'remove_block'
-              ? ifRevisions[input.change.block]
-              : undefined,
+            expectedRevision,
             fence !== null,
           );
           if (precondition !== null) {
