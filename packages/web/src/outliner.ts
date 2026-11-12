@@ -93,7 +93,7 @@ import { pendingLine, saySeconds } from './waiting.ts';
 import { speechParts, speechText, stopReading, wireReadingButton } from './read-aloud.ts';
 import { createPage } from './pages.ts';
 import { presentPage } from './presentation.ts';
-import { removePageAndBlocks } from './remove-page.ts';
+import { pageRemovalPlan } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
 import { discardEditingDraft, keepEditingDraft, recoverEditingDraft } from './editing-draft.ts';
 import { librarianActor } from './librarian-language.ts';
@@ -2169,18 +2169,10 @@ async function askForNewPage(callbacks: OutlinerCallbacks): Promise<void> {
  * Vaciar una pagina y despues quitarla.
  *
  * El dominio solo borra una pagina vacia, y solo borra un bloque que no tenga
- * hijos —`rule ApplyRemovePage` y la validacion de `remove_block`—. Asi que esto
- * no es una operacion sino una secuencia: las hojas primero, subiendo, y al
- * final la pagina. Cada paso queda en el registro con su propio numero de
- * secuencia.
- *
- * Que sea una secuencia y no un acto unico es deliberado en la spec: «emptying
- * it is a sequence of remove_block operations, each separately ordered and
- * separately auditable». Borrar una pagina no puede tragarse lo que hubiera
- * dentro sin dejar constancia de que habia.
- *
- * Si un paso falla se para ahi. Queda una pagina a medio vaciar, que es
- * visiblemente reparable; nunca una pagina borrada con bloques huerfanos.
+ * hijos —`rule ApplyRemovePage` y la validacion de `remove_block`—. El cliente
+ * compone por eso una secuencia: las hojas primero, subiendo, y al final la
+ * pagina. Cada paso conserva su propio numero de secuencia, pero el servidor
+ * confirma el lote entero o ninguno: una desconexion no deja media pagina.
  */
 async function deletePage(
   page: PageView,
@@ -2210,20 +2202,25 @@ async function deletePage(
       : `Se va a eliminar «${page.title}»${dentro}. No se puede deshacer.`;
   if (!window.confirm(aviso)) return;
 
-  const confirmed = async (change: Change): Promise<boolean> => {
-    try {
-      const result = await api.submitConfirmed(change);
-      if (result.status === 'rejected') {
-        toast(`rechazado: ${result.reason}`);
-        return false;
-      }
-      return true;
-    } catch {
-      toast('sin conexión con el servidor');
-      return false;
+  const plan = pageRemovalPlan(page);
+  if (plan.status === 'stale') {
+    toast('la página cambió mientras estaba abierta; vuelve a cargarla antes de eliminar');
+    return;
+  }
+  try {
+    const result = await api.submitCanonicalBatch(
+      plan.changes.map((change) => ({ change })),
+      undefined,
+      plan.ifRevisions,
+    );
+    if (result.status === 'rejected') {
+      toast(`rechazado: ${result.reason}`);
+      return;
     }
-  };
-  if (!(await removePageAndBlocks(page, confirmed))) return;
+  } catch {
+    toast('sin conexión con el servidor; no se eliminó nada');
+    return;
+  }
 
   toast(`eliminada: ${page.title}`);
   if (callbacks.onDeleted !== undefined) await callbacks.onDeleted({ id: page.id, title: page.title });

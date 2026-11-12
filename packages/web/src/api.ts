@@ -43,6 +43,8 @@ export interface BlockView {
   parent: string | null;
   position: number;
   content: string;
+  /** Revisión canónica; ausente sólo en un bloque todavía local. */
+  revision?: string;
 }
 
 export interface PublicationView {

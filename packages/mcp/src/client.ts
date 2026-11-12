@@ -241,6 +241,7 @@ export async function submitBatch(
   connection: Connection,
   originId: string,
   changes: readonly Record<string, unknown>[],
+  ifRevisions?: Readonly<Record<string, string>>,
 ): Promise<BatchWriteResult | Failure> {
   if (connection.token === null) {
     return { status: 403, error: 'MCP sólo escribe con una credencial explícita de agente' };
@@ -256,7 +257,7 @@ export async function submitBatch(
     response = await fetch(new URL('/operations/batch', connection.url), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ originId, changes }),
+      body: JSON.stringify({ originId, changes, ...(ifRevisions === undefined ? {} : { ifRevisions }) }),
     });
   } catch (trouble) {
     return { status: 0, error: `no hay nadie escuchando en ${connection.url} (${String(trouble)})` };

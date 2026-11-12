@@ -695,6 +695,73 @@ describe('POST /operations/batch', () => {
     assert.equal(retry.status, 200, JSON.stringify(retry.json));
     assert.equal(retry.json['status'], 'duplicate');
   });
+
+  it('retira una página no vacía de hojas a raíz como un solo lote', async () => {
+    const page = await write({
+      kind: 'create_page', stableId: 'page:batch-delete-tree',
+      title: 'Página que se retira entera', visibility: 'private',
+    });
+    const parent = await write({
+      kind: 'create_block', stableId: 'block:batch-delete-parent',
+      page, parent: null, position: 0, content: 'Padre',
+    });
+    const leaf = await write({
+      kind: 'create_block', stableId: 'block:batch-delete-leaf',
+      page, parent, position: 0, content: 'Hoja',
+    });
+    const before = await get(`/pages/${encodeURIComponent(page)}`) as {
+      blocks: { stableId: string; revision: string }[];
+    };
+    const revisions = Object.fromEntries(before.blocks.map((one) => [one.stableId, one.revision]));
+
+    const removed = await postBatch({
+      originId: 'batch:delete-tree', participant: OWNER,
+      changes: [
+        { kind: 'remove_block', block: leaf },
+        { kind: 'remove_block', block: parent },
+        { kind: 'remove_page', page },
+      ],
+      ifRevisions: revisions,
+    });
+
+    assert.equal(removed.status, 201, JSON.stringify(removed.json));
+    assert.equal((removed.json['operations'] as unknown[]).length, 3);
+    assert.equal((await fetch(`${base}/pages/${encodeURIComponent(page)}`)).status, 404);
+  });
+
+  it('un conflicto de revisión conserva completa la página que se quería retirar', async () => {
+    const page = await write({
+      kind: 'create_page', stableId: 'page:batch-delete-conflict',
+      title: 'Página que cambió antes de borrar', visibility: 'private',
+    });
+    const block = await write({
+      kind: 'create_block', stableId: 'block:batch-delete-conflict',
+      page, parent: null, position: 0, content: 'Versión confirmada',
+    });
+    const before = await get(`/pages/${encodeURIComponent(page)}`) as {
+      blocks: { stableId: string; revision: string }[];
+    };
+    const staleRevision = before.blocks[0]?.revision;
+    assert.ok(staleRevision);
+    await write({ kind: 'edit_block', block, content: 'Cambio concurrente' });
+
+    const refused = await postBatch({
+      originId: 'batch:delete-conflict', participant: OWNER,
+      changes: [
+        { kind: 'remove_block', block },
+        { kind: 'remove_page', page },
+      ],
+      ifRevisions: { [block]: staleRevision },
+    });
+
+    assert.equal(refused.status, 409, JSON.stringify(refused.json));
+    const after = await get(`/pages/${encodeURIComponent(page)}`) as {
+      blocks: { stableId: string; content: string }[];
+    };
+    assert.equal(after.blocks.length, 1);
+    assert.equal(after.blocks[0]?.stableId, block);
+    assert.equal(after.blocks[0]?.content, 'Cambio concurrente');
+  });
 });
 
 describe('POST /captures', () => {

@@ -325,17 +325,21 @@ describe('descartar', () => {
     id: 'page:limpieza', title: 'Limpieza', visibility: 'private', createdAt: 0, lastEditedAt: 0,
     properties: [], backlinks: [], references: [], authorship: {},
     blocks: [
-      { stableId: 'block:root', parent: null, position: 0, content: 'Viejo' },
-      { stableId: 'block:child', parent: 'block:root', position: 0, content: 'Más viejo' },
-      { stableId: 'block:keep', parent: null, position: 1, content: 'Conservar' },
+      { stableId: 'block:root', parent: null, position: 0, content: 'Viejo', revision: 'operation:root' },
+      { stableId: 'block:child', parent: 'block:root', position: 0, content: 'Más viejo', revision: 'operation:child' },
+      { stableId: 'block:keep', parent: null, position: 1, content: 'Conservar', revision: 'operation:keep' },
     ],
   };
 
   it('retira un subárbol de hojas a raíz en un lote auditable', async () => {
     const { ask } = fakeVera({ '/pages/page%3Alimpieza': page });
-    const calls: { origin: string; changes: readonly Record<string, unknown>[] }[] = [];
-    const batch: WriteBatch = async (origin, changes) => {
-      calls.push({ origin, changes });
+    const calls: {
+      origin: string;
+      changes: readonly Record<string, unknown>[];
+      ifRevisions?: Readonly<Record<string, string>>;
+    }[] = [];
+    const batch: WriteBatch = async (origin, changes, ifRevisions) => {
+      calls.push({ origin, changes, ifRevisions });
       return { status: 'applied', operations: changes.map((_, at) => ({ sequence: 90 + at, subjectId: `gone:${at}` })) };
     };
     const tool = toolNamed('vera_descartar');
@@ -349,6 +353,10 @@ describe('descartar', () => {
         { kind: 'remove_block', block: 'block:child' },
         { kind: 'remove_block', block: 'block:root' },
       ],
+      ifRevisions: {
+        'block:child': 'operation:child',
+        'block:root': 'operation:root',
+      },
     }]);
     assert.match(typeof said === 'string' ? said : said.text, /2 bloques/);
   });

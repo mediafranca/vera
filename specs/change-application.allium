@@ -216,12 +216,12 @@ rule ApplyRemovePage {
         not exists change.page
 
     @guidance
-        -- A page is removable only once it is empty. Emptying it is a sequence of
-        -- remove_block operations, each separately ordered and separately auditable.
-        -- A destructive surface waits for every removal to receive canonical
-        -- confirmation before sending the next one. Sending remove_page while
-        -- remove_block is still only local can leave the title alive and the
-        -- content gone, which is neither deletion nor a recoverable refusal.
+        -- A page is removable only once it is empty. Emptying it remains a
+        -- sequence of remove_block operations, deepest leaves first, followed by
+        -- remove_page. A destructive surface submits the whole sequence as one
+        -- atomic batch with the current revision of every block: each absence is
+        -- separately ordered and auditable, but either all become canonical or
+        -- none do. A concurrent edit rejects the batch before any content is lost.
 }
 
 rule ApplyCreateBlock {

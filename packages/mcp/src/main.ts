@@ -101,7 +101,8 @@ export function mcpServer(connection: Connection): Server {
   const ask: Ask = (path, parameters) => askVera(connection, path, parameters);
   const write: Write = (origin, change, ifRevision, ownOnly) =>
     submitVera(connection, origin, change, ifRevision, ownOnly);
-  const writeBatch: WriteBatch = (origin, changes) => submitBatchVera(connection, origin, changes);
+  const writeBatch: WriteBatch = (origin, changes, ifRevisions) =>
+    submitBatchVera(connection, origin, changes, ifRevisions);
   const query: Query = (input) => queryVera(connection, input);
   const propose: Propose = (input) => proposeVera(connection, input);
   const action = (path: string, body?: Record<string, unknown>) => actVera(connection, path, body);

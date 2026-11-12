@@ -478,8 +478,9 @@ contract BlockManipulation {
     @invariant ASelectionIsRemovedLeavesFirst
         -- Discarding a selection submits one remove_block per block, deepest
         -- first, because the graph refuses to remove a block that still has
-        -- children. The sequence is ordinary and auditable operation by
-        -- operation, exactly as ApplyRemovePage requires of emptying a page.
+        -- children. When the whole page is discarded, that sequence and the
+        -- final remove_page form one revision-guarded atomic batch: every
+        -- removal remains auditable, while a conflict leaves the page intact.
 
     @invariant OnlyTheRootsOfASelectionMove
         -- Shifting a selection moves only those blocks in it that do not hang
