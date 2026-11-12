@@ -22,6 +22,7 @@ y deja de ser una medición reproducible.
 {
   "schemaVersion": 1,
   "name": "Contexto de Vera 2026-11-12",
+  "actor": { "participant": "participant:alumnus-exemplar" },
   "corpus": { "sequence": 114469 },
   "defaults": { "budgetCharacters": 60000 },
   "cases": [
@@ -51,6 +52,14 @@ Las herramientas admitidas son:
 - `page`: `page`, `cursor`, `limit`;
 - `neighborhood`: `page`, `depth`;
 - `history`: `block`.
+
+Cada corrida declara `actor.participant`. El ejecutor consulta `/agents/whoami`
+y falla antes de medir si la credencial efectiva pertenece a otra identidad. El
+informe conserva participante, clase, alcances y rótulo, nunca el secreto.
+
+Una llamada puede declarar `expectedStatus` cuando la negativa es la evidencia:
+por ejemplo, leer una página fuera del territorio debe responder `404`. Sin esa
+declaración, todo estado distinto de `200` continúa siendo un fallo.
 
 `requiredIds` mide cobertura mínima. `relevantIds` debe ser exhaustivo para que
 la precisión sea interpretable; si se omite, el informe no inventa una cifra.

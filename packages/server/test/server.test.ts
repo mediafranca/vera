@@ -1283,6 +1283,7 @@ describe('lecturas', () => {
       }[];
       resources: { id: string; url: string; domain: string; page: string }[];
     };
+    const byTitle = (await get(`/graph/${encodeURIComponent('NodoA')}?depth=1`)) as typeof data;
 
     const centre = data.nodes.find((n) => n.central);
     assert.equal(centre?.id, a);
@@ -1290,6 +1291,7 @@ describe('lecturas', () => {
     assert.equal(centre?.trail, true);
     assert.deepEqual(centre?.concepts, ['cartografía', 'conocimiento']);
     assert.ok(data.nodes.some((n) => n.name === 'NodoB'));
+    assert.deepEqual(byTitle.nodes.map((node) => node.id), data.nodes.map((node) => node.id));
     assert.deepEqual(data.nodes.find((n) => n.id === b)?.concepts, ['cartografía']);
     assert.equal(data.links.length, 2);
     assert.deepEqual(data.resources.map(({ url, domain, page }) => ({ url, domain, page })), [{

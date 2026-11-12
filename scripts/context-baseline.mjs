@@ -35,6 +35,11 @@ export function validateManifest(manifest) {
   if (!Array.isArray(manifest.cases) || manifest.cases.length === 0) {
     throw new Error('el manifiesto no contiene casos');
   }
+  if (manifest.actor !== undefined &&
+    (manifest.actor === null || typeof manifest.actor !== 'object' ||
+      typeof manifest.actor.participant !== 'string' || manifest.actor.participant.trim() === '')) {
+    throw new Error('actor.participant debe fijar la identidad esperada');
+  }
   const seen = new Set();
   for (const one of manifest.cases) {
     if (typeof one.id !== 'string' || one.id.trim() === '') throw new Error('cada caso necesita id');
@@ -49,6 +54,10 @@ export function validateManifest(manifest) {
     for (const call of one.calls) {
       if (!['search', 'query', 'page', 'neighborhood', 'history'].includes(call.tool)) {
         throw new Error(`${one.id}: herramienta desconocida ${String(call.tool)}`);
+      }
+      if (call.expectedStatus !== undefined &&
+        (!Number.isInteger(call.expectedStatus) || call.expectedStatus < 100 || call.expectedStatus > 599)) {
+        throw new Error(`${one.id}: expectedStatus debe ser un estado HTTP`);
       }
     }
   }
@@ -167,9 +176,12 @@ export function scoreCase(testCase, calls, defaultBudget) {
   const characters = calls.reduce((sum, call) => sum + call.characters, 0);
   const latencyMs = calls.reduce((sum, call) => sum + call.latencyMs, 0);
   const budgetCharacters = Number(testCase.budgetCharacters ?? defaultBudget ?? 60_000);
-  const callErrors = calls.filter((call) => !call.ok).map((call) => ({
-    tool: call.tool, status: call.status, error: call.error,
-  }));
+  const callErrors = calls.flatMap((call, index) => {
+    const expectedStatus = Number(testCase.calls?.[index]?.expectedStatus ?? 200);
+    return call.status === expectedStatus ? [] : [{
+      tool: call.tool, status: call.status, expectedStatus, error: call.error,
+    }];
+  });
   const abstentionFailed = expected.abstain === true && delivered.length > 0;
   const recall = required.length === 0 ? null : requiredFound.length / required.length;
   const precision = relevant.length === 0 || delivered.length === 0
@@ -204,6 +216,19 @@ export async function runBaseline(manifest, options = {}) {
   validateManifest(manifest);
   const baseUrl = options.baseUrl ?? 'http://127.0.0.1:4173';
   const token = options.token ?? '';
+  const identity = await requestJson(baseUrl, token, '/agents/whoami');
+  if (!identity.ok) throw new Error(`Vera no reconoce la identidad: ${identity.status}`);
+  const actor = {
+    participant: String(identity.body?.participant ?? ''),
+    kind: identity.body?.kind ?? null,
+    scopes: Array.isArray(identity.body?.scopes) ? identity.body.scopes : null,
+    label: identity.body?.label ?? null,
+  };
+  if (manifest.actor?.participant !== undefined && actor.participant !== manifest.actor.participant) {
+    throw new Error(
+      `la credencial pertenece a ${actor.participant}; el manifiesto exige ${manifest.actor.participant}`,
+    );
+  }
   const health = await requestJson(baseUrl, token, '/health');
   if (!health.ok) throw new Error(`Vera no responde: ${health.status}`);
   const observedSequence = Number(health.body?.lastSequence ?? -1);
@@ -235,6 +260,7 @@ export async function runBaseline(manifest, options = {}) {
   return {
     schemaVersion: SCHEMA_VERSION,
     benchmark: manifest.name ?? 'Context baseline',
+    actor,
     corpus: { expectedSequence, observedSequence },
     ranAt: new Date().toISOString(),
     summary: {
