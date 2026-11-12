@@ -218,6 +218,38 @@ describe('dominios declarados de propiedades', () => {
     ]);
   });
 
+  it('reconcilia un rótulo lingüístico con la identidad declarada', async () => {
+    const declaration = await write({
+      kind: 'create_block',
+      stableId: 'block:test-multilingual-author',
+      page: 'page:test-properties-governing',
+      parent: null,
+      position: 8,
+      content: 'autor',
+    });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'rótulo es', propertyValue: 'autor' });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'label en', propertyValue: 'author' });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'campo', propertyValue: 'una de' });
+    await write({ kind: 'set_property', block: declaration, propertyKey: 'valores', propertyValue: 'Herbert, Ward' });
+    const page = await write({ kind: 'create_page', title: 'A multilingual reference', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'author', propertyValue: 'Herbert' });
+
+    const ontology = await get('/ontology') as {
+      properties: { name: string; uses: number }[];
+      undeclared: { key: string; uses: number }[];
+    };
+    assert.equal(ontology.properties.find((one) => one.name === 'autor')?.uses, 1);
+    assert.equal(ontology.undeclared.some((one) => one.key === 'author'), false);
+
+    const detail = await get(`/pages/${encodeURIComponent(page)}`) as {
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+    };
+    assert.deepEqual(detail.domains['author'], [
+      { value: 'Herbert', uses: 1, declared: true },
+      { value: 'Ward', uses: 0, declared: true },
+    ]);
+  });
+
   it('previsualiza y aplica un renombrado por identidad sin tocar la prosa', async () => {
     const objectsPage = await write({
       kind: 'create_page',

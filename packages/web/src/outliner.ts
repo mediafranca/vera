@@ -59,6 +59,7 @@ import {
 import { sourceSelection, type SourceSelection } from './source-selection.ts';
 import { completeInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
+import { renderTemplateInspector } from './template-inspector.ts';
 import { answerQueryBlock } from './query-block.ts';
 import { renderMermaid, renderMermaidProgressively } from './mermaid.ts';
 import { decorateCodeBlocks } from './code-copy.ts';
@@ -5414,6 +5415,26 @@ export function renderOutliner(
    */
   metadata.append(properties);
   if (!readOnly) metadata.append(add);
+  if (!readOnly && !special) {
+    /*
+     * La plantilla se inspecciona donde se editan sus respuestas.
+     *
+     * Antes sólo influía en el menú de «+ propiedad»: para saber qué faltaba
+     * había que comenzar a añadir algo. La ficha deja presentes las preguntas
+     * de la plantilla, incluso vacías, y muestra las relaciones posibles sin
+     * convertir ninguna de las dos cosas en una validación obligatoria.
+     */
+    void api.ontology().then((ontology) => {
+      if (!metadata.isConnected) return;
+      const inspector = renderTemplateInspector(
+        page,
+        ontology,
+        corpusNames().kind,
+        (change) => submitAndReload(change, callbacks),
+      );
+      metadata.append(inspector);
+    }).catch(() => undefined);
+  }
   header.append(metadata);
   applyFrontMatterMode(header, session.frontMatterOpen());
 
@@ -5720,6 +5741,7 @@ export function renderOutliner(
         return applied;
       },
       (page) => callbacks.onOpen(page, 'followed_reference'),
+      page.id,
     ).then((made) => {
       list.hidden = false;
       if (made === null) return;

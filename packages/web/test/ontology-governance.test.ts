@@ -16,7 +16,7 @@ const ontology: OntologyView = {
   ],
   properties: [
     {
-      block: 'name', name: 'nombre', labels: {}, labelKeys: {}, field: 'texto', many: false, role: null,
+      block: 'name', name: 'nombre', labels: {}, labelKeys: {}, field: 'texto', many: false, role: null, global: false,
       subject: 'página', values: [], says: null, uses: 2,
     },
   ],
@@ -64,6 +64,15 @@ describe('gobierno ontológico facetado', () => {
     assert.match(governing, /api\.submitCanonicalBatch\(changes\.map/);
     assert.match(governing, /\['Objeto', 'Rótulos', 'Propiedades'/);
     assert.match(governing, /'Relación', 'Rótulos', 'Inversa'/);
+  });
+
+  it('mantiene visible la cola de vocabulario real y permite adoptarla sin reescribir usos', () => {
+    assert.match(governing, /En uso sin declarar/);
+    assert.match(governing, /Declarar conserva todos sus usos tal como están/);
+    assert.match(governing, /kind: 'create_block'/);
+    assert.match(governing, /propertyKey: 'rótulo es'/);
+    assert.match(governing, /api\.submitCanonicalBatch/);
+    assert.match(governing, /label: 'si se ofrece en toda página'/);
   });
 
   it('proyecta objetos sin inventar relaciones', () => {

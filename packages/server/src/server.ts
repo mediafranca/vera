@@ -31,6 +31,7 @@ import {
   inverseOf,
   namesFromRoles,
   readObjectDeclarations,
+  propertyDeclarationForKey,
   readPropertyDeclarations,
   readRelationDeclarations,
   readPropertyNames,
@@ -2149,9 +2150,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
    */
   const domainOf = (key: string): { value: string; uses: number; declared?: boolean }[] => {
     const observed = graph.observedValuesOf(key);
-    const declaration = declaredProperties().find(
-      (one) => titleKey(one.name) === titleKey(key),
-    );
+    const declaration = propertyDeclarationForKey(declaredProperties(), key);
     if (declaration === undefined) return observed;
 
     /*
@@ -8050,20 +8049,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
         const counted = usesByKey();
         const declaredNow = declaredProperties();
-        const known = new Set(declaredNow.map((one) => one.name.toLowerCase()));
 
         // Lo declarado sí suma sus variantes: una propiedad declarada es una
         // sola, y cuántas veces se usó es cuántas veces se usó, se escribiera
         // con mayúscula o sin ella.
-        const usesOf = (name: string): number => {
-          const wanted = name.trim().toLowerCase();
+        const usesOf = (definition: (typeof declaredNow)[number]): number => {
+          const wanted = new Set([
+            definition.name,
+            ...Object.values(definition.labels),
+          ].map((name) => name.trim().toLowerCase()));
           let total = 0;
-          for (const [key, uses] of counted) if (key.toLowerCase() === wanted) total += uses;
+          for (const [key, uses] of counted) if (wanted.has(key.toLowerCase())) total += uses;
           return total;
         };
 
         send(response, 200, {
-          properties: declaredNow.map((one) => ({ ...one, uses: usesOf(one.name) })),
+          properties: declaredNow.map((one) => ({ ...one, uses: usesOf(one) })),
           objects: declaredObjects(),
           relations: declaredRelations(),
           names: propertyNames(),
@@ -8083,7 +8084,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
            * un corpus enfermo, no un criterio.
            */
           undeclared: [...counted]
-            .filter(([key]) => !known.has(key.toLowerCase()))
+            .filter(([key]) => propertyDeclarationForKey(declaredNow, key) === undefined)
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
             .slice(0, 500)
             .map(([key, uses]) => ({ key, uses })),

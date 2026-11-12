@@ -156,6 +156,8 @@ export interface PropertyDeclaration {
   subject: PropertySubject;
   /** Los valores conocidos, cuando es «una de». */
   values: string[];
+  /** Si la pregunta se ofrece en toda página, cualquiera sea su plantilla. */
+  global: boolean;
   /** Lo que quien la declaró quiso explicar. */
   says: string | null;
 }
@@ -236,10 +238,31 @@ export function readPropertyDeclarations(blocks: readonly DeclaredBlock[]): Prop
       many: yes(valueOf(block, 'varios')),
       role,
       values: listOf(valueOf(block, 'valores')),
+      global: yes(valueOf(block, 'global') ?? valueOf(block, 'aplica a todas')),
       says: valueOf(block, 'qué') ?? valueOf(block, 'nota'),
     });
   }
   return said;
+}
+
+/**
+ * Resuelve una clave escrita a la identidad estable que la gobierna.
+ *
+ * El nombre canónico y sus rótulos lingüísticos son puertas de entrada a la
+ * misma declaración. `autor` y `author` no son dos propiedades; ambas llegan
+ * al bloque rector de `autor`. Un rótulo no reescribe el corpus ni convierte
+ * una coincidencia aproximada en identidad: la igualdad es exacta después de
+ * la misma normalización que usa el resto de la ontología.
+ */
+export function propertyDeclarationForKey(
+  declarations: readonly PropertyDeclaration[],
+  key: string,
+): PropertyDeclaration | undefined {
+  const wanted = key.trim().toLocaleLowerCase();
+  return declarations.find((one) =>
+    one.name.trim().toLocaleLowerCase() === wanted ||
+    Object.values(one.labels).some((label) => label.trim().toLocaleLowerCase() === wanted),
+  );
 }
 
 export interface ObjectDeclaration {

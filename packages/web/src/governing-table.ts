@@ -148,6 +148,7 @@ export async function renderGoverning(
   kind: GoverningKind,
   write: Write,
   openFacet?: OpenFacet,
+  governingPage?: string,
 ): Promise<{ element: HTMLElement; declaring: Set<string> } | null> {
   let said: OntologyView;
   try {
@@ -471,6 +472,17 @@ export async function renderGoverning(
         fields,
       );
 
+      editableCell(
+        cellIn(row, at++),
+        {
+          shows: property.global ? 'sí' : '',
+          label: 'si se ofrece en toda página',
+          placeholder: '—',
+        },
+        put(property.block, 'global'),
+        [{ value: 'sí' }, { value: 'no' }],
+      );
+
       // La columna del papel sólo donde hay papeles. En la tabla de abajo
       // estaría vacía en las veinticinco filas, y una columna vacía se lee como
       // si faltara algo.
@@ -497,7 +509,7 @@ export async function renderGoverning(
       const body = sectionIn(
         'Lo que Vera necesita',
         'Cada una cumple un papel que el código lee por su nombre. Cambiarles el nombre está bien —el papel viaja con ellas—; quitarlas deja a Vera sin saber leer lo que ya está escrito.',
-        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Papel', 'Descripción'],
+        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Global', 'Papel', 'Descripción'],
       );
       for (const property of machinery) written(property, body, true);
     }
@@ -506,9 +518,71 @@ export async function renderGoverning(
       const body = sectionIn(
         'El vocabulario de este corpus',
         'Las que pusiste tú. Vera las guarda, las enseña y deja consultarlas, y no las entiende: lo que significan lo dice esta página.',
-        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Descripción'],
+        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Global', 'Descripción'],
       );
       for (const property of vocabulary) written(property, body, false);
+    }
+
+    /*
+     * El vocabulario real, no una lista de culpas.
+     *
+     * Estas claves ya existen en páginas y bloques, pero todavía no tienen una
+     * definición estable. Se ordenan por uso y se pueden adoptar como una
+     * declaración ordinaria. Adoptar no cambia ninguna asignación: sólo crea el
+     * lugar desde el que la biblioteca podrá decir qué significa.
+     */
+    if (said.undeclared.length > 0) {
+      const body = sectionIn(
+        'En uso sin declarar',
+        'Claves observadas en el corpus que todavía no tienen una identidad gobernada. Declarar conserva todos sus usos tal como están.',
+        ['Clave observada', 'Usos', 'Decisión'],
+      );
+      for (const [index, undeclared] of said.undeclared.entries()) {
+        const row = rowIn(body, `undeclared:${undeclared.key}`);
+        const name = cellIn(row, 0);
+        name.textContent = undeclared.key;
+        const uses = cellIn(row, 1);
+        uses.textContent = String(undeclared.uses);
+        const decision = cellIn(row, 2);
+        const declare = document.createElement('button');
+        declare.type = 'button';
+        declare.className = 'governing-adopt-property';
+        declare.textContent = 'Declarar';
+        declare.disabled = governingPage === undefined;
+        declare.addEventListener('click', () => {
+          if (governingPage === undefined) return;
+          declare.disabled = true;
+          const block = `block:governed-property:${crypto.randomUUID()}`;
+          void api.submitCanonicalBatch([
+            { change: {
+              kind: 'create_block',
+              stableId: block,
+              page: governingPage,
+              parent: null,
+              position: said.properties.length + index + 10_000,
+              content: undeclared.key,
+            } },
+            { change: {
+              kind: 'set_property',
+              block,
+              propertyKey: 'rótulo es',
+              propertyValue: undeclared.key,
+            } },
+          ]).then((applied) => {
+            if (applied.status === 'rejected') {
+              declare.disabled = false;
+              window.alert(`No se declaró «${undeclared.key}»: ${applied.reason}`);
+              return;
+            }
+            row.classList.add('adopted');
+            declare.textContent = 'Declarada';
+          }).catch(() => {
+            declare.disabled = false;
+            window.alert(`No se pudo declarar «${undeclared.key}».`);
+          });
+        });
+        decision.append(declare);
+      }
     }
   } else {
     const objectChoices: Choice[] = said.objects.map((one) => ({
