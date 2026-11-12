@@ -127,10 +127,11 @@ after(async () => {
 describe('vera-mcp por stdio', () => {
   it('arranca y ofrece su catálogo', async () => {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 20);
+    assert.equal(tools.length, 21);
     assert.ok(tools.some((tool) => tool.name === 'vera_mi_constitucion'));
     assert.ok(tools.some((tool) => tool.name === 'vera_preparar_escritura'));
     assert.ok(tools.some((tool) => tool.name === 'vera_consultar'));
+    assert.ok(tools.some((tool) => tool.name === 'vera_contexto'));
     assert.equal(tools.find((tool) => tool.name === 'vera_escribir')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_editar_bloque_propio')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_mover_bloque_propio')?.annotations?.readOnlyHint, false);
@@ -211,6 +212,24 @@ describe('vera-mcp por stdio', () => {
     assert.equal(structured.count, 1);
     assert.equal(structured.blocks?.[0]?.id, OWNER_BLOCK);
     assert.equal(structured.nextCursor ?? null, null);
+  });
+
+  it('compone por MCP el mismo recibo territorial y atribuible de la API', async () => {
+    const out = await client.callTool({
+      name: 'vera_contexto',
+      arguments: { pagina: 'La bitácora', pregunta: '¿Cuál es el pensamiento y su matiz?', presupuesto: 8000 },
+    });
+    const receipt = out.structuredContent as {
+      version?: number; participant?: string; within?: string[];
+      page?: { id?: string }; items?: Array<{ revision?: string | null; authoredBy?: string | null }>;
+      used?: { characters?: number }; selection?: { usedCharacters?: number };
+    };
+    assert.equal(receipt.version, 3);
+    assert.equal(receipt.participant, 'participant:mcp-test');
+    assert.deepEqual(receipt.within, [PAGE]);
+    assert.equal(receipt.page?.id, PAGE);
+    assert.ok(receipt.items?.every((item) => item.revision !== null && item.authoredBy !== null));
+    assert.equal(receipt.used?.characters, receipt.selection?.usedCharacters);
   });
 
   it('escribe por la API y el cambio queda inmediatamente legible', async () => {

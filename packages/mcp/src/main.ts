@@ -31,15 +31,18 @@ import {
   ask as askVera,
   act as actVera,
   connectionFrom,
+  context as contextVera,
   propose as proposeVera,
   query as queryVera,
   submit as submitVera,
   submitBatch as submitBatchVera,
   type Connection,
 } from './client.ts';
-import { TOOLS, toolNamed, type Ask, type Propose, type Query, type Write, type WriteBatch } from './tools.ts';
+import {
+  TOOLS, toolNamed, type Ask, type Context, type Propose, type Query, type Write, type WriteBatch,
+} from './tools.ts';
 
-const VERSION = '0.9.0';
+const VERSION = '0.10.0';
 
 /**
  * Lo que un cliente lee antes de decidir cómo usar esto.
@@ -64,6 +67,9 @@ Cómo leerla:
   búsqueda. Lee por tramos y conserva el cursor_siguiente hasta terminar.
 - Para condiciones exactas sobre propiedades, enlaces o texto, usa
   vera_consultar: devuelve datos estructurados y cursor.
+- Para responder desde una página con evidencia acotada, usa vera_contexto:
+  devuelve un recibo con identidad efectiva, revisiones, razones, presupuesto y
+  omisiones; no confundas una omisión declarada con ausencia en el corpus.
 - vera_ontologia dice cómo está clasificado este corpus. El vocabulario lo puso
   el dueño; no supongas el significado de una propiedad sin mirarlo.
 
@@ -104,6 +110,7 @@ export function mcpServer(connection: Connection): Server {
   const writeBatch: WriteBatch = (origin, changes, ifRevisions) =>
     submitBatchVera(connection, origin, changes, ifRevisions);
   const query: Query = (input) => queryVera(connection, input);
+  const context: Context = (input) => contextVera(connection, input);
   const propose: Propose = (input) => proposeVera(connection, input);
   const action = (path: string, body?: Record<string, unknown>) => actVera(connection, path, body);
 
@@ -143,7 +150,9 @@ export function mcpServer(connection: Connection): Server {
      * primero—. Vera apagada es una circunstancia, no una violación.
      */
     try {
-      const result = await tool.run(request.params.arguments ?? {}, ask, write, writeBatch, query, propose, action);
+      const result = await tool.run(
+        request.params.arguments ?? {}, ask, write, writeBatch, query, propose, action, context,
+      );
       const text = typeof result === 'string' ? result : result.text;
       return {
         content: [{ type: 'text' as const, text }],

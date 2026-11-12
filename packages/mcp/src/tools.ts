@@ -22,6 +22,8 @@ export type Query = <T>(input: {
   limit: number;
 }) => Promise<T | Failure>;
 
+export type Context = <T>(input: Record<string, unknown>) => Promise<T | Failure>;
+
 export type Write = (
   origin: string,
   change: Record<string, unknown>,
@@ -68,6 +70,7 @@ export interface VeraTool {
     query?: Query,
     propose?: Propose,
     action?: Action,
+    context?: Context,
   ): Promise<string | ToolRunResult>;
 }
 
@@ -536,6 +539,82 @@ export const TOOLS: readonly VeraTool[] = [
           `${rows.length} en este tramo${next === null ? '.' : `; cursor_siguiente: ${next}.`}\n\n` +
           lines.join('\n'),
         structured: result,
+      };
+    },
+  },
+
+  {
+    name: 'vera_contexto',
+    title: 'Componer contexto verificable',
+    description:
+      'Compone para una pregunta un recibo de contexto auditable desde una página de Vera. ' +
+      'Devuelve piezas y relaciones con revisión, autoría, vía de hallazgo, razones de inclusión, ' +
+      'presupuesto, omisiones, advertencias y continuación. La identidad y el territorio provienen ' +
+      'de la credencial efectiva; esta herramienta no puede ampliarlos ni mantiene una copia del corpus.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pagina: { type: 'string', description: 'Título o identidad estable de la página de origen.' },
+        pregunta: { type: 'string', description: 'Pregunta o propósito que orienta la selección.' },
+        bloque: { type: 'string', description: 'Bloque focal opcional, perteneciente a la página.' },
+        presupuesto: {
+          type: 'integer', minimum: 4000, maximum: 60000,
+          description: 'Presupuesto máximo aproximado en caracteres. Por omisión 24000.',
+        },
+        vecindad: {
+          type: 'integer', minimum: 0, maximum: 2,
+          description: 'Profundidad de expansión por enlaces. Por omisión 1.',
+        },
+        busqueda: {
+          type: 'integer', minimum: 0, maximum: 20,
+          description: 'Máximo de páginas añadidas por coincidencia textual. Por omisión 8.',
+        },
+      },
+      required: ['pagina', 'pregunta'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        version: { type: 'integer' },
+        participant: { type: 'string' },
+        request: { type: 'string' },
+        within: { type: 'array', items: { type: 'string' } },
+        page: { type: 'object', additionalProperties: true },
+        focus: { anyOf: [{ type: 'object', additionalProperties: true }, { type: 'null' }] },
+        items: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        relations: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        used: { type: 'object', additionalProperties: true },
+        omitted: { type: 'object', additionalProperties: true },
+        warnings: { type: 'array', items: { type: 'string' } },
+        continuation: { anyOf: [{ type: 'object', additionalProperties: true }, { type: 'null' }] },
+        selection: { type: 'object', additionalProperties: true },
+      },
+      required: ['version', 'participant', 'request', 'within', 'page', 'items', 'relations', 'used', 'omitted', 'warnings', 'selection'],
+      additionalProperties: true,
+    },
+    async run(args, _ask, _write, _writeBatch, _query, _propose, _action, context) {
+      const page = say(args.pagina).trim();
+      const request = say(args.pregunta).trim();
+      if (page === '' || request === '') return 'Dime una página y la pregunta que orienta el contexto.';
+      if (context === undefined) return 'Esta conexión MCP no habilitó la composición de contexto.';
+      const receipt = await context<Record<string, unknown>>({
+        page,
+        request,
+        ...(say(args.bloque).trim() === '' ? {} : { focus: say(args.bloque).trim() }),
+        ...(args.presupuesto === undefined ? {} : { budgetCharacters: count(args.presupuesto, 24_000, 60_000) }),
+        ...(args.vecindad === undefined ? {} : { neighbourDepth: Math.max(0, Math.min(2, Math.floor(Number(args.vecindad) || 0))) }),
+        ...(args.busqueda === undefined ? {} : { searchLimit: Math.max(0, Math.min(20, Math.floor(Number(args.busqueda) || 0))) }),
+      });
+      if (failed(receipt)) return trouble(receipt);
+      const items = Array.isArray(receipt['items']) ? receipt['items'].length : 0;
+      const relations = Array.isArray(receipt['relations']) ? receipt['relations'].length : 0;
+      const used = receipt['used'] as { characters?: unknown } | undefined;
+      return {
+        text: `Contexto verificable para «${page}»: ${items} piezas, ${relations} relaciones, ` +
+          `${typeof used?.characters === 'number' ? used.characters : 0} caracteres. ` +
+          'La respuesta estructurada conserva procedencia, selección y omisiones.',
+        structured: receipt,
       };
     },
   },

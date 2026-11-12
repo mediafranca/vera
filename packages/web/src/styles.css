@@ -5634,7 +5634,14 @@ body.settings-open #text {
 }
 .configuration-surface-body { width: 100%; }
 .configuration-field { display: grid; gap: .35rem; min-width: 0; }
-.configuration-field-heading { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.configuration-field-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .6rem;
+  min-height: 1.35rem;
+  line-height: 1.2;
+}
 .configuration-field-state {
   flex: 0 0 auto;
   padding: .12rem .42rem;
@@ -5721,8 +5728,15 @@ body.settings-open #text {
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
 }
 
+.governing-cols-2 { min-width: 32rem; }
+.governing-cols-3 { min-width: 42rem; }
+.governing-cols-4 { min-width: 48rem; }
+.governing-cols-5 { min-width: 58rem; }
+.governing-cols-6 { min-width: 64rem; }
 .governing-cols-8 { min-width: 68rem; }
 
 #graph.ontology-government-map {
@@ -6697,19 +6711,6 @@ body.settings-open #text {
 }
 
 .settings-government-list { margin-bottom: 0; }
-.settings-library-government {
-  margin-block: 1.25rem;
-  border-block: 1px solid var(--line);
-  padding-block: .75rem;
-}
-.settings-library-government > summary {
-  cursor: pointer;
-  font-weight: 650;
-  min-height: var(--form-control-height);
-  align-content: center;
-}
-.settings-library-government[open] > summary { margin-bottom: .5rem; }
-
 .governance-index {
   margin: 1rem 0 1.5rem;
   padding-top: 1rem;
@@ -10657,6 +10658,7 @@ html[data-working-slow='true']::after {
   border: 0;
   padding: 0.4rem 0.75rem;
   text-align: left;
+  box-sizing: border-box;
 }
 
 /* La primera columna comparte vertical con el título de la página y con la
@@ -10679,6 +10681,7 @@ html[data-working-slow='true']::after {
   vertical-align: baseline;
   border-bottom: 1px solid color-mix(in srgb, var(--rule) 50%, transparent);
   overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 /* El nombre pesa: es lo que se busca al recorrer la tabla con la vista. */

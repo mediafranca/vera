@@ -697,6 +697,21 @@ surface MemoryOverMCP {
         -- tramo servido y siguiente cursor. Un cliente no necesita volver a
         -- analizar Markdown para saber qué bloque leyó ni cómo continuar.
 
+    @guarantee ContextReceiptsCrossTheSameDoor
+        -- `vera_contexto` compone desde una página y una pregunta el mismo
+        -- recibo verificable que usa la bibliotecaria residente: participante
+        -- efectivo, universo autorizado, piezas, relaciones, revisiones,
+        -- autoría, vía y razón de inclusión, presupuesto, omisiones,
+        -- advertencias y continuación. MCP adapta el transporte; no selecciona
+        -- por su cuenta ni conserva una segunda copia del contexto.
+
+    @guarantee AContextRequestCannotClaimItsReaderOrTerritory
+        -- La identidad lectora y `within` se derivan de la credencial y sus
+        -- concesiones. El cliente puede orientar la pregunta, el foco y el
+        -- presupuesto dentro de límites, pero no enviar un participante ni un
+        -- universo más amplio. Una página o bloque fuera de territorio se
+        -- comporta como inexistente.
+
     @guarantee ReadingARevisionEnablesOneSafeRewrite
         -- Cada bloque servido nombra su revisión vigente. Reescribirlo exige
         -- devolver esa revisión; si ya cambió, la puerta responde conflicto con
