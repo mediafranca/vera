@@ -65,7 +65,8 @@ describe('superficies especiales', () => {
   });
 
   it('distingue gobierno efectivo, superficies, proyecciones y documentación', () => {
-    assert.match(settings, /governmentSummary\.textContent = 'Gobierno'/);
+    assert.match(settings, /\{ id: 'gobierno', label: 'Gobierno' \}/);
+    assert.match(settings, /function drawGovernment[\s\S]*handlers\.drawMemory/);
     assert.match(settings, /Objetos-plantilla, propiedades, relaciones y composiciones/);
     assert.match(main, /kind\.mode !== 'documentación'/);
     assert.match(main, /item\.disabled = true/);

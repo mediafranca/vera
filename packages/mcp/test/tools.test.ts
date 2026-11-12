@@ -11,7 +11,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { connectionFrom } from '../src/client.ts';
-import { TOOLS, outline, toolNamed, type Action, type Ask, type Propose, type Query, type Write, type WriteBatch } from '../src/tools.ts';
+import {
+  TOOLS, outline, toolNamed, type Action, type Ask, type Context, type Propose, type Query, type Write, type WriteBatch,
+} from '../src/tools.ts';
 
 /** Una Vera de mentira que anota lo que le preguntan. */
 function fakeVera(answers: Record<string, unknown>) {
@@ -62,6 +64,7 @@ describe('el catálogo', () => {
       [
         'vera_buscar',
         'vera_consultar',
+        'vera_contexto',
         'vera_descartar',
         'vera_editar_bloque_propio',
         'vera_escribir',
@@ -438,6 +441,39 @@ describe('consultar', () => {
     assert.deepEqual(calls, [{ source: '? tipo=proyecto ; tabla', cursor: 0, limit: 2 }]);
     assert.match(said, /3 resultados/);
     assert.match(said, /cursor_siguiente: 2/);
+  });
+});
+
+describe('contexto verificable', () => {
+  it('delega en la API canónica y conserva el recibo estructurado', async () => {
+    const calls: Array<{ path: string; body?: Record<string, unknown> }> = [];
+    const context: Context = async (body) => {
+      calls.push({ path: '/context', body });
+      return {
+        version: 3,
+        participant: 'participant:alumnus-exemplar',
+        request: '¿Qué sostiene esta idea?',
+        within: ['page:axis'],
+        page: { id: 'page:axis', title: 'Axis Mundae' },
+        items: [{ kind: 'block', id: 'block:1' }],
+        relations: [],
+        used: { characters: 900, identities: 2 },
+        omitted: { pageBlocks: 0, libraryPages: 0 },
+        warnings: [],
+        continuation: null,
+        selection: { budgetCharacters: 8000 },
+      };
+    };
+    const tool = toolNamed('vera_contexto')!;
+    const result = await tool.run({
+      pagina: 'Axis Mundae', pregunta: '¿Qué sostiene esta idea?', presupuesto: 8000,
+    }, fakeVera({}).ask, undefined, undefined, undefined, undefined, undefined, context);
+    assert.deepEqual(calls, [{
+      path: '/context',
+      body: { page: 'Axis Mundae', request: '¿Qué sostiene esta idea?', budgetCharacters: 8000 },
+    }]);
+    assert.equal(typeof result, 'object');
+    assert.equal(typeof result === 'string' ? null : result.structured.participant, 'participant:alumnus-exemplar');
   });
 });
 

@@ -121,6 +121,57 @@ describe('lectura local', () => {
   });
 });
 
+describe('recibo de contexto para agentes externos', () => {
+  it('resuelve título, conserva la identidad efectiva y declara el presupuesto', async () => {
+    const page = await write({
+      kind: 'create_page', stableId: 'page:test-context', title: 'Contexto verificable', visibility: 'private',
+    });
+    const block = await write({
+      kind: 'create_block', stableId: 'block:test-context', page, parent: null, position: 0,
+      content: 'Una evidencia con revisión y procedencia.',
+    });
+    const response = await fetch(`${base}/context`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-vera-client': 'server-context-test' },
+      body: JSON.stringify({
+        page: 'Contexto verificable', request: '¿Cuál es la evidencia?', focus: block,
+        budgetCharacters: 8000, neighbourDepth: 0, searchLimit: 0,
+      }),
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    const receipt = await response.json() as {
+      participant: string; within: string[]; page: { id: string };
+      focus: { id: string } | null; used: { characters: number };
+      selection: { budgetCharacters: number; usedCharacters: number };
+      items: Array<{ id: string; revision: string | null; authoredBy: string | null }>;
+    };
+    assert.equal(receipt.participant, OWNER);
+    assert.deepEqual(receipt.within, [page]);
+    assert.equal(receipt.page.id, page);
+    assert.equal(receipt.focus?.id, block);
+    assert.equal(receipt.selection.budgetCharacters, 8000);
+    assert.equal(receipt.used.characters, receipt.selection.usedCharacters);
+    assert.ok(receipt.items.every((item) => item.revision !== null && item.authoredBy !== null));
+  });
+
+  it('no acepta un foco ajeno a la página', async () => {
+    const other = await write({
+      kind: 'create_page', stableId: 'page:test-context-other', title: 'Otro contexto', visibility: 'private',
+    });
+    const foreign = await write({
+      kind: 'create_block', stableId: 'block:test-context-other', page: other, parent: null, position: 0,
+      content: 'Una evidencia de otra página.',
+    });
+    const response = await fetch(`${base}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        page: 'Contexto verificable', request: '¿Qué dice?', focus: foreign,
+      }),
+    });
+    assert.equal(response.status, 404);
+  });
+});
+
 describe('ontología rectora de relaciones', () => {
   it('lee tipos estructurados desde VERA: Relaciones sin exigir restricciones', async () => {
     const page = await write({

@@ -112,6 +112,32 @@ export async function query<T>(
   return body as T;
 }
 
+/** Compone un recibo de contexto por la misma API de lectura que usa Vera. */
+export async function context<T>(
+  connection: Connection,
+  input: Record<string, unknown>,
+): Promise<T | Failure> {
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'x-vera-client': connection.client,
+  };
+  if (connection.token !== null) headers.authorization = `Bearer ${connection.token}`;
+  try {
+    const response = await fetch(new URL('/context', connection.url), {
+      method: 'POST', headers, body: JSON.stringify(input),
+    });
+    const body = await response.json().catch(async () => ({ error: await response.text().catch(() => '') }));
+    if (!response.ok) {
+      const said = body as { error?: unknown };
+      return { status: response.status, error: String(said.error ?? response.statusText) };
+    }
+    return body as T;
+  } catch (trouble) {
+    return { status: 0, error: `no hay nadie escuchando en ${connection.url} (${String(trouble)})` };
+  }
+}
+
 export interface WriteResult {
   status: 'applied' | 'duplicate';
   sequence: number;

@@ -12,7 +12,11 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { hostname, userInfo } from 'node:os';
 
 import { observeServiceStatuses } from './service-status.ts';
-import { composeLibrarianContext, librarianContextExposure } from './librarian-context.ts';
+import {
+  composeLibrarianContext,
+  composeLibrarianContextReceipt,
+  librarianContextExposure,
+} from './librarian-context.ts';
 
 import {
   TESTIMONY_KEY,
@@ -8929,6 +8933,82 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           setPresentationFold(store, owner.id, block, body.folded === true);
         }
         send(response, 200, { block, folded: body.folded === true });
+      });
+      return;
+    }
+
+    /*
+     * Componer contexto verificable para una inteligencia externa.
+     *
+     * La frontera resuelve la grafía humana una vez y compone con identidades
+     * estables. La identidad y el territorio salen de la credencial efectiva;
+     * el cuerpo no puede ampliarlos ni suplantarlos. El recibo es el mismo que
+     * usa la bibliotecaria residente y su volumen se registra antes de salir.
+     */
+    if (request.method === 'POST' && path === '/context') {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: {
+          page?: unknown;
+          focus?: unknown;
+          request?: unknown;
+          budgetCharacters?: unknown;
+          neighbourDepth?: unknown;
+          searchLimit?: unknown;
+        };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const pageRef = typeof body.page === 'string' ? body.page.trim() : '';
+        const asked = typeof body.request === 'string' ? body.request.trim() : '';
+        if (pageRef === '' || asked === '') {
+          send(response, 422, { error: 'page and request are required' });
+          return;
+        }
+        const page = graph.page(pageRef) ?? graph.pageTitled(pageRef);
+        if (page === undefined || !isReadablePage(page.id)) {
+          send(response, 404, { error: 'la página de contexto no existe' });
+          return;
+        }
+        const focus = typeof body.focus === 'string' && body.focus.trim() !== ''
+          ? graph.block(body.focus.trim())
+          : undefined;
+        if (focus !== undefined && focus.page !== page.id) {
+          send(response, 404, { error: 'el bloque de contexto no pertenece a la página' });
+          return;
+        }
+        if (typeof body.focus === 'string' && body.focus.trim() !== '' && focus === undefined) {
+          send(response, 404, { error: 'el bloque de contexto no existe' });
+          return;
+        }
+        const integer = (value: unknown, fallback: number, least: number, most: number): number =>
+          typeof value === 'number' && Number.isInteger(value)
+            ? Math.max(least, Math.min(most, value))
+            : fallback;
+        const receipt = composeLibrarianContextReceipt({
+          graph,
+          participant: who.participant,
+          page: page.id,
+          focus: focus?.stableId ?? null,
+          request: asked,
+          policy: {
+            budgetCharacters: integer(body.budgetCharacters, 24_000, 4_000, 60_000),
+            neighbourDepth: integer(body.neighbourDepth, 1, 0, 2),
+            searchLimit: integer(body.searchLimit, 8, 0, 20),
+          },
+          canRead: isReadablePage,
+        });
+        const serialized = JSON.stringify(receipt);
+        const exposure = librarianContextExposure(serialized);
+        deliver(receipt, {
+          surface: 'POST /context',
+          subject: `${page.id} · ${asked}`,
+          delivered: exposure.delivered,
+        });
       });
       return;
     }

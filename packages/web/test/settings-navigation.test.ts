@@ -10,11 +10,12 @@ const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 describe('arquitectura de configuración', () => {
   it('ordena el Centro de Vera por propósitos humanos', () => {
-    for (const label of ['Biblioteca', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Apariencia']) {
+    for (const label of ['Biblioteca', 'Gobierno', 'Participantes', 'Agente de biblioteca', 'Conexiones', 'Apariencia']) {
       assert.match(settings, new RegExp(`label: '${label}'`));
     }
-    assert.doesNotMatch(settings, /\{ id: 'gobierno'/);
-    assert.match(settings, /governmentSummary\.textContent = 'Gobierno'/);
+    assert.match(settings, /\{ id: 'gobierno', label: 'Gobierno' \}/);
+    assert.doesNotMatch(settings, /governmentSummary/);
+    assert.doesNotMatch(settings, /settings-library-government/);
     assert.doesNotMatch(settings, /label: 'Sistema'/);
     assert.doesNotMatch(settings, /label: 'Ayuda'/);
     assert.doesNotMatch(settings, /label: 'Inicio'/);
@@ -124,6 +125,15 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /api\.renameLibrary/);
     assert.match(settings, /settings-backup/);
     assert.match(styles, /\.instance-configuration :is\(input, select\)[\s\S]*height:\s*var\(--form-control-height\)/);
+    assert.match(styles, /\.configuration-field-heading[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  });
+
+  it('mantiene Gobierno como destino de primer orden y sus tablas no se traslapan', () => {
+    assert.match(settings, /active === 'gobierno'\) drawGovernment/);
+    assert.match(settings, /function drawGovernment[\s\S]*handlers\.drawMemory/);
+    assert.match(styles, /\.governing-tables[\s\S]*overflow-x:\s*auto/);
+    assert.match(styles, /\.governing-cols-4\s*\{\s*min-width:\s*48rem/);
+    assert.match(styles, /\.governing \{[\s\S]*table-layout:\s*fixed;[\s\S]*width:\s*100%/);
   });
 
   it('abre la captura web existente y omite canales sin panel operativo', () => {
@@ -149,8 +159,8 @@ describe('arquitectura de configuración', () => {
     assert.match(styles, /\.settings-action\s*\{[\s\S]*?border-radius:\s*var\(--form-control-radius\)/);
   });
 
-  it('reúne el Gobierno dentro de Biblioteca y conserva un solo destino ontológico', () => {
-    assert.match(settings, /section: 'biblioteca', label: 'Gobierno'/);
+  it('mantiene un solo destino ontológico dentro del Gobierno de primer orden', () => {
+    assert.match(settings, /section: 'gobierno', label: 'Gobierno'/);
     assert.match(main, /row\('Ontología', 'Objetos, propiedades y relaciones en un visor facetado'\)/);
     assert.match(main, /ontologyKinds = new Set\(\['objects', 'properties', 'relations'\]\)/);
     assert.match(main, /page\.kind === 'objects'/);
