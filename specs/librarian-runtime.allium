@@ -44,6 +44,23 @@ contract ResidentLibrarianExecution {
         -- Every included page records why it was selected. The model may read
         -- more through tools, but it never has to guess that a library exists.
 
+    @invariant ContextSelectionLeavesAnAuditableReceipt
+        -- The frozen context names every selected page and block, how it was
+        -- found, why it was included, its current revision and authorship, the
+        -- graph relations actually supplied, the exact character budget, every
+        -- omission, warnings and a continuation whenever selection was partial.
+
+    @invariant ContextNeverCrossesItsAuthorizedUniverse
+        -- Authorization precedes ranking and traversal. Every page, block and
+        -- relation named by the receipt belongs to its explicit within set;
+        -- an inaccessible hit behaves as if it did not exist.
+
+    @invariant ExposureAndContextReceiptMeasureTheSameDelivery
+        -- Immediately before inference, the compact exposure log records the
+        -- receipt's exact serialized volume and number of distinct delivered
+        -- identities. It does not copy their text or structure into another
+        -- persistent index.
+
     @invariant ToolProtocolNeverBecomesLibraryContent
         -- A valid or malformed tool request is protocol, never a final reply and
         -- never a block. Markdown fences around structured calls do not turn
@@ -113,6 +130,7 @@ enum LibrarianExecutionAdapter { embedded_model | external_agent }
 enum LibrarianRuntimePermission { read_request_context | reply | daily_round }
 enum FormativePractice { reading | selection | interpretation | comparison | synthesis | conclusion }
 enum DialecticGateStatus { open | responding | fulfilled | bypassed }
+enum ContextDiscovery { focus | structure | page_start | text_match | graph_neighbour }
 
 entity LibrarianCorpusInscription {
     request: conversations/ConversationRequest
@@ -188,8 +206,66 @@ entity LibrarianRuntimeRun {
     error: String?
 }
 
+entity LibrarianContextReceipt {
+    request: conversations/ConversationRequest
+    participant: core/Participant
+    within: List<core/Page>
+    items: List<LibrarianContextItem>
+    relations: List<LibrarianContextRelation>
+    budget_characters: Integer
+    used_characters: Integer
+    omitted_page_blocks: Integer
+    omitted_library_pages: Integer
+    warnings: List<String>
+    continuation: String?
+}
+
+entity LibrarianContextItem {
+    receipt: LibrarianContextReceipt
+    page: core/Page
+    block: core/Block?
+    revision: core/Revision
+    authored_by: core/Participant
+    found_by: List<ContextDiscovery>
+    reason: String
+    excerpt: String?
+}
+
+entity LibrarianContextRelation {
+    receipt: LibrarianContextReceipt
+    source: core/Page
+    target: core/Page
+    found_by: ContextDiscovery
+    reason: String
+}
+
 actor LibrarianOwner {
     identified_by: core/Participant where this.kind = human and this.status = active
+}
+
+rule ComposeLibrarianContextReceipt {
+    when: ComposeLibrarianContext(configuration, request, within, items, relations, used_characters, omitted_page_blocks, omitted_library_pages, warnings, continuation)
+    requires: configuration.librarian.librarian = request.conversation.agent
+    requires: within.all(page => readable(configuration.librarian.librarian, page))
+    requires: items.all(item => within.contains(item.page))
+    requires: relations.all(relation => within.contains(relation.source) and within.contains(relation.target))
+    requires: items.all(item => item.revision = current_revision(item.block ?? item.page))
+    requires: items.all(item => item.excerpt = null or revision_contains(item.revision, item.excerpt))
+    requires: used_characters <= configuration.context_budget_characters or warnings.count > 0
+    requires: omitted_page_blocks + omitted_library_pages = 0 or continuation != null
+    ensures: LibrarianContextReceipt.created(
+        request: request,
+        participant: configuration.librarian.librarian,
+        within: within,
+        items: items,
+        relations: relations,
+        budget_characters: configuration.context_budget_characters,
+        used_characters: used_characters,
+        omitted_page_blocks: omitted_page_blocks,
+        omitted_library_pages: omitted_library_pages,
+        warnings: warnings,
+        continuation: continuation
+    )
 }
 
 rule OwnerConfiguresResidentRuntime {
