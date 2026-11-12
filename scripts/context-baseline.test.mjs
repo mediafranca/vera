@@ -7,6 +7,7 @@ import { parseArguments, runBaseline, scoreCase, validateManifest } from './cont
 const manifest = {
   schemaVersion: 1,
   name: 'Fixture de contexto',
+  actor: { participant: 'participant:fixture' },
   corpus: { sequence: 12 },
   defaults: { budgetCharacters: 5_000 },
   cases: [
@@ -36,6 +37,12 @@ before(async () => {
     response.setHeader('content-type', 'application/json');
     if (request.url === '/health') {
       response.end(JSON.stringify({ lastSequence: 12 }));
+      return;
+    }
+    if (request.url === '/agents/whoami') {
+      response.end(JSON.stringify({
+        participant: 'participant:fixture', kind: 'agent', scopes: ['read'], label: 'Fixture',
+      }));
       return;
     }
     const url = new URL(request.url ?? '/', 'http://fixture');
@@ -89,6 +96,26 @@ describe('context baseline', () => {
       () => runBaseline({ ...manifest, corpus: { sequence: 11 } }, { baseUrl }),
       /snapshot correcto/,
     );
+  });
+
+  it('fails closed when the credential does not match the declared actor', async () => {
+    await assert.rejects(
+      () => runBaseline({ ...manifest, actor: { participant: 'participant:other' } }, { baseUrl }),
+      /credencial pertenece a participant:fixture/,
+    );
+  });
+
+  it('accepts an expected refusal as evidence of an access boundary', () => {
+    const scored = scoreCase({
+      id: 'refused', question: '¿Puedo leer fuera?',
+      calls: [{ tool: 'page', page: 'page:hidden', expectedStatus: 404 }],
+      expected: { forbiddenIds: ['page:hidden'], abstain: true },
+    }, [{
+      tool: 'page', ok: false, status: 404, error: 'no such page',
+      identities: [], characters: 24, latencyMs: 1, text: '{"error":"no such page"}',
+    }], 100);
+    assert.equal(scored.passed, true);
+    assert.deepEqual(scored.callErrors, []);
   });
 
   it('reports forbidden identities and budget overruns', () => {

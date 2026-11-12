@@ -10204,7 +10204,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         const centred = graph.page(centre) ?? graph.pageTitled(centre);
         const focusedTrail = centred === undefined ? null : trailOf(centred.id);
-        const hood = graph.neighbourhood({ centre, depth, participant });
+        // La frontera acepta título o identidad, como las demás lecturas de
+        // página y como promete `vera_vecindario`. El núcleo recorre por
+        // identidad estable: una vez resuelto el título no debe volver a pasar
+        // la grafía humana como si fuera un PageId.
+        const hood = graph.neighbourhood({ centre: centred?.id ?? centre, depth, participant });
         const heldPages = new Set(hood.nodes.map((node) => node.page));
         const threadPages = new Set(
           (focusedTrail?.route ?? []).flatMap((stop) => stop.page === null ? [] : [stop.page]),
