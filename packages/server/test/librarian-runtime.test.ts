@@ -26,6 +26,57 @@ import {
 const directories: string[] = [];
 
 describe('frontera formativa de la dialéctica', () => {
+  it('activa historia, conserva contradicciones atribuidas y compone as of sequence', () => {
+    const graph = VeraGraph.create({ name: 'Vera temporal' });
+    graph.addParticipant({ id: 'participant:owner', name: 'Dueña', kind: 'human' });
+    graph.addParticipant({ id: 'participant:agent', name: 'Agente', kind: 'agent' });
+    graph.admit('participant:owner'); graph.admit('participant:agent');
+    const write = (originId: string, change: Parameters<typeof graph.submitOperation>[0]['change'],
+      participant = 'participant:owner'): void => {
+      assert.notEqual(graph.submitOperation({ originId, participant, change }).status, 'rejected');
+    };
+    write('page:decision', {
+      kind: 'create_page', stableId: 'page:decision', title: 'Decisión', visibility: 'private',
+    });
+    write('block:decision', {
+      kind: 'create_block', stableId: 'block:decision', page: 'page:decision', parent: null, position: 0,
+      content: 'estado:: propuesto',
+    });
+    const anchor = graph.operations().at(-1)?.sequence ?? 0;
+    write('edit:decision', {
+      kind: 'edit_block', block: 'block:decision', content: 'estado:: aprobado',
+    });
+    const currentSequence = graph.operations().at(-1)?.sequence ?? 0;
+
+    const now = JSON.parse(composeLibrarianContext({
+      graph, participant: 'participant:agent', page: 'page:decision',
+      request: '¿Qué cambió y qué se sabía antes?',
+      policy: { budgetCharacters: 8_000, neighbourDepth: 0, searchLimit: 0 },
+    })) as LibrarianContextReceipt;
+    assert.equal(now.version, 6);
+    assert.equal(now.temporal.active, true);
+    assert.equal(now.temporal.mode, 'history');
+    assert.deepEqual(now.temporal.history[0]?.states.map((one) => [one.content, one.participant]), [
+      ['estado:: propuesto', 'participant:owner'],
+      ['estado:: aprobado', 'participant:owner'],
+    ]);
+    assert.equal(now.temporal.contradictions[0]?.field, 'estado');
+    assert.equal(now.temporal.contradictions[0]?.earlier.content, 'estado:: propuesto');
+    assert.equal(now.temporal.contradictions[0]?.later.content, 'estado:: aprobado');
+
+    const thenGraph = graph.replayFromLog(anchor);
+    const then = JSON.parse(composeLibrarianContext({
+      graph: thenGraph, participant: 'participant:agent', page: 'page:decision',
+      request: '¿Qué se sabía entonces?', asOfSequence: anchor, currentSequence,
+      policy: { budgetCharacters: 8_000, neighbourDepth: 0, searchLimit: 0 },
+    })) as LibrarianContextReceipt;
+    assert.equal(then.temporal.mode, 'as_of_sequence');
+    assert.equal(then.temporal.effectiveSequence, anchor);
+    assert.equal(then.temporal.currentSequence, currentSequence);
+    assert.equal(then.blocks[0]?.content, 'estado:: propuesto');
+    assert.equal(JSON.stringify(then).includes('estado:: aprobado'), false);
+  });
+
   it('compone microcontexto de la página y macrocontexto explicable de la biblioteca', () => {
     const graph = VeraGraph.create({ name: 'Vera de prueba' });
     graph.addParticipant({ id: 'participant:herbert', name: 'Herbert', kind: 'human' });
@@ -54,7 +105,7 @@ describe('frontera formativa de la dialéctica', () => {
       policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
     });
     const parsed = JSON.parse(snapshot) as LibrarianContextReceipt;
-    assert.equal(parsed.version, 5);
+    assert.equal(parsed.version, 6);
     assert.equal(parsed.focus?.id, 'block:focus');
     assert.ok(parsed.blocks.some((block) => block.id === 'block:parent'));
     assert.ok(parsed.blocks.some((block) => block.id === 'block:sibling'));

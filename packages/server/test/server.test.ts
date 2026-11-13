@@ -149,7 +149,7 @@ describe('recibo de contexto para agentes externos', () => {
       };
       items: Array<{ id: string; revision: string | null; authoredBy: string | null }>;
     };
-    assert.equal(receipt.version, 5);
+    assert.equal(receipt.version, 6);
     assert.equal(receipt.participant, OWNER);
     assert.deepEqual(receipt.within, [page]);
     assert.equal(receipt.page.id, page);
@@ -176,6 +176,43 @@ describe('recibo de contexto para agentes externos', () => {
       }),
     });
     assert.equal(response.status, 404);
+  });
+
+  it('lee el corpus as of sequence y no introduce revisiones futuras', async () => {
+    const page = await write({
+      kind: 'create_page', stableId: 'page:test-context-temporal', title: 'Contexto temporal', visibility: 'private',
+    });
+    const block = await write({
+      kind: 'create_block', stableId: 'block:test-context-temporal', page, parent: null, position: 0,
+      content: 'estado:: propuesto',
+    });
+    const anchor = (await get('/health') as { lastSequence: number }).lastSequence;
+    await write({ kind: 'edit_block', block, content: 'estado:: aprobado' });
+    const current = (await get('/health') as { lastSequence: number }).lastSequence;
+
+    const response = await fetch(`${base}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        page, focus: block, request: '¿Qué se sabía entonces?', asOfSequence: anchor,
+        budgetCharacters: 8000, neighbourDepth: 0, searchLimit: 0,
+      }),
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    const receipt = await response.json() as {
+      blocks: Array<{ content: string }>;
+      temporal: { mode: string; effectiveSequence: number; currentSequence: number; history: unknown[] };
+    };
+    assert.equal(receipt.temporal.mode, 'as_of_sequence');
+    assert.equal(receipt.temporal.effectiveSequence, anchor);
+    assert.equal(receipt.temporal.currentSequence, current);
+    assert.equal(receipt.blocks[0]?.content, 'estado:: propuesto');
+    assert.equal(JSON.stringify(receipt).includes('estado:: aprobado'), false);
+
+    const future = await fetch(`${base}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ page, request: 'futuro', asOfSequence: current + 1 }),
+    });
+    assert.equal(future.status, 422);
   });
 
   it('reanuda con cursor opaco y lo invalida legiblemente cuando cambia la fuente', async () => {

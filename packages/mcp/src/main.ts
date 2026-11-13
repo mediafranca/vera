@@ -69,7 +69,9 @@ Cómo leerla:
   vera_consultar: devuelve datos estructurados y cursor.
 - Para responder desde una página con evidencia acotada, usa vera_contexto:
   devuelve un recibo con identidad efectiva, revisiones, razones, presupuesto y
-  omisiones; no confundas una omisión declarada con ausencia en el corpus.
+  omisiones; no confundas una omisión declarada con ausencia en el corpus. Ante
+  preguntas temporales consulta su historia o fija una secuencia: conserva ambos
+  lados atribuidos de una contradicción y no trates lo más reciente como verdad.
 - Para nombres dudosos, vera_resolver_entidades distingue títulos, rótulos
   alternativos y homónimos. Una coincidencia puede quedar como propuesta humana;
   nunca fusiona páginas ni convierte una semejanza en identidad por sí sola.

@@ -2422,7 +2422,7 @@ export class VeraGraph {
   // Reproducción del log (@invariant ReplayReconstructsState)
   // -------------------------------------------------------------------------
 
-  replayFromLog(): VeraGraph {
+  replayFromLog(untilSequence: number = Number.POSITIVE_INFINITY): VeraGraph {
     const replayed = new VeraGraph(this.id, this.name);
     for (const participant of this.#participants.values()) {
       replayed.addParticipant(participant);
@@ -2442,7 +2442,9 @@ export class VeraGraph {
 
     // Las operaciones ya fueron validadas al admitirse: reproducir es aplicar,
     // reutilizando el sujeto que quedó registrado.
-    for (const operation of [...this.#operations].sort((a, b) => a.sequence - b.sequence)) {
+    for (const operation of [...this.#operations]
+      .filter((one) => one.sequence <= untilSequence)
+      .sort((a, b) => a.sequence - b.sequence)) {
       replayed.#apply(operation.submission.change, operation.subjectId, operation.appliedAt);
       // La autoría es materialización del registro, no un hecho aparte: se
       // reconstruye reproduciendo, o @invariant ReplayReconstructsState dejaría
