@@ -195,6 +195,7 @@ import {
   operationReviewProposal,
   operationReviewProposals,
 } from './operation-proposals.ts';
+import { entityResolutionCandidates } from './entity-resolution.ts';
 import {
   canReadCollective,
   canWriteCollective,
@@ -5175,19 +5176,77 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
-    if (request.method === 'POST' && /^\/operation-proposals\/[^/]+\/(accept|reject)$/.test(path)) {
+    if (request.method === 'POST' && /^\/operation-proposals\/[^/]+\/(accept|reject|revert)$/.test(path)) {
       const blocked = ownerOnly(); if (blocked !== null) { send(response, 403, blocked); return; }
       const parts = path.split('/');
       const proposal = operationReviewProposal(store, decodeURIComponent(parts[2] ?? ''));
-      if (proposal === null || proposal.status !== 'awaiting_review') {
-        send(response, 409, { error: 'la propuesta ya no está pendiente' }); return;
-      }
+      if (proposal === null) { send(response, 404, { error: 'la propuesta no existe' }); return; }
       if (parts[3] === 'reject') {
+        if (proposal.status === 'rejected') {
+          send(response, 200, { status: 'rejected', duplicate: true }); return;
+        }
+        if (proposal.status !== 'awaiting_review') {
+          send(response, 409, { error: 'la propuesta ya no está pendiente' }); return;
+        }
         const changed = decideOperationReviewProposal(store, {
           id: proposal.id, reviewer: graph.owner!, status: 'rejected',
         });
         send(response, changed ? 200 : 409, changed ? { status: 'rejected' } : { error: 'la propuesta ya no está pendiente' });
         return;
+      }
+      const acceptedOperation = graph.operations().find(
+        (one) => one.originId === `proposal:${proposal.id}` && one.subjectId === proposal.block,
+      );
+      if (parts[3] === 'revert') {
+        if (proposal.status !== 'accepted' || acceptedOperation === undefined) {
+          send(response, 409, { error: 'sólo una propuesta aceptada puede revertirse' }); return;
+        }
+        const reverted = graph.operations().find(
+          (one) => one.originId === `proposal-revert:${proposal.id}` && one.subjectId === proposal.block,
+        );
+        if (reverted !== undefined) {
+          send(response, 200, { status: 'reverted', duplicate: true, operation: reverted.sequence }); return;
+        }
+        const currentRevision = latestBlockRevision(graph, proposal.block);
+        if (currentRevision !== acceptedOperation.id) {
+          send(response, 409, {
+            status: 'conflicted',
+            error: 'el bloque cambió después de aceptar la propuesta; revertirlo sobrescribiría otro trabajo',
+            current: { revision: currentRevision, content: graph.block(proposal.block)?.content ?? null },
+          }); return;
+        }
+        const revertedOutcome = graph.submitOperation({
+          originId: `proposal-revert:${proposal.id}`,
+          participant: graph.owner!,
+          channel: 'typed_text',
+          change: { kind: 'edit_block', block: proposal.block, content: proposal.originalContent },
+        });
+        if (revertedOutcome.status === 'rejected') {
+          send(response, 422, { error: revertedOutcome.reason }); return;
+        }
+        try {
+          if (revertedOutcome.status === 'applied') recordOperation(store, graph, revertedOutcome.operation);
+        } catch (error) {
+          graph = loadGraph(store, 'mind');
+          send(response, 500, {
+            error: 'no se pudo revertir la propuesta',
+            detail: error instanceof Error ? error.message : String(error),
+          }); return;
+        }
+        send(response, 200, {
+          status: 'reverted',
+          duplicate: revertedOutcome.status === 'duplicate',
+          operation: revertedOutcome.operation.sequence,
+        });
+        return;
+      }
+      if (proposal.status === 'accepted' && acceptedOperation !== undefined) {
+        send(response, 200, {
+          status: 'accepted', duplicate: true, operation: acceptedOperation.sequence,
+        }); return;
+      }
+      if (proposal.status !== 'awaiting_review') {
+        send(response, 409, { error: 'la propuesta ya no está pendiente' }); return;
       }
       const current = latestBlockRevision(graph, proposal.block);
       if (current !== proposal.targetRevision) {
@@ -9035,6 +9094,107 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           surface: 'POST /context',
           subject: `${page.id} · ${asked}`,
           delivered: exposure.delivered,
+        });
+      });
+      return;
+    }
+
+    /*
+     * Resolver entidades sin confundir una semejanza con una identidad.
+     *
+     * La detección ve sólo páginas autorizadas. Por omisión devuelve candidatos
+     * explicados; `propose` deja las coincidencias únicas en la cola humana,
+     * todavía fuera del corpus. Homónimos y equivalencias nunca eligen destino.
+     */
+    if (request.method === 'POST' && path === '/entity-resolutions') {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        let body: { page?: unknown; most?: unknown; propose?: unknown };
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
+        } catch {
+          send(response, 400, { error: 'the body must be JSON' });
+          return;
+        }
+        const pageRef = typeof body.page === 'string' ? body.page.trim() : '';
+        if (pageRef === '') { send(response, 422, { error: 'page is required' }); return; }
+        const page = graph.page(pageRef) ?? graph.pageTitled(pageRef);
+        if (page === undefined || !isReadablePage(page.id)) {
+          send(response, 404, { error: 'la página no existe en este territorio' }); return;
+        }
+        const most = typeof body.most === 'number' && Number.isInteger(body.most)
+          ? Math.max(1, Math.min(100, body.most)) : 24;
+        const shouldPropose = body.propose === true;
+        let proposingAs: ParticipantId | null = null;
+        let proposalCredential: Credential | null = null;
+        if (shouldPropose) {
+          const authorised = authorise(store, graph, request.headers.authorization, humanSession, profile,
+            undefined, 'edit_block');
+          if ('error' in authorised) {
+            send(response, authorised.status, { error: authorised.error }); return;
+          }
+          if (authorised.credential === null || graph.participant(authorised.participant)?.kind !== 'agent') {
+            send(response, 403, { error: 'sólo una identidad agente autenticada puede dejar propuestas' }); return;
+          }
+          proposingAs = authorised.participant;
+          proposalCredential = authorised.credential;
+        }
+        const candidates = entityResolutionCandidates({ graph, page: page.id, canRead: isReadablePage, most });
+        const projected = candidates.map((candidate) => {
+          if (!shouldPropose || candidate.status !== 'proposable' || candidate.draft === null ||
+            proposingAs === null || proposalCredential === null) return { ...candidate, proposal: null };
+          const block = graph.block(candidate.draft.block);
+          const revision = latestBlockRevision(graph, candidate.draft.block);
+          if (block === undefined || revision === null || block.content !== candidate.draft.content) {
+            return { ...candidate, proposal: { status: 'conflicted', id: null } };
+          }
+          const change: Change = {
+            kind: 'edit_block', block: candidate.draft.block, content: candidate.draft.next,
+          };
+          const fence = confinementOf(store, proposalCredential.id);
+          if (fence !== null) {
+            const refusal = fenceRefusal(store, fence, proposingAs, change,
+              (named) => graph.block(named)?.page ?? null);
+            if (refusal !== null) {
+              return { ...candidate, proposal: { status: 'refused', id: null, reason: refusal.error } };
+            }
+          }
+          const originId = `entity-resolution:${createHash('sha256')
+            .update(`${candidate.id}\u0000${revision}`).digest('hex').slice(0, 24)}`;
+          const made = createOperationReviewProposal(store, {
+            proposedBy: proposingAs,
+            originId,
+            channel: 'agent_generation',
+            page: page.id,
+            block: candidate.draft.block,
+            change,
+            targetRevision: revision,
+            originalContent: block.content,
+            purpose: candidate.draft.purpose,
+          });
+          return {
+            ...candidate,
+            proposal: {
+              status: made.duplicate ? 'duplicate' : 'awaiting_review',
+              id: made.proposal.id,
+            },
+          };
+        });
+        deliver({
+          page: { id: page.id, title: page.title },
+          proposed: projected.filter((one) => one.proposal?.id != null).length,
+          candidates: projected,
+        }, {
+          surface: 'POST /entity-resolutions',
+          subject: page.id,
+          delivered: [
+            page.id,
+            ...projected.flatMap((one) => [
+              ...(one.sourceBlock === null ? [] : [one.sourceBlock]),
+              ...one.matches.map((match) => match.page),
+            ]),
+          ],
         });
       });
       return;

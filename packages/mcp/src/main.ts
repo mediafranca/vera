@@ -70,6 +70,9 @@ Cómo leerla:
 - Para responder desde una página con evidencia acotada, usa vera_contexto:
   devuelve un recibo con identidad efectiva, revisiones, razones, presupuesto y
   omisiones; no confundas una omisión declarada con ausencia en el corpus.
+- Para nombres dudosos, vera_resolver_entidades distingue títulos, rótulos
+  alternativos y homónimos. Una coincidencia puede quedar como propuesta humana;
+  nunca fusiona páginas ni convierte una semejanza en identidad por sí sola.
 - vera_ontologia dice cómo está clasificado este corpus. El vocabulario lo puso
   el dueño; no supongas el significado de una propiedad sin mirarlo.
 

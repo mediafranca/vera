@@ -48,6 +48,7 @@ describe('el catálogo', () => {
       'vera_reclamar_solicitud_bibliotecaria',
       'vera_progreso_solicitud_bibliotecaria',
       'vera_responder_solicitud_bibliotecaria',
+      'vera_resolver_entidades',
       'vera_escribir',
       'vera_editar_bloque_propio',
       'vera_mover_bloque_propio',
@@ -80,6 +81,7 @@ describe('el catálogo', () => {
         'vera_proponer_edicion',
         'vera_quien_soy',
         'vera_reclamar_solicitud_bibliotecaria',
+        'vera_resolver_entidades',
         'vera_responder_solicitud_bibliotecaria',
         'vera_solicitud_bibliotecaria',
         'vera_vecindario',
@@ -485,6 +487,33 @@ describe('contexto verificable', () => {
     }]);
     assert.equal(typeof result, 'object');
     assert.equal(typeof result === 'string' ? null : result.structured.participant, 'participant:alumnus-exemplar');
+  });
+});
+
+describe('resolución de entidades', () => {
+  it('deja las coincidencias únicas en revisión y conserva las ambigüedades', async () => {
+    const calls: Array<{ path: string; body?: Record<string, unknown> }> = [];
+    const action: Action = async (path, body) => {
+      calls.push({ path, body });
+      return {
+        page: { id: 'page:nota', title: 'Nota' },
+        proposed: 1,
+        candidates: [
+          { status: 'proposable', proposal: { status: 'awaiting_review', id: 'proposal:1' } },
+          { status: 'ambiguous', proposal: null },
+        ],
+      };
+    };
+
+    const tool = toolNamed('vera_resolver_entidades')!;
+    const result = await tool.run(
+      { pagina: 'Nota', proponer: true, cuantos: 12 },
+      fakeVera({}).ask, undefined, undefined, undefined, undefined, action,
+    );
+
+    assert.deepEqual(calls, [{ path: '/entity-resolutions', body: { page: 'Nota', propose: true, most: 12 } }]);
+    assert.equal(typeof result, 'object');
+    assert.match(typeof result === 'string' ? result : result.text, /2 candidatos; 1 propuestas.*1 ambigüedades/);
   });
 });
 
