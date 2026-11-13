@@ -574,6 +574,10 @@ export const TOOLS: readonly VeraTool[] = [
           type: 'integer', minimum: 0, maximum: 50,
           description: 'Máximo de aristas autorizadas que expande cada página. Por omisión 12.',
         },
+        continuacion: {
+          type: 'string',
+          description: 'Cursor opaco devuelto por el tramo anterior. Reanuda la misma selección sin repetir piezas.',
+        },
         busqueda: {
           type: 'integer', minimum: 0, maximum: 20,
           description: 'Máximo de páginas añadidas por coincidencia textual. Por omisión 8.',
@@ -622,6 +626,7 @@ export const TOOLS: readonly VeraTool[] = [
         ...(args.grado === undefined ? {} : {
           maxDegree: Math.max(0, Math.min(50, Math.floor(Number(args.grado) || 0))),
         }),
+        ...(say(args.continuacion).trim() === '' ? {} : { cursor: say(args.continuacion).trim() }),
       });
       if (failed(receipt)) return trouble(receipt);
       const items = Array.isArray(receipt['items']) ? receipt['items'].length : 0;

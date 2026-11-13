@@ -15,6 +15,7 @@ import { observeServiceStatuses } from './service-status.ts';
 import {
   composeLibrarianContext,
   composeLibrarianContextReceipt,
+  LibrarianContextCursorError,
   librarianContextExposure,
 } from './librarian-context.ts';
 
@@ -8957,6 +8958,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           searchLimit?: unknown;
           allowedRelations?: unknown;
           maxDegree?: unknown;
+          cursor?: unknown;
         };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
@@ -8995,21 +8997,38 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             .filter((one): one is string => typeof one === 'string')
             .map((one) => one.trim()).filter((one) => one !== '').slice(0, 24))]
           : ['link'];
-        const receipt = composeLibrarianContextReceipt({
-          graph,
-          participant: who.participant,
-          page: page.id,
-          focus: focus?.stableId ?? null,
-          request: asked,
-          policy: {
-            budgetCharacters: integer(body.budgetCharacters, 24_000, 4_000, 60_000),
-            neighbourDepth: integer(body.neighbourDepth, 1, 0, 2),
-            searchLimit: integer(body.searchLimit, 8, 0, 20),
-            allowedRelations,
-            maxDegree: integer(body.maxDegree, 12, 0, 50),
-          },
-          canRead: isReadablePage,
-        });
+        if (body.cursor !== undefined && typeof body.cursor !== 'string') {
+          send(response, 400, { error: 'cursor must be a string' });
+          return;
+        }
+        let receipt;
+        try {
+          receipt = composeLibrarianContextReceipt({
+            graph,
+            participant: who.participant,
+            page: page.id,
+            focus: focus?.stableId ?? null,
+            request: asked,
+            policy: {
+              budgetCharacters: integer(body.budgetCharacters, 24_000, 4_000, 60_000),
+              neighbourDepth: integer(body.neighbourDepth, 1, 0, 2),
+              searchLimit: integer(body.searchLimit, 8, 0, 20),
+              allowedRelations,
+              maxDegree: integer(body.maxDegree, 12, 0, 50),
+            },
+            canRead: isReadablePage,
+            ...(body.cursor === undefined ? {} : { cursor: body.cursor }),
+          });
+        } catch (error) {
+          if (error instanceof LibrarianContextCursorError) {
+            send(response, error.code === 'stale_context_cursor' ? 409 : 400, {
+              error: error.code,
+              reason: error.message,
+            });
+            return;
+          }
+          throw error;
+        }
         const serialized = JSON.stringify(receipt);
         const exposure = librarianContextExposure(serialized);
         deliver(receipt, {

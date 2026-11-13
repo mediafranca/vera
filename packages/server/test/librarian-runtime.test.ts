@@ -11,6 +11,7 @@ import { listen } from '../src/server.ts';
 import { readLibrarianToolCall } from '../src/librarian-tools.ts';
 import {
   composeLibrarianContext,
+  LibrarianContextCursorError,
   librarianContextExposure,
   type LibrarianContextReceipt,
 } from '../src/librarian-context.ts';
@@ -53,7 +54,7 @@ describe('frontera formativa de la dialéctica', () => {
       policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
     });
     const parsed = JSON.parse(snapshot) as LibrarianContextReceipt;
-    assert.equal(parsed.version, 4);
+    assert.equal(parsed.version, 5);
     assert.equal(parsed.focus?.id, 'block:focus');
     assert.ok(parsed.blocks.some((block) => block.id === 'block:parent'));
     assert.ok(parsed.blocks.some((block) => block.id === 'block:sibling'));
@@ -91,8 +92,8 @@ describe('frontera formativa de la dialéctica', () => {
     for (const item of parsed.items.filter((one) => one.kind === 'page')) {
       for (const excerpt of item.excerpts.filter((one) => one.block !== null)) {
         const current = graph.block(excerpt.block!);
-        assert.ok(current?.content.includes(excerpt.content.replace(/^…|…$/g, '')),
-          'el extracto debe existir en el bloque cuya revisión cita');
+        assert.equal(excerpt.content, current?.content,
+          'la evidencia textual debe conservar entero el bloque cuya revisión cita');
       }
     }
   });
@@ -174,6 +175,61 @@ describe('frontera formativa de la dialéctica', () => {
     assert.ok(receipt.omitted.pageBlocks > 0);
     assert.ok(receipt.warnings.length > 0);
     assert.notEqual(receipt.continuation, null);
+  });
+
+  it('reanuda unidades completas sin duplicar ni omitir y rechaza el cursor cuando cambia la fuente', () => {
+    const graph = VeraGraph.create({ name: 'Vera paginada' });
+    graph.addParticipant({ id: 'participant:owner', name: 'Dueña', kind: 'human' });
+    graph.addParticipant({ id: 'participant:agent', name: 'Agente', kind: 'agent' });
+    graph.admit('participant:owner'); graph.admit('participant:agent');
+    const write = (originId: string, change: Parameters<typeof graph.submitOperation>[0]['change']): void => {
+      assert.notEqual(graph.submitOperation({ originId, participant: 'participant:owner', change }).status, 'rejected');
+    };
+    write('page:long', { kind: 'create_page', stableId: 'page:long', title: 'Página extensa', visibility: 'private' });
+    const originals = new Map<string, string>();
+    for (let index = 0; index < 7; index += 1) {
+      const id = `block:long:${index}`;
+      const content = `INICIO ${index} ` + String(index).repeat(2_100) + ` FIN ${index}`;
+      originals.set(id, content);
+      write(id, {
+        kind: 'create_block', stableId: id, page: 'page:long', parent: null, position: index, content,
+      });
+    }
+    const policy = { budgetCharacters: 4_000, neighbourDepth: 0, searchLimit: 0 };
+    const receipts: LibrarianContextReceipt[] = [];
+    let cursor: string | null = null;
+    do {
+      const receipt = JSON.parse(composeLibrarianContext({
+        graph, participant: 'participant:agent', page: 'page:long', request: 'Lee la página completa.',
+        policy, ...(cursor === null ? {} : { cursor }),
+      })) as LibrarianContextReceipt;
+      receipts.push(receipt);
+      cursor = receipt.continuation?.cursor ?? null;
+      assert.ok(receipts.length < 12, 'la continuación debe avanzar');
+    } while (cursor !== null);
+
+    const delivered = receipts.flatMap((receipt) =>
+      receipt.items.filter((item) => item.kind === 'block').map((item) => item.id));
+    assert.equal(new Set(delivered).size, delivered.length, 'ningún bloque se repite');
+    assert.deepEqual(new Set(delivered), new Set(originals.keys()), 'ningún bloque se omite');
+    for (const receipt of receipts) {
+      for (const item of receipt.items.filter((one) => one.kind === 'block')) {
+        assert.equal(item.content, originals.get(item.id), 'cada bloque viaja completo');
+      }
+    }
+    assert.ok(receipts.some((receipt) =>
+      receipt.warnings.some((warning) => warning.includes('no fue recortada'))));
+    assert.ok(receipts.slice(0, -1).every((receipt) => receipt.continuation !== null));
+    assert.equal(receipts.at(-1)?.continuation, null);
+
+    const first = receipts[0]!;
+    const staleCursor = first.continuation?.cursor;
+    assert.ok(staleCursor);
+    write('edit:long:0', { kind: 'edit_block', block: 'block:long:0', content: 'La fuente cambió.' });
+    assert.throws(() => composeLibrarianContext({
+      graph, participant: 'participant:agent', page: 'page:long', request: 'Lee la página completa.',
+      policy, cursor: staleCursor,
+    }), (error) => error instanceof LibrarianContextCursorError && error.code === 'stale_context_cursor');
   });
 
   it('distingue mediación, derivación, coautoría y juicio propio antes de escribir', () => {

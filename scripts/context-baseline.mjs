@@ -108,6 +108,7 @@ function identities(tool, body) {
     return unique(asArray(body?.nodes).flatMap((node) => [node?.id, node?.page]));
   }
   if (tool === 'context') {
+    if (Array.isArray(body)) return unique(body.flatMap((receipt) => identities(tool, receipt)));
     return unique([
       body?.page?.id,
       ...asArray(body?.blocks).map((block) => block?.id),
@@ -129,6 +130,7 @@ function identities(tool, body) {
 
 async function executeCall(baseUrl, token, call) {
   let response;
+  let duplicateItems = [];
   if (call.tool === 'search') {
     const url = new URL('/search', baseUrl);
     url.searchParams.set('q', String(call.query ?? ''));
@@ -159,19 +161,51 @@ async function executeCall(baseUrl, token, call) {
     url.searchParams.set('depth', String(call.depth ?? 1));
     response = await requestJson(baseUrl, token, `${url.pathname}${url.search}`);
   } else if (call.tool === 'context') {
-    response = await requestJson(baseUrl, token, '/context', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        page: String(call.page ?? ''),
-        request: String(call.request ?? call.question ?? ''),
-        block: call.block === undefined ? undefined : String(call.block),
-        budget: Number(call.budget ?? 24_000),
-        neighbourDepth: Number(call.depth ?? 2),
-        allowedRelations: asArray(call.allowedRelations),
-        maxDegree: Number(call.maxDegree ?? 12),
-      }),
-    });
+    const pageLimit = Number.isFinite(call.pages)
+      ? Math.max(1, Math.min(100, Math.trunc(call.pages))) : 1;
+    const receipts = [];
+    let cursor;
+    let characters = 0;
+    let latencyMs = 0;
+    for (let at = 0; at < pageLimit; at += 1) {
+      response = await requestJson(baseUrl, token, '/context', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          page: String(call.page ?? ''),
+          request: String(call.request ?? call.question ?? ''),
+          focus: call.block === undefined ? undefined : String(call.block),
+          budgetCharacters: Number(call.budget ?? 24_000),
+          neighbourDepth: Number(call.depth ?? 2),
+          allowedRelations: asArray(call.allowedRelations),
+          maxDegree: Number(call.maxDegree ?? 12),
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      });
+      characters += response.characters;
+      latencyMs += response.latencyMs;
+      if (!response.ok) break;
+      receipts.push(response.body);
+      cursor = response.body?.continuation?.cursor;
+      if (typeof cursor !== 'string' || cursor === '') break;
+    }
+    if (response.ok && typeof cursor === 'string' && cursor !== '') {
+      response = {
+        ...response, ok: false, status: 508,
+        body: { error: `la continuación excedió ${pageLimit} tramos` },
+        text: JSON.stringify({ error: `la continuación excedió ${pageLimit} tramos` }),
+      };
+    } else if (response.ok) {
+      const itemIds = receipts.flatMap((receipt) => asArray(receipt?.items).map((item) => item?.id));
+      duplicateItems = unique(itemIds.filter((id, index) => itemIds.indexOf(id) !== index));
+      response = {
+        ...response,
+        body: receipts,
+        text: JSON.stringify(receipts),
+        characters,
+        latencyMs,
+      };
+    }
   } else {
     response = await requestJson(
       baseUrl,
@@ -185,6 +219,7 @@ async function executeCall(baseUrl, token, call) {
     status: response.status,
     error: response.ok ? null : String(response.body?.error ?? response.body?.reason ?? response.text),
     identities: response.ok ? identities(call.tool, response.body) : [],
+    duplicateItems,
     characters: response.characters,
     latencyMs: Math.round(response.latencyMs * 100) / 100,
     text: response.text,
@@ -203,6 +238,7 @@ export function scoreCase(testCase, calls, defaultBudget) {
   const joinedText = calls.map((call) => call.text).join('\n');
   const missingText = asArray(expected.textIncludes).filter((part) => !joinedText.includes(part));
   const forbiddenText = asArray(expected.textExcludes).filter((part) => joinedText.includes(part));
+  const duplicateItems = unique(calls.flatMap((call) => asArray(call.duplicateItems)));
   const characters = calls.reduce((sum, call) => sum + call.characters, 0);
   const latencyMs = calls.reduce((sum, call) => sum + call.latencyMs, 0);
   const budgetCharacters = Number(testCase.budgetCharacters ?? defaultBudget ?? 60_000);
@@ -219,7 +255,8 @@ export function scoreCase(testCase, calls, defaultBudget) {
     : relevantFound.length / delivered.length;
   const passed = callErrors.length === 0 && requiredFound.length === required.length &&
     leaked.length === 0 && missingText.length === 0 && forbiddenText.length === 0 &&
-    !abstentionFailed && characters <= budgetCharacters;
+    !abstentionFailed && characters <= budgetCharacters &&
+    (expected.noDuplicateItems !== true || duplicateItems.length === 0);
   return {
     id: testCase.id,
     class: testCase.class ?? 'unspecified',
@@ -234,6 +271,7 @@ export function scoreCase(testCase, calls, defaultBudget) {
     leaked,
     missingText,
     forbiddenText,
+    duplicateItems,
     abstentionFailed,
     characters,
     budgetCharacters,

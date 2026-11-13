@@ -456,7 +456,7 @@ describe('contexto verificable', () => {
     const context: Context = async (body) => {
       calls.push({ path: '/context', body });
       return {
-        version: 4,
+        version: 5,
         participant: 'participant:alumnus-exemplar',
         request: '¿Qué sostiene esta idea?',
         within: ['page:axis'],
@@ -474,12 +474,13 @@ describe('contexto verificable', () => {
     const result = await tool.run({
       pagina: 'Axis Mundae', pregunta: '¿Qué sostiene esta idea?', presupuesto: 8000,
       vecindad: 2, relaciones: ['respalda', 'respalda', ''], grado: 7,
+      continuacion: 'cursor:v1',
     }, fakeVera({}).ask, undefined, undefined, undefined, undefined, undefined, context);
     assert.deepEqual(calls, [{
       path: '/context',
       body: {
         page: 'Axis Mundae', request: '¿Qué sostiene esta idea?', budgetCharacters: 8000,
-        neighbourDepth: 2, allowedRelations: ['respalda'], maxDegree: 7,
+        neighbourDepth: 2, allowedRelations: ['respalda'], maxDegree: 7, cursor: 'cursor:v1',
       },
     }]);
     assert.equal(typeof result, 'object');
