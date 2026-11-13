@@ -356,6 +356,36 @@
   height: 2.25rem;
   margin-top: .5rem;
 }
+.librarian-context-receipt {
+  margin-top: .55rem;
+  padding-top: .45rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--rule));
+  color: var(--text-dim);
+  font: .68rem/1.4 var(--font-ui);
+}
+.librarian-context-receipt > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.librarian-context-receipt > :is(p, ol) { margin: .45rem 0 0; }
+.librarian-context-receipt-scope code {
+  display: inline;
+  white-space: normal;
+}
+.librarian-context-receipt ol {
+  display: grid;
+  gap: .4rem;
+  padding-left: 1.25rem;
+}
+.librarian-context-receipt li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .1rem .45rem;
+}
+.librarian-context-receipt li strong { color: var(--text); }
+.librarian-context-receipt li code { font-size: .62rem; }
+.librarian-context-receipt li span { grid-column: 1 / -1; }
+.librarian-context-receipt-warnings { color: var(--warning, #8a5a00); }
 .librarian-conversation-turn-actions {
   display: flex;
   justify-content: flex-end;

@@ -13,6 +13,7 @@ import {
   composeLibrarianContext,
   LibrarianContextCursorError,
   librarianContextExposure,
+  librarianSelectionReceipt,
   type LibrarianContextReceipt,
 } from '../src/librarian-context.ts';
 import {
@@ -140,6 +141,21 @@ describe('frontera formativa de la dialéctica', () => {
       request: 'Relaciona este pasaje con los talleres de diseño participativo.',
       policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
     }), snapshot, 'la misma consulta sobre la misma revisión debe producir el mismo recibo');
+    const selection = librarianSelectionReceipt(snapshot);
+    assert.deepEqual(selection.authorizedUniverse, parsed.within);
+    assert.equal(selection.source.page, parsed.page.id);
+    assert.equal(selection.source.focus, parsed.focus?.id);
+    assert.equal(selection.cost.characters, parsed.used.characters);
+    assert.equal(selection.cost.budgetCharacters, parsed.selection.budgetCharacters);
+    assert.deepEqual(selection.selections.map((one) => one.id), parsed.items.map((one) => one.id));
+    assert.ok(selection.selections.every((one) => one.revision !== null && one.reasons.length > 0));
+    const legacy = librarianSelectionReceipt(JSON.stringify({
+      page: { id: 'page:legacy', title: 'Página heredada', revision: 'op:1' },
+      focus: { id: 'block:legacy' }, blocks: [{ id: 'block:legacy', content: 'texto' }],
+    }));
+    assert.equal(legacy.available, false);
+    assert.equal(legacy.source.page, 'page:legacy');
+    assert.match(legacy.warnings[0] ?? '', /anterior al recibo justificable v6/);
     for (const item of parsed.items.filter((one) => one.kind === 'page')) {
       for (const excerpt of item.excerpts.filter((one) => one.block !== null)) {
         const current = graph.block(excerpt.block!);
@@ -494,6 +510,14 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal(contextExposure['volume'], String(answered['contextSnapshot']).length);
       assert.equal(contextExposure['deliveredCount'],
         librarianContextExposure(String(answered['contextSnapshot'])).delivered.length);
+      const visibleReceipt = answered['contextReceipt'] as Record<string, unknown>;
+      assert.equal((visibleReceipt['source'] as Record<string, unknown>)['page'], page);
+      assert.equal((visibleReceipt['cost'] as Record<string, unknown>)['characters'],
+        String(answered['contextSnapshot']).length);
+      const conversationReceipt = ((await call('/librarian/conversation')).json['turns'] as Array<Record<string, unknown>>)
+        .find((turn) => turn['id'] === requestId)?.['contextReceipt'];
+      assert.deepEqual(conversationReceipt, visibleReceipt,
+        'la conversación debe conservar el mismo recibo que recibió el worker');
 
       const routine = await call('/librarian/runtime/routine', { method: 'POST' });
       assert.equal(routine.status, 202, JSON.stringify(routine.json));
@@ -912,10 +936,12 @@ describe('runtime embebido de la bibliotecaria', () => {
     const owner = { id: 'participant:bridge-owner', name: 'Persona' };
     initializeStarterMemory({ databasePath, owner, ownerLibrarianName: 'Lucienne' });
     let wake = '';
+    let wakeEnvelope: Record<string, unknown> = {};
     const hook = createHttpServer(async (request, response) => {
       let body = '';
       for await (const chunk of request) body += chunk.toString();
-      wake = (JSON.parse(body) as { requestId: string }).requestId;
+      wakeEnvelope = JSON.parse(body) as Record<string, unknown>;
+      wake = String(wakeEnvelope['requestId'] ?? '');
       response.writeHead(202).end();
     });
     const inference = createHttpServer(async (request, response) => {
@@ -971,6 +997,8 @@ describe('runtime embebido de la bibliotecaria', () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       assert.equal(wake, requestId);
+      assert.deepEqual(wakeEnvelope, { requestId },
+        'el despertar no debe transportar corpus ni un resumen derivado');
       const claimed = await call(`/librarian/requests/${encodeURIComponent(requestId)}/claim`, {
         method: 'POST', secret,
       });
@@ -981,6 +1009,9 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal(bridgeContext?.['volume'], String(claimed.json['contextSnapshot']).length);
       assert.equal(bridgeContext?.['deliveredCount'],
         librarianContextExposure(String(claimed.json['contextSnapshot'])).delivered.length);
+      assert.deepEqual(claimed.json['contextReceipt'],
+        librarianSelectionReceipt(String(claimed.json['contextSnapshot'])),
+        'el worker debe poder justificar exactamente el snapshot autorizado que reclamó');
       const malformedMove = await call(`/librarian/requests/${encodeURIComponent(requestId)}/reply`, {
         method: 'POST', secret, body: {
           text: 'Moví el bloque.', blocks: [], lineageRelation: 'direct',

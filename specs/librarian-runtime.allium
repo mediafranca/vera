@@ -64,6 +64,19 @@ contract ResidentLibrarianExecution {
         -- graph relations actually supplied, the exact character budget, every
         -- omission, warnings and a continuation whenever selection was partial.
 
+    @invariant ConversationKeepsTheSelectionReceiptReadable
+        -- Every durable turn exposes the same frozen receipt that accompanied
+        -- execution: source and focus, selected identities, revisions, reasons,
+        -- authorised universe, omissions and measured cost. The readable
+        -- projection does not copy passage content or replace the focus page
+        -- with a derived summary.
+
+    @invariant ExternalWakeCarriesNoCorpus
+        -- Waking an external worker sends only the durable request identity.
+        -- The authenticated claim returns the already frozen authorised
+        -- snapshot and its lossless selection receipt; it never sends a prompt
+        -- summary or fetches a broader corpus after selection.
+
     @invariant ContextNeverCutsASemanticUnit
         -- A selected block and every block-backed textual passage travel with
         -- their complete current content. If one unit alone exceeds the budget,

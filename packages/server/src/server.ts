@@ -17,6 +17,7 @@ import {
   composeLibrarianContextReceipt,
   LibrarianContextCursorError,
   librarianContextExposure,
+  librarianSelectionReceipt,
 } from './librarian-context.ts';
 
 import {
@@ -3182,13 +3183,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       ensureTerritoryPolicy(store, librarianAgent, owner.id, { mode: 'all', includeGeneral: true });
     }
     const librarianRequestView = (turn: LibrarianRequest) => ({
-        ...turn,
-        dialectic: dialecticGateForRequest(store, turn.id),
-        recording: turn.recordingId === null ? null : recordingById(store, turn.recordingId),
-        sourcePageTitle: turn.sourcePageId === null
-          ? null
-          : graph.page(turn.sourcePageId)?.title ?? null,
-      });
+      ...turn,
+      contextReceipt: librarianSelectionReceipt(turn.contextSnapshot),
+      dialectic: dialecticGateForRequest(store, turn.id),
+      recording: turn.recordingId === null ? null : recordingById(store, turn.recordingId),
+      sourcePageTitle: turn.sourcePageId === null
+        ? null
+        : graph.page(turn.sourcePageId)?.title ?? null,
+    });
     const isLibrarianExecutor = (): boolean =>
       who.participant === librarianAgent ||
       (options.librarianHook !== undefined && who.participant === 'participant:cotito');

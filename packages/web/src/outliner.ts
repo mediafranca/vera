@@ -48,6 +48,7 @@ import {
 } from './api.ts';
 
 import { scrollDeltaFor, sourceOffsetFor } from './caret.ts';
+import { librarianReceiptRows, librarianReceiptSummary } from './librarian-receipt.ts';
 import { parseOutlineClipboard } from './outline-clipboard.ts';
 import { selectedSiblingMove } from './selection-movement.ts';
 import {
@@ -1013,6 +1014,47 @@ export async function openLibrarianConversation(
     return article;
   };
 
+  const contextReceipt = (request: LibrarianRequestView): HTMLElement => {
+    const receipt = request.contextReceipt;
+    const details = document.createElement('details');
+    details.className = 'librarian-context-receipt';
+    const summary = document.createElement('summary');
+    summary.textContent = librarianReceiptSummary(receipt);
+    const policy = document.createElement('p');
+    policy.textContent = receipt.selectionReason;
+    const scope = document.createElement('p');
+    scope.className = 'librarian-context-receipt-scope';
+    scope.append('Universo autorizado: ');
+    const scopeCode = document.createElement('code');
+    scopeCode.textContent = receipt.authorizedUniverse.join(', ');
+    scope.append(scopeCode);
+    const list = document.createElement('ol');
+    for (const row of librarianReceiptRows(receipt)) {
+      const item = document.createElement('li');
+      const label = document.createElement('strong');
+      label.textContent = row.label;
+      const identity = document.createElement('code');
+      identity.textContent = row.id;
+      const revision = document.createElement('code');
+      revision.textContent = row.revision ?? 'sin revisión';
+      const reason = document.createElement('span');
+      reason.textContent = row.reasons.join(' · ');
+      item.append(label, identity, revision, reason);
+      list.append(item);
+    }
+    const cost = document.createElement('p');
+    cost.className = 'librarian-context-receipt-cost';
+    cost.textContent = `${receipt.cost.characters.toLocaleString('es-CL')} de ${receipt.cost.budgetCharacters.toLocaleString('es-CL')} caracteres · ${receipt.cost.identities.toLocaleString('es-CL')} identidades · secuencia ${receipt.temporal.effectiveSequence.toLocaleString('es-CL')}`;
+    details.append(summary, policy, scope, list, cost);
+    if (receipt.warnings.length > 0) {
+      const warnings = document.createElement('p');
+      warnings.className = 'librarian-context-receipt-warnings';
+      warnings.textContent = receipt.warnings.join(' · ');
+      details.append(warnings);
+    }
+    return details;
+  };
+
   const renderTurns = (next: LibrarianConversationView, follow = false): void => {
     const nearEnd = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 80;
     stream.replaceChildren();
@@ -1024,7 +1066,9 @@ export async function openLibrarianConversation(
     }
     for (const request of next.turns) {
       const where = request.sourcePageTitle === null ? 'sin página de origen' : `desde ${request.sourcePageTitle}`;
-      stream.append(turn('human', next.human.name, request.text, `${where} · ${when(request.createdAt)}`, request.recording));
+      const asked = turn('human', next.human.name, request.text, `${where} · ${when(request.createdAt)}`, request.recording);
+      asked.append(contextReceipt(request));
+      stream.append(asked);
       for (const event of request.events) {
         stream.append(turn('status', next.agent.name, event.text, `${event.kind} · ${when(event.createdAt)}`));
       }
