@@ -127,22 +127,24 @@ after(async () => {
 describe('vera-mcp por stdio', () => {
   it('arranca y ofrece su catálogo', async () => {
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 21);
+    assert.equal(tools.length, 22);
     assert.ok(tools.some((tool) => tool.name === 'vera_mi_constitucion'));
     assert.ok(tools.some((tool) => tool.name === 'vera_preparar_escritura'));
     assert.ok(tools.some((tool) => tool.name === 'vera_consultar'));
     assert.ok(tools.some((tool) => tool.name === 'vera_contexto'));
+    assert.ok(tools.some((tool) => tool.name === 'vera_resolver_entidades'));
     assert.equal(tools.find((tool) => tool.name === 'vera_escribir')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_editar_bloque_propio')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_mover_bloque_propio')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_proponer_edicion')?.annotations?.readOnlyHint, false);
+    assert.equal(tools.find((tool) => tool.name === 'vera_resolver_entidades')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_descartar')?.annotations?.readOnlyHint, false);
     assert.equal(tools.find((tool) => tool.name === 'vera_descartar')?.annotations?.destructiveHint, true);
     assert.ok(
       tools
         .filter((tool) => ![
           'vera_escribir', 'vera_escribir_lote', 'vera_editar_bloque_propio',
-          'vera_mover_bloque_propio', 'vera_proponer_edicion', 'vera_descartar',
+          'vera_mover_bloque_propio', 'vera_proponer_edicion', 'vera_resolver_entidades', 'vera_descartar',
           'vera_reclamar_solicitud_bibliotecaria', 'vera_progreso_solicitud_bibliotecaria',
           'vera_responder_solicitud_bibliotecaria',
         ].includes(tool.name))
@@ -230,6 +232,52 @@ describe('vera-mcp por stdio', () => {
     assert.equal(receipt.page?.id, PAGE);
     assert.ok(receipt.items?.every((item) => item.revision !== null && item.authoredBy !== null));
     assert.equal(receipt.used?.characters, receipt.selection?.usedCharacters);
+  });
+
+  it('propone una resolución única y conserva dos homónimos sin elegir', async () => {
+    let step = 0;
+    const write = async (change: Record<string, unknown>): Promise<string> => {
+      step += 1;
+      const response = await fetch(`http://127.0.0.1:${PORT}/operations`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ originId: `entity-resolution:${step}`, change }),
+      });
+      const body = await response.json() as { subjectId?: string; error?: string };
+      assert.equal(response.status, 201, JSON.stringify(body));
+      return body.subjectId!;
+    };
+    const university = await write({
+      kind: 'create_page', title: 'Pontificia Universidad Católica de Valparaíso', visibility: 'private',
+    });
+    await write({ kind: 'set_property', page: university, propertyKey: 'alias', propertyValue: 'PUCV' });
+    const north = await write({ kind: 'create_page', title: 'Taller Norte', visibility: 'private' });
+    const south = await write({ kind: 'create_page', title: 'Taller Sur', visibility: 'private' });
+    await write({ kind: 'set_property', page: north, propertyKey: 'alias', propertyValue: 'El Taller' });
+    await write({ kind: 'set_property', page: south, propertyKey: 'alias', propertyValue: 'El Taller' });
+    const source = await write({ kind: 'create_page', title: 'Nombres por resolver', visibility: 'private' });
+    const unique = await write({
+      kind: 'create_block', page: source, parent: null, position: 0, content: 'Colabora con [[PUCV]].',
+    });
+    await write({
+      kind: 'create_block', page: source, parent: null, position: 1, content: 'Volvimos a [[El Taller]].',
+    });
+
+    const resolved = await client.callTool({
+      name: 'vera_resolver_entidades',
+      arguments: { pagina: source, proponer: true },
+    });
+    const body = resolved.structuredContent as {
+      proposed?: number;
+      candidates?: Array<{ status?: string; written?: string; proposal?: { id?: string } | null }>;
+    };
+    assert.equal(body.proposed, 1);
+    assert.equal(body.candidates?.find((one) => one.written === 'PUCV')?.status, 'proposable');
+    assert.ok(body.candidates?.find((one) => one.written === 'PUCV')?.proposal?.id);
+    assert.equal(body.candidates?.find((one) => one.written === 'El Taller')?.status, 'ambiguous');
+    assert.equal(body.candidates?.find((one) => one.written === 'El Taller')?.proposal, null);
+    const sourceView = await fetch(`http://127.0.0.1:${PORT}/pages/${encodeURIComponent(source)}`)
+      .then((one) => one.json()) as { blocks: { stableId: string; content: string }[] };
+    assert.equal(sourceView.blocks.find((one) => one.stableId === unique)?.content, 'Colabora con [[PUCV]].');
   });
 
   it('escribe por la API y el cambio queda inmediatamente legible', async () => {
@@ -399,6 +447,27 @@ describe('vera-mcp por stdio', () => {
     };
     assert.equal(acceptedView.authorship[OWNER_BLOCK]?.participant, 'participant:mcp-test');
     assert.equal(acceptedView.authorship[OWNER_BLOCK]?.channel, 'agent_generation');
+    const repeatedAcceptance = await fetch(
+      `http://127.0.0.1:${PORT}/operation-proposals/${encodeURIComponent(pending.id)}/accept`,
+      { method: 'POST', headers: { 'content-type': 'application/json' } },
+    );
+    const repeatedAcceptanceBody = await repeatedAcceptance.json() as { duplicate?: boolean };
+    assert.equal(repeatedAcceptance.status, 200, JSON.stringify(repeatedAcceptanceBody));
+    assert.equal(repeatedAcceptanceBody.duplicate, true);
+    const reverted = await fetch(
+      `http://127.0.0.1:${PORT}/operation-proposals/${encodeURIComponent(pending.id)}/revert`,
+      { method: 'POST', headers: { 'content-type': 'application/json' } },
+    );
+    assert.equal(reverted.status, 200, await reverted.text());
+    assert.match(await call('vera_leer_pagina', { pagina: PAGE }), /Un pensamiento\n/);
+    assert.doesNotMatch(await call('vera_leer_pagina', { pagina: PAGE }), /corregido por propuesta/);
+    const repeatedRevert = await fetch(
+      `http://127.0.0.1:${PORT}/operation-proposals/${encodeURIComponent(pending.id)}/revert`,
+      { method: 'POST', headers: { 'content-type': 'application/json' } },
+    );
+    const repeatedRevertBody = await repeatedRevert.json() as { duplicate?: boolean };
+    assert.equal(repeatedRevert.status, 200, JSON.stringify(repeatedRevertBody));
+    assert.equal(repeatedRevertBody.duplicate, true);
 
     const staleOffered = await call('vera_proponer_edicion', {
       origen: 'mcp:connection:test:proposal-stale', bloque: OWNER_CHILD, revision: child.revision,

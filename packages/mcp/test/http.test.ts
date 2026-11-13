@@ -93,7 +93,7 @@ describe('la puerta MCP pública', () => {
       requestInit: { headers: { authorization: 'Bearer bueno', 'x-vera-client': 'codex-public-test' } },
     });
     await client.connect(transport);
-    assert.equal((await client.listTools()).tools.length, 21);
+    assert.equal((await client.listTools()).tools.length, 22);
     await client.close();
   });
 

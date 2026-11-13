@@ -1258,7 +1258,7 @@ export const api = {
       { method: 'POST', body: JSON.stringify(said) },
     ),
 
-  decideOperationProposal: (id: string, decision: 'accept' | 'reject') =>
+  decideOperationProposal: (id: string, decision: 'accept' | 'reject' | 'revert') =>
     json<{ status: string }>(
       `/operation-proposals/${encodeURIComponent(id)}/${decision}`,
       { method: 'POST' },

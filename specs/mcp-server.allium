@@ -468,6 +468,19 @@ entity ReviewProposal {
     decided_at: Timestamp?
 }
 
+-- Una correspondencia explicada entre una grafía y páginas que la identidad
+-- efectiva puede leer. No es una fusión ni una afirmación del corpus.
+entity EntityResolutionCandidate {
+    graph: core/Graph
+    source_page: core/Page
+    source_block: core/Block?
+    written: String
+    kind: pending_link | unlinked_mention | possible_equivalence
+    status: proposable | ambiguous | review_only
+    matches: List<core/Page>
+    proposal: ReviewProposal?
+}
+
 value BatchProposal {
     connection: Connection
     origin: String
@@ -666,6 +679,7 @@ surface MemoryOverMCP {
         Grant
         Exposure
         ReviewProposal
+        EntityResolutionCandidate
 
     contracts:
         fulfils MCPIsADoorAndNotASecondMemory
@@ -711,6 +725,22 @@ surface MemoryOverMCP {
         -- presupuesto dentro de límites, pero no enviar un participante ni un
         -- universo más amplio. Una página o bloque fuera de territorio se
         -- comporta como inexistente.
+
+    @guarantee EntityCandidatesAreAuthorisedBeforeMatching
+        -- Títulos, rótulos alternativos y homónimos se comparan sólo después de
+        -- aplicar el territorio efectivo. Una página oculta no vuelve ambigua
+        -- una grafía visible ni deja una huella en la explicación.
+
+    @guarantee AmbiguityNeverBecomesIdentity
+        -- Un homónimo conserva todas sus alternativas y no recibe propuesta de
+        -- escritura. Una equivalencia posible es sólo evidencia para revisar:
+        -- nunca fusiona páginas ni reasigna su identidad estable.
+
+    @guarantee AcceptedEntityResolutionIsIdempotentAndReversible
+        -- Resolver una coincidencia única deja primero un ReviewProposal. La
+        -- persona puede aceptar varias veces sin duplicar la operación y puede
+        -- revertir esa aceptación mientras el bloque no haya vuelto a cambiar;
+        -- la reversión es otra operación canónica, no borrado de historia.
 
     @guarantee ReadingARevisionEnablesOneSafeRewrite
         -- Cada bloque servido nombra su revisión vigente. Reescribirlo exige

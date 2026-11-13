@@ -642,6 +642,56 @@ export const TOOLS: readonly VeraTool[] = [
   },
 
   {
+    name: 'vera_resolver_entidades',
+    title: 'Proponer resolución de entidades',
+    readOnly: false,
+    description:
+      'Detecta en una página títulos, rótulos alternativos, enlaces pendientes y equivalencias posibles. ' +
+      'Devuelve candidatos explicados dentro del territorio efectivo. Los homónimos permanecen ambiguos ' +
+      'y las equivalencias nunca fusionan páginas. Con proponer=true, sólo las coincidencias únicas dejan ' +
+      'una edición en la cola humana; el corpus no cambia hasta que una persona la acepta.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pagina: { type: 'string', description: 'Título o identidad estable de la página que se revisará.' },
+        proponer: { type: 'boolean', description: 'Si es true, deja las resoluciones únicas en revisión humana.' },
+        cuantos: { type: 'integer', minimum: 1, maximum: 100, description: 'Máximo de candidatos. Por omisión 24.' },
+      },
+      required: ['pagina'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        page: { type: 'object', additionalProperties: true },
+        proposed: { type: 'integer' },
+        candidates: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      },
+      required: ['page', 'proposed', 'candidates'],
+      additionalProperties: false,
+    },
+    async run(args, _ask, _write, _writeBatch, _query, _propose, action) {
+      const page = say(args.pagina).trim();
+      if (page === '') return 'La resolución necesita una página.';
+      if (action === undefined) return 'Esta conexión MCP no habilitó la resolución de entidades.';
+      const result = await action('/entity-resolutions', {
+        page,
+        propose: args.proponer === true,
+        most: count(args.cuantos, 24, 100),
+      });
+      if (failed(result)) return `No pude resolver entidades: ${result.error}${result.status > 0 ? ` (${result.status})` : ''}`;
+      const candidates = Array.isArray(result['candidates']) ? result['candidates'] : [];
+      const proposed = Number(result['proposed'] ?? 0);
+      const ambiguous = candidates.filter((one) =>
+        one !== null && typeof one === 'object' && (one as Record<string, unknown>)['status'] === 'ambiguous').length;
+      return {
+        text: `${candidates.length} candidatos; ${proposed} propuestas en revisión; ${ambiguous} ambigüedades sin resolver.`,
+        structured: result,
+      };
+    },
+  },
+
+  {
     name: 'vera_leer_pagina',
     title: 'Leer una página por tramos',
     description:

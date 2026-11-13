@@ -57,6 +57,12 @@ describe('superficies especiales', () => {
     assert.match(mcp, /aria-label', 'guías para conectar inteligencias artificiales'/);
   });
 
+  it('mantiene reversibles las propuestas aceptadas desde la misma cola humana', () => {
+    assert.match(mcp, /Aceptadas recientemente/);
+    assert.match(mcp, /Revertir aceptación/);
+    assert.match(mcp, /decideOperationProposal\(proposal\.id, 'revert'\)/);
+  });
+
   it('mantiene visible la primera autorización aunque la puerta todavía esté vacía', () => {
     assert.doesNotMatch(mcp, /declaring\.size === 0[^\n]+return null/);
     assert.match(mcp, /Conectar una IA o cliente MCP/);

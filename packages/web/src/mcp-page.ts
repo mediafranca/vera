@@ -720,13 +720,14 @@ export async function renderConnections(
     review.replaceChildren();
     const heading = document.createElement('h3'); heading.className = 'governing-title';
     const pending = proposals.filter((proposal) => proposal.status === 'awaiting_review');
+    const accepted = proposals.filter((proposal) => proposal.status === 'accepted').slice(0, 12);
     heading.textContent = `Propuestas por revisar · ${pending.length}`;
     const note = document.createElement('p'); note.className = 'governing-note';
-    note.textContent = 'Nada de esta lista cambia el corpus hasta que lo aceptes. Aceptar vuelve a comprobar la revisión que leyó el agente.';
+    note.textContent = 'Nada de esta lista cambia el corpus hasta que lo aceptes. Aceptar vuelve a comprobar la revisión que leyó el agente; una aceptación puede revertirse mientras nadie haya vuelto a editar el bloque.';
     review.append(heading, note);
     if (pending.length === 0) {
       const empty = document.createElement('p'); empty.className = 'governing-note';
-      empty.textContent = 'No hay propuestas pendientes.'; review.append(empty); return;
+      empty.textContent = 'No hay propuestas pendientes.'; review.append(empty);
     }
     for (const proposal of pending) {
       const card = document.createElement('article'); card.className = 'connection-proposal';
@@ -762,6 +763,28 @@ export async function renderConnections(
       };
       accept.onclick = () => decide('accept'); reject.onclick = () => decide('reject');
       actions.append(accept, reject); card.append(title, purpose, meta, labels, actions); review.append(card);
+    }
+    if (accepted.length > 0) {
+      const acceptedHeading = document.createElement('h4');
+      acceptedHeading.className = 'governing-title';
+      acceptedHeading.textContent = 'Aceptadas recientemente';
+      review.append(acceptedHeading);
+      for (const proposal of accepted) {
+        const card = document.createElement('article'); card.className = 'connection-proposal';
+        const title = document.createElement('strong');
+        title.textContent = `${proposal.pageTitle} · ${proposal.block}`;
+        const purpose = document.createElement('p'); purpose.textContent = proposal.purpose;
+        const revert = document.createElement('button'); revert.type = 'button'; revert.textContent = 'Revertir aceptación';
+        revert.addEventListener('click', () => {
+          revert.disabled = true;
+          void api.decideOperationProposal(proposal.id, 'revert').then(
+            () => api.operationProposals().then(renderProposals),
+            (error: Error) => { notify(error.message); revert.disabled = false; },
+          );
+        });
+        card.append(title, purpose, revert);
+        review.append(card);
+      }
     }
   };
   renderProposals(await api.operationProposals().catch(() => []));
