@@ -134,6 +134,147 @@ export interface LibrarianContextReceipt {
   };
 }
 
+/**
+ * Proyección legible del contexto congelado que acompañó una solicitud.
+ *
+ * Conserva las decisiones auditables del compositor —identidades, revisiones,
+ * razones, universo autorizado y costo— sin copiar por segunda vez el texto de
+ * la página ni de sus pasajes. La conversación puede así explicar qué recibió
+ * el worker sin convertir esa explicación en otro contexto derivado.
+ */
+export interface LibrarianSelectionReceipt {
+  version: 0 | LibrarianContextReceipt['version'];
+  available: boolean;
+  participant: ParticipantId;
+  authorizedUniverse: PageId[];
+  source: {
+    page: PageId;
+    title: string;
+    revision: string | null;
+    focus: BlockId | null;
+  };
+  selections: Array<{
+    kind: 'block' | 'page';
+    id: BlockId | PageId;
+    page: PageId;
+    title: string | null;
+    revision: string | null;
+    reasons: string[];
+    foundBy: string[];
+    score: number | null;
+  }>;
+  relations: Array<{
+    relation: string;
+    source: PageId;
+    target: PageId;
+    evidence: BlockId;
+    revision: string | null;
+    reason: string;
+  }>;
+  cost: {
+    characters: number;
+    identities: number;
+    budgetCharacters: number;
+  };
+  omitted: LibrarianContextReceipt['omitted'];
+  warnings: string[];
+  continuation: null | {
+    remaining: { pageBlocks: number; libraryPages: number };
+    sequence: number;
+  };
+  selectionReason: string;
+  temporal: Pick<LibrarianContextReceipt['temporal'], 'mode' | 'effectiveSequence' | 'currentSequence'>;
+}
+
+export function librarianSelectionReceipt(snapshot: string): LibrarianSelectionReceipt {
+  const parsed = JSON.parse(snapshot) as Partial<LibrarianContextReceipt> & {
+    page?: { id?: string; title?: string; revision?: string | null };
+    focus?: { id?: string } | null;
+    blocks?: unknown[];
+  };
+  if (parsed.version !== 6 || !Array.isArray(parsed.items) || !Array.isArray(parsed.within)) {
+    const page = parsed.page;
+    const legacyBlocks = Array.isArray(parsed.blocks) ? parsed.blocks.length : 0;
+    return {
+      version: 0,
+      available: false,
+      participant: '' as ParticipantId,
+      authorizedUniverse: typeof page?.id === 'string' ? [page.id as PageId] : [],
+      source: {
+        page: (typeof page?.id === 'string' ? page.id : '') as PageId,
+        title: typeof page?.title === 'string' ? page.title : 'Contexto heredado',
+        revision: typeof page?.revision === 'string' ? page.revision : null,
+        focus: (typeof parsed.focus?.id === 'string' ? parsed.focus.id : null) as BlockId | null,
+      },
+      selections: [],
+      relations: [],
+      cost: { characters: snapshot.length, identities: 0, budgetCharacters: snapshot.length },
+      omitted: { pageBlocks: 0, libraryPages: 0, degreeEdges: 0 },
+      warnings: [`solicitud anterior al recibo justificable v6; conservó ${legacyBlocks} bloque(s) de contexto`],
+      continuation: null,
+      selectionReason: 'el contexto histórico se conserva, pero sus razones de selección no fueron registradas',
+      temporal: { mode: 'current', effectiveSequence: 0, currentSequence: 0 },
+    };
+  }
+  const receipt = parsed as LibrarianContextReceipt;
+  return {
+    version: receipt.version,
+    available: true,
+    participant: receipt.participant,
+    authorizedUniverse: [...receipt.within],
+    source: {
+      page: receipt.page.id,
+      title: receipt.page.title,
+      revision: receipt.page.revision,
+      focus: receipt.focus?.id ?? null,
+    },
+    selections: receipt.items.map((item) => item.kind === 'block' ? {
+      kind: item.kind,
+      id: item.id,
+      page: item.page,
+      title: null,
+      revision: item.revision,
+      reasons: [item.reason],
+      foundBy: [...item.found_by],
+      score: null,
+    } : {
+      kind: item.kind,
+      id: item.id,
+      page: item.id,
+      title: item.title,
+      revision: item.revision,
+      reasons: [...item.reasons],
+      foundBy: [...item.found_by],
+      score: item.score,
+    }),
+    relations: receipt.relations.map((relation) => ({
+      relation: relation.relation,
+      source: relation.source,
+      target: relation.target,
+      evidence: relation.block,
+      revision: relation.revision,
+      reason: relation.reason,
+    })),
+    cost: {
+      characters: receipt.used.characters,
+      identities: receipt.used.identities,
+      budgetCharacters: receipt.selection.budgetCharacters,
+    },
+    omitted: { ...receipt.omitted },
+    warnings: [...receipt.warnings],
+    continuation: receipt.continuation === null ? null : {
+      remaining: { ...receipt.continuation.remaining },
+      sequence: receipt.continuation.anchor.sequence,
+    },
+    selectionReason: receipt.selection.reason,
+    temporal: {
+      mode: receipt.temporal.mode,
+      effectiveSequence: receipt.temporal.effectiveSequence,
+      currentSequence: receipt.temporal.currentSequence,
+    },
+  };
+}
+
 interface ContextCursorPayload {
   version: 1;
   sequence: number;

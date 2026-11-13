@@ -212,6 +212,46 @@ export interface PageView {
   crossingsIn: CrossingRow[];
 }
 
+export interface LibrarianSelectionReceipt {
+  version: 0 | 6;
+  available: boolean;
+  participant: string;
+  authorizedUniverse: string[];
+  source: {
+    page: string;
+    title: string;
+    revision: string | null;
+    focus: string | null;
+  };
+  selections: Array<{
+    kind: 'block' | 'page';
+    id: string;
+    page: string;
+    title: string | null;
+    revision: string | null;
+    reasons: string[];
+    foundBy: string[];
+    score: number | null;
+  }>;
+  relations: Array<{
+    relation: string;
+    source: string;
+    target: string;
+    evidence: string;
+    revision: string | null;
+    reason: string;
+  }>;
+  cost: { characters: number; identities: number; budgetCharacters: number };
+  omitted: { pageBlocks: number; libraryPages: number; degreeEdges: number };
+  warnings: string[];
+  continuation: null | {
+    remaining: { pageBlocks: number; libraryPages: number };
+    sequence: number;
+  };
+  selectionReason: string;
+  temporal: { mode: 'current' | 'history' | 'as_of_sequence'; effectiveSequence: number; currentSequence: number };
+}
+
 export interface LibrarianRequestView {
   id: string;
   conversationId: string;
@@ -228,6 +268,7 @@ export interface LibrarianRequestView {
   dispatchAttempts: number;
   createdAt: number;
   failureReason: string | null;
+  contextReceipt: LibrarianSelectionReceipt;
   dialectic: null | {
     id: string;
     conversation: string;
