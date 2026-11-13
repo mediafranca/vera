@@ -222,6 +222,21 @@ describe('total ordering of the change log', () => {
 // ---------------------------------------------------------------------------
 
 describe('replay', () => {
+  it('reconstructs the state that existed at a specific sequence', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, 'Decisión temporal');
+    const block = makeBlock(graph, page, 'estado:: propuesto');
+    const anchor = graph.operations().at(-1)?.sequence;
+    assert.notEqual(anchor, undefined);
+
+    applied(submit(graph, { kind: 'edit_block', block, content: 'estado:: aprobado' }));
+
+    const then = graph.replayFromLog(anchor);
+    assert.equal(then.block(block)?.content, 'estado:: propuesto');
+    assert.equal(graph.block(block)?.content, 'estado:: aprobado');
+    assert.equal(then.operations().at(-1)?.sequence, anchor);
+  });
+
   it('reconstructs the same pages and blocks from the log alone', () => {
     fc.assert(
       fc.property(intents, (list) => {

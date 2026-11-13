@@ -550,7 +550,9 @@ export const TOOLS: readonly VeraTool[] = [
     description:
       'Compone para una pregunta un recibo de contexto auditable desde una página de Vera. ' +
       'Devuelve piezas y relaciones con revisión, autoría, vía de hallazgo, razones de inclusión, ' +
-      'presupuesto, omisiones, advertencias y continuación. La identidad y el territorio provienen ' +
+      'presupuesto, omisiones, advertencias y continuación. Las preguntas temporales activan historia; ' +
+      'secuencia permite leer el corpus tal como existía entonces y conserva contradicciones atribuidas. ' +
+      'La identidad y el territorio provienen ' +
       'de la credencial efectiva; esta herramienta no puede ampliarlos ni mantiene una copia del corpus.',
     inputSchema: {
       type: 'object',
@@ -582,6 +584,10 @@ export const TOOLS: readonly VeraTool[] = [
           type: 'integer', minimum: 0, maximum: 20,
           description: 'Máximo de páginas añadidas por coincidencia textual. Por omisión 8.',
         },
+        secuencia: {
+          type: 'integer', minimum: 0,
+          description: 'Secuencia histórica opcional. Compone el estado del corpus existente en ese punto, sin usar revisiones posteriores.',
+        },
       },
       required: ['pagina', 'pregunta'],
       additionalProperties: false,
@@ -600,10 +606,11 @@ export const TOOLS: readonly VeraTool[] = [
         used: { type: 'object', additionalProperties: true },
         omitted: { type: 'object', additionalProperties: true },
         warnings: { type: 'array', items: { type: 'string' } },
+        temporal: { type: 'object', additionalProperties: true },
         continuation: { anyOf: [{ type: 'object', additionalProperties: true }, { type: 'null' }] },
         selection: { type: 'object', additionalProperties: true },
       },
-      required: ['version', 'participant', 'request', 'within', 'page', 'items', 'relations', 'used', 'omitted', 'warnings', 'selection'],
+      required: ['version', 'participant', 'request', 'within', 'page', 'items', 'relations', 'used', 'omitted', 'warnings', 'temporal', 'selection'],
       additionalProperties: true,
     },
     async run(args, _ask, _write, _writeBatch, _query, _propose, _action, context) {
@@ -618,6 +625,7 @@ export const TOOLS: readonly VeraTool[] = [
         ...(args.presupuesto === undefined ? {} : { budgetCharacters: count(args.presupuesto, 24_000, 60_000) }),
         ...(args.vecindad === undefined ? {} : { neighbourDepth: Math.max(0, Math.min(2, Math.floor(Number(args.vecindad) || 0))) }),
         ...(args.busqueda === undefined ? {} : { searchLimit: Math.max(0, Math.min(20, Math.floor(Number(args.busqueda) || 0))) }),
+        ...(args.secuencia === undefined ? {} : { asOfSequence: Math.max(0, Math.floor(Number(args.secuencia) || 0)) }),
         ...(Array.isArray(args.relaciones) ? {
           allowedRelations: [...new Set(args.relaciones
             .filter((one): one is string => typeof one === 'string')

@@ -70,8 +70,31 @@ interface ContextPathStep extends ContextRelation {
   to: PageId;
 }
 
+interface TemporalState {
+  sequence: number;
+  at: number;
+  participant: ParticipantId;
+  by: string;
+  channel: ContributionChannel;
+  content: string | null;
+}
+
+interface TemporalHistory {
+  block: BlockId;
+  states: TemporalState[];
+}
+
+interface TemporalContradiction {
+  block: BlockId;
+  basis: 'property_value' | 'polarity';
+  field: string | null;
+  explanation: string;
+  earlier: TemporalState;
+  later: TemporalState;
+}
+
 export interface LibrarianContextReceipt {
-  version: 5;
+  version: 6;
   participant: ParticipantId;
   request: string;
   within: PageId[];
@@ -88,6 +111,16 @@ export interface LibrarianContextReceipt {
   used: { characters: number; identities: number };
   omitted: { pageBlocks: number; libraryPages: number; degreeEdges: number };
   warnings: string[];
+  temporal: {
+    active: boolean;
+    mode: 'current' | 'history' | 'as_of_sequence';
+    requestedSequence: number | null;
+    effectiveSequence: number;
+    currentSequence: number;
+    history: TemporalHistory[];
+    contradictions: TemporalContradiction[];
+    truthPolicy: string;
+  };
   continuation: {
     cursor: string;
     anchor: { sequence: number; pageRevision: string | null; selectionDigest: string };
@@ -152,6 +185,78 @@ const cursorPayload = (cursor: string): ContextCursorPayload => {
   return value as ContextCursorPayload;
 };
 
+const asksAboutTime = (request: string): boolean =>
+  /\b(antes|despu[eé]s|entonces|cuando|historia|historial|secuencia|revisi[oó]n|versi[oó]n|cambi[oó]|contradic|qu[eé] se sab[ií]a|en \d{4})\b/iu
+    .test(request);
+
+const historyOf = (graph: VeraGraph, block: BlockId): TemporalState[] => {
+  const states: TemporalState[] = [];
+  for (const operation of graph.operations()) {
+    const change = operation.submission.change;
+    const belongs = (change.kind === 'create_block' && operation.subjectId === block) ||
+      ((change.kind === 'edit_block' || change.kind === 'remove_block') && change.block === block);
+    if (!belongs) continue;
+    states.push({
+      sequence: operation.sequence,
+      at: operation.appliedAt,
+      participant: operation.submission.submittedBy,
+      by: graph.participant(operation.submission.submittedBy)?.name ?? operation.submission.submittedBy,
+      channel: operation.submission.channel,
+      content: change.kind === 'create_block' || change.kind === 'edit_block' ? change.content : null,
+    });
+  }
+  return states;
+};
+
+const propertyValues = (content: string): Map<string, string> => new Map(
+  content.split(/\r?\n/u).flatMap((line) => {
+    const match = line.match(/^\s*([^:]+?)\s*::\s*(.*?)\s*$/u);
+    return match === null ? [] : [[folded(match[1]!.trim()), match[2]!.trim()] as const];
+  }),
+);
+
+const polarity = (content: string): { negative: boolean; base: string } => {
+  const normalized = folded(content).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/gu, ' ').trim();
+  const negative = /(?:^|\s)(?:no|nunca|jam[aá]s)(?:\s|$)/u.test(normalized);
+  return {
+    negative,
+    base: normalized.replace(/(?:^|\s)(?:no|nunca|jamas)(?=\s|$)/gu, ' ').replace(/\s+/gu, ' ').trim(),
+  };
+};
+
+const contradictionsOf = (history: TemporalHistory[]): TemporalContradiction[] => {
+  const found: TemporalContradiction[] = [];
+  for (const one of history) {
+    for (let index = 1; index < one.states.length; index += 1) {
+      const earlier = one.states[index - 1]!;
+      const later = one.states[index]!;
+      if (earlier.content === null || later.content === null || earlier.content === later.content) continue;
+      const before = propertyValues(earlier.content);
+      const after = propertyValues(later.content);
+      for (const [field, value] of before) {
+        const next = after.get(field);
+        if (next === undefined || next === value) continue;
+        found.push({
+          block: one.block, basis: 'property_value', field,
+          explanation: `la propiedad «${field}» conserva dos valores distintos; Vera los presenta como tensión y no elige uno como verdad`,
+          earlier, later,
+        });
+      }
+      const beforePolarity = polarity(earlier.content);
+      const afterPolarity = polarity(later.content);
+      if (beforePolarity.base !== '' && beforePolarity.base === afterPolarity.base &&
+        beforePolarity.negative !== afterPolarity.negative) {
+        found.push({
+          block: one.block, basis: 'polarity', field: null,
+          explanation: 'la misma formulación cambió de polaridad; Vera conserva ambas voces sin declarar vencedora',
+          earlier, later,
+        });
+      }
+    }
+  }
+  return found.slice(0, 48);
+};
+
 const provenance = (graph: VeraGraph, subject: { page?: PageId; block?: BlockId }): Provenance => {
   const revision = graph.revisions().filter((one) => subject.block === undefined
     ? one.page === subject.page
@@ -187,6 +292,8 @@ export function composeLibrarianContextReceipt(input: {
   policy: LibrarianContextPolicy;
   canRead?: (page: PageId) => boolean;
   cursor?: string | null;
+  asOfSequence?: number | null;
+  currentSequence?: number;
 }): LibrarianContextReceipt {
   const page = input.graph.page(input.page);
   if (page === undefined) throw new Error('la página de contexto no existe');
@@ -196,6 +303,8 @@ export function composeLibrarianContextReceipt(input: {
     .map((one) => one.trim()).filter((one) => one !== ''))];
   const maxDegree = Math.max(0, Math.floor(input.policy.maxDegree ?? 12));
   const sequence = input.graph.operations().at(-1)?.sequence ?? 0;
+  const currentSequence = input.currentSequence ?? sequence;
+  const temporalActive = input.asOfSequence !== undefined && input.asOfSequence !== null || asksAboutTime(input.request);
   const pageProvenance = provenance(input.graph, { page: page.id });
   const fingerprint = digest({
     participant: input.participant,
@@ -208,6 +317,7 @@ export function composeLibrarianContextReceipt(input: {
       searchLimit: input.policy.searchLimit,
       allowedRelations,
       maxDegree,
+      asOfSequence: input.asOfSequence ?? null,
     },
   });
 
@@ -432,8 +542,16 @@ export function composeLibrarianContextReceipt(input: {
       ...macroPages.flatMap((one) => one.excerpts.flatMap((excerpt) => excerpt.block === null ? [] : [excerpt.block])),
       ...relations.map((relation) => relation.block),
     ]);
+    const temporalBlocks = [...new Set([
+      ...selected.map((one) => one.id),
+      ...macroPages.flatMap((one) => one.excerpts.flatMap((excerpt) => excerpt.block === null ? [] : [excerpt.block])),
+    ])];
+    const temporalHistory = temporalActive
+      ? temporalBlocks.map((block) => ({ block, states: historyOf(input.graph, block) }))
+        .filter((one) => one.states.length > 0)
+      : [];
     return {
-      version: 5, participant: input.participant, request: input.request, within,
+      version: 6, participant: input.participant, request: input.request, within,
       page: {
         id: page.id, title: page.title, ...pageProvenance,
         properties: input.graph.propertiesOf(page.id).map((one) => ({ key: one.key, value: one.value })),
@@ -463,6 +581,17 @@ export function composeLibrarianContextReceipt(input: {
           ? [String(neighbourhood?.omittedByDegree) + ' arista(s) autorizadas quedaron fuera por límite de grado'] : []),
         ...(focusMayExceedBudget ? ['el foco exacto excede por sí solo el presupuesto y se conserva íntegro'] : []),
       ],
+      temporal: {
+        active: temporalActive,
+        mode: input.asOfSequence !== undefined && input.asOfSequence !== null
+          ? 'as_of_sequence' : temporalActive ? 'history' : 'current',
+        requestedSequence: input.asOfSequence ?? null,
+        effectiveSequence: sequence,
+        currentSequence,
+        history: temporalHistory,
+        contradictions: contradictionsOf(temporalHistory),
+        truthPolicy: 'las revisiones y contradicciones se atribuyen; la más reciente no se presume verdadera',
+      },
       continuation: omittedPageBlocks === 0 && omittedLibraryPages === 0 ? null : {
         cursor: cursorFor({
           version: 1,

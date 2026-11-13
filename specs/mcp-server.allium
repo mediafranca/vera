@@ -481,6 +481,31 @@ entity EntityResolutionCandidate {
     proposal: ReviewProposal?
 }
 
+-- Un estado legible del registro en el punto en que existía. No sustituye el
+-- bloque actual ni borra la operación posterior que lo contradijo.
+value TemporalRevision {
+    block: core/Block
+    sequence: Integer
+    content: String?
+    author: core/Participant
+    channel: core/ContributionChannel
+}
+
+value TemporalContradiction {
+    earlier: TemporalRevision
+    later: TemporalRevision
+    basis: property_value | polarity
+    field: String?
+}
+
+value TemporalContext {
+    requested_sequence: Integer?
+    effective_sequence: Integer
+    current_sequence: Integer
+    history: List<TemporalRevision>
+    contradictions: List<TemporalContradiction>
+}
+
 value BatchProposal {
     connection: Connection
     origin: String
@@ -680,6 +705,9 @@ surface MemoryOverMCP {
         Exposure
         ReviewProposal
         EntityResolutionCandidate
+        TemporalContext
+        TemporalRevision
+        TemporalContradiction
 
     contracts:
         fulfils MCPIsADoorAndNotASecondMemory
@@ -741,6 +769,22 @@ surface MemoryOverMCP {
         -- persona puede aceptar varias veces sin duplicar la operación y puede
         -- revertir esa aceptación mientras el bloque no haya vuelto a cambiar;
         -- la reversión es otra operación canónica, no borrado de historia.
+
+    @guarantee TemporalQuestionsActivateAttributedHistory
+        -- Una pregunta temporal activa el registro aunque no nombre una
+        -- secuencia. Cada estado conserva secuencia, contenido, autor y canal;
+        -- una diferencia más reciente nunca se convierte por posición en verdad.
+
+    @guarantee AsOfSequenceExcludesTheFuture
+        -- Una secuencia válida reproduce páginas, bloques, relaciones y
+        -- revisiones existentes en ese punto. Ninguna operación posterior puede
+        -- aparecer en el recibo, mientras la autorización se decide con el
+        -- territorio efectivo de quien lee hoy.
+
+    @guarantee ContradictionsKeepBothAttributedSides
+        -- Valores distintos de una misma propiedad y cambios explícitos de
+        -- polaridad viajan como pares: lado anterior y posterior con autoría.
+        -- Vera los expone para juicio humano y no elige el último como vencedor.
 
     @guarantee ReadingARevisionEnablesOneSafeRewrite
         -- Cada bloque servido nombra su revisión vigente. Reescribirlo exige

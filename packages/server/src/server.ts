@@ -9018,6 +9018,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           allowedRelations?: unknown;
           maxDegree?: unknown;
           cursor?: unknown;
+          asOfSequence?: unknown;
         };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
@@ -9031,13 +9032,28 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           send(response, 422, { error: 'page and request are required' });
           return;
         }
-        const page = graph.page(pageRef) ?? graph.pageTitled(pageRef);
+        const currentSequence = graph.operations().at(-1)?.sequence ?? 0;
+        if (body.asOfSequence !== undefined &&
+          (!Number.isSafeInteger(body.asOfSequence) || Number(body.asOfSequence) < 0 ||
+            Number(body.asOfSequence) > currentSequence)) {
+          send(response, 422, {
+            error: 'asOfSequence must be an existing non-negative sequence',
+            currentSequence,
+          });
+          return;
+        }
+        const asOfSequence = body.asOfSequence === undefined ? null : Number(body.asOfSequence);
+        const contextGraph = asOfSequence === null ? graph : graph.replayFromLog(asOfSequence);
+        const currentPage = graph.page(pageRef) ?? graph.pageTitled(pageRef);
+        const page = currentPage === undefined
+          ? contextGraph.page(pageRef) ?? contextGraph.pageTitled(pageRef)
+          : contextGraph.page(currentPage.id);
         if (page === undefined || !isReadablePage(page.id)) {
           send(response, 404, { error: 'la página de contexto no existe' });
           return;
         }
         const focus = typeof body.focus === 'string' && body.focus.trim() !== ''
-          ? graph.block(body.focus.trim())
+          ? contextGraph.block(body.focus.trim())
           : undefined;
         if (focus !== undefined && focus.page !== page.id) {
           send(response, 404, { error: 'el bloque de contexto no pertenece a la página' });
@@ -9063,7 +9079,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         let receipt;
         try {
           receipt = composeLibrarianContextReceipt({
-            graph,
+            graph: contextGraph,
             participant: who.participant,
             page: page.id,
             focus: focus?.stableId ?? null,
@@ -9076,6 +9092,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               maxDegree: integer(body.maxDegree, 12, 0, 50),
             },
             canRead: isReadablePage,
+            currentSequence,
+            ...(asOfSequence === null ? {} : { asOfSequence }),
             ...(body.cursor === undefined ? {} : { cursor: body.cursor }),
           });
         } catch (error) {
