@@ -224,7 +224,7 @@ describe('vera-mcp por stdio', () => {
       page?: { id?: string }; items?: Array<{ revision?: string | null; authoredBy?: string | null }>;
       used?: { characters?: number }; selection?: { usedCharacters?: number };
     };
-    assert.equal(receipt.version, 3);
+    assert.equal(receipt.version, 4);
     assert.equal(receipt.participant, 'participant:mcp-test');
     assert.deepEqual(receipt.within, [PAGE]);
     assert.equal(receipt.page?.id, PAGE);

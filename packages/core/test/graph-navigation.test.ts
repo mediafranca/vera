@@ -287,6 +287,81 @@ describe('neighbourhood traversal', () => {
       }),
     );
   });
+
+  it('traverses two allowed relation hops and carries the authored path', () => {
+    const graph = inhabitedGraph();
+    const source = makePage(graph, 'Fuente');
+    const middle = makePage(graph, 'Puente');
+    const target = makePage(graph, 'Destino');
+    const excluded = makePage(graph, 'Descartada');
+    applied(submit(graph, {
+      kind: 'create_crossing', stableId: 'crossing:source-middle',
+      fromPage: source, toPage: middle, term: 'respalda', content: 'La fuente respalda el puente.',
+    }));
+    applied(submit(graph, {
+      kind: 'create_crossing', stableId: 'crossing:middle-target',
+      fromPage: middle, toPage: target, term: 'respalda', content: 'El puente respalda el destino.',
+    }));
+    applied(submit(graph, {
+      kind: 'create_crossing', stableId: 'crossing:source-excluded',
+      fromPage: source, toPage: excluded, term: 'contradice', content: 'Esta rama contradice la fuente.',
+    }));
+
+    const hood = graph.neighbourhood({
+      centre: source, depth: 2, participant: OWNER,
+      allowedRelations: ['respalda'], maxDegree: 4,
+    });
+
+    assert.deepEqual(hood.nodes.map((node) => [node.page, node.distance]), [
+      [source, 0], [middle, 1], [target, 2],
+    ]);
+    assert.equal(hood.nodes.find((node) => node.page === target)?.path.length, 2);
+    for (const step of hood.nodes.find((node) => node.page === target)?.path ?? []) {
+      assert.equal(step.evidence.kind, 'explained_relation');
+      assert.equal(step.evidence.relation, 'respalda');
+      assert.notEqual(step.evidence.block, '');
+      assert.notEqual(step.evidence.phrase, '');
+      assert.notEqual(step.evidence.revision, null);
+    }
+    assert.equal(hood.nodes.some((node) => node.page === excluded), false);
+  });
+
+  it('applies authorization before degree limiting and path selection', () => {
+    const graph = inhabitedGraph();
+    const source = makePage(graph, 'Fuente');
+    const hidden = makePage(graph, 'Oculta');
+    const visible = makePage(graph, 'Visible');
+    makeBlock(graph, source, '[[Oculta]] y [[Visible]]');
+
+    const hood = graph.neighbourhood({
+      centre: source, depth: 1, participant: OWNER,
+      allowedRelations: ['link'], maxDegree: 1,
+      canRead: (page) => page !== hidden,
+    });
+
+    assert.deepEqual(hood.nodes.map((node) => node.page), [source, visible]);
+    assert.equal(hood.edges.length, 1);
+    assert.equal(hood.omittedByDegree, 0,
+      'la arista oculta no consume el grado de la página visible');
+    assert.ok(hood.nodes.every((node) => node.path.every((step) =>
+      step.source !== hidden && step.target !== hidden)));
+  });
+
+  it('caps each expansion frontier and reports omitted authorised edges', () => {
+    const graph = inhabitedGraph();
+    const source = makePage(graph, 'Fuente');
+    makePage(graph, 'Uno'); makePage(graph, 'Dos'); makePage(graph, 'Tres');
+    makeBlock(graph, source, '[[Uno]], [[Dos]] y [[Tres]]');
+
+    const hood = graph.neighbourhood({
+      centre: source, depth: 1, participant: OWNER,
+      allowedRelations: ['link'], maxDegree: 1,
+    });
+
+    assert.equal(hood.nodes.length, 2);
+    assert.equal(hood.edges.length, 1);
+    assert.equal(hood.omittedByDegree, 2);
+  });
 });
 
 describe('renaming a page carries its links along', () => {

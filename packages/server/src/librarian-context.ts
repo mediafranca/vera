@@ -1,10 +1,14 @@
-import type { BlockId, ContributionChannel, PageId, ParticipantId } from '@vera/core';
+import type {
+  BlockId, ContributionChannel, NeighbourhoodEdge, NeighbourhoodPathStep, PageId, ParticipantId,
+} from '@vera/core';
 import { VeraGraph } from '@vera/core';
 
 export interface LibrarianContextPolicy {
   budgetCharacters: number;
   neighbourDepth: number;
   searchLimit: number;
+  allowedRelations?: readonly string[];
+  maxDegree?: number;
 }
 
 interface Provenance {
@@ -35,6 +39,7 @@ interface ContextPage extends Provenance {
   reasons: string[];
   found_by: Array<'graph_neighbour' | 'text_match'>;
   distance: number | null;
+  path: ContextPathStep[];
   score: number;
   signals: ContextRankingSignal[];
   properties: Array<{ key: string; value: string }>;
@@ -47,8 +52,25 @@ interface ContextRankingSignal {
   detail: string;
 }
 
+interface ContextRelation {
+  kind: NeighbourhoodEdge['evidence']['kind'];
+  relation: string;
+  source: PageId;
+  target: PageId;
+  block: BlockId;
+  phrase: string;
+  revision: string | null;
+  found_by: 'graph_neighbour';
+  reason: string;
+}
+
+interface ContextPathStep extends ContextRelation {
+  from: PageId;
+  to: PageId;
+}
+
 export interface LibrarianContextReceipt {
-  version: 3;
+  version: 4;
   participant: ParticipantId;
   request: string;
   within: PageId[];
@@ -61,17 +83,15 @@ export interface LibrarianContextReceipt {
   blocks: ContextBlock[];
   library: { pages: Array<Omit<ContextPage, 'excerpts'> & { excerpts: string[] }> };
   items: Array<({ kind: 'block' } & ContextBlock) | ({ kind: 'page' } & ContextPage)>;
-  relations: Array<{
-    kind: 'link'; source: PageId; target: PageId;
-    found_by: 'graph_neighbour'; reason: string;
-  }>;
+  relations: ContextRelation[];
   used: { characters: number; identities: number };
-  omitted: { pageBlocks: number; libraryPages: number };
+  omitted: { pageBlocks: number; libraryPages: number; degreeEdges: number };
   warnings: string[];
   continuation: { page: PageId; nextPageBlock: number; nextLibraryPage: number } | null;
   selection: {
     reason: string; budgetCharacters: number; usedCharacters: number;
     omittedPageBlocks: number; omittedLibraryPages: number; focusMayExceedBudget: boolean;
+    neighbourDepth: number; allowedRelations: string[]; maxDegree: number;
   };
 }
 
@@ -119,6 +139,9 @@ export function composeLibrarianContextReceipt(input: {
   if (page === undefined) throw new Error('la página de contexto no existe');
   const canRead = input.canRead ?? (() => true);
   if (!canRead(page.id)) throw new Error('la página de contexto queda fuera del territorio legible');
+  const allowedRelations = [...new Set((input.policy.allowedRelations ?? ['link'])
+    .map((one) => one.trim()).filter((one) => one !== ''))];
+  const maxDegree = Math.max(0, Math.floor(input.policy.maxDegree ?? 12));
 
   const all = input.graph.blocksOf(page.id);
   const byId = new Map(all.map((block) => [block.stableId, block]));
@@ -171,25 +194,51 @@ export function composeLibrarianContextReceipt(input: {
     all.findIndex((block) => block.stableId === a.id) - all.findIndex((block) => block.stableId === b.id));
 
   const neighbourhood = input.policy.neighbourDepth > 0
-    ? input.graph.neighbourhood({ centre: page.id, depth: input.policy.neighbourDepth, participant: input.participant })
+    ? input.graph.neighbourhood({
+      centre: page.id,
+      depth: input.policy.neighbourDepth,
+      participant: input.participant,
+      canRead,
+      allowedRelations,
+      maxDegree,
+    })
     : null;
   const macro = new Map<PageId, {
     id: PageId; title: string; reasons: string[];
     found_by: Array<'graph_neighbour' | 'text_match'>;
-    distance: number | null; score: number; signals: ContextRankingSignal[]; excerpts: ContextExcerpt[];
+    distance: number | null; path: ContextPathStep[];
+    score: number; signals: ContextRankingSignal[]; excerpts: ContextExcerpt[];
   }>();
   for (const node of neighbourhood?.nodes ?? []) {
     if (node.page === page.id || !canRead(node.page)) continue;
     const neighbour = input.graph.page(node.page);
     if (neighbour === undefined) continue;
+    // Una arista pedida explícitamente es evidencia estructural, no una pista
+    // textual más. Debe entrar antes que coincidencias incidentales cuando el
+    // presupuesto obliga a elegir; la distancia conserva el orden interno.
+    const graphContribution = Math.max(400, 1_200 - node.distance * 200);
     macro.set(node.page, {
       id: node.page, title: neighbour.title,
       reasons: ['vecindad del grafo a distancia ' + node.distance],
       found_by: ['graph_neighbour'], distance: node.distance,
-      score: Math.max(20, 140 - node.distance * 30),
+      path: node.path.map((step: NeighbourhoodPathStep) => ({
+        kind: step.evidence.kind,
+        relation: step.evidence.relation,
+        source: step.source,
+        target: step.target,
+        from: step.from,
+        to: step.to,
+        block: step.evidence.block,
+        phrase: step.evidence.phrase,
+        revision: step.evidence.revision,
+        found_by: 'graph_neighbour',
+        reason: `paso ${step.evidence.relation} en el camino autorizado`,
+      })),
+      score: graphContribution,
       signals: [{
-        kind: 'graph_distance', contribution: Math.max(20, 140 - node.distance * 30),
-        detail: `vecindad autorizada a distancia ${node.distance}`,
+        kind: 'graph_distance', contribution: graphContribution,
+        detail: `vecindad autorizada a distancia ${node.distance}: ` +
+          node.path.map((step) => step.evidence.relation).join(' → '),
       }],
       excerpts: [],
     });
@@ -206,7 +255,7 @@ export function composeLibrarianContextReceipt(input: {
         const entry = macro.get(hit.page) ?? {
           id: hit.page, title: found.title, reasons: [],
           found_by: [] as Array<'graph_neighbour' | 'text_match'>,
-          distance: null, score: 0, signals: [], excerpts: [],
+          distance: null, path: [], score: 0, signals: [], excerpts: [],
         };
         if (!entry.reasons.includes('coincidencia textual con la solicitud')) {
           entry.reasons.push('coincidencia textual con la solicitud');
@@ -252,23 +301,31 @@ export function composeLibrarianContextReceipt(input: {
   const build = (): LibrarianContextReceipt => {
     const within = [page.id, ...macroPages.map((one) => one.id)].sort();
     const allowed = new Set(within);
-    const relations = (neighbourhood?.edges ?? [])
+    const relations: ContextRelation[] = (neighbourhood?.edges ?? [])
       .filter((edge) => allowed.has(edge.source) && allowed.has(edge.target))
       .map((edge) => ({
-        kind: 'link' as const, source: edge.source, target: edge.target,
+        kind: edge.evidence.kind,
+        relation: edge.evidence.relation,
+        source: edge.source,
+        target: edge.target,
+        block: edge.evidence.block,
+        phrase: edge.evidence.phrase,
+        revision: edge.evidence.revision,
         found_by: 'graph_neighbour' as const,
-        reason: 'enlace resuelto dentro de la vecindad seleccionada',
+        reason: `${edge.evidence.relation} dentro de la vecindad autorizada`,
       }))
-      .sort((a, b) => (a.source + '\\0' + a.target).localeCompare(b.source + '\\0' + b.target));
+      .sort((a, b) => (a.source + '\\0' + a.target + '\\0' + a.relation)
+        .localeCompare(b.source + '\\0' + b.target + '\\0' + b.relation));
     const omittedPageBlocks = Math.max(0, all.length - selected.length);
     const omittedLibraryPages = Math.max(0, macro.size - macroPages.length);
     const focusMayExceedBudget = focus !== undefined && focus.content.length > input.policy.budgetCharacters;
     const identities = new Set([
       ...within, ...selected.map((one) => one.id),
       ...macroPages.flatMap((one) => one.excerpts.flatMap((excerpt) => excerpt.block === null ? [] : [excerpt.block])),
+      ...relations.map((relation) => relation.block),
     ]);
     return {
-      version: 3, participant: input.participant, request: input.request, within,
+      version: 4, participant: input.participant, request: input.request, within,
       page: {
         id: page.id, title: page.title, ...pageProvenance,
         properties: input.graph.propertiesOf(page.id).map((one) => ({ key: one.key, value: one.value })),
@@ -284,12 +341,18 @@ export function composeLibrarianContextReceipt(input: {
       ],
       relations,
       used: { characters: 0, identities: identities.size },
-      omitted: { pageBlocks: omittedPageBlocks, libraryPages: omittedLibraryPages },
+      omitted: {
+        pageBlocks: omittedPageBlocks,
+        libraryPages: omittedLibraryPages,
+        degreeEdges: neighbourhood?.omittedByDegree ?? 0,
+      },
       warnings: [
         ...(omittedPageBlocks > 0
           ? [String(omittedPageBlocks) + ' bloque(s) de la página quedaron fuera por selección o presupuesto'] : []),
         ...(omittedLibraryPages > 0
           ? [String(omittedLibraryPages) + ' página(s) candidatas quedaron fuera por presupuesto'] : []),
+        ...((neighbourhood?.omittedByDegree ?? 0) > 0
+          ? [String(neighbourhood?.omittedByDegree) + ' arista(s) autorizadas quedaron fuera por límite de grado'] : []),
         ...(focusMayExceedBudget ? ['el foco exacto excede por sí solo el presupuesto y se conserva íntegro'] : []),
       ],
       continuation: omittedPageBlocks === 0 && omittedLibraryPages === 0 ? null : {
@@ -301,6 +364,9 @@ export function composeLibrarianContextReceipt(input: {
           : 'bloque de origen en su estructura, vecindad y búsqueda en la biblioteca',
         budgetCharacters: input.policy.budgetCharacters, usedCharacters: 0,
         omittedPageBlocks, omittedLibraryPages, focusMayExceedBudget,
+        neighbourDepth: input.policy.neighbourDepth,
+        allowedRelations,
+        maxDegree,
       },
     };
   };
@@ -327,7 +393,7 @@ export function composeLibrarianContextReceipt(input: {
   return receipt;
 }
 
-/** Compatibilidad: el snapshot durable sigue siendo JSON, ahora con recibo v3. */
+/** Compatibilidad: el snapshot durable sigue siendo JSON, ahora con recibo v4. */
 export function composeLibrarianContext(input: Parameters<typeof composeLibrarianContextReceipt>[0]): string {
   return measured(composeLibrarianContextReceipt(input));
 }
@@ -342,7 +408,7 @@ export function librarianContextExposure(snapshot: string): { delivered: string[
       ...parsed.items.flatMap((item) => item.kind === 'page'
         ? item.excerpts.flatMap((excerpt) => excerpt.block === null ? [] : [excerpt.block])
         : []),
-      ...parsed.relations.flatMap((relation) => [relation.source, relation.target]),
+      ...parsed.relations.flatMap((relation) => [relation.source, relation.target, relation.block]),
     ])],
     volume: snapshot.length,
   };

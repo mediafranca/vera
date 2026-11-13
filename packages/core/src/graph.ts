@@ -45,6 +45,7 @@ import type {
   GraphNeighbourhood,
   NeighbourhoodEdge,
   NeighbourhoodNode,
+  NeighbourhoodPathStep,
   OperationInput,
   Operation,
   Page,
@@ -2047,35 +2048,113 @@ export class VeraGraph {
     centre: PageId;
     depth: number;
     participant: ParticipantId;
+    canRead?: (page: PageId) => boolean;
+    allowedRelations?: readonly string[];
+    maxDegree?: number | null;
   }): GraphNeighbourhood {
     if (!this.#isActive(input.participant)) {
       throw new Error(`${input.participant} has no active membership in this graph`);
     }
     if (!this.#pages.has(input.centre)) throw new Error('no such page');
     if (input.depth < 0) throw new Error('depth cannot be negative');
+    const canRead = input.canRead ?? (() => true);
+    if (!canRead(input.centre)) throw new Error('no such page');
+    const requestedRelations = input.allowedRelations ?? ['link', 'query_result'];
+    const allowedRelations = new Set(requestedRelations.map(titleKey).filter((one) => one !== ''));
+    const maxDegree = input.maxDegree ?? null;
+    if (maxDegree !== null && (!Number.isInteger(maxDegree) || maxDegree < 0)) {
+      throw new Error('maxDegree must be a non-negative integer or null');
+    }
 
-    // Aristas no dirigidas entre páginas, sólo desde enlaces resueltos.
-    const adjacency = new Map<PageId, Set<PageId>>();
-    const connect = (a: PageId, b: PageId): void => {
-      if (a === b) return;
-      if (!adjacency.has(a)) adjacency.set(a, new Set());
-      if (!adjacency.has(b)) adjacency.set(b, new Set());
-      adjacency.get(a)?.add(b);
-      adjacency.get(b)?.add(a);
+    /*
+     * La autorización y la allowlist se aplican antes de construir la
+     * adyacencia. Una página oculta no puede consumir el grado de otra ni
+     * cambiar el camino elegido entre dos páginas visibles.
+     */
+    const revisionsByBlock = new Map<BlockId, OperationId>();
+    const revisionsByCrossing = new Map<CrossingId, OperationId>();
+    for (const revision of this.#revisions) {
+      if (revision.block !== null) revisionsByBlock.set(revision.block, revision.operation);
+      if (revision.crossing !== null) revisionsByCrossing.set(revision.crossing, revision.operation);
+    }
+    const candidates = new Map<string, NeighbourhoodEdge>();
+    const add = (edge: NeighbourhoodEdge): void => {
+      if (edge.source === edge.target || !canRead(edge.source) || !canRead(edge.target)) return;
+      if (!allowedRelations.has(titleKey(edge.evidence.relation))) return;
+      const pair = [edge.source, edge.target].sort().join('||');
+      const key = `${pair}||${edge.evidence.kind}||${titleKey(edge.evidence.relation)}`;
+      const held = candidates.get(key);
+      if (held === undefined || edge.evidence.block < held.evidence.block) candidates.set(key, edge);
     };
     for (const link of this.links()) {
-      if (link.target !== null) connect(link.sourcePage, link.target);
+      if (link.target === null) continue;
+      const block = this.#blocks.get(link.sourceBlock);
+      if (block === undefined) continue;
+      const queryResult = link.id.startsWith('query-link:');
+      add({
+        source: link.sourcePage,
+        target: link.target,
+        evidence: {
+          kind: queryResult ? 'query_result' : 'link',
+          relation: queryResult ? 'query_result' : 'link',
+          block: link.sourceBlock,
+          phrase: block.content,
+          revision: revisionsByBlock.get(link.sourceBlock) ?? null,
+        },
+      });
+    }
+    for (const crossing of this.crossings()) {
+      if (crossing.toPage === null) continue;
+      const block = crossing.blocks[0]?.stableId ?? crossing.stableId;
+      if (!this.#blocks.has(block)) continue;
+      add({
+        source: crossing.fromPage,
+        target: crossing.toPage,
+        evidence: {
+          kind: 'explained_relation',
+          relation: crossing.term?.trim() || 'explained',
+          block,
+          phrase: crossing.said,
+          revision: revisionsByCrossing.get(crossing.stableId) ?? revisionsByBlock.get(block) ?? null,
+        },
+      });
+    }
+    const edgesByKey = [...candidates.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const adjacency = new Map<PageId, Array<{ key: string; edge: NeighbourhoodEdge }>>();
+    for (const [key, edge] of edgesByKey) {
+      const source = adjacency.get(edge.source) ?? [];
+      source.push({ key, edge });
+      adjacency.set(edge.source, source);
+      const target = adjacency.get(edge.target) ?? [];
+      target.push({ key, edge });
+      adjacency.set(edge.target, target);
     }
 
     // Expansión por anchura, acotada: termina en cualquier grafo, también cíclico.
     const distance = new Map<PageId, number>([[input.centre, 0]]);
+    const paths = new Map<PageId, NeighbourhoodPathStep[]>([[input.centre, []]]);
+    const arrivalEdges = new Map<PageId, string>();
+    const traversedEdges = new Set<string>();
+    const omittedEdges = new Set<string>();
     let frontier: PageId[] = [input.centre];
     for (let step = 0; step < input.depth; step += 1) {
       const next: PageId[] = [];
       for (const page of frontier) {
-        for (const neighbour of adjacency.get(page) ?? []) {
+        const incident = adjacency.get(page) ?? [];
+        const arrival = arrivalEdges.get(page);
+        const expandable = arrival === undefined ? incident : incident.filter((one) => one.key !== arrival);
+        const selected = maxDegree === null ? expandable : expandable.slice(0, maxDegree);
+        for (const omitted of expandable.slice(selected.length)) omittedEdges.add(omitted.key);
+        for (const { key, edge } of selected) {
+          traversedEdges.add(key);
+          const neighbour = edge.source === page ? edge.target : edge.source;
           if (distance.has(neighbour) || !this.#pages.has(neighbour)) continue;
           distance.set(neighbour, step + 1);
+          arrivalEdges.set(neighbour, key);
+          paths.set(neighbour, [
+            ...(paths.get(page) ?? []),
+            { ...edge, from: page, to: neighbour },
+          ]);
           next.push(neighbour);
         }
       }
@@ -2084,27 +2163,29 @@ export class VeraGraph {
     }
 
     const included = new Set(distance.keys());
-    const seenEdge = new Set<string>();
-    const edges: NeighbourhoodEdge[] = [];
-    for (const link of this.links()) {
-      const target = link.target;
-      if (target === null) continue;
-      if (!included.has(link.sourcePage) || !included.has(target)) continue;
-      if (link.sourcePage === target) continue;
-      const key = [link.sourcePage, target].sort().join('||');
-      if (seenEdge.has(key)) continue;
-      seenEdge.add(key);
-      edges.push({ source: link.sourcePage, target });
-    }
+    const edges = edgesByKey
+      .filter(([key, edge]) => included.has(edge.source) && included.has(edge.target) &&
+        (maxDegree === null || traversedEdges.has(key)))
+      .map(([, edge]) => edge);
 
     const nodes: NeighbourhoodNode[] = [...distance.entries()].map(([page, at]) => ({
       page,
       distance: at,
       degree: edges.filter((e) => e.source === page || e.target === page).length,
       blockCount: this.blocksOf(page).length,
+      path: paths.get(page) ?? [],
     }));
 
-    return { graph: this.id, centre: input.centre, depth: input.depth, nodes, edges };
+    return {
+      graph: this.id,
+      centre: input.centre,
+      depth: input.depth,
+      allowedRelations: [...requestedRelations],
+      maxDegree,
+      omittedByDegree: omittedEdges.size,
+      nodes,
+      edges,
+    };
   }
 
   // -------------------------------------------------------------------------

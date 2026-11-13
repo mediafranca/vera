@@ -52,7 +52,7 @@ export function validateManifest(manifest) {
       throw new Error(`${one.id}: falta calls`);
     }
     for (const call of one.calls) {
-      if (!['search', 'query', 'page', 'neighborhood', 'history'].includes(call.tool)) {
+      if (!['search', 'query', 'page', 'neighborhood', 'history', 'context'].includes(call.tool)) {
         throw new Error(`${one.id}: herramienta desconocida ${String(call.tool)}`);
       }
       if (call.expectedStatus !== undefined &&
@@ -107,6 +107,22 @@ function identities(tool, body) {
     // endpoint visual. La línea base mide esa superficie efectiva.
     return unique(asArray(body?.nodes).flatMap((node) => [node?.id, node?.page]));
   }
+  if (tool === 'context') {
+    return unique([
+      body?.page?.id,
+      ...asArray(body?.blocks).map((block) => block?.id),
+      ...asArray(body?.library?.pages).map((page) => page?.id),
+      ...asArray(body?.items).flatMap((item) => [
+        item?.id,
+        ...asArray(item?.excerpts).map((excerpt) => excerpt?.block),
+      ]),
+      ...asArray(body?.relations).flatMap((relation) => [
+        relation?.source,
+        relation?.target,
+        relation?.block,
+      ]),
+    ]);
+  }
   if (tool === 'history') return unique([body?.block]);
   return [];
 }
@@ -142,6 +158,20 @@ async function executeCall(baseUrl, token, call) {
     const url = new URL(`/graph/${encodeURIComponent(String(call.page ?? ''))}`, baseUrl);
     url.searchParams.set('depth', String(call.depth ?? 1));
     response = await requestJson(baseUrl, token, `${url.pathname}${url.search}`);
+  } else if (call.tool === 'context') {
+    response = await requestJson(baseUrl, token, '/context', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        page: String(call.page ?? ''),
+        request: String(call.request ?? call.question ?? ''),
+        block: call.block === undefined ? undefined : String(call.block),
+        budget: Number(call.budget ?? 24_000),
+        neighbourDepth: Number(call.depth ?? 2),
+        allowedRelations: asArray(call.allowedRelations),
+        maxDegree: Number(call.maxDegree ?? 12),
+      }),
+    });
   } else {
     response = await requestJson(
       baseUrl,

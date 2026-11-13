@@ -456,7 +456,7 @@ describe('contexto verificable', () => {
     const context: Context = async (body) => {
       calls.push({ path: '/context', body });
       return {
-        version: 3,
+        version: 4,
         participant: 'participant:alumnus-exemplar',
         request: '¿Qué sostiene esta idea?',
         within: ['page:axis'],
@@ -464,19 +464,23 @@ describe('contexto verificable', () => {
         items: [{ kind: 'block', id: 'block:1' }],
         relations: [],
         used: { characters: 900, identities: 2 },
-        omitted: { pageBlocks: 0, libraryPages: 0 },
+        omitted: { pageBlocks: 0, libraryPages: 0, degreeEdges: 0 },
         warnings: [],
         continuation: null,
-        selection: { budgetCharacters: 8000 },
+        selection: { budgetCharacters: 8000, allowedRelations: ['respalda'], maxDegree: 7 },
       };
     };
     const tool = toolNamed('vera_contexto')!;
     const result = await tool.run({
       pagina: 'Axis Mundae', pregunta: '¿Qué sostiene esta idea?', presupuesto: 8000,
+      vecindad: 2, relaciones: ['respalda', 'respalda', ''], grado: 7,
     }, fakeVera({}).ask, undefined, undefined, undefined, undefined, undefined, context);
     assert.deepEqual(calls, [{
       path: '/context',
-      body: { page: 'Axis Mundae', request: '¿Qué sostiene esta idea?', budgetCharacters: 8000 },
+      body: {
+        page: 'Axis Mundae', request: '¿Qué sostiene esta idea?', budgetCharacters: 8000,
+        neighbourDepth: 2, allowedRelations: ['respalda'], maxDegree: 7,
+      },
     }]);
     assert.equal(typeof result, 'object');
     assert.equal(typeof result === 'string' ? null : result.structured.participant, 'participant:alumnus-exemplar');

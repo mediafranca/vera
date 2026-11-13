@@ -136,20 +136,27 @@ describe('recibo de contexto para agentes externos', () => {
       body: JSON.stringify({
         page: 'Contexto verificable', request: '¿Cuál es la evidencia?', focus: block,
         budgetCharacters: 8000, neighbourDepth: 0, searchLimit: 0,
+        allowedRelations: ['respalda', 'respalda', '', 3], maxDegree: 7,
       }),
     });
     assert.equal(response.status, 200, await response.clone().text());
     const receipt = await response.json() as {
-      participant: string; within: string[]; page: { id: string };
+      version: number; participant: string; within: string[]; page: { id: string };
       focus: { id: string } | null; used: { characters: number };
-      selection: { budgetCharacters: number; usedCharacters: number };
+      selection: {
+        budgetCharacters: number; usedCharacters: number;
+        allowedRelations: string[]; maxDegree: number;
+      };
       items: Array<{ id: string; revision: string | null; authoredBy: string | null }>;
     };
+    assert.equal(receipt.version, 4);
     assert.equal(receipt.participant, OWNER);
     assert.deepEqual(receipt.within, [page]);
     assert.equal(receipt.page.id, page);
     assert.equal(receipt.focus?.id, block);
     assert.equal(receipt.selection.budgetCharacters, 8000);
+    assert.deepEqual(receipt.selection.allowedRelations, ['respalda']);
+    assert.equal(receipt.selection.maxDegree, 7);
     assert.equal(receipt.used.characters, receipt.selection.usedCharacters);
     assert.ok(receipt.items.every((item) => item.revision !== null && item.authoredBy !== null));
   });
