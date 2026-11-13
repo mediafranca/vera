@@ -149,7 +149,7 @@ describe('recibo de contexto para agentes externos', () => {
       };
       items: Array<{ id: string; revision: string | null; authoredBy: string | null }>;
     };
-    assert.equal(receipt.version, 4);
+    assert.equal(receipt.version, 5);
     assert.equal(receipt.participant, OWNER);
     assert.deepEqual(receipt.within, [page]);
     assert.equal(receipt.page.id, page);
@@ -176,6 +176,52 @@ describe('recibo de contexto para agentes externos', () => {
       }),
     });
     assert.equal(response.status, 404);
+  });
+
+  it('reanuda con cursor opaco y lo invalida legiblemente cuando cambia la fuente', async () => {
+    const page = await write({
+      kind: 'create_page', stableId: 'page:test-context-pages', title: 'Contexto por tramos', visibility: 'private',
+    });
+    for (let index = 0; index < 6; index += 1) await write({
+      kind: 'create_block', stableId: `block:test-context-pages:${index}`, page, parent: null, position: index,
+      content: `Unidad completa ${index} ` + String(index).repeat(1_800),
+    });
+    const request = {
+      page, request: 'Lee todas las unidades.', budgetCharacters: 4_000,
+      neighbourDepth: 0, searchLimit: 0,
+    };
+    const firstResponse = await fetch(`${base}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request),
+    });
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json() as {
+      items: Array<{ id: string }>; continuation: { cursor: string; anchor: { sequence: number } } | null;
+    };
+    assert.ok(first.continuation?.cursor);
+    const secondResponse = await fetch(`${base}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...request, cursor: first.continuation?.cursor }),
+    });
+    assert.equal(secondResponse.status, 200);
+    const second = await secondResponse.json() as { items: Array<{ id: string }> };
+    assert.deepEqual(
+      first.items.map((item) => item.id).filter((id) => second.items.some((item) => item.id === id)),
+      [],
+    );
+
+    await write({
+      kind: 'create_block', stableId: 'block:test-context-pages:new', page, parent: null, position: 6,
+      content: 'La fuente avanzó.',
+    });
+    const staleResponse = await fetch(`${base}/context`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...request, cursor: first.continuation?.cursor }),
+    });
+    assert.equal(staleResponse.status, 409);
+    assert.deepEqual(await staleResponse.json(), {
+      error: 'stale_context_cursor',
+      reason: `el contexto cambió desde la secuencia ${first.continuation?.anchor.sequence}; solicita un recibo nuevo`,
+    });
   });
 });
 

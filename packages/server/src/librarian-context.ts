@@ -2,6 +2,7 @@ import type {
   BlockId, ContributionChannel, NeighbourhoodEdge, NeighbourhoodPathStep, PageId, ParticipantId,
 } from '@vera/core';
 import { VeraGraph } from '@vera/core';
+import { createHash } from 'node:crypto';
 
 export interface LibrarianContextPolicy {
   budgetCharacters: number;
@@ -70,7 +71,7 @@ interface ContextPathStep extends ContextRelation {
 }
 
 export interface LibrarianContextReceipt {
-  version: 4;
+  version: 5;
   participant: ParticipantId;
   request: string;
   within: PageId[];
@@ -87,18 +88,69 @@ export interface LibrarianContextReceipt {
   used: { characters: number; identities: number };
   omitted: { pageBlocks: number; libraryPages: number; degreeEdges: number };
   warnings: string[];
-  continuation: { page: PageId; nextPageBlock: number; nextLibraryPage: number } | null;
+  continuation: {
+    cursor: string;
+    anchor: { sequence: number; pageRevision: string | null; selectionDigest: string };
+    remaining: { pageBlocks: number; libraryPages: number };
+  } | null;
   selection: {
     reason: string; budgetCharacters: number; usedCharacters: number;
     omittedPageBlocks: number; omittedLibraryPages: number; focusMayExceedBudget: boolean;
     neighbourDepth: number; allowedRelations: string[]; maxDegree: number;
+    pageBlockOffset: number; libraryPageOffset: number;
   };
+}
+
+interface ContextCursorPayload {
+  version: 1;
+  sequence: number;
+  pageRevision: string | null;
+  fingerprint: string;
+  selectionDigest: string;
+  pageBlockOffset: number;
+  libraryPageOffset: number;
+}
+
+export class LibrarianContextCursorError extends Error {
+  readonly code: 'invalid_context_cursor' | 'stale_context_cursor';
+
+  constructor(
+    code: 'invalid_context_cursor' | 'stale_context_cursor',
+    message: string,
+  ) {
+    super(message);
+    this.code = code;
+  }
 }
 
 const folded = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const ignored = new Set(['como', 'para', 'este', 'esta', 'esto', 'desde', 'sobre', 'quiero', 'puede', 'podemos']);
 const termsOf = (text: string): string[] => [...new Set((folded(text).match(/[\p{L}\p{N}]{3,}/gu) ?? [])
   .filter((term) => !ignored.has(term)))].slice(0, 8);
+const digest = (value: unknown): string => createHash('sha256')
+  .update(JSON.stringify(value)).digest('base64url').slice(0, 24);
+const cursorFor = (payload: ContextCursorPayload): string =>
+  Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+const cursorPayload = (cursor: string): ContextCursorPayload => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  } catch {
+    throw new LibrarianContextCursorError('invalid_context_cursor', 'el cursor de contexto no es legible');
+  }
+  if (parsed === null || typeof parsed !== 'object') {
+    throw new LibrarianContextCursorError('invalid_context_cursor', 'el cursor de contexto no es un objeto');
+  }
+  const value = parsed as Partial<ContextCursorPayload>;
+  if (value.version !== 1 || !Number.isSafeInteger(value.sequence) || value.sequence! < 0 ||
+    typeof value.fingerprint !== 'string' || typeof value.selectionDigest !== 'string' ||
+    !(value.pageRevision === null || typeof value.pageRevision === 'string') ||
+    !Number.isSafeInteger(value.pageBlockOffset) || value.pageBlockOffset! < 0 ||
+    !Number.isSafeInteger(value.libraryPageOffset) || value.libraryPageOffset! < 0) {
+    throw new LibrarianContextCursorError('invalid_context_cursor', 'el cursor de contexto está incompleto');
+  }
+  return value as ContextCursorPayload;
+};
 
 const provenance = (graph: VeraGraph, subject: { page?: PageId; block?: BlockId }): Provenance => {
   const revision = graph.revisions().filter((one) => subject.block === undefined
@@ -134,6 +186,7 @@ export function composeLibrarianContextReceipt(input: {
   request: string;
   policy: LibrarianContextPolicy;
   canRead?: (page: PageId) => boolean;
+  cursor?: string | null;
 }): LibrarianContextReceipt {
   const page = input.graph.page(input.page);
   if (page === undefined) throw new Error('la página de contexto no existe');
@@ -142,6 +195,21 @@ export function composeLibrarianContextReceipt(input: {
   const allowedRelations = [...new Set((input.policy.allowedRelations ?? ['link'])
     .map((one) => one.trim()).filter((one) => one !== ''))];
   const maxDegree = Math.max(0, Math.floor(input.policy.maxDegree ?? 12));
+  const sequence = input.graph.operations().at(-1)?.sequence ?? 0;
+  const pageProvenance = provenance(input.graph, { page: page.id });
+  const fingerprint = digest({
+    participant: input.participant,
+    page: page.id,
+    focus: input.focus ?? null,
+    request: input.request,
+    policy: {
+      budgetCharacters: input.policy.budgetCharacters,
+      neighbourDepth: input.policy.neighbourDepth,
+      searchLimit: input.policy.searchLimit,
+      allowedRelations,
+      maxDegree,
+    },
+  });
 
   const all = input.graph.blocksOf(page.id);
   const byId = new Map(all.map((block) => [block.stableId, block]));
@@ -168,30 +236,19 @@ export function composeLibrarianContextReceipt(input: {
       (index < 8 ? 8 - index : 0),
   })).sort((a, b) => b.score - a.score || a.index - b.index);
 
-  const selected: ContextBlock[] = [];
-  let estimated = 1500;
-  for (const candidate of scored) {
+  const contextBlock = (candidate: (typeof scored)[number]): ContextBlock => {
     const foundBy = required.has(candidate.block.stableId)
       ? (candidate.block.stableId === focus?.stableId ? 'focus' : 'structure')
       : candidate.score > 8 ? 'text_match' : 'page_start';
     const reason = foundBy === 'focus' ? 'foco exacto'
       : foundBy === 'structure' ? 'estructura alrededor del foco'
       : foundBy === 'text_match' ? 'coincidencia con la solicitud' : 'inicio de la página';
-    const exactFocus = foundBy === 'focus';
-    const content = exactFocus || candidate.block.content.length <= 4000
-      ? candidate.block.content
-      : candidate.block.content.slice(0, 2000) + '…' + candidate.block.content.slice(-2000);
-    const projected = content.length + 320;
-    if (!exactFocus && estimated + projected > input.policy.budgetCharacters * 0.55) continue;
-    selected.push({
+    return {
       id: candidate.block.stableId, page: page.id, parent: candidate.block.parent,
-      position: candidate.block.position, content, reason, found_by: [foundBy],
+      position: candidate.block.position, content: candidate.block.content, reason, found_by: [foundBy],
       ...provenance(input.graph, { block: candidate.block.stableId }),
-    });
-    estimated += projected;
-  }
-  selected.sort((a, b) =>
-    all.findIndex((block) => block.stableId === a.id) - all.findIndex((block) => block.stableId === b.id));
+    };
+  };
 
   const neighbourhood = input.policy.neighbourDepth > 0
     ? input.graph.neighbourhood({
@@ -262,9 +319,12 @@ export function composeLibrarianContextReceipt(input: {
           entry.found_by.push('text_match');
           textualPages += 1;
         }
-        if (!entry.excerpts.some((one) => one.content === hit.excerpt && one.block === hit.block)) {
+        const completeContent = hit.block === null
+          ? hit.excerpt
+          : input.graph.block(hit.block)?.content ?? hit.excerpt;
+        if (!entry.excerpts.some((one) => one.content === completeContent && one.block === hit.block)) {
           entry.excerpts.push({
-            content: hit.excerpt, block: hit.block, field: hit.field,
+            content: completeContent, block: hit.block, field: hit.field,
             ...provenance(input.graph, hit.block === null ? { page: hit.page } : { block: hit.block }),
           });
         }
@@ -282,24 +342,72 @@ export function composeLibrarianContextReceipt(input: {
     }
   }
 
-  const macroPages: ContextPage[] = [];
-  for (const entry of [...macro.values()].sort((a, b) =>
+  const macroCandidates: ContextPage[] = [...macro.values()].sort((a, b) =>
     b.score - a.score || (a.distance ?? 99) - (b.distance ?? 99) ||
-    a.title.localeCompare(b.title) || a.id.localeCompare(b.id))) {
-    const candidate: ContextPage = {
+    a.title.localeCompare(b.title) || a.id.localeCompare(b.id)).map((entry) => ({
       ...entry, ...provenance(input.graph, { page: entry.id }),
       properties: input.graph.propertiesOf(entry.id).map((one) => ({ key: one.key, value: one.value })),
       excerpts: entry.excerpts.slice(0, 3),
-    };
-    const projected = JSON.stringify(candidate).length * 2 + 160;
-    if (estimated + projected > input.policy.budgetCharacters) continue;
-    macroPages.push(candidate);
-    estimated += projected;
+    }));
+
+  const selectionDigest = digest({
+    blocks: scored.map((candidate) => [
+      candidate.block.stableId,
+      provenance(input.graph, { block: candidate.block.stableId }).revision,
+    ]),
+    pages: macroCandidates.map((candidate) => [candidate.id, candidate.revision, candidate.score]),
+  });
+  const cursor = input.cursor == null || input.cursor.trim() === '' ? null : cursorPayload(input.cursor.trim());
+  if (cursor !== null && (cursor.sequence !== sequence || cursor.pageRevision !== pageProvenance.revision ||
+    cursor.selectionDigest !== selectionDigest)) {
+    throw new LibrarianContextCursorError(
+      'stale_context_cursor',
+      `el contexto cambió desde la secuencia ${cursor.sequence}; solicita un recibo nuevo`,
+    );
+  }
+  if (cursor !== null && cursor.fingerprint !== fingerprint) {
+    throw new LibrarianContextCursorError(
+      'invalid_context_cursor',
+      'el cursor pertenece a otra identidad, pregunta, página o política de selección',
+    );
+  }
+  const blockStart = cursor?.pageBlockOffset ?? 0;
+  const libraryStart = cursor?.libraryPageOffset ?? 0;
+  if (blockStart > scored.length || libraryStart > macroCandidates.length) {
+    throw new LibrarianContextCursorError('invalid_context_cursor', 'el cursor excede las colas de contexto');
   }
 
-  const pageProvenance = provenance(input.graph, { page: page.id });
+  const selected: ContextBlock[] = [];
+  let blockEnd = blockStart;
+  let estimated = 1_800;
+  for (let at = blockStart; at < scored.length; at += 1) {
+    const candidate = contextBlock(scored[at]!);
+    const projected = JSON.stringify(candidate).length + 160;
+    if (selected.length > 0 && estimated + projected > input.policy.budgetCharacters * 0.55) break;
+    selected.push(candidate);
+    blockEnd = at + 1;
+    estimated += projected;
+  }
+  selected.sort((a, b) =>
+    all.findIndex((block) => block.stableId === a.id) - all.findIndex((block) => block.stableId === b.id));
+
+  const macroPages: ContextPage[] = [];
+  let libraryEnd = libraryStart;
+  for (let at = libraryStart; at < macroCandidates.length; at += 1) {
+    const candidate = macroCandidates[at]!;
+    const projected = JSON.stringify(candidate).length * 2 + 160;
+    if (macroPages.length > 0 && estimated + projected > input.policy.budgetCharacters) break;
+    if (macroPages.length === 0 && selected.length > 0 && estimated + projected > input.policy.budgetCharacters) break;
+    macroPages.push(candidate);
+    libraryEnd = at + 1;
+    estimated += projected;
+  }
   const build = (): LibrarianContextReceipt => {
-    const within = [page.id, ...macroPages.map((one) => one.id)].sort();
+    const within = [...new Set([
+      page.id,
+      ...macroPages.map((one) => one.id),
+      ...macroPages.flatMap((one) => one.path.flatMap((step) => [step.source, step.target])),
+    ])].sort();
     const allowed = new Set(within);
     const relations: ContextRelation[] = (neighbourhood?.edges ?? [])
       .filter((edge) => allowed.has(edge.source) && allowed.has(edge.target))
@@ -316,8 +424,8 @@ export function composeLibrarianContextReceipt(input: {
       }))
       .sort((a, b) => (a.source + '\\0' + a.target + '\\0' + a.relation)
         .localeCompare(b.source + '\\0' + b.target + '\\0' + b.relation));
-    const omittedPageBlocks = Math.max(0, all.length - selected.length);
-    const omittedLibraryPages = Math.max(0, macro.size - macroPages.length);
+    const omittedPageBlocks = Math.max(0, scored.length - blockEnd);
+    const omittedLibraryPages = Math.max(0, macroCandidates.length - libraryEnd);
     const focusMayExceedBudget = focus !== undefined && focus.content.length > input.policy.budgetCharacters;
     const identities = new Set([
       ...within, ...selected.map((one) => one.id),
@@ -325,7 +433,7 @@ export function composeLibrarianContextReceipt(input: {
       ...relations.map((relation) => relation.block),
     ]);
     return {
-      version: 4, participant: input.participant, request: input.request, within,
+      version: 5, participant: input.participant, request: input.request, within,
       page: {
         id: page.id, title: page.title, ...pageProvenance,
         properties: input.graph.propertiesOf(page.id).map((one) => ({ key: one.key, value: one.value })),
@@ -348,15 +456,25 @@ export function composeLibrarianContextReceipt(input: {
       },
       warnings: [
         ...(omittedPageBlocks > 0
-          ? [String(omittedPageBlocks) + ' bloque(s) de la página quedaron fuera por selección o presupuesto'] : []),
+          ? [String(omittedPageBlocks) + ' bloque(s) completos quedan para continuación'] : []),
         ...(omittedLibraryPages > 0
-          ? [String(omittedLibraryPages) + ' página(s) candidatas quedaron fuera por presupuesto'] : []),
+          ? [String(omittedLibraryPages) + ' página(s) completas quedan para continuación'] : []),
         ...((neighbourhood?.omittedByDegree ?? 0) > 0
           ? [String(neighbourhood?.omittedByDegree) + ' arista(s) autorizadas quedaron fuera por límite de grado'] : []),
         ...(focusMayExceedBudget ? ['el foco exacto excede por sí solo el presupuesto y se conserva íntegro'] : []),
       ],
       continuation: omittedPageBlocks === 0 && omittedLibraryPages === 0 ? null : {
-        page: page.id, nextPageBlock: selected.length, nextLibraryPage: macroPages.length,
+        cursor: cursorFor({
+          version: 1,
+          sequence,
+          pageRevision: pageProvenance.revision,
+          fingerprint,
+          selectionDigest,
+          pageBlockOffset: blockEnd,
+          libraryPageOffset: libraryEnd,
+        }),
+        anchor: { sequence, pageRevision: pageProvenance.revision, selectionDigest },
+        remaining: { pageBlocks: omittedPageBlocks, libraryPages: omittedLibraryPages },
       },
       selection: {
         reason: focus === undefined
@@ -367,33 +485,40 @@ export function composeLibrarianContextReceipt(input: {
         neighbourDepth: input.policy.neighbourDepth,
         allowedRelations,
         maxDegree,
+        pageBlockOffset: blockStart,
+        libraryPageOffset: libraryStart,
       },
     };
   };
 
   let receipt = build();
   let serialized = measured(receipt);
-  while (serialized.length > input.policy.budgetCharacters && macroPages.length > 0) {
+  while (serialized.length > input.policy.budgetCharacters && macroPages.length > 0 &&
+    (macroPages.length > 1 || selected.length > 0)) {
     macroPages.pop();
+    libraryEnd -= 1;
     receipt = build();
     serialized = measured(receipt);
   }
-  while (serialized.length > input.policy.budgetCharacters && selected.some((one) => !one.found_by.includes('focus'))) {
-    const removable = [...selected].reverse().find((one) => !one.found_by.includes('focus'));
+  while (serialized.length > input.policy.budgetCharacters && selected.length > 1) {
+    const removable = scored[blockEnd - 1]?.block.stableId;
     if (removable === undefined) break;
-    selected.splice(selected.findIndex((one) => one.id === removable.id), 1);
+    const at = selected.findIndex((one) => one.id === removable);
+    if (at < 0) break;
+    selected.splice(at, 1);
+    blockEnd -= 1;
     receipt = build();
     serialized = measured(receipt);
   }
   if (serialized.length > input.policy.budgetCharacters) {
-    receipt.warnings.push('el recibo excede el presupuesto por ' +
-      String(serialized.length - input.policy.budgetCharacters) + ' carácter(es)');
+    receipt.warnings.push('una unidad semántica completa obliga a exceder el presupuesto por ' +
+      String(serialized.length - input.policy.budgetCharacters) + ' carácter(es); no fue recortada');
     measured(receipt);
   }
   return receipt;
 }
 
-/** Compatibilidad: el snapshot durable sigue siendo JSON, ahora con recibo v4. */
+/** Compatibilidad: el snapshot durable sigue siendo JSON, ahora con recibo v5. */
 export function composeLibrarianContext(input: Parameters<typeof composeLibrarianContextReceipt>[0]): string {
   return measured(composeLibrarianContextReceipt(input));
 }

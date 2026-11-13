@@ -62,8 +62,21 @@ before(async () => {
       let raw = '';
       for await (const chunk of request) raw += chunk;
       lastContextRequest = JSON.parse(raw);
+      if (lastContextRequest.page === 'page:paged') {
+        const continued = lastContextRequest.cursor === 'cursor:second';
+        response.end(JSON.stringify({
+          version: 5,
+          page: { id: 'page:paged' },
+          blocks: [{ id: continued ? 'block:second' : 'block:first' }],
+          library: { pages: [] },
+          items: [{ kind: 'block', id: continued ? 'block:second' : 'block:first' }],
+          relations: [],
+          continuation: continued ? null : { cursor: 'cursor:second' },
+        }));
+        return;
+      }
       response.end(JSON.stringify({
-        version: 4,
+        version: 5,
         page: { id: 'page:focus' },
         blocks: [{ id: 'block:focus' }],
         library: { pages: [{ id: 'page:near', excerpts: ['pasaje vecino'] }] },
@@ -193,5 +206,32 @@ describe('context baseline', () => {
     assert.equal(lastContextRequest.neighbourDepth, 2);
     assert.deepEqual(lastContextRequest.allowedRelations, ['respalda']);
     assert.equal(lastContextRequest.maxDegree, 4);
+    assert.equal(lastContextRequest.budgetCharacters, 24_000);
+  });
+
+  it('follows an anchored context continuation without losing either semantic unit', async () => {
+    const paged = {
+      ...manifest,
+      cases: [{
+        id: 'context-pages', class: 'pagination', question: 'Lee todo.',
+        calls: [{
+          tool: 'context', page: 'page:paged', request: 'Lee todo.', pages: 2,
+          budget: 4_000, depth: 0, allowedRelations: [], maxDegree: 0,
+        }],
+        expected: {
+          requiredIds: ['page:paged', 'block:first', 'block:second'],
+          relevantIds: ['page:paged', 'block:first', 'block:second'],
+          noDuplicateItems: true,
+          textIncludes: ['"continuation":null'],
+        },
+      }],
+    };
+    const report = await runBaseline(paged, { baseUrl });
+    assert.equal(report.summary.passed, 1);
+    assert.equal(report.summary.evidenceRecall, 1);
+    assert.equal(report.summary.evidencePrecision, 1);
+    assert.deepEqual(report.results[0].duplicateItems, []);
+    assert.equal(lastContextRequest.cursor, 'cursor:second');
+    assert.equal(lastContextRequest.budgetCharacters, 4_000);
   });
 });

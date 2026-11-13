@@ -64,6 +64,18 @@ contract ResidentLibrarianExecution {
         -- graph relations actually supplied, the exact character budget, every
         -- omission, warnings and a continuation whenever selection was partial.
 
+    @invariant ContextNeverCutsASemanticUnit
+        -- A selected block and every block-backed textual passage travel with
+        -- their complete current content. If one unit alone exceeds the budget,
+        -- the receipt names the excess instead of replacing its middle with an
+        -- ellipsis.
+
+    @invariant ContextContinuationIsAnchoredAndGapless
+        -- Continuation is an opaque cursor bound to participant, source,
+        -- question, policy, authorised candidate order and corpus sequence.
+        -- Following it returns every remaining semantic item exactly once. A
+        -- changed source or candidate order invalidates the cursor explicitly.
+
     @invariant ContextNeverCrossesItsAuthorizedUniverse
         -- Authorization precedes ranking and traversal. Every page, block and
         -- relation named by the receipt belongs to its explicit within set;
@@ -235,7 +247,17 @@ entity LibrarianContextReceipt {
     allowed_relations: Set<String>
     max_degree: Integer
     warnings: List<String>
-    continuation: String?
+    continuation: LibrarianContextContinuation?
+}
+
+entity LibrarianContextContinuation {
+    receipt: LibrarianContextReceipt
+    cursor: String
+    anchor_sequence: Integer
+    source_revision: core/Revision?
+    selection_digest: String
+    remaining_page_blocks: Integer
+    remaining_library_pages: Integer
 }
 
 entity LibrarianContextItem {
