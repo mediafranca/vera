@@ -564,7 +564,15 @@ export const TOOLS: readonly VeraTool[] = [
         },
         vecindad: {
           type: 'integer', minimum: 0, maximum: 2,
-          description: 'Profundidad de expansión por enlaces. Por omisión 1.',
+          description: 'Profundidad de expansión autorizada, entre cero y dos saltos. Por omisión 1.',
+        },
+        relaciones: {
+          type: 'array', maxItems: 24, items: { type: 'string' },
+          description: 'Allowlist explícita de relaciones recorribles, por ejemplo link, respalda o profundiza. Por omisión sólo link.',
+        },
+        grado: {
+          type: 'integer', minimum: 0, maximum: 50,
+          description: 'Máximo de aristas autorizadas que expande cada página. Por omisión 12.',
         },
         busqueda: {
           type: 'integer', minimum: 0, maximum: 20,
@@ -606,6 +614,14 @@ export const TOOLS: readonly VeraTool[] = [
         ...(args.presupuesto === undefined ? {} : { budgetCharacters: count(args.presupuesto, 24_000, 60_000) }),
         ...(args.vecindad === undefined ? {} : { neighbourDepth: Math.max(0, Math.min(2, Math.floor(Number(args.vecindad) || 0))) }),
         ...(args.busqueda === undefined ? {} : { searchLimit: Math.max(0, Math.min(20, Math.floor(Number(args.busqueda) || 0))) }),
+        ...(Array.isArray(args.relaciones) ? {
+          allowedRelations: [...new Set(args.relaciones
+            .filter((one): one is string => typeof one === 'string')
+            .map((one) => one.trim()).filter((one) => one !== '').slice(0, 24))],
+        } : {}),
+        ...(args.grado === undefined ? {} : {
+          maxDegree: Math.max(0, Math.min(50, Math.floor(Number(args.grado) || 0))),
+        }),
       });
       if (failed(receipt)) return trouble(receipt);
       const items = Array.isArray(receipt['items']) ? receipt['items'].length : 0;

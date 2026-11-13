@@ -8955,6 +8955,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           budgetCharacters?: unknown;
           neighbourDepth?: unknown;
           searchLimit?: unknown;
+          allowedRelations?: unknown;
+          maxDegree?: unknown;
         };
         try {
           body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as typeof body;
@@ -8988,6 +8990,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           typeof value === 'number' && Number.isInteger(value)
             ? Math.max(least, Math.min(most, value))
             : fallback;
+        const allowedRelations = Array.isArray(body.allowedRelations)
+          ? [...new Set(body.allowedRelations
+            .filter((one): one is string => typeof one === 'string')
+            .map((one) => one.trim()).filter((one) => one !== '').slice(0, 24))]
+          : ['link'];
         const receipt = composeLibrarianContextReceipt({
           graph,
           participant: who.participant,
@@ -8998,6 +9005,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             budgetCharacters: integer(body.budgetCharacters, 24_000, 4_000, 60_000),
             neighbourDepth: integer(body.neighbourDepth, 1, 0, 2),
             searchLimit: integer(body.searchLimit, 8, 0, 20),
+            allowedRelations,
+            maxDegree: integer(body.maxDegree, 12, 0, 50),
           },
           canRead: isReadablePage,
         });

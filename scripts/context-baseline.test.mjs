@@ -31,6 +31,7 @@ const manifest = {
 
 let server;
 let baseUrl;
+let lastContextRequest;
 
 before(async () => {
   server = createServer(async (request, response) => {
@@ -55,6 +56,26 @@ before(async () => {
     }
     if (url.pathname === '/search') {
       response.end('[]');
+      return;
+    }
+    if (url.pathname === '/context' && request.method === 'POST') {
+      let raw = '';
+      for await (const chunk of request) raw += chunk;
+      lastContextRequest = JSON.parse(raw);
+      response.end(JSON.stringify({
+        version: 4,
+        page: { id: 'page:focus' },
+        blocks: [{ id: 'block:focus' }],
+        library: { pages: [{ id: 'page:near', excerpts: ['pasaje vecino'] }] },
+        items: [
+          { kind: 'block', id: 'block:focus' },
+          { kind: 'page', id: 'page:near', excerpts: [{ block: 'block:near', content: 'pasaje vecino' }] },
+        ],
+        relations: [{
+          source: 'page:focus', target: 'page:near', block: 'block:relation',
+          phrase: 'respalda', revision: 'op:12',
+        }],
+      }));
       return;
     }
     response.statusCode = 404;
@@ -145,5 +166,32 @@ describe('context baseline', () => {
     };
     const report = await runBaseline(withUnscoredNoise, { baseUrl });
     assert.equal(report.summary.evidencePrecision, 2 / 3);
+  });
+
+  it('measures the identities and authored evidence delivered by a context receipt', async () => {
+    const contextual = {
+      ...manifest,
+      cases: [{
+        id: 'context-path', class: 'relational', question: '¿Qué respalda el foco?',
+        calls: [{
+          tool: 'context', page: 'page:focus', request: '¿Qué respalda el foco?',
+          depth: 2, allowedRelations: ['respalda'], maxDegree: 4,
+        }],
+        expected: {
+          requiredIds: ['page:focus', 'page:near', 'block:relation'],
+          relevantIds: [
+            'page:focus', 'block:focus', 'page:near', 'block:near', 'block:relation',
+          ],
+          textIncludes: ['"phrase":"respalda"', '"revision":"op:12"'],
+        },
+      }],
+    };
+    const report = await runBaseline(contextual, { baseUrl });
+    assert.equal(report.summary.passed, 1);
+    assert.equal(report.summary.evidenceRecall, 1);
+    assert.equal(report.summary.evidencePrecision, 1);
+    assert.equal(lastContextRequest.neighbourDepth, 2);
+    assert.deepEqual(lastContextRequest.allowedRelations, ['respalda']);
+    assert.equal(lastContextRequest.maxDegree, 4);
   });
 });

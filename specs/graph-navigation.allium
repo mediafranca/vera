@@ -4,7 +4,8 @@
 -- Scope: The traversal that turns a Vera graph into a navigable neighbourhood
 -- Includes: Links and tags derived from block content, backlinks, links to pages that
 --   do not exist yet, depth-bounded neighbourhoods around a centre page, node distance
---   and degree, and the exclusion of self-edges and duplicate edges
+--   and degree, authorised relation allowlists, bounded expansion and the authored
+--   evidence and path behind every returned edge
 -- Excludes:
 --   - Force simulation parameters, layout and visual styling (see graph-rendering)
 --   - Choice between the two-dimensional and three-dimensional presentations
@@ -21,7 +22,7 @@ use "./change-application.allium" as change
 ------------------------------------------------------------
 
 contract NeighbourhoodTraversal {
-    neighbourhood: (centre: core/Page, depth: Integer) -> GraphNeighbourhood
+    neighbourhood: (centre: core/Page, depth: Integer, allowed_relations: Set<String>, max_degree: Integer) -> GraphNeighbourhood
     backlinks: (target: core/Page) -> Set<PageLink>
 
     @invariant EdgesAreDerivedFromContent
@@ -39,6 +40,15 @@ contract NeighbourhoodTraversal {
     @invariant DepthBoundsTheResult
         -- Every node in a neighbourhood lies within the requested depth of its centre.
         -- Traversal terminates on a graph of any shape, including a cyclic one.
+
+    @invariant AuthorizationPrecedesTraversal
+        -- Unreadable pages and their edges are removed before degree, distance or
+        -- path selection. A hidden neighbour cannot consume a visible page's cap.
+
+    @invariant EveryEdgeCarriesAuthoredEvidence
+        -- Every returned edge names the authored block, exact phrase and revision
+        -- that justify it. Every non-central node carries the ordered path of such
+        -- edges from the centre.
 }
 
 ------------------------------------------------------------
@@ -71,6 +81,9 @@ entity GraphNeighbourhood {
     graph: core/Graph
     centre: core/Page
     depth: Integer
+    allowed_relations: Set<String>
+    max_degree: Integer
+    omitted_by_degree: Integer
     requested_by: core/Participant
     computed_at: Timestamp
     nodes: NeighbourhoodNode with neighbourhood = this
@@ -83,12 +96,28 @@ entity NeighbourhoodNode {
     distance: Integer
     degree: Integer
     block_count: Integer
+    path: NeighbourhoodPathStep with node = this
 }
 
 entity NeighbourhoodEdge {
     neighbourhood: GraphNeighbourhood
     source: core/Page
     target: core/Page
+    relation: String
+    evidence_block: core/Block
+    phrase: String
+    revision: core/Revision
+}
+
+entity NeighbourhoodPathStep {
+    node: NeighbourhoodNode
+    source: core/Page
+    target: core/Page
+    relation: String
+    evidence_block: core/Block
+    phrase: String
+    revision: core/Revision
+    position: Integer
 }
 
 ------------------------------------------------------------
@@ -239,7 +268,7 @@ rule FollowReferenceToAPageThatDoesNotExist {
 }
 
 rule BuildNeighbourhoodAroundPage {
-    when: RequestNeighbourhood(participant, graph, centre, depth)
+    when: RequestNeighbourhood(participant, graph, centre, depth, allowed_relations, max_degree)
 
     let membership = core/Membership{graph, participant}
 
@@ -247,12 +276,16 @@ rule BuildNeighbourhoodAroundPage {
     requires: membership.status = active
     requires: centre.graph = graph
     requires: depth >= 0
+    requires: max_degree >= 0
 
     ensures:
         let neighbourhood = GraphNeighbourhood.created(
             graph: graph,
             centre: centre,
             depth: depth,
+            allowed_relations: allowed_relations,
+            max_degree: max_degree,
+            omitted_by_degree: omitted_edges_count(centre, depth, participant, allowed_relations, max_degree),
             requested_by: participant,
             computed_at: now
         )
@@ -264,16 +297,21 @@ rule BuildNeighbourhoodAroundPage {
                 degree: node.degree,
                 block_count: node.block_count
             )
-        for edge in connecting_edges(centre, depth, participant):
+        for edge in connecting_edges(centre, depth, participant, allowed_relations, max_degree):
             NeighbourhoodEdge.created(
                 neighbourhood: neighbourhood,
                 source: edge.source,
-                target: edge.target
+                target: edge.target,
+                relation: edge.relation,
+                evidence_block: edge.block,
+                phrase: edge.phrase,
+                revision: edge.revision
             )
 
     @guidance
         -- reachable_nodes and connecting_edges are a bounded breadth-first expansion
-        -- over resolved links in both directions. They are black boxes because their
+        -- over authorised resolved links and explained relations in both directions.
+        -- They are black boxes because their
         -- cost model belongs to the store, which can answer them with one recursive
         -- query rather than one lookup per node.
 }
@@ -343,7 +381,7 @@ invariant EdgeEndpointsAreNodesOfTheSameNeighbourhood {
 invariant EdgeAppearsOnceRegardlessOfDirection {
     for a in NeighbourhoodEdges:
         for b in NeighbourhoodEdges:
-            a != b and a.neighbourhood = b.neighbourhood implies
+            a != b and a.neighbourhood = b.neighbourhood and a.relation = b.relation implies
                 not (a.source = b.source and a.target = b.target) and
                 not (a.source = b.target and a.target = b.source)
 }
@@ -351,6 +389,18 @@ invariant EdgeAppearsOnceRegardlessOfDirection {
 invariant NodesBelongToTheTraversedGraph {
     for node in NeighbourhoodNodes:
         node.page.graph = node.neighbourhood.graph
+}
+
+invariant TraversedRelationsAreAllowlisted {
+    for edge in NeighbourhoodEdges:
+        edge.neighbourhood.allowed_relations.contains(edge.relation)
+}
+
+invariant EdgeEvidenceIsCurrent {
+    for edge in NeighbourhoodEdges:
+        edge.phrase != "" and
+        edge.revision = current_revision(edge.evidence_block) and
+        revision_contains(edge.revision, edge.phrase)
 }
 
 ------------------------------------------------------------
@@ -375,7 +425,7 @@ surface GraphNavigation {
         graph.pages
 
     provides:
-        RequestNeighbourhood(participant, graph, centre, depth)
+        RequestNeighbourhood(participant, graph, centre, depth, allowed_relations, max_degree)
         FollowUnresolvedReference(participant, graph, block, title)
 
     contracts:

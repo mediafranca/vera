@@ -434,17 +434,38 @@ export interface NeighbourhoodNode {
   readonly distance: number;
   readonly degree: number;
   readonly blockCount: number;
+  readonly path: readonly NeighbourhoodPathStep[];
+}
+
+export type NeighbourhoodRelationKind = 'link' | 'query_result' | 'explained_relation';
+
+export interface NeighbourhoodEdgeEvidence {
+  readonly kind: NeighbourhoodRelationKind;
+  readonly relation: string;
+  readonly block: BlockId;
+  readonly phrase: string;
+  readonly revision: OperationId | null;
 }
 
 export interface NeighbourhoodEdge {
   readonly source: PageId;
   readonly target: PageId;
+  readonly evidence: NeighbourhoodEdgeEvidence;
+}
+
+export interface NeighbourhoodPathStep extends NeighbourhoodEdge {
+  /** Sentido efectivo del paso desde el centro; la arista conserva su autoría. */
+  readonly from: PageId;
+  readonly to: PageId;
 }
 
 export interface GraphNeighbourhood {
   readonly graph: GraphId;
   readonly centre: PageId;
   readonly depth: number;
+  readonly allowedRelations: readonly string[];
+  readonly maxDegree: number | null;
+  readonly omittedByDegree: number;
   readonly nodes: readonly NeighbourhoodNode[];
   readonly edges: readonly NeighbourhoodEdge[];
 }

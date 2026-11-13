@@ -53,7 +53,7 @@ describe('frontera formativa de la dialéctica', () => {
       policy: { budgetCharacters: 8_000, neighbourDepth: 1, searchLimit: 8 },
     });
     const parsed = JSON.parse(snapshot) as LibrarianContextReceipt;
-    assert.equal(parsed.version, 3);
+    assert.equal(parsed.version, 4);
     assert.equal(parsed.focus?.id, 'block:focus');
     assert.ok(parsed.blocks.some((block) => block.id === 'block:parent'));
     assert.ok(parsed.blocks.some((block) => block.id === 'block:sibling'));
@@ -66,12 +66,18 @@ describe('frontera formativa de la dialéctica', () => {
       page.signals.some((signal) => signal.kind === 'graph_distance')));
     assert.ok(parsed.library.pages.some((page) =>
       page.signals.some((signal) => signal.kind === 'text_relevance')));
+    const graphRank = parsed.library.pages.find((page) => page.id === 'page:macro')?.score ?? 0;
+    const textRank = parsed.library.pages.find((page) => page.id === 'page:search')?.score ?? 0;
+    assert.ok(graphRank > textRank,
+      'la relación solicitada debe sobrevivir al presupuesto antes que texto incidental');
     assert.equal(parsed.selection.budgetCharacters, 8_000);
     assert.equal(parsed.used.characters, snapshot.length);
     assert.equal(parsed.selection.usedCharacters, snapshot.length);
     assert.ok(parsed.items.every((item) => parsed.within.includes(item.kind === 'block' ? item.page : item.id)));
     assert.ok(parsed.relations.every((relation) =>
       parsed.within.includes(relation.source) && parsed.within.includes(relation.target)));
+    assert.ok(parsed.relations.every((relation) =>
+      relation.block !== '' && relation.phrase !== '' && relation.revision !== null));
     assert.ok(parsed.items.every((item) => item.revision !== null && item.authoredBy !== null));
     assert.ok(parsed.items.every((item) => item.found_by.length > 0));
     const exposure = librarianContextExposure(snapshot);
@@ -89,6 +95,55 @@ describe('frontera formativa de la dialéctica', () => {
           'el extracto debe existir en el bloque cuya revisión cita');
       }
     }
+  });
+
+  it('compone dos saltos autorizados con allowlist, grado y camino verificable', () => {
+    const graph = VeraGraph.create({ name: 'Vera relacional' });
+    graph.addParticipant({ id: 'participant:owner', name: 'Dueña', kind: 'human' });
+    graph.addParticipant({ id: 'participant:agent', name: 'Agente', kind: 'agent' });
+    graph.admit('participant:owner'); graph.admit('participant:agent');
+    const write = (originId: string, change: Parameters<typeof graph.submitOperation>[0]['change']): void => {
+      assert.notEqual(graph.submitOperation({ originId, participant: 'participant:owner', change }).status, 'rejected');
+    };
+    for (const [id, title] of [
+      ['page:source', 'Fuente'], ['page:middle', 'Puente'], ['page:target', 'Destino'], ['page:hidden', 'Oculta'],
+    ] as const) write(id, { kind: 'create_page', stableId: id, title, visibility: 'private' });
+    write('crossing:source-hidden', {
+      kind: 'create_crossing', stableId: 'crossing:source-hidden',
+      fromPage: 'page:source', toPage: 'page:hidden', term: 'respalda', content: 'La fuente respalda el secreto.',
+    });
+    write('crossing:source-middle', {
+      kind: 'create_crossing', stableId: 'crossing:source-middle',
+      fromPage: 'page:source', toPage: 'page:middle', term: 'respalda', content: 'La fuente respalda el puente.',
+    });
+    write('crossing:middle-target', {
+      kind: 'create_crossing', stableId: 'crossing:middle-target',
+      fromPage: 'page:middle', toPage: 'page:target', term: 'respalda', content: 'El puente respalda el destino.',
+    });
+
+    const snapshot = composeLibrarianContext({
+      graph, participant: 'participant:agent', page: 'page:source', request: '¿Qué respalda esta fuente?',
+      policy: {
+        budgetCharacters: 12_000, neighbourDepth: 2, searchLimit: 0,
+        allowedRelations: ['respalda'], maxDegree: 1,
+      },
+      canRead: (page) => page !== 'page:hidden',
+    });
+    const receipt = JSON.parse(snapshot) as LibrarianContextReceipt;
+    const target = receipt.items.find((item) => item.kind === 'page' && item.id === 'page:target');
+
+    assert.equal(target?.kind, 'page');
+    assert.equal(target?.kind === 'page' ? target.path.length : 0, 2);
+    assert.ok(receipt.relations.every((relation) =>
+      relation.relation === 'respalda' && relation.block !== '' &&
+      relation.phrase !== '' && relation.revision !== null));
+    assert.ok(!snapshot.includes('page:hidden'));
+    assert.deepEqual(receipt.selection.allowedRelations, ['respalda']);
+    assert.equal(receipt.selection.maxDegree, 1);
+    assert.equal(receipt.omitted.degreeEdges, 0,
+      'la relación oculta se autoriza fuera antes de consumir el grado');
+    assert.ok(receipt.relations.every((relation) =>
+      librarianContextExposure(snapshot).delivered.includes(relation.block)));
   });
 
   it('excluye antes de componer y hace visibles presupuesto, omisiones y continuación', () => {

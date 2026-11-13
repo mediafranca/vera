@@ -47,6 +47,17 @@ contract ResidentLibrarianExecution {
         -- model may read more through tools, but it never has to guess that a
         -- library exists.
 
+    @invariant SemanticExpansionIsAuthorisedAndExplainable
+        -- Macrocontext traverses at most two hops, only through allowlisted
+        -- relation names and after excluding unreadable pages. Degree is capped
+        -- before expansion. Every returned edge and path step names the authored
+        -- block, phrase and current revision that justify it.
+
+    @invariant RequestedRelationsPrecedeIncidentalTextUnderBudget
+        -- When both cannot fit, an authorised graph path requested by the caller
+        -- ranks before a page found only by incidental text. Both still expose
+        -- their separate score contributions.
+
     @invariant ContextSelectionLeavesAnAuditableReceipt
         -- The frozen context names every selected page and block, how it was
         -- found, why it was included, its current revision and authorship, the
@@ -219,6 +230,10 @@ entity LibrarianContextReceipt {
     used_characters: Integer
     omitted_page_blocks: Integer
     omitted_library_pages: Integer
+    omitted_degree_edges: Integer
+    neighbour_depth: Integer
+    allowed_relations: Set<String>
+    max_degree: Integer
     warnings: List<String>
     continuation: String?
 }
@@ -238,6 +253,10 @@ entity LibrarianContextRelation {
     receipt: LibrarianContextReceipt
     source: core/Page
     target: core/Page
+    relation: String
+    evidence_block: core/Block
+    phrase: String
+    revision: core/Revision
     found_by: ContextDiscovery
     reason: String
 }
@@ -247,11 +266,14 @@ actor LibrarianOwner {
 }
 
 rule ComposeLibrarianContextReceipt {
-    when: ComposeLibrarianContext(configuration, request, within, items, relations, used_characters, omitted_page_blocks, omitted_library_pages, warnings, continuation)
+    when: ComposeLibrarianContext(configuration, request, within, items, relations, used_characters, omitted_page_blocks, omitted_library_pages, omitted_degree_edges, neighbour_depth, allowed_relations, max_degree, warnings, continuation)
     requires: configuration.librarian.librarian = request.conversation.agent
     requires: within.all(page => readable(configuration.librarian.librarian, page))
     requires: items.all(item => within.contains(item.page))
     requires: relations.all(relation => within.contains(relation.source) and within.contains(relation.target))
+    requires: relations.all(relation => allowed_relations.contains(relation.relation))
+    requires: relations.all(relation => relation.revision = current_revision(relation.evidence_block))
+    requires: relations.all(relation => revision_contains(relation.revision, relation.phrase))
     requires: items.all(item => item.revision = current_revision(item.block ?? item.page))
     requires: items.all(item => item.excerpt = null or revision_contains(item.revision, item.excerpt))
     requires: used_characters <= configuration.context_budget_characters or warnings.count > 0
@@ -266,6 +288,10 @@ rule ComposeLibrarianContextReceipt {
         used_characters: used_characters,
         omitted_page_blocks: omitted_page_blocks,
         omitted_library_pages: omitted_library_pages,
+        omitted_degree_edges: omitted_degree_edges,
+        neighbour_depth: neighbour_depth,
+        allowed_relations: allowed_relations,
+        max_degree: max_degree,
         warnings: warnings,
         continuation: continuation
     )
