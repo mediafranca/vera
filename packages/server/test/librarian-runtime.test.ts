@@ -1096,6 +1096,25 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.equal(restoredRoot.status, 201, JSON.stringify(restoredRoot.json));
       assert.equal(running.vera.graph.block(root.stableId)?.content, '**Bitácora de Lucienne:**');
 
+      const legacyChildId = `${root.stableId}:legacy-child`;
+      const legacyChild = await call('/operations', { method: 'POST', body: {
+        originId: 'bridge-test:create-legacy-daily-child', participant: owner.id,
+        change: {
+          kind: 'create_block', stableId: legacyChildId, page: daily.id,
+          parent: root.stableId, position: 0, content: 'Resumen heredado',
+        },
+      } });
+      assert.equal(legacyChild.status, 201, JSON.stringify(legacyChild.json));
+      const legacyChildRevision = running.vera.graph.operations()
+        .filter((operation) => operation.subjectId === legacyChildId).at(-1)?.id;
+      const removedLegacyChild = await call('/operations', { method: 'POST', secret, body: {
+        originId: 'bridge-test:remove-legacy-daily-child',
+        ifRevision: legacyChildRevision,
+        change: { kind: 'remove_block', block: legacyChildId },
+      } });
+      assert.equal(removedLegacyChild.status, 201, JSON.stringify(removedLegacyChild.json));
+      assert.equal(running.vera.graph.block(legacyChildId), undefined);
+
       const disposable = await call('/operations', { method: 'POST', body: {
         originId: 'bridge-test:disposable', participant: owner.id,
         change: { kind: 'create_block', page, parent: null, position: 0, content: 'Bloque descartable' },

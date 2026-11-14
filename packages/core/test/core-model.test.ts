@@ -557,4 +557,29 @@ describe('the invariant checker itself', () => {
 
     assert.ok(checkInvariants(graph).some((one) => one.invariant === 'TheDailyRootIsReservedStructure'));
   });
+
+  it('does not mistake a descendant that extends the reserved prefix for another root', () => {
+    const graph = inhabitedGraph();
+    const page = makePage(graph, '2026-11-06');
+    const root = submit(graph, {
+      kind: 'create_block',
+      stableId: 'block:librarian-daily:2026-11-06:cotito',
+      page,
+      parent: null,
+      position: 0,
+      content: '**Bitácora de Cotito:**',
+    });
+    assert.equal(root.status, 'applied');
+    const child = submit(graph, {
+      kind: 'create_block',
+      stableId: 'block:librarian-daily:2026-11-06:cotito:legacy-child',
+      page,
+      parent: 'block:librarian-daily:2026-11-06:cotito',
+      position: 0,
+      content: 'Resumen diario',
+    });
+    assert.equal(child.status, 'applied');
+
+    assert.deepEqual(checkInvariants(graph), []);
+  });
 });
