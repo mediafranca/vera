@@ -89,7 +89,9 @@ const blockBelongsToAnExistingPage: Check = (graph, report) => {
 
 const theDailyRootIsReservedStructure: Check = (graph, report) => {
   for (const block of graph.allBlocks()) {
-    const matched = /^block:librarian-daily:(\d{4}-\d{2}-\d{2}):(.+)$/.exec(block.stableId);
+    // La raíz reserva una forma exacta. Un descendiente heredado cuyo ID
+    // prolongue ese prefijo no se convierte por accidente en otra raíz.
+    const matched = /^block:librarian-daily:(\d{4}-\d{2}-\d{2}):([^:]+)$/.exec(block.stableId);
     if (matched === null) continue;
     const participant = graph.participant(`participant:${matched[2]}`);
     const expected = participant === undefined ? null : `**Bitácora de ${participant.name}:**`;

@@ -643,6 +643,11 @@ function boundedInteger(value: string | null, fallback: number, most: number): n
   return Number.isInteger(parsed) ? Math.max(0, Math.min(most, parsed)) : fallback;
 }
 
+/** Sólo la forma exacta nombra infraestructura diaria reservada. */
+function isLibrarianDailyRootId(id: string): boolean {
+  return /^block:librarian-daily:\d{4}-\d{2}-\d{2}:[^:]+$/.test(id);
+}
+
 function agentMutationPrecondition(
   graph: VeraGraph,
   who: Submitter,
@@ -655,7 +660,7 @@ function agentMutationPrecondition(
   const canonicalDailyHeading = participant === undefined ? null : `**Bitácora de ${participant.name}:**`;
   const repairsOwnDailyHeading =
     change.kind === 'edit_block' &&
-    change.block.startsWith('block:librarian-daily:') &&
+    isLibrarianDailyRootId(change.block) &&
     change.block.endsWith(ownDailyRootSuffix) &&
     canonicalDailyHeading !== null &&
     change.content === canonicalDailyHeading;
@@ -663,7 +668,7 @@ function agentMutationPrecondition(
     (change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block') &&
     who.credential !== null &&
     participant?.kind === 'agent' &&
-    change.block.startsWith('block:librarian-daily:') &&
+    isLibrarianDailyRootId(change.block) &&
     !repairsOwnDailyHeading
   ) {
     return {
@@ -887,7 +892,7 @@ function clearanceRefusalForChange(store: Store, graph: VeraGraph, participant: 
   if (
     graph.participant(participant)?.kind === 'agent' &&
     change.kind === 'remove_page' &&
-    graph.blocksOf(change.page).some((block) => block.stableId.startsWith('block:librarian-daily:'))
+    graph.blocksOf(change.page).some((block) => isLibrarianDailyRootId(block.stableId))
   ) return 'una identidad agente no puede retirar una página que contiene una raíz diaria reservada';
   if (change.kind === 'create_page') {
     const decision = clearanceForGeneral(store, participant, 'contribute');
@@ -1226,7 +1231,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       if (structural !== null) return structural;
       if (
         (change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block') &&
-        change.block.startsWith('block:librarian-daily:')
+        isLibrarianDailyRootId(change.block)
       ) return 'la raíz diaria propia es infraestructura reservada y no se puede alterar';
       const expected = change.kind === 'edit_block' || change.kind === 'move_block' || change.kind === 'remove_block'
         ? ifRevisions[change.block]
