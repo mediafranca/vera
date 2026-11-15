@@ -2834,7 +2834,8 @@ async function drawGraph(reach = 1): Promise<void> {
    * durante esa espera: apartarlos antes deja al mapa sin salida y permite que
    * un segundo dibujo intente retirar controles que ya no están en el DOM.
    */
-  const relationTypes = workspace.graphView === 'graph_d4'
+  const canAuthorRelations = !isReadOnly();
+  const relationTypes = workspace.graphView === 'graph_d4' && canAuthorRelations
     ? await api.ontology()
       .then((ontology) => ontology.relations
         .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
@@ -2921,7 +2922,7 @@ async function drawGraph(reach = 1): Promise<void> {
       cleanupGraph3D();
       renderGraphD4(container, data, onClick, {
         ...settings,
-        relations: {
+        ...(canAuthorRelations ? { relations: {
           types: relationTypes,
           editBlock: async (block: string, content: string): Promise<boolean> => {
             // Los bloques de una relación no viven en el outline de la página
@@ -2964,7 +2965,7 @@ async function drawGraph(reach = 1): Promise<void> {
             return result.status !== 'rejected';
           },
           refresh: drawGraph,
-        },
+        } } : {}),
       });
     } else {
       cleanupGraph3D();

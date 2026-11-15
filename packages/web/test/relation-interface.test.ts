@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const outliner = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
 
 function rule(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -20,5 +21,18 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
     const field = rule('.relation-field');
     assert.match(field, /width: min\(100%, 46rem\)/);
     assert.match(field, /border-radius: 0/);
+  });
+
+  it('no ofrece pluma ni formalización en una proyección de sólo lectura', () => {
+    const referenceStart = outliner.indexOf('const held = row.relation ?? undefined');
+    const referenceEnd = outliner.indexOf("const link = document.createElement('div')", referenceStart);
+    const referenceAuthoring = outliner.slice(referenceStart, referenceEnd);
+    assert.match(referenceAuthoring, /if \(!readOnly\) \{/);
+    assert.match(referenceAuthoring, /className = 'reference-explain'/);
+    assert.match(
+      outliner,
+      /if \(!readOnly && member\.mentioned && !member\.linked && member\.formalization !== null\)/,
+    );
+    assert.doesNotMatch(outliner, /item\.append\(quill, link\)/);
   });
 });

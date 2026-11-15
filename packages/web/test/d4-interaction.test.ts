@@ -152,7 +152,7 @@ describe('interacción de D4', () => {
   });
 
   it('escribe relaciones fuera de la réplica parcial de la página abierta', () => {
-    const actions = main.slice(main.indexOf('relations: {'), main.indexOf('refresh: drawGraph'));
+    const actions = main.slice(main.indexOf('...(canAuthorRelations ? { relations: {'), main.indexOf('refresh: drawGraph'));
     assert.equal((actions.match(/api\.submitCanonical\(/g) ?? []).length, 4);
     assert.doesNotMatch(actions, /api\.submit\(/);
     assert.match(actions, /kind: 'edit_block'/);
@@ -160,6 +160,12 @@ describe('interacción de D4', () => {
     assert.match(actions, /kind: 'create_crossing'/);
     assert.match(actions, /kind: 'edit_crossing'/);
     assert.doesNotMatch(actions, /content: ''/);
+  });
+
+  it('retira las herramientas relacionales del mapa público de sólo lectura', () => {
+    assert.match(main, /const canAuthorRelations = !isReadOnly\(\)/);
+    assert.match(main, /workspace\.graphView === 'graph_d4' && canAuthorRelations/);
+    assert.match(main, /\.\.\.\(canAuthorRelations \? \{ relations: \{/);
   });
 
   it('no intenta crear una conectiva hasta que su primer bloque tiene contenido', () => {
