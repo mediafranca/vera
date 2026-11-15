@@ -26,6 +26,7 @@ import {
   compositionStageChanges,
   compositionTemplateFor,
   type ArgumentMaturity,
+  type FieldKind,
   type MarkdownTable,
   type RenderOptions,
 } from '@vera/core';
@@ -58,7 +59,8 @@ import {
   type TableHeaderAxis,
 } from './table-editor.ts';
 import { sourceSelection, type SourceSelection } from './source-selection.ts';
-import { completeInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
+import { completeInPlace, editFieldInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
+import { pickGeographicPosition } from './geo-picker.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
 import { renderTemplateInspector } from './template-inspector.ts';
 import { answerQueryBlock } from './query-block.ts';
@@ -5066,23 +5068,29 @@ export function renderOutliner(
       editInPlace(key, property.key, 'nombre de la propiedad', async (next) => {
         const name = next.trim();
         if (name === '' || name === property.key) return true;
-        // Renombrar es quitar la vieja y poner la nueva: el dominio identifica
-        // una propiedad por su clave, así que no hay un cambio que la renombre.
-        const removed = await submitQuietly({
-          kind: 'remove_property',
-          page: page.id,
-          propertyKey: property.key,
-        });
-        if (!removed) return false;
-        return submitAndReload(
-          { kind: 'set_property', page: page.id, propertyKey: name, propertyValue: property.value },
-          callbacks,
-        );
+        // Renombrar son dos cambios del modelo, pero una sola decisión. Antes se
+        // enviaban separados y una desconexión entre ambos podía dejar la
+        // propiedad borrada. El mismo lote canónico que usa el resto de Vera
+        // conserva ahora el valor o no cambia nada.
+        const result = await api.submitCanonicalBatch([
+          { change: { kind: 'remove_property', page: page.id, propertyKey: property.key } },
+          { change: { kind: 'set_property', page: page.id, propertyKey: name, propertyValue: property.value } },
+        ]);
+        if (result.status === 'rejected') {
+          toast(result.reason);
+          return false;
+        }
+        callbacks.onReload(null);
+        return true;
       });
     });
 
     const value = document.createElement('dd');
     value.className = 'property-value';
+    if (property.valueState === 'invalid' || property.valueState === 'unlisted') {
+      value.classList.add(`property-value-${property.valueState}`);
+      value.title = property.valueProblem ?? 'el valor no coincide con su declaración';
+    }
     const actions = document.createElement('span');
     actions.className = 'property-actions';
 
@@ -5099,10 +5107,43 @@ export function renderOutliner(
     const typedReferences = (page.propertyReferences ?? []).filter(
       (reference) => titleKey(reference.property) === titleKey(property.key),
     );
-    const referential = schema?.field === 'enlace';
-    const external = outward(property.value);
+    const field = schema?.field ?? null;
+    const referential = field === 'enlace';
+    const answers = answersIn(property.value);
+    const several = answers.length > 1;
+    const openVocabulary = property.key === corpusNames().topic;
+    const external = field === 'url' || schema === undefined ? outward(property.value) : null;
+    const editValue = (): void => {
+      if (field === 'posición geográfica') {
+        void pickGeographicPosition(property.value, (next) => void answer(next));
+        return;
+      }
+      if (referential || field === 'una de' || openVocabulary || isChoosable(offered)) {
+        completeInPlace(value, `valor de ${property.key}`, answer, {
+          initial: property.value,
+          choices: offered.map((option) => ({
+            value: option.value,
+            hint: option.uses === 1 ? '1 página' : `${option.uses} páginas`,
+          })),
+          ...(openVocabulary || schema?.many === true ? { separatedBy: ',' } : {}),
+        });
+        return;
+      }
+      editFieldInPlace(value, property.value, `valor de ${property.key}`, field, answer);
+    };
 
-    if (external !== null) {
+    if (field === 'posición geográfica') {
+      const position = document.createElement('button');
+      position.type = 'button';
+      position.className = 'property-word property-geographic';
+      position.textContent = property.value.trim() === '' ? 'sin posición' : property.value;
+      position.title = 'elegir en el mapa';
+      position.addEventListener('click', (event) => {
+        event.stopPropagation();
+        editValue();
+      });
+      value.append(position);
+    } else if (external !== null) {
       const link = document.createElement('a');
       link.className = 'property-word property-external';
       link.href = external;
@@ -5112,7 +5153,7 @@ export function renderOutliner(
       link.title = 'abrir fuera de Vera · doble clic para editar';
       link.addEventListener('dblclick', (event) => {
         event.preventDefault();
-        editInPlace(value, property.value, `valor de ${property.key}`, answer);
+        editValue();
       });
       value.append(link);
     } else {
@@ -5136,10 +5177,6 @@ export function renderOutliner(
      * puedan seguirse por separado sin que nadie tenga que declarar un
      * vocabulario primero.
      */
-    const answers = answersIn(property.value);
-    const several = answers.length > 1;
-    const openVocabulary = property.key === corpusNames().topic;
-
     if (referential || isChoosable(offered) || several || openVocabulary) {
       /*
        * Un valor de vocabulario se contesta eligiendo y se sigue pulsando, y son
@@ -5204,7 +5241,7 @@ export function renderOutliner(
         empty.title = `escribir el valor de ${property.key}`;
         empty.addEventListener('click', (event) => {
           event.stopPropagation();
-          editInPlace(value, '', `valor de ${property.key}`, answer);
+          editValue();
         });
         words.append(empty);
       }
@@ -5245,41 +5282,12 @@ export function renderOutliner(
             [
               {
                 label: 'escribir otro…',
-                run: () => editInPlace(value, property.value, `valor de ${property.key}`, answer),
+                run: editValue,
               },
             ],
           ]);
         });
         actions.append(choose);
-      } else {
-        /*
-         * Sin de dónde elegir, no hay chevrón.
-         *
-         * Un vocabulario abierto —`concepto`, con mil palabras— no cabe en un
-         * menú de doce, y ofrecer las doce más usadas diría que la respuesta
-         * está entre ellas cuando cubren el diecinueve por ciento del uso. Aquí
-         * se escribe, pulsando el hueco de la fila: las palabras no, que cada
-         * una lleva a su página.
-         */
-        const edit = document.createElement('button');
-        edit.type = 'button';
-        edit.className = 'property-edit';
-        edit.innerHTML = icon('edit-2');
-        edit.setAttribute('aria-label', `editar ${property.key}`);
-        edit.title = `editar ${property.key}`;
-        edit.addEventListener('click', (event) => {
-          event.stopPropagation();
-          const completion = {
-            initial: property.value,
-            choices: offered.map((option) => ({
-              value: option.value,
-              hint: option.uses === 1 ? '1 página' : `${option.uses} páginas`,
-            })),
-            ...(openVocabulary || schema?.many === true ? { separatedBy: ',' } : {}),
-          };
-          completeInPlace(value, `valor de ${property.key}`, answer, completion);
-        });
-        actions.append(edit);
       }
     } else {
       /*
@@ -5301,10 +5309,25 @@ export function renderOutliner(
       value.tabIndex = 0;
       value.title = empty ? 'escribir el valor' : 'editar el valor';
       value.addEventListener('click', () => {
-        editInPlace(value, property.value, `valor de ${property.key}`, answer);
+        editValue();
       });
     }
     }
+
+    // Editar siempre tiene un gesto visible. El valor puede navegar —referencia
+    // o URL— y por eso no se le vuelve a cargar además la responsabilidad de
+    // revelar cómo se corrige.
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'property-edit property-edit-visible';
+    edit.innerHTML = icon(field === 'posición geográfica' ? 'map' : 'edit-2');
+    edit.setAttribute('aria-label', `editar ${property.key}`);
+    edit.title = field === 'posición geográfica' ? `elegir ${property.key} en el mapa` : `editar ${property.key}`;
+    edit.addEventListener('click', (event) => {
+      event.stopPropagation();
+      editValue();
+    });
+    actions.append(edit);
 
     /*
      * El tipo de un día no se ofrece para quitar.

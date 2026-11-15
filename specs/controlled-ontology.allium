@@ -37,6 +37,14 @@ value PropertyReferenceResolution {
     status: PropertyReferenceStatus
 }
 
+value PropertyValueReading {
+    assignment: core/PropertyAssignment
+    definition: PropertyDefinition
+    status: PropertyValueStatus
+    canonical_value: String?
+    reason: String?
+}
+
 ------------------------------------------------------------
 -- Contracts
 ------------------------------------------------------------
@@ -44,6 +52,7 @@ value PropertyReferenceResolution {
 contract LibraryOntologyAwareWriting {
     inspect_page: (ontology: Ontology, page: core/Page) -> Set<PropertyDefinition>
     validate_property: (ontology: Ontology, page: core/Page, name: String, value: String) -> Boolean
+    read_property_value: (ontology: Ontology, assignment: core/PropertyAssignment) -> PropertyValueReading
     resolve_property_references: (ontology: Ontology, page: core/Page) -> Set<PropertyReferenceResolution>
 
     @invariant MetadataIsAPropertyAssignmentNotDecorativeText
@@ -110,7 +119,7 @@ enum MigrationStatus { previewed | applied | discarded }
 -- cuyo valor es genuinamente una frase, y decirlo es distinto de no haberlo
 -- decidido nunca.
 enum PropertyValueKind {
-    boolean | one_of | concept | page_reference | external_url | date | number | free_text
+    boolean | one_of | concept | page_reference | external_url | date | number | geographic_position | free_text
 }
 
 -- Dónde vive una instancia de un objeto de la biblioteca. Esto describe el
@@ -132,6 +141,7 @@ enum RelationFunction { descriptive | normative | evidentiary }
 enum RelationScope { direct | inherited_by_membership }
 
 enum PropertyReferenceStatus { resolved_compatible | unresolved | incompatible }
+enum PropertyValueStatus { empty | valid | invalid | unlisted }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -1368,6 +1378,30 @@ surface LibraryGovernment {
         -- targets. It does not reject writing, silently reclassify a target or
         -- replace the value that a participant wrote.
 
+    @guarantee OneValueKindHasOneReadingAndOneEditor
+        -- Front matter, block properties and every other writing surface obtain
+        -- parsing, canonical form and the input control from the same declared
+        -- value kind. Date is always AAAA-MM-DD, number uses one portable
+        -- decimal notation, boolean is always yes or no, and geographic
+        -- position is always a portable geo URI. A second form does not invent
+        -- a second grammar for the same property.
+
+    @guarantee FrontMatterIsAnEditableFormAndNotAHiddenGesture
+        -- Every editable property exposes a visible edit action. Following a
+        -- page reference or external URL remains a different action from
+        -- changing it; keyboard and touch can reach the same appropriate
+        -- control without discovering a double click or an invisible hotspot.
+
+    @guarantee HistoricalValuesAreDiagnosedAndNeverCoerced
+        -- A value that predates its declaration remains exactly as written and
+        -- carries empty, invalid or unlisted status beside the field. Merely
+        -- opening a page never rewrites a date, number, URL, boolean or point.
+
+    @guarantee GeographicPositionIsPortableWithoutItsMap
+        -- The map is an input aid, not the value. Vera stores a geo URI with
+        -- latitude and longitude; losing OpenStreetMap, Leaflet or the network
+        -- leaves the property readable, queryable and editable as coordinates.
+
     @guarantee TypeAndTopicAreNeverTheSameQuestion
         -- What a page is and what it is about are asked separately and answered
         -- separately. A vocabulary that answers both at once with one word ends
@@ -1611,10 +1645,11 @@ contract TheOntologyIsWrittenWhereItCanBeRead {
 open question "Which ontology changes may an agent curator apply without prior human confirmation?"
 open question "When processing resolves a link, does the title it found belong in the block as text, in a property of the page, or in a record beside the link that the block never sees?"
 open question "What does processing do with an address it cannot reach — say nothing, propose the link as dead, or leave a standing question to retry later, given that unreachable today and gone for ever look identical from here?"
--- Las clases de campo distinguen al menos texto, número, fecha, enlace interno,
--- URL externa, sí/no y una de. La lista se mantiene corta: una lista larga es
--- una lista de validaciones que alguien tendría que escribir y mantener.
-open question "¿Hace falta alguna clase de campo más —duración, cantidad con unidad, rango de fechas— o lo que parece faltar se resuelve declarando los valores conocidos de «una de»?"
+-- Resuelta para el corte previo a Federación: la lista incorpora posición
+-- geográfica porque tiene representación portable y comportamiento propio. Las
+-- cantidades con unidad, rangos y duraciones siguen siendo preguntas distintas
+-- y no se inventan para cerrar este corte.
+open question "¿Duración, cantidad con unidad y rango de fechas merecen tipos portables propios o restricciones sobre número y fecha?"
 
 open question "Cuando una instancia participa en varios objetos cuyas plantillas declaran propiedades incompatibles, ¿la ficha enseña ambas expectativas como una discrepancia o exige que el Gobierno resuelva primero la incompatibilidad?"
 open question "¿Una composición puede admitir simultáneamente páginas y bloques en un mismo rol, o cada rol debe fijar un solo soporte para que su orden sea legible?"
@@ -1624,7 +1659,8 @@ open question "¿Cómo declara un objeto activo que usa una capacidad genérica 
 
 -- Lo que abre gobernar el front matter con controles. Está aquí y no en una
 -- lista aparte porque son decisiones sin tomar, no trabajo sin hacer.
-open question "Cuando una propiedad ya escrita no admite el dominio que después se le declaró — el `type` cuyo valor es `\": \"`, el que empaqueta cinco tipos con barras — ¿se enseña como discrepancia junto a su control, se deja sólo como texto, o se propone una migración por valor?"
+-- Resuelta: se enseña junto al control como invalid o unlisted y no se migra al
+-- leer. Una corrección posterior sigue siendo una operación atribuida.
 -- Resuelta: `applies_globally` lo declara; el uso observado puede proponerlo,
 -- pero nunca convertirlo en global por frecuencia.
 -- Resuelta: una propiedad requerida se enseña vacía y pendiente. No inventa un

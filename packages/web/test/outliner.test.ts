@@ -112,6 +112,22 @@ describe('modo global del front matter', () => {
   });
 });
 
+describe('front matter habitable', () => {
+  it('separa navegar de editar y toma el control desde el tipo declarado', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /property-edit property-edit-visible/);
+    assert.match(source, /editFieldInPlace\(value, property\.value/);
+    assert.match(source, /field === 'posición geográfica'/);
+    assert.match(source, /pickGeographicPosition/);
+  });
+
+  it('renombra una propiedad como un solo lote canónico', () => {
+    const source = readFileSync(new URL('../src/outliner.ts', import.meta.url), 'utf8');
+    assert.match(source, /submitCanonicalBatch\(\[/);
+    assert.match(source, /kind: 'remove_property'[\s\S]*kind: 'set_property'/);
+  });
+});
+
 describe('fuente y representación derivada', () => {
   const withoutRenderedObject = {
     querySelector: () => null,

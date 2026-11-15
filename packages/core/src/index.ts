@@ -51,10 +51,13 @@ export type { Inverse, Undoing, World } from './undo.ts';
  * constituyen. Ver ontology.ts.
  */
 export {
+  canonicalGeographicPosition,
   FIELD_KINDS,
   fieldKindOf,
+  geographicPosition,
   missingFor,
   propertyDeclarationForKey,
+  readFieldValue,
   readObjectDeclarations,
   readPropertyDeclarations,
   readRelationDeclarations,
@@ -62,6 +65,8 @@ export {
 export type {
   DeclaredBlock,
   FieldKind,
+  FieldValueReading,
+  FieldValueState,
   ObjectDeclaration,
   PropertyDeclaration,
   PropertySubject,

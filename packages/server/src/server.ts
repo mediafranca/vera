@@ -37,6 +37,7 @@ import {
   inverseOf,
   namesFromRoles,
   readObjectDeclarations,
+  readFieldValue,
   propertyDeclarationForKey,
   readPropertyDeclarations,
   readRelationDeclarations,
@@ -2217,19 +2218,30 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   };
 
   /** Propiedades portables con la declaración que gobierna su presentación. */
-  const propertyViewsOf = (page: string) => {
-    const definitions = declaredProperties();
+  const propertyViewsOf = (
+    page: string,
+    definitions: ReturnType<typeof declaredProperties> = declaredProperties(),
+  ) => {
     return graph.propertiesOf(page).map((property) => {
       const definition = propertyDeclarationForKey(definitions, property.key);
+      const reading = definition === undefined
+        ? null
+        : readFieldValue(definition.field, property.value, definition.values);
       return {
         key: property.key,
         value: property.value,
+        ...(reading === null ? {} : {
+          valueState: reading.state,
+          canonicalValue: reading.canonical,
+          valueProblem: reading.reason,
+        }),
         ...(definition === undefined ? {} : {
           definition: {
             block: definition.block,
             field: definition.field,
             many: definition.many,
             range: definition.range,
+            values: definition.values,
           },
         }),
       };
@@ -9432,6 +9444,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             created: page.createdAt,
             updated: graph.updatedAt(page.id),
             says: says.get(page.id) ?? null,
+            properties: propertyViewsOf(page.id, referenceDefinitions),
             propertyReferences: propertyReferencesOf(page.id, isReadablePage, referenceDefinitions),
           }));
 

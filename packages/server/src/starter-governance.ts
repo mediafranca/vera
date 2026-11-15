@@ -11,7 +11,7 @@ export interface StarterPropertyDefinition {
   readonly id: string;
   readonly name: string;
   readonly subject?: 'página' | 'bloque';
-  readonly field?: 'texto' | 'número' | 'fecha' | 'enlace' | 'sí/no' | 'una de';
+  readonly field?: 'texto' | 'número' | 'fecha' | 'enlace' | 'url' | 'sí/no' | 'una de' | 'posición geográfica';
   readonly many?: boolean;
   readonly range?: readonly string[];
   readonly role?: string;
@@ -53,7 +53,8 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
   { id: 'status', name: 'estado', field: 'una de', says: 'en qué punto está lo que la página nombra' },
   { id: 'language', name: 'idioma', field: 'una de', says: 'en qué lengua está escrita; usa un código BCP 47' },
   { id: 'date', name: 'fecha', field: 'fecha', says: 'la fecha de la cosa, cuando tiene una propia' },
-  { id: 'url', name: 'url', says: 'dónde vive eso fuera de Vera' },
+  { id: 'url', name: 'url', field: 'url', says: 'dónde vive eso fuera de Vera' },
+  { id: 'geographic-position', name: 'Posición', field: 'posición geográfica', says: 'en qué punto del mundo está' },
   { id: 'alias', name: 'alias', field: 'texto', many: true, says: 'otros nombres de la misma cosa' },
   { id: 'search-alias', name: 'frase alternativa', subject: 'bloque', field: 'texto', many: true, role: 'search_alias', says: 'otra frase o lengua que recupera este pasaje sin cambiar lo que afirma' },
   { id: 'organization', name: 'org', field: 'enlace', many: true, range: ['Organización'], says: 'a qué organización pertenece' },
@@ -83,7 +84,7 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
 export const STARTER_OBJECT_DEFINITIONS: readonly StarterObjectDefinition[] = [
   { id: 'person', name: 'Persona', properties: ['org', 'cargo', 'grado', 'email', 'url', 'alias'], says: 'alguien' },
   { id: 'organization', name: 'Organización', properties: ['url', 'alias'], says: 'una institución, empresa o colectivo' },
-  { id: 'place', name: 'Lugar', properties: ['url'], says: 'un sitio del mundo' },
+  { id: 'place', name: 'Lugar', properties: ['Posición', 'url', 'alias'], says: 'un sitio del mundo' },
   { id: 'idea', name: 'Idea', properties: ['concepto', 'estado'], says: 'algo que se está pensando' },
   { id: 'question', name: 'Pregunta', properties: ['concepto', 'estado'], says: 'algo que se quiere saber' },
   { id: 'claim', name: 'Afirmación', properties: ['concepto'], says: 'algo que se sostiene' },
