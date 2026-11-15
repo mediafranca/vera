@@ -1700,10 +1700,19 @@ describe('POST /query', () => {
     await write({ kind: 'set_property', page, propertyKey: 'tipo', propertyValue: 'proyecto' });
 
     const answer = await ask('? tipo=proyecto');
-    const pages = answer['pages'] as { id: string; title: string }[];
+    const pages = answer['pages'] as {
+      id: string; title: string;
+      properties: { key: string; value: string; valueState?: string; definition?: { field: string | null } }[];
+    }[];
     assert.equal(answer['count'], 1);
     assert.equal(pages[0]?.id, page);
     assert.equal(pages[0]?.title, 'Consultada');
+    assert.deepEqual(pages[0]?.properties.map((property) => ({
+      key: property.key,
+      value: property.value,
+      state: property.valueState,
+      field: property.definition?.field,
+    })), [{ key: 'tipo', value: 'proyecto', state: 'valid', field: 'una de' }]);
   });
 
   it('dice cómo se lee la respuesta sin cambiar lo que selecciona', async () => {

@@ -64,6 +64,7 @@ import type {
   ParticipantId,
   ContributionRelation,
   NeighbourhoodEdge,
+  QueryExpression,
 } from '@vera/core';
 import {
   createRecording,
@@ -367,6 +368,16 @@ const ANYBODY = 'participant:anybody' as ParticipantId;
 // atrás el día que el vocabulario crece, y el borde HTTP rechazaría por
 // desconocido algo que @vera/core acepta.
 const CHANNELS: ReadonlySet<string> = new Set<string>(CONTRIBUTION_CHANNELS);
+
+/** Propiedades nombradas por una consulta, sin descargar la ficha completa. */
+const propertyKeysInQuery = (expression: QueryExpression): string[] => {
+  if (expression.kind === 'PropertyTerm') return [expression.key];
+  if (expression.kind === 'NotTerm') return propertyKeysInQuery(expression.operand);
+  if (expression.kind === 'AndTerm' || expression.kind === 'OrTerm') {
+    return [...new Set(expression.operands.flatMap(propertyKeysInQuery))];
+  }
+  return [];
+};
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -9423,6 +9434,19 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           graph.propertiesOf(page).find((property) => property.key === key)?.value ?? null;
 
         const referenceDefinitions = declaredProperties();
+        const askedPropertyKeys = propertyKeysInQuery(read.expression);
+        const askedPropertyBlocks = new Set(
+          askedPropertyKeys.flatMap((key) => {
+            const definition = propertyDeclarationForKey(referenceDefinitions, key);
+            return definition === undefined ? [] : [definition.block];
+          }),
+        );
+        const askedPropertyNames = new Set(askedPropertyKeys.map(titleKey));
+        const asksForProperty = (key: string): boolean => {
+          const definition = propertyDeclarationForKey(referenceDefinitions, key);
+          return (definition !== undefined && askedPropertyBlocks.has(definition.block))
+            || askedPropertyNames.has(titleKey(key));
+        };
         const found = outcome.matchingPages
           .map((id) => graph.page(id))
           .filter((page): page is NonNullable<typeof page> => page !== undefined)
@@ -9444,8 +9468,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             created: page.createdAt,
             updated: graph.updatedAt(page.id),
             says: says.get(page.id) ?? null,
-            properties: propertyViewsOf(page.id, referenceDefinitions),
-            propertyReferences: propertyReferencesOf(page.id, isReadablePage, referenceDefinitions),
+            // La consulta lleva tipo y diagnóstico de lo que pregunta, no la
+            // ficha completa de cada resultado. Ésta sigue en la página.
+            properties: propertyViewsOf(page.id, referenceDefinitions)
+              .filter((property) => asksForProperty(property.key)),
+            propertyReferences: propertyReferencesOf(page.id, isReadablePage, referenceDefinitions)
+              .filter((reference) => asksForProperty(reference.property)),
           }));
 
         const matchingBlocks = outcome.matchingBlocks.flatMap((id) => {
