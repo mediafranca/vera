@@ -90,6 +90,8 @@ describe('migraciones', () => {
   it('una base nueva nace en la versión de destino', () => {
     const store = openStore({ path: ':memory:', graphName: 'mind' });
     assert.equal(version(store.db), SCHEMA_VERSION);
+    const proposalColumns = store.db.prepare('PRAGMA table_info(agent_operation_proposals)').all() as Array<{ name: string }>;
+    assert.ok(proposalColumns.some((column) => column.name === 'decided_changes_json'));
     store.close();
   });
 
@@ -499,6 +501,8 @@ describe('migraciones', () => {
     assert.ok(columns.some((column) => column.name === 'context_budget_characters'));
     assert.ok(columns.some((column) => column.name === 'context_neighbour_depth'));
     assert.ok(columns.some((column) => column.name === 'context_search_limit'));
+    const proposalColumns = store.db.prepare('PRAGMA table_info(agent_operation_proposals)').all() as Array<{ name: string }>;
+    assert.ok(proposalColumns.some((column) => column.name === 'decided_changes_json'));
     store.close();
   });
 });

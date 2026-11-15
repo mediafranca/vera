@@ -1,0 +1,83 @@
+-- allium: 3
+-- reviewable-field-assistance.allium
+
+-- Scope: Valores de front matter que una regla explícita o el bibliotecario
+--   puede proponer, pero sólo una persona puede hacer canónicos
+-- Includes: Razón, valor base, modificación, selección, rechazo, conflicto,
+--   atribución y aplicación atómica
+-- Excludes: Inferir propiedades por semejanza, corregir valores históricos y
+--   ejecutar silenciosamente una respuesta del bibliotecario
+
+use "./core.allium" as core
+
+contract ReviewableFieldAssistance {
+    propose: (page: core/Page, property: String, value: String, reason: String) -> FieldProposal
+    decide: (proposal: FieldProposal, decision: FieldDecision) -> List<core/Change>
+
+    @invariant AProposalIsNotAProperty
+        -- Proponer no escribe el grafo. La página sigue diciendo exactamente lo
+        -- mismo hasta que una persona acepta una selección visible.
+
+    @invariant EveryValueCarriesAReasonAndABase
+        -- Cada campo muestra por qué se propuso y qué valor tenía al ser
+        -- mostrado. Si esa base cambia, aceptar falla como conflicto.
+
+    @invariant TheHumanMayAcceptModifyOrReject
+        -- Una persona puede aceptar parte, cambiar valores antes de aceptar o
+        -- rechazar todo. Ninguna de esas decisiones se interpreta desde silencio.
+
+    @invariant TypedFieldsStayTyped
+        -- Una modificación pasa por la misma lectura canónica que el front matter.
+        -- Un calendario, número o vocabulario no se vuelve texto libre por venir
+        -- de una propuesta.
+
+    @invariant AttributionFollowsTheFinalHand
+        -- Una propuesta aceptada sin cambios conserva la mano del bibliotecario.
+        -- Si la persona cambia un valor, la operación es humana y conserva al
+        -- bibliotecario como coautor causal.
+}
+
+value FieldProposal {
+    id: String
+    page: core/Page
+    changes: List<core/Change>
+    reason: String
+    proposed_by: core/Participant
+}
+
+enum FieldDecision { accept | modify | reject }
+
+surface MissingFields {
+    facing participant: core/Participant
+    context page: core/Page
+
+    exposes:
+        page.title
+        FieldProposal.changes
+        FieldProposal.reason
+
+    provides:
+        DecideFieldProposal(participant, proposal, selected_changes)
+
+    contracts:
+        fulfils ReviewableFieldAssistance
+
+    @guarantee ObviousMeansNamed
+        -- La fecha de una bitácora puede proponerse desde su título ISO porque
+        -- la regla se nombra y se limita a esa clase. Una coincidencia cualquiera
+        -- nunca se promueve a derivación.
+
+    @guarantee TheLibrarianLeavesAReviewableProposal
+        -- Pedir campos al bibliotecario produce una tarjeta editable con selección
+        -- y decisiones. Su respuesta no ejecuta `set_property` al terminar.
+}
+
+rule AcceptingAFieldProposalIsAtomic {
+    when: DecideFieldProposal(participant, proposal, selected_changes)
+
+    requires: current_base(proposal)
+    requires: all_compatible(selected_changes)
+
+    ensures: all_written(selected_changes)
+    ensures: decided(proposal)
+}

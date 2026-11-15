@@ -311,6 +311,7 @@ export interface LibrarianRequestView {
     proposal: null | {
       id: string;
       changes: Change[];
+      decidedChanges: Change[] | null;
       status: 'proposed' | 'accepted' | 'rejected';
     };
   };
@@ -1208,6 +1209,18 @@ export const api = {
     if (blockId !== undefined) query.set('block', blockId ?? '');
     return json<LibrarianRequestView[]>(`/librarian/requests?${query.toString()}`);
   },
+
+  decideLibrarianProposal: (
+    id: string,
+    decision: 'accept' | 'reject',
+    input?: {
+      changes: Change[];
+      bases: Array<{ page: string; propertyKey: string; propertyValue: string | null }>;
+    },
+  ) => json<{ status: 'accepted' | 'rejected'; modified?: boolean; duplicate?: boolean }>(
+    `/librarian/proposals/${encodeURIComponent(id)}/${decision}`,
+    { method: 'POST', ...(input === undefined ? {} : { body: JSON.stringify(input) }) },
+  ),
 
   /** La conversación durable completa; el contexto de cada turno sigue visible. */
   librarianConversation: (id?: string) => json<LibrarianConversationView>(

@@ -127,9 +127,11 @@ import {
   claimLibrarianRequest,
   createLibrarianConversation,
   createLibrarianRequest,
+  decideLibrarianOperationProposal,
   failLibrarianRequest,
   librarianConversation,
   librarianConversations,
+  librarianOperationProposal,
   librarianRequest,
   librarianRequestsInConversation,
   librarianRequestsFor,
@@ -3931,6 +3933,162 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       ).map(librarianRequestView);
       deliver(turns, {
         surface: 'GET /librarian/requests', subject: pageId, delivered: [pageId, ...(block ? [block] : [])],
+      });
+      return;
+    }
+
+    const librarianProposalMatch = /^\/librarian\/proposals\/([^/]+)\/(accept|reject)$/.exec(path);
+    if (request.method === 'POST' && librarianProposalMatch !== null) {
+      const blocked = who.credential !== null
+        ? { error: 'la revisión humana no se delega a una credencial de agente' }
+        : profile === 'collective'
+          ? isCollectiveAdministrator(store, who.participant)
+            ? null
+            : { error: 'sólo un administrador activo revisa propuestas en esta instancia colectiva' }
+          : who.participant === owner.id
+            ? null
+            : { error: 'sólo el dueño revisa propuestas en esta instancia personal' };
+      if (blocked !== null) { send(response, 403, blocked); return; }
+      const id = decodeURIComponent(librarianProposalMatch[1] ?? '');
+      const decision = librarianProposalMatch[2];
+      const proposal = librarianOperationProposal(store, id);
+      if (proposal === null) { send(response, 404, { error: 'la propuesta no existe' }); return; }
+      if (decision === 'reject') {
+        if (proposal.status === 'rejected') {
+          send(response, 200, { status: 'rejected', duplicate: true }); return;
+        }
+        if (proposal.status !== 'proposed') {
+          send(response, 409, { error: 'la propuesta ya no está pendiente' }); return;
+        }
+        const changed = decideLibrarianOperationProposal(store, {
+          id, reviewer: graph.owner!, status: 'rejected', changes: [],
+        });
+        send(response, changed ? 200 : 409, changed
+          ? { status: 'rejected' }
+          : { error: 'la propuesta ya no está pendiente' });
+        return;
+      }
+
+      let body: Record<string, unknown>;
+      try { body = await readSmallJson(128_000); }
+      catch (error) { send(response, 400, { error: error instanceof Error ? error.message : 'JSON inválido' }); return; }
+      const selected = Array.isArray(body['changes']) ? body['changes'] as Change[] : [];
+      const bases = Array.isArray(body['bases']) ? body['bases'] as Array<Record<string, unknown>> : [];
+      if (proposal.status === 'accepted') {
+        const same = JSON.stringify(proposal.decidedChanges ?? []) === JSON.stringify(selected);
+        send(response, same ? 200 : 409, same
+          ? { status: 'accepted', duplicate: true }
+          : { error: 'la propuesta ya fue aceptada con otra selección' });
+        return;
+      }
+      if (proposal.status !== 'proposed') {
+        send(response, 409, { error: 'la propuesta ya no está pendiente' }); return;
+      }
+      if (selected.length === 0) {
+        send(response, 400, { error: 'aceptar requiere al menos un campo; para ninguno, rechaza la propuesta' }); return;
+      }
+
+      const proposed = new Map<string, Extract<Change, { kind: 'set_property' }>>(proposal.changes.flatMap((change) =>
+        change.kind === 'set_property' && change.page !== undefined && change.block === undefined
+          ? [[`${change.page}\u0000${titleKey(change.propertyKey)}`, change] as const]
+          : []));
+      const baseByKey = new Map<string, string | null>(bases.flatMap((base) => {
+        const page = typeof base['page'] === 'string' ? base['page'] : '';
+        const propertyKey = typeof base['propertyKey'] === 'string' ? base['propertyKey'] : '';
+        const propertyValue = base['propertyValue'];
+        return page === '' || propertyKey === '' || (propertyValue !== null && typeof propertyValue !== 'string')
+          ? []
+          : [[`${page}\u0000${titleKey(propertyKey)}`, propertyValue as string | null] as const];
+      }));
+      const canonical: Change[] = [];
+      let modified = selected.length !== proposal.changes.length;
+      for (const change of selected) {
+        if (change.kind !== 'set_property' || change.page === undefined || change.block !== undefined) {
+          send(response, 400, { error: 'esta propuesta sólo admite propiedades de página' }); return;
+        }
+        const key = `${change.page}\u0000${titleKey(change.propertyKey)}`;
+        const offered = proposed.get(key);
+        if (offered === undefined) {
+          send(response, 400, { error: `el campo ${change.propertyKey} no pertenecía a la propuesta` }); return;
+        }
+        const expected = baseByKey.get(key);
+        if (expected === undefined) {
+          send(response, 400, { error: `falta el valor base de ${change.propertyKey}` }); return;
+        }
+        const current = graph.propertiesOf(change.page).find(
+          (property) => titleKey(property.key) === titleKey(change.propertyKey),
+        )?.value ?? null;
+        if (current !== expected) {
+          send(response, 409, {
+            status: 'conflicted',
+            error: `${change.propertyKey} cambió después de mostrarse; hay que revisar de nuevo`,
+            current,
+          }); return;
+        }
+        const definition = propertyDeclarationForKey(declaredProperties(), change.propertyKey);
+        const reading = readFieldValue(definition?.field ?? null, change.propertyValue, definition?.values ?? []);
+        if (reading.state === 'invalid' || reading.state === 'unlisted') {
+          send(response, 422, { error: `${change.propertyKey}: ${reading.reason ?? 'valor incompatible'}` }); return;
+        }
+        const normalized: Change = {
+          ...change,
+          propertyKey: definition?.name ?? change.propertyKey,
+          propertyValue: reading.canonical ?? change.propertyValue.trim(),
+        };
+        canonical.push(normalized);
+        if (normalized.propertyValue !== offered.propertyValue) modified = true;
+      }
+
+      const trial = graph.replayFromLog();
+      const operations: Operation[] = [];
+      for (const [at, change] of canonical.entries()) {
+        const territorialRefusal = clearanceRefusalForChange(store, trial, proposal.proposedBy, change);
+        if (territorialRefusal !== null) {
+          send(response, 403, { status: 'rejected', reason: territorialRefusal }); return;
+        }
+        const outcome = trial.submitOperation({
+          originId: `librarian-proposal:${proposal.id}:${at}`,
+          participant: modified ? graph.owner! : proposal.proposedBy,
+          channel: modified ? 'typed_text' : 'agent_generation',
+          lineage: modified
+            ? {
+                relation: 'coauthored',
+                relatedParticipant: proposal.proposedBy,
+                sourceKind: 'conversation',
+                sourceReference: proposal.id,
+              }
+            : { relation: 'direct', sourceKind: 'conversation', sourceReference: proposal.id },
+          change,
+        });
+        if (outcome.status !== 'applied') {
+          send(response, 422, {
+            status: 'rejected',
+            reason: outcome.status === 'duplicate' ? 'la propuesta ya produjo una operación' : outcome.reason,
+          }); return;
+        }
+        operations.push(outcome.operation);
+      }
+
+      store.db.exec('BEGIN');
+      try {
+        for (const operation of operations) recordOperation(store, trial, operation);
+        const decided = decideLibrarianOperationProposal(store, {
+          id, reviewer: graph.owner!, status: 'accepted', changes: canonical,
+        });
+        if (!decided) throw new Error('la propuesta dejó de estar pendiente');
+        store.db.exec('COMMIT');
+        graph = trial;
+      } catch (error) {
+        store.db.exec('ROLLBACK');
+        send(response, 500, {
+          error: 'no se pudo aceptar la propuesta; no se aplicó ningún campo',
+          detail: error instanceof Error ? error.message : String(error),
+        }); return;
+      }
+      send(response, 200, {
+        status: 'accepted',
+        modified,
+        operations: operations.map((operation) => ({ sequence: operation.sequence, subjectId: operation.subjectId })),
       });
       return;
     }

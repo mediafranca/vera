@@ -193,6 +193,26 @@ describe('el vocabulario de relaciones', () => {
 });
 
 describe('conectivas persistentes', () => {
+  it('puede declarar la estructura antes de tener tipo o prosa', () => {
+    const graph = inhabitedGraph();
+    const a = makePage(graph, 'A');
+    const b = makePage(graph, 'B');
+    const crossing = applied(submit(graph, {
+      kind: 'create_crossing', fromPage: a, toPage: b, content: '',
+    }));
+
+    assert.equal(graph.crossing(crossing)?.said, '');
+    assert.equal(graph.crossing(crossing)?.term, null);
+    assert.equal(graph.crossing(crossing)?.blocks[0]?.content, '');
+
+    const classified = submit(graph, {
+      kind: 'edit_crossing', crossing, content: '', term: 'precede a',
+    });
+    assert.equal(classified.status, 'applied');
+    assert.equal(graph.crossing(crossing)?.term, 'precede a');
+    assert.equal(graph.crossing(crossing)?.said, '');
+  });
+
   it('guarda una sola por par ordenado y admite otra de vuelta', () => {
     const graph = inhabitedGraph();
     const a = makePage(graph, 'A');

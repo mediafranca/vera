@@ -1,0 +1,62 @@
+-- allium: 3
+-- structural-relations.allium
+
+-- Scope: Declarar que dos páginas están relacionadas sin fabricar una frase
+-- Includes: Identidad de arista, extremos, dirección, tipo opcional, vocabulario
+--   abierto, prosa opcional, autoría y posterior clasificación
+-- Excludes: Inferir relaciones desde similitud y convertir propiedades en aristas
+
+use "./core.allium" as core
+
+contract StructuralPageRelations {
+    relate: (from: core/Page, to: core/Page, term: String?) -> StructuralRelation
+    classify: (relation: StructuralRelation, term: String?) -> StructuralRelation
+
+    @invariant EndpointsAreEnoughToExist
+        -- Una relación nace por sus dos extremos y su dirección. No necesita una
+        -- frase ficticia ni un tipo elegido antes de tiempo.
+
+    @invariant UndeclaredIsAVisibleState
+        -- Sin tipo se lee «relación no declarada». No se reemplaza por «explica»,
+        -- no desaparece del mapa y no adquiere semántica por omisión.
+
+    @invariant ClassificationDoesNotRewriteProse
+        -- Elegir, cambiar o retirar el tipo modifica la clasificación de la arista,
+        -- no inventa ni borra su outline explicativo.
+
+    @invariant TheVocabularyIsGovernedAndOpenAtThePointOfUse
+        -- El control ofrece relaciones declaradas aplicables a la página, pero
+        -- permite escribir otra. Lo nuevo queda visible como uso no gobernado;
+        -- elegirlo no altera Gobierno en silencio.
+
+    @invariant ARelationIsNotAProperty
+        -- La arista conserva identidad, dirección, autoría y procedencia propias.
+        -- No se codifica como front matter para ahorrar una operación.
+}
+
+value StructuralRelation {
+    id: String
+    from: core/Page
+    to: core/Page
+    term: String?
+    prose: String?
+}
+
+surface RelationsOfAPage {
+    facing participant: core/Participant
+    context page: core/Page
+
+    exposes:
+        StructuralRelation
+
+    provides:
+        DeclareStructuralRelation(participant, page, target, term)
+        ClassifyStructuralRelation(participant, relation, term)
+
+    contracts:
+        fulfils StructuralPageRelations
+
+    @guarantee TheComposerAsksForStructureFirst
+        -- Destino y tipo están en la zona de relaciones. La explicación puede
+        -- añadirse después en el outline de esa misma arista.
+}
