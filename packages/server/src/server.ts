@@ -62,6 +62,7 @@ import type {
   OriginEvidence,
   ParticipantId,
   ContributionRelation,
+  NeighbourhoodEdge,
 } from '@vera/core';
 import {
   createRecording,
@@ -2162,6 +2163,96 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   /** Cada clase de cosa, con qué propiedades la constituyen. */
   const declaredObjects = () => readObjectDeclarations(declaredIn('objects'));
 
+  /** Las clases que una página declara, con los nombres canónicos del corpus. */
+  const pageTypesOf = (page: string): string[] => {
+    const kind = propertyNames().kind;
+    return graph.propertiesOf(page)
+      .filter((one) => titleKey(one.key) === titleKey(kind))
+      .flatMap((one) => answersIn(one.value));
+  };
+
+  type PropertyReferenceView = {
+    property: string;
+    definition: string;
+    targetTitle: string;
+    targetPage: string | null;
+    expectedTypes: string[];
+    actualTypes: string[];
+    status: 'resolved' | 'unresolved' | 'incompatible';
+  };
+
+  /**
+   * Las aristas escritas como propiedades de página.
+   *
+   * El título limpio sigue siendo el dato portable. La identidad y la
+   * compatibilidad se reconstruyen al leer, de modo que una página renombrada o
+   * una ontología corregida no deje una segunda verdad persistida y divergente.
+   */
+  const propertyReferencesOf = (
+    page: string,
+    canRead: (page: string) => boolean,
+    definitions: ReturnType<typeof declaredProperties> = declaredProperties(),
+  ): PropertyReferenceView[] => {
+    return graph.propertiesOf(page).flatMap((property) => {
+      const definition = propertyDeclarationForKey(definitions, property.key);
+      if (definition?.field !== 'enlace') return [];
+      const values = definition.many ? answersIn(property.value) : [property.value.trim()].filter(Boolean);
+      return values.map((targetTitle) => {
+        const found = graph.pageTitled(targetTitle);
+        const readable = found !== undefined && canRead(found.id);
+        const actualTypes = readable ? pageTypesOf(found.id) : [];
+        const expected = new Set(definition.range.map(titleKey));
+        const compatible = expected.size === 0 || actualTypes.some((one) => expected.has(titleKey(one)));
+        return {
+          property: property.key,
+          definition: definition.block,
+          targetTitle,
+          targetPage: readable ? found.id : null,
+          expectedTypes: definition.range,
+          actualTypes,
+          status: !readable ? 'unresolved' : compatible ? 'resolved' : 'incompatible',
+        } satisfies PropertyReferenceView;
+      });
+    });
+  };
+
+  /** Propiedades portables con la declaración que gobierna su presentación. */
+  const propertyViewsOf = (page: string) => {
+    const definitions = declaredProperties();
+    return graph.propertiesOf(page).map((property) => {
+      const definition = propertyDeclarationForKey(definitions, property.key);
+      return {
+        key: property.key,
+        value: property.value,
+        ...(definition === undefined ? {} : {
+          definition: {
+            block: definition.block,
+            field: definition.field,
+            many: definition.many,
+            range: definition.range,
+          },
+        }),
+      };
+    });
+  };
+
+  const propertyReferenceEdges = (canRead: (page: string) => boolean): NeighbourhoodEdge[] => {
+    const definitions = declaredProperties();
+    return graph.pages().flatMap((page) => propertyReferencesOf(page.id, canRead, definitions).flatMap((reference) =>
+      reference.targetPage === null || reference.expectedTypes.length === 0 ? [] : [{
+        source: page.id,
+        target: reference.targetPage,
+        evidence: {
+          kind: 'property_reference' as const,
+          relation: 'property_reference',
+          block: `property-reference:${page.id}:${reference.definition}`,
+          phrase: `${reference.property}:: ${reference.targetTitle}`,
+          revision: null,
+        },
+      }],
+    ));
+  };
+
   /**
    * Qué se puede contestar a una propiedad en esta página.
    *
@@ -2170,10 +2261,30 @@ export function createVeraServer(options: ServerOptions): VeraServer {
    * aporta la cola que aún no fue curada. Separar ambas procedencias evita la
    * vieja trampa de fingir usos para conseguir un selector.
    */
-  const domainOf = (key: string): { value: string; uses: number; declared?: boolean }[] => {
+  const domainOf = (
+    key: string,
+    canRead: (page: string) => boolean,
+  ): { value: string; uses: number; declared?: boolean }[] => {
     const observed = graph.observedValuesOf(key);
     const declaration = propertyDeclarationForKey(declaredProperties(), key);
     if (declaration === undefined) return observed;
+
+    /*
+     * Un rango de referencia no es una lista copiada de nombres. Se deriva de
+     * las páginas que hoy pertenecen a las plantillas admitidas y por eso el
+     * autocompletado sigue altas, bajas y cambios de tipo sin una migración.
+     */
+    if (declaration.field === 'enlace' && declaration.range.length > 0) {
+      const admitted = new Set(declaration.range.map(titleKey));
+      const used = new Map(observed.map((one) => [titleKey(one.value), one.uses]));
+      const candidates = graph.pages()
+        .filter((page) => canRead(page.id))
+        .filter((page) => pageTypesOf(page.id).some((one) => admitted.has(titleKey(one))))
+        .sort((left, right) => left.title.localeCompare(right.title, 'es'))
+        .map((page) => ({ value: page.title, uses: used.get(titleKey(page.title)) ?? 0, declared: true }));
+      const named = new Set(candidates.map((one) => titleKey(one.value)));
+      return [...candidates, ...observed.filter((one) => !named.has(titleKey(one.value)))];
+    }
 
     /*
      * `tipo` no mantiene una segunda lista en Propiedades: sus respuestas son
@@ -9299,6 +9410,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         const valueOf = (page: string, key: string): string | null =>
           graph.propertiesOf(page).find((property) => property.key === key)?.value ?? null;
 
+        const referenceDefinitions = declaredProperties();
         const found = outcome.matchingPages
           .map((id) => graph.page(id))
           .filter((page): page is NonNullable<typeof page> => page !== undefined)
@@ -9320,6 +9432,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             created: page.createdAt,
             updated: graph.updatedAt(page.id),
             says: says.get(page.id) ?? null,
+            propertyReferences: propertyReferencesOf(page.id, isReadablePage, referenceDefinitions),
           }));
 
         const matchingBlocks = outcome.matchingBlocks.flatMap((id) => {
@@ -9844,7 +9957,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             createdBy: creatorOf(page.id),
             originCreatedAt: page.originCreatedAt,
             lastEditedAt: graph.lastEditedAt(page.id),
-            properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
+            properties: propertyViewsOf(page.id),
             domains: {},
             blocks: pageBlocks.map((block) => ({
               stableId: block.stableId,
@@ -9911,6 +10024,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             ),
             backlinks: [],
             references: [],
+            propertyReferences: propertyReferencesOf(page.id, isReadablePage),
             crossingsOut: [],
             crossingsIn: [],
           }, {
@@ -9977,7 +10091,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           createdBy: creatorOf(page.id),
           originCreatedAt: page.originCreatedAt,
           lastEditedAt: graph.lastEditedAt(page.id),
-          properties: graph.propertiesOf(page.id).map((p) => ({ key: p.key, value: p.value })),
+          properties: propertyViewsOf(page.id),
+          propertyReferences: propertyReferencesOf(page.id, isReadablePage),
           objectTemplates: publicAccess ? [] : declaredObjects(),
           // Lo que puede contestarse a cada una de estas claves. El vocabulario
           // declarado gobierna el control; lo observado conserva la evidencia
@@ -9987,7 +10102,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             : Object.fromEntries(
                 domainKeysOf(page.id).map((key) => [
                   key,
-                  domainOf(key),
+                  domainOf(key, isReadablePage),
                 ]),
               ),
           blocks: pageBlocks
@@ -10257,6 +10372,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           pendingLinks: detail.pendingLinks,
           backlinks: detail.backlinks,
           references: detail.references,
+          propertyReferences: detail.propertyReferences,
           crossingsOut: detail.crossingsOut,
           crossingsIn: detail.crossingsIn,
           trail: detail.trail,
@@ -10455,6 +10571,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               }
             }
           }
+          const typedEdges = propertyReferenceEdges(isReadablePage);
+          for (const edge of typedEdges) {
+            if (!allowed.has(edge.source) || !allowed.has(edge.target)) continue;
+            neighbours.get(edge.source)?.add(edge.target);
+            neighbours.get(edge.target)?.add(edge.source);
+          }
           // Un espacio compartido es la figura completa que su pertenencia
           // recorta. Si se redujera al vecindario de la página abierta, una
           // portada deliberadamente aislada ocultaría las demás componentes
@@ -10484,10 +10606,22 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           for (const stop of trailOf(centred.id)?.route ?? []) {
             if (stop.page !== null && allowed.has(stop.page)) shown.add(stop.page);
           }
-          const links: { source: string; target: string }[] = [];
+          const links: { source: string; target: string; kind?: 'property-reference'; label?: string }[] = [];
           for (const source of shown) {
             for (const target of neighbours.get(source) ?? []) {
-              if (shown.has(target) && source.localeCompare(target) < 0) links.push({ source, target });
+              if (!shown.has(target) || source.localeCompare(target) >= 0) continue;
+              const property = typedEdges.find((edge) =>
+                (edge.source === source && edge.target === target) ||
+                (edge.source === target && edge.target === source),
+              );
+              links.push(property === undefined
+                ? { source, target }
+                : {
+                    source,
+                    target,
+                    kind: 'property-reference',
+                    label: property.evidence.phrase.split('::', 1)[0]!.trim(),
+                  });
             }
           }
           send(response, 200, {
@@ -10518,7 +10652,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         // página y como promete `vera_vecindario`. El núcleo recorre por
         // identidad estable: una vez resuelto el título no debe volver a pasar
         // la grafía humana como si fuera un PageId.
-        const hood = graph.neighbourhood({ centre: centred?.id ?? centre, depth, participant });
+        const hood = graph.neighbourhood({
+          centre: centred?.id ?? centre,
+          depth,
+          participant,
+          additionalEdges: propertyReferenceEdges(isReadablePage),
+        });
         const heldPages = new Set(hood.nodes.map((node) => node.page));
         const threadPages = new Set(
           (focusedTrail?.route ?? []).flatMap((stop) => stop.page === null ? [] : [stop.page]),
@@ -10555,6 +10694,17 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           linksByPair.set(`${link.sourcePage}\u0000${link.target}`, link);
         }
         const referenceLinks = hood.edges.map((edge) => {
+            if (edge.evidence.kind === 'property_reference') {
+              return {
+                source: edge.source,
+                target: edge.target,
+                block: null,
+                targetTitle: graph.page(edge.target)?.title ?? edge.target,
+                kind: 'property-reference' as const,
+                label: edge.evidence.phrase.split('::', 1)[0]?.trim() ?? null,
+                explanation: edge.evidence.phrase,
+              };
+            }
             const written = linksByPair.get(`${edge.source}\u0000${edge.target}`) ??
               linksByPair.get(`${edge.target}\u0000${edge.source}`);
               return {

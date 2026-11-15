@@ -145,6 +145,8 @@ export interface PropertyDeclaration {
   field: FieldKind | null;
   /** Si admite varias respuestas separadas por coma. */
   many: boolean;
+  /** Plantillas admitidas para una referencia a página. Vacío deja el rango abierto. */
+  range: string[];
   /**
    * Qué papel de los que el código conoce cumple, si cumple alguno.
    *
@@ -236,6 +238,7 @@ export function readPropertyDeclarations(blocks: readonly DeclaredBlock[]): Prop
         (role === null ? 'página' : (SUBJECT_BY_ROLE[role.trim().toLowerCase()] ?? 'página')),
       field: fieldKindOf(valueOf(block, 'campo') ?? ''),
       many: yes(valueOf(block, 'varios')),
+      range: listOf(valueOf(block, 'rango') ?? valueOf(block, 'range')),
       role,
       values: listOf(valueOf(block, 'valores')),
       global: yes(valueOf(block, 'global') ?? valueOf(block, 'aplica a todas')),

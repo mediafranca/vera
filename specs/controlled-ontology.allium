@@ -27,6 +27,16 @@ value LocalizedLabel {
     text: String
 }
 
+value PropertyReferenceResolution {
+    assignment: core/PropertyAssignment
+    definition: PropertyDefinition
+    target_title: String
+    target: core/Page?
+    expected_types: Set<ObjectTemplate>
+    actual_types: Set<ObjectTemplate>
+    status: PropertyReferenceStatus
+}
+
 ------------------------------------------------------------
 -- Contracts
 ------------------------------------------------------------
@@ -34,6 +44,7 @@ value LocalizedLabel {
 contract LibraryOntologyAwareWriting {
     inspect_page: (ontology: Ontology, page: core/Page) -> Set<PropertyDefinition>
     validate_property: (ontology: Ontology, page: core/Page, name: String, value: String) -> Boolean
+    resolve_property_references: (ontology: Ontology, page: core/Page) -> Set<PropertyReferenceResolution>
 
     @invariant MetadataIsAPropertyAssignmentNotDecorativeText
         -- A page header/frontmatter is a projection of structured property
@@ -45,6 +56,12 @@ contract LibraryOntologyAwareWriting {
         -- target title. Wiki-link brackets and display labels belong to rendered
         -- prose; values such as `[[PICTOS]]` or `[[PICTOS|proyecto]]` are rejected
         -- or normalised before a proposal is made.
+
+    @invariant PageReferenceIdentityIsDerivedAndStable
+        -- The portable assignment keeps the canonical target title. Reading it
+        -- resolves the current stable page identity and reports whether that
+        -- page belongs to an admitted object template. The resolution is a
+        -- reconstructible graph projection, never a second stored assertion.
 
     @invariant ObjectTemplateAndTopicRemainDifferentQuestions
         -- `tipo` answers what a page is; `concepto` answers what it discusses.
@@ -113,6 +130,8 @@ enum RelationFunction { descriptive | normative | evidentiary }
 -- pertenencia declarada. No es transitividad universal: el camino que hereda el
 -- alcance queda nombrado y por eso siempre se puede explicar por qué aplica.
 enum RelationScope { direct | inherited_by_membership }
+
+enum PropertyReferenceStatus { resolved_compatible | unresolved | incompatible }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -313,6 +332,9 @@ entity PropertyDefinition {
     labels: Set<LocalizedLabel>
     description: String
     value_kind: PropertyValueKind
+    -- Sólo las referencias a páginas declaran rango. Vacío significa que
+    -- cualquier página es un destino admisible; nunca significa texto libre.
+    reference_range: Set<ObjectTemplate>
     -- Si admite varias respuestas a la vez. `tags` sí, `lang` no.
     --
     -- La cardinalidad es del modelo y no de la presentación: comprimir varios
@@ -519,7 +541,7 @@ rule ParticipantDeclaresRelationDefinition {
 rule DeclarePropertyDomain {
     when: DefinePropertyDomain(
         participant, ontology, declaration, name, labels,
-        value_kind, multiple, applies_globally, description
+        value_kind, multiple, reference_range, applies_globally, description
     )
 
     -- Una persona, o un agente al que una persona autorizó este acto sobre esta
@@ -530,6 +552,8 @@ rule DeclarePropertyDomain {
 
     requires: participant.kind = human or (exists delegation and not delegation.spent)
     requires: not exists PropertyDefinition{ontology: ontology, name: name}
+    requires: reference_range.all(template => template.ontology = ontology)
+    requires: value_kind = page_reference or reference_range.count = 0
 
     ensures: PropertyDefinition.created(
         ontology: ontology,
@@ -540,6 +564,7 @@ rule DeclarePropertyDomain {
         description: description,
         value_kind: value_kind,
         multiple: multiple,
+        reference_range: reference_range,
         status: approved
     )
 
@@ -549,6 +574,25 @@ rule DeclarePropertyDomain {
         -- admit. A property that has been answered in eleven different ways for
         -- years is evidence about the vocabulary, and evidence that gets
         -- corrected on contact is evidence destroyed.
+}
+
+rule ParticipantRevisesPropertyReferenceRange {
+    when: SetPropertyReferenceRange(participant, definition, reference_range)
+
+    let delegation = agent/Delegation{
+        granted_to: participant, act: "SetPropertyReferenceRange", subject: definition.name
+    }
+
+    requires: definition.value_kind = page_reference
+    requires: reference_range.all(template => template.ontology = definition.ontology)
+    requires: participant.kind = human or (exists delegation and not delegation.spent)
+
+    ensures: definition.reference_range = reference_range
+
+    @invariant RevisingRangeRewritesNoAssignment
+        -- A range changes autocomplete and compatibility diagnostics. Existing
+        -- values remain exactly as written, including unresolved or currently
+        -- incompatible targets.
 }
 
 -- Ver antes de renombrar. La vista previa cuenta asignaciones y plantillas
@@ -1099,6 +1143,16 @@ invariant ObjectPropertiesBelongToTheSameLibrary {
         expectation.object_template.ontology = expectation.definition.ontology
 }
 
+invariant PropertyReferenceRangesStayInsideTheirLibrary {
+    for definition in PropertyDefinitions:
+        definition.reference_range.all(template => template.ontology = definition.ontology)
+}
+
+invariant OnlyPageReferencesDeclareARange {
+    for definition in PropertyDefinitions:
+        definition.reference_range.count > 0 implies definition.value_kind = page_reference
+}
+
 invariant InheritedScopeNamesItsMembershipPath {
     for relation in RelationDefinitions:
         (relation.scope = inherited_by_membership) = (relation.inherited_through != null)
@@ -1168,8 +1222,9 @@ surface LibraryGovernment {
         )
         DefinePropertyDomain(
             participant, ontology, declaration, name, labels,
-            value_kind, multiple, applies_globally, description
+            value_kind, multiple, reference_range, applies_globally, description
         )
+        SetPropertyReferenceRange(participant, definition, reference_range)
         PreviewPropertyRename(participant, definition, language, to_label)
         ApplyPropertyRename(participant, migration)
         AddPropertyToObject(participant, object_template, definition, required)
@@ -1300,6 +1355,18 @@ surface LibraryGovernment {
         -- preserves and opens an address outside the corpus. Declaring one as
         -- the other would make navigation, validation and processing lie about
         -- which sovereignty owns the destination.
+
+    @guarantee PropertyReferencesAreTypedGraphEdges
+        -- A page-reference property is navigable even when it has one value and
+        -- carries no wiki-link brackets. Each answer resolves independently to
+        -- a stable page identity and appears structurally in API and queries.
+        -- When the definition declares a range, the resolved answer also joins
+        -- neighbourhoods as an attributed edge named by the property.
+
+    @guarantee ReferenceRangesAdviseAndNeverRewrite
+        -- A range filters completion and names unresolved or incompatible
+        -- targets. It does not reject writing, silently reclassify a target or
+        -- replace the value that a participant wrote.
 
     @guarantee TypeAndTopicAreNeverTheSameQuestion
         -- What a page is and what it is about are asked separately and answered

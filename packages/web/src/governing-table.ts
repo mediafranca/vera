@@ -405,6 +405,7 @@ export async function renderGoverning(
     }
   } else if (kind === 'properties') {
     const fields: Choice[] = said.fields.map((one) => ({ value: one }));
+    const objectChoices: Choice[] = said.objects.map((one) => ({ value: one.name, hint: one.says ?? '' }));
     const roles: Choice[] = ROLES.map((one) => ({ value: one, hint: 'papel del código' }));
     const subjects: Choice[] = [
       { value: 'página', hint: 'la página entera' },
@@ -472,6 +473,19 @@ export async function renderGoverning(
         fields,
       );
 
+      const rangeCell = cellIn(row, at++);
+      if (property.field === 'enlace') {
+        chipsCell(
+          rangeCell,
+          property.range,
+          { offered: objectChoices, label: 'tipo de página de destino', add: '+ tipo' },
+          (next) => put(property.block, 'rango')(next.join(', ')),
+        );
+      } else {
+        rangeCell.textContent = '—';
+        rangeCell.title = 'Sólo las referencias a páginas declaran rango';
+      }
+
       editableCell(
         cellIn(row, at++),
         {
@@ -509,7 +523,7 @@ export async function renderGoverning(
       const body = sectionIn(
         'Lo que Vera necesita',
         'Cada una cumple un papel que el código lee por su nombre. Cambiarles el nombre está bien —el papel viaja con ellas—; quitarlas deja a Vera sin saber leer lo que ya está escrito.',
-        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Global', 'Papel', 'Descripción'],
+        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Rango', 'Global', 'Papel', 'Descripción'],
       );
       for (const property of machinery) written(property, body, true);
     }
@@ -518,7 +532,7 @@ export async function renderGoverning(
       const body = sectionIn(
         'El vocabulario de este corpus',
         'Las que pusiste tú. Vera las guarda, las enseña y deja consultarlas, y no las entiende: lo que significan lo dice esta página.',
-        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Global', 'Descripción'],
+        ['Nombre', 'Rótulos', 'Cuelga de', 'Tipo de dato', 'Rango', 'Global', 'Descripción'],
       );
       for (const property of vocabulary) written(property, body, false);
     }

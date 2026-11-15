@@ -3004,6 +3004,19 @@ tr.adopted { opacity: 0.58; }
   outline: none;
 }
 
+/* Una referencia sigue siendo navegable aunque aún no resuelva o contradiga el
+   rango. La diferencia se declara sin convertir la discrepancia en un bloqueo. */
+.property-reference-unresolved {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.18em;
+}
+
+.property-reference-incompatible {
+  color: var(--danger, #a33);
+  text-decoration: underline wavy;
+  text-underline-offset: 0.18em;
+}
+
 /* Una URL larga sigue siendo texto del front matter, no una razón para que la
    página entera gane un segundo eje. `pre-wrap` conserva cualquier separación
    deliberada y `anywhere` permite partir también una dirección sin espacios. */

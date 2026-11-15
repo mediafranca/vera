@@ -195,6 +195,29 @@ describe('neighbourhood traversal', () => {
     );
   });
 
+  it('incorpora aristas referenciales derivadas sin persistirlas como enlaces de bloque', () => {
+    const graph = inhabitedGraph();
+    const source = makePage(graph, 'METHOD');
+    const target = makePage(graph, 'Ivana');
+    const hood = graph.neighbourhood({
+      centre: source,
+      depth: 1,
+      participant: OWNER,
+      additionalEdges: [{
+        source,
+        target,
+        evidence: {
+          kind: 'property_reference', relation: 'property_reference',
+          block: 'property-reference:method:autor', phrase: 'autor:: Ivana', revision: null,
+        },
+      }],
+    });
+
+    assert.equal(graph.links().length, 0);
+    assert.ok(hood.nodes.some((node) => node.page === target && node.distance === 1));
+    assert.equal(hood.edges[0]?.evidence.kind, 'property_reference');
+  });
+
   it('returns only the centre at depth zero', () => {
     const graph = inhabitedGraph();
     const centre = makePage(graph, 'Centro');

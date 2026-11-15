@@ -348,7 +348,20 @@ export interface Page {
   visibility: string;
   createdAt: number;
   lastEditedAt: number | null;
-  properties: { key: string; value: string }[];
+  properties: {
+    key: string;
+    value: string;
+    definition?: { block: string; field: string | null; many: boolean; range: string[] };
+  }[];
+  propertyReferences?: {
+    property: string;
+    definition: string;
+    targetTitle: string;
+    targetPage: string | null;
+    expectedTypes: string[];
+    actualTypes: string[];
+    status: 'resolved' | 'unresolved' | 'incompatible';
+  }[];
   blocks: PageBlock[];
   backlinks: { page: string; block: string | null; title: string; excerpt: string }[];
   references: { page: string | null; title: string; block: string; excerpt: string }[];

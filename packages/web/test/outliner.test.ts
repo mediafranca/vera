@@ -516,6 +516,22 @@ describe('referencias explicadas', () => {
     assert.equal(rows.names[0]?.relation, relation);
   });
 
+  it('incluye una propiedad referencial como vecindad sin fingir un bloque', () => {
+    const rows = pageReferenceRows({
+      blocks: [], blockProperties: {}, references: [], backlinks: [],
+      propertyReferences: [{
+        property: 'autor', definition: 'block:autor', targetTitle: 'Ivana Nakarada-Kordic',
+        targetPage: 'page:ivana', expectedTypes: ['Persona'], actualTypes: ['Persona'],
+        status: 'resolved',
+      }],
+      crossingsOut: [], crossingsIn: [],
+    });
+    assert.deepEqual(rows.names, [{
+      title: 'Ivana Nakarada-Kordic', page: 'page:ivana',
+      excerpt: 'autor:: Ivana Nakarada-Kordic', from: null, relation: null,
+    }]);
+  });
+
   it('mantiene las dos direcciones en La nombran y Nombra a, sin una tercera categoría', () => {
     const outgoing = crossing('vera-otra', 'page:vera', 'page:otra', 'Otra', 'Sale hacia Otra');
     const incoming = crossing('otra-vera', 'page:otra', 'page:vera', 'Otra', 'Llega desde Otra');

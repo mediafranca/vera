@@ -4047,7 +4047,7 @@ export interface PageReferenceRow {
 export function pageReferenceRows(
   page: Pick<
     PageView,
-    'blocks' | 'blockProperties' | 'references' | 'backlinks' | 'crossingsOut' | 'crossingsIn'
+    'blocks' | 'blockProperties' | 'references' | 'propertyReferences' | 'backlinks' | 'crossingsOut' | 'crossingsIn'
   >,
 ): { namedBy: PageReferenceRow[]; names: PageReferenceRow[] } {
   const key = (id: string | null, title: string): string =>
@@ -4059,6 +4059,17 @@ export function pageReferenceRows(
       page: reference.page,
       excerpt: projectedReferenceText(page, reference.block, reference.excerpt),
       from: reference.block,
+      relation: null,
+    });
+  }
+  for (const reference of page.propertyReferences ?? []) {
+    const at = key(reference.targetPage, reference.targetTitle);
+    if (names.has(at)) continue;
+    names.set(at, {
+      title: reference.targetTitle,
+      page: reference.targetPage,
+      excerpt: `${reference.property}:: ${reference.targetTitle}`,
+      from: null,
       relation: null,
     });
   }
@@ -5084,6 +5095,11 @@ export function renderOutliner(
     };
 
     const offered = page.domains?.[property.key] ?? [];
+    const schema = property.definition;
+    const typedReferences = (page.propertyReferences ?? []).filter(
+      (reference) => titleKey(reference.property) === titleKey(property.key),
+    );
+    const referential = schema?.field === 'enlace';
     const external = outward(property.value);
 
     if (external !== null) {
@@ -5124,7 +5140,7 @@ export function renderOutliner(
     const several = answers.length > 1;
     const openVocabulary = property.key === corpusNames().topic;
 
-    if (isChoosable(offered) || several || openVocabulary) {
+    if (referential || isChoosable(offered) || several || openVocabulary) {
       /*
        * Un valor de vocabulario se contesta eligiendo y se sigue pulsando, y son
        * dos cosas distintas con dos sitios distintos.
@@ -5156,7 +5172,22 @@ export function renderOutliner(
         follow.type = 'button';
         follow.className = 'property-word';
         follow.textContent = one;
-        follow.title = `ir a ${one}`;
+        const reference = typedReferences.find(
+          (candidate) => titleKey(candidate.targetTitle) === titleKey(one),
+        );
+        if (reference?.status === 'unresolved') {
+          follow.classList.add('property-reference-unresolved');
+          follow.title = `${one} todavía no tiene página · pulsar para crearla o abrirla`;
+        } else if (reference?.status === 'incompatible') {
+          follow.classList.add('property-reference-incompatible');
+          const expected = reference.expectedTypes.join(' o ');
+          const actual = reference.actualTypes.length === 0
+            ? 'sin tipo declarado'
+            : reference.actualTypes.join(', ');
+          follow.title = `destino incompatible: se esperaba ${expected}; es ${actual}`;
+        } else {
+          follow.title = `ir a ${one}`;
+        }
         follow.addEventListener('click', (event) => {
           event.stopPropagation();
           callbacks.onNavigate(one);
@@ -5244,7 +5275,7 @@ export function renderOutliner(
               value: option.value,
               hint: option.uses === 1 ? '1 página' : `${option.uses} páginas`,
             })),
-            ...(openVocabulary ? { separatedBy: ',' } : {}),
+            ...(openVocabulary || schema?.many === true ? { separatedBy: ',' } : {}),
           };
           completeInPlace(value, `valor de ${property.key}`, answer, completion);
         });
