@@ -174,14 +174,25 @@ export function editFieldInPlace(
     return;
   }
 
+  const originalReading = readFieldValue(kind, original);
+  const fullDate = kind === 'fecha' && /^\d{4}-\d{2}-\d{2}$/.test(originalReading.canonical ?? '');
   const field = document.createElement('input');
-  field.type = kind === 'fecha' ? 'date' : kind === 'número' ? 'number' : 'url';
+  // Un año o mes bibliográfico tiene precisión legítimamente menor. El
+  // calendario sólo representa días completos; convertir `2024` en un input
+  // date vacío escondería el dato y un blur podría borrarlo.
+  field.type = kind === 'fecha'
+    ? (original === '' || fullDate ? 'date' : 'text')
+    : kind === 'número' ? 'number' : 'url';
   field.className = 'inline-edit inline-edit-typed';
   field.value = original;
   field.setAttribute('aria-label', label);
   if (kind === 'número') {
     field.step = 'any';
     field.inputMode = 'decimal';
+  }
+  if (kind === 'fecha' && field.type === 'text') {
+    field.inputMode = 'numeric';
+    field.placeholder = 'AAAA, AAAA-MM o AAAA-MM-DD';
   }
   host.append(field);
   field.focus();
@@ -220,7 +231,7 @@ export function editFieldInPlace(
       host.innerHTML = held;
     }
   });
-  if (kind === 'fecha') {
+  if (kind === 'fecha' && field.type === 'date') {
     try {
       (field as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
     } catch {

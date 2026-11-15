@@ -603,7 +603,7 @@ describe('dominios declarados de propiedades', () => {
       detail.properties.find((one) => one.key === 'fecha de prueba'),
       {
         key: 'fecha de prueba', value: '15/11/2026', valueState: 'invalid', canonicalValue: null,
-        valueProblem: 'se esperaba una fecha AAAA-MM-DD',
+        valueProblem: 'se esperaba una fecha AAAA, AAAA-MM o AAAA-MM-DD',
         definition: { block: date, field: 'fecha', many: false, range: [], values: [] },
       },
     );
