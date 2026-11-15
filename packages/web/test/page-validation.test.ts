@@ -68,13 +68,30 @@ describe('retained page validation', () => {
 
   it('vuelve a comprobar la página visible al reanudar una PWA móvil', () => {
     assert.match(main, /async function resumeVisiblePage\(\)/);
-    assert.match(main, /await catchUpWithCorpus\(\);[\s\S]*await api\.drain\(\)/);
+    assert.match(main, /await catchUpWithCorpus\(\);[\s\S]*hasLiveWritingSurface\(\)[\s\S]*await api\.drain\(\)/);
     assert.match(main, /document\.visibilityState === 'visible'\) void resumeVisiblePage\(\)/);
-    assert.match(main, /writing\) return;[\s\S]*await openPage\(page, null, \{ fromUrl: true, replaceRoute: true \}\)/);
+    assert.match(main, /function hasLiveWritingSurface\(\)/);
+    assert.match(main, /\.body\.editing textarea\.editor/);
+    assert.match(main, /\.block-gloss\.editing textarea\.gloss-editor/);
+    assert.match(main, /if \(\(waiting\?\.here \?\? 0\) > 0\) return/);
+    assert.match(main, /if \(showingKept\) await openPage\(page, null, \{ fromUrl: true, replaceRoute: true \}\)/);
     assert.match(main, /if \(page === null\) \{[\s\S]*await revalidateUnstartedDay\(\)/);
     assert.match(main, /const arrived = dayPage\(route\.page\)/);
     assert.match(main, /openPage\(arrived\.id, null, \{ fromUrl: true, replaceRoute: true \}\)/);
     assert.match(main, /announce\(\);[\s\S]*await revalidateUnstartedDay\(\)/);
+    assert.match(main, /async function revalidateUnstartedDay\(\)[\s\S]*hasLiveWritingSurface\(\)/);
+    assert.doesNotMatch(
+      main.slice(main.indexOf('function catchUp(): void'), main.indexOf('function callbacksFor(')),
+      /document\.activeElement/,
+    );
+  });
+
+  it('una actualización de la PWA espera a que termine la escritura viva', () => {
+    assert.match(main, /registration\.waiting/);
+    assert.match(main, /if \(hasLiveWritingSurface\(\)\) \{[\s\S]*actualización lista/);
+    assert.match(main, /waiting\.postMessage\(\{ type: 'VERA_ACTIVATE_UPDATE' \}\)/);
+    const controllerChange = main.match(/addEventListener\('controllerchange',[\s\S]*?window\.location\.reload\(\);/)?.[0] ?? '';
+    assert.match(controllerChange, /hasLiveWritingSurface\(\)/);
   });
 
   it('no confunde con un día vacío uno que falta en el índice local atrasado', () => {

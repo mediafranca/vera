@@ -44,6 +44,13 @@ contract MaximallyFluidLocalFirstWorkspace {
         -- Push, pull, retry and projection continue independently of reading and
         -- editing. No synchronisation cycle locks the page, caret or navigation.
 
+    @invariant AnOpenEditorOutlivesSynchronisation
+        -- Losing browser focus while the application is suspended does not end an
+        -- editing gesture. A visible editor or durable draft cannot be dismantled,
+        -- replaced or discarded by resuming, polling, reconnecting, refreshing
+        -- canonical state or activating a new application shell. Concurrent canonical
+        -- text is announced as a conflict; an application update waits for the editor.
+
     @invariant RenderingFollowsChangedMeaning
         -- A text edit updates text immediately. Derived maps, links, tags, queries and
         -- Markdown are recomputed only when their inputs changed, and an acknowledgement

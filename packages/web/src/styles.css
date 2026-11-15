@@ -5224,6 +5224,12 @@ pre.copyable-code {
   outline: 2px solid var(--warm);
 }
 
+/* Dos versiones existen y ninguna puede salir hasta que la persona elija. */
+.editor.draft-conflict {
+  outline: 2px solid var(--warm);
+  background: color-mix(in srgb, var(--warm) 8%, var(--bg));
+}
+
 /* --- Divisor y grafo --------------------------------------------------- */
 
 #divider {

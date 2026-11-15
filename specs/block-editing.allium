@@ -50,8 +50,11 @@ contract FluidBlockEditing {
 
     @invariant TypingIsNeverLost
         -- Text is kept as a durable local draft while the participant is still
-        -- writing and is recovered only over the same canonical base. Leaving the
-        -- block settles it into the graph; a pause for thought is not a revision.
+        -- writing. It is recovered directly over the same canonical base; if the
+        -- base changed, both versions remain and Vera asks which one to keep or
+        -- whether to write a third. A synchronisation never deletes the draft.
+        -- Leaving the block settles it into the graph; a pause for thought is not
+        -- a revision.
 
     @invariant OneEditingGestureIsOneCanonicalChange
         -- Beginning and ending one textual edit produces at most one edit_block

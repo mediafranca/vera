@@ -99,7 +99,13 @@ import { createPage } from './pages.ts';
 import { presentPage } from './presentation.ts';
 import { pageRemovalPlan } from './remove-page.ts';
 import { createSession, type SaveIntent } from './session.ts';
-import { discardEditingDraft, keepEditingDraft, recoverEditingDraft } from './editing-draft.ts';
+import {
+  discardEditingDraft,
+  forgetEditingDraft,
+  keepEditingDraft,
+  recoverEditingDraft,
+} from './editing-draft.ts';
+import { askAboutDisagreements } from './reconcile.ts';
 import { librarianActor } from './librarian-language.ts';
 import { clearTaskState, taskToggle } from './task-toggle.ts';
 import {
@@ -9005,9 +9011,14 @@ function startEditing(
   const recoveredDraft = recoverEditingDraft(block.stableId, block.content);
   const session = createSession(block.content);
   if (recoveredDraft !== null) {
-    session.type(recoveredDraft);
-    toast('recuperé el borrador local de este bloque');
+    session.type(recoveredDraft.content);
+    toast(
+      recoveredDraft.baseChanged
+        ? 'recuperé tu borrador local; el corpus también cambió y debes elegir entre ambos'
+        : 'recuperé el borrador local de este bloque',
+    );
   }
+  let draftConflictResolved = recoveredDraft?.baseChanged !== true;
 
   const editor = document.createElement('textarea');
   editor.className = 'editor';
@@ -9030,7 +9041,7 @@ function startEditing(
    * de cambios sin autor. Se curan solos cuando alguien los edite de verdad —ver
    * session.ts, que ya no guarda ese blanco—, y mientras tanto no se ven.
    */
-  editor.value = (recoveredDraft ?? block.content).trimEnd();
+  editor.value = (recoveredDraft?.content ?? block.content).trimEnd();
   editor.rows = 1;
   const syncCodeTypeface = (): void => {
     body.classList.toggle('code-source', isFencedCodeContent(editor.value));
@@ -9208,6 +9219,49 @@ function startEditing(
     ? at
     : Math.min(placement.end, editor.value.length));
 
+  /*
+   * Un borrador sobre una base anterior no desaparece ni gana por accidente.
+   *
+   * La sincronización puede haber cambiado el bloque mientras esta PWA estaba
+   * suspendida. Antes se borraba el depósito local al notar esa diferencia y se
+   * dibujaba sólo lo canónico: la comprobación destinada a impedir un overwrite
+   * producía pérdida de texto. Ahora se enseñan ambas versiones y ninguna sale
+   * al corpus hasta una decisión explícita.
+   */
+  if (recoveredDraft?.baseChanged === true) {
+    editor.classList.add('draft-conflict');
+    editor.setAttribute('aria-invalid', 'true');
+    void askAboutDisagreements([{
+      block: block.stableId,
+      mine: recoveredDraft.content,
+      theirs: block.content,
+      hand: 'la otra mano',
+    }]).then((decided) => {
+      const choice = decided?.get(block.stableId);
+      if (choice === undefined) {
+        toast('el borrador local sigue guardado; no se enviará hasta que elijas');
+        return;
+      }
+      if (choice.kind === 'keep_canonical') {
+        editor.value = block.content;
+        session.type(block.content);
+        forgetEditingDraft(block.stableId);
+      } else if (choice.kind === 'replace') {
+        editor.value = choice.content;
+        session.type(choice.content);
+        keepEditingDraft(block.stableId, block.content, choice.content);
+      } else {
+        editor.value = recoveredDraft.content;
+        session.type(recoveredDraft.content);
+      }
+      draftConflictResolved = true;
+      editor.classList.remove('draft-conflict');
+      editor.removeAttribute('aria-invalid');
+      autosize();
+      editor.focus({ preventScroll: true });
+    });
+  }
+
   /** Volver a la vista de lectura, conservando la grabación por el mismo motivo. */
   const render = (content: string): void => {
     body.classList.remove('editing', 'derived-source-view');
@@ -9319,6 +9373,11 @@ function startEditing(
 
   const flush = async (intent: SaveIntent): Promise<boolean> => {
     if (intent.action === 'nada') return true;
+    if (!draftConflictResolved) {
+      preserveDraft();
+      toast('hay dos versiones de este bloque; elige una antes de guardarlo');
+      return false;
+    }
 
     let result;
     try {
@@ -9379,7 +9438,12 @@ function startEditing(
   const structural = (outcome: KeyOutcome): void => {
     if (outcome.kind === 'ninguno') return;
     leaving = true;
-    void flush(session.pending()).then(() => {
+    void flush(session.pending()).then((saved) => {
+      if (!saved) {
+        leaving = false;
+        editor.focus();
+        return;
+      }
       if (outcome.kind === 'rechazo') {
         // Un rechazo no cambia nada, así que se vuelve a la edición.
         leaving = false;
