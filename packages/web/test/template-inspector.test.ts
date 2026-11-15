@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { OntologyView } from '../src/api.ts';
 import { definitionForKey, inspectTemplate } from '../src/template-inspector.ts';
+import { readFileSync } from 'node:fs';
 
 const ontology: OntologyView = {
   properties: [
@@ -35,5 +36,12 @@ describe('inspector de plantilla', () => {
     ]);
     assert.deepEqual(inspected.extra, [{ key: 'color', value: 'azul' }]);
     assert.deepEqual(inspected.relations.map((one) => one.name), ['forma parte de']);
+  });
+
+  it('proyecta sólo los huecos en la tabla canónica y no repite las presentes', () => {
+    const source = readFileSync(new URL('../src/template-inspector.ts', import.meta.url), 'utf8');
+    assert.match(source, /for \(const property of missing\)/);
+    assert.match(source, /propertyTable\.append\(name, value\)/);
+    assert.doesNotMatch(source, /template-property-list/);
   });
 });

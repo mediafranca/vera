@@ -5529,6 +5529,7 @@ export function renderOutliner(
         ontology,
         corpusNames().kind,
         (change) => submitAndReload(change, callbacks),
+        properties,
       );
       metadata.append(inspector);
     }).catch(() => undefined);
