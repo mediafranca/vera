@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { OntologyView } from '../src/api.ts';
-import { definitionForKey, inspectTemplate } from '../src/template-inspector.ts';
+import { definitionForKey, derivedPropertySuggestion, inspectTemplate } from '../src/template-inspector.ts';
 import { readFileSync } from 'node:fs';
 
 const ontology: OntologyView = {
@@ -43,5 +43,26 @@ describe('inspector de plantilla', () => {
     assert.match(source, /for \(const property of missing\)/);
     assert.match(source, /propertyTable\.append\(name, value\)/);
     assert.doesNotMatch(source, /template-property-list/);
+  });
+
+  it('deriva fecha sólo desde el título canónico de una bitácora', () => {
+    const date: OntologyView['properties'][number] = {
+      block: 'p:fecha', name: 'fecha', labels: { es: 'fecha' }, labelKeys: {}, field: 'fecha',
+      many: false, role: null, subject: 'página', values: [], global: false, says: null, uses: 1,
+    };
+    assert.deepEqual(
+      derivedPropertySuggestion({ title: '2026-11-15' }, 'bitácora', date),
+      { value: '2026-11-15', reason: 'derivada del título canónico de esta bitácora' },
+    );
+    assert.equal(derivedPropertySuggestion({ title: '2026-11-15' }, 'Proyecto', date), null);
+    assert.equal(derivedPropertySuggestion({ title: '15 de noviembre' }, 'bitácora', date), null);
+  });
+
+  it('crea relaciones estructurales sin inventar una frase', () => {
+    const source = readFileSync(new URL('../src/template-inspector.ts', import.meta.url), 'utf8');
+    assert.match(source, /kind: 'create_crossing'/);
+    assert.match(source, /content: ''/);
+    assert.match(source, /structural-relation-composer/);
+    assert.match(source, /const relationTypes = document\.createElement\('datalist'\)/);
   });
 });

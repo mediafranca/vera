@@ -1219,6 +1219,7 @@ CREATE TABLE IF NOT EXISTS agent_operation_proposals (
     changes_json    TEXT NOT NULL,
     status          TEXT NOT NULL CHECK (status IN ('proposed', 'accepted', 'rejected')),
     proposed_at     INTEGER NOT NULL,
+    decided_changes_json TEXT,
     decided_by      TEXT REFERENCES participants (id),
     decided_at      INTEGER
 ) STRICT;

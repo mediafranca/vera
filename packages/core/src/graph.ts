@@ -915,7 +915,6 @@ export class VeraGraph {
       case 'create_crossing': {
         if (!this.#pages.has(change.fromPage) || !this.#pages.has(change.toPage)) return 'no such crossing endpoint';
         if (change.fromPage === change.toPage) return 'a page cannot relate to itself';
-        if (change.content.trim() === '') return 'a crossing needs content';
         if (change.stableId !== undefined && this.#crossings.has(change.stableId)) {
           return `a crossing already holds the stable id ${change.stableId}`;
         }
@@ -937,7 +936,6 @@ export class VeraGraph {
       }
       case 'edit_crossing': {
         if (!this.#crossings.has(change.crossing)) return 'no such crossing';
-        if (change.content.trim() === '') return 'a crossing needs content';
         const crossing = this.#crossings.get(change.crossing);
         if (
           !this.#replaying &&
@@ -2114,7 +2112,7 @@ export class VeraGraph {
         target: crossing.toPage,
         evidence: {
           kind: 'explained_relation',
-          relation: crossing.term?.trim() || 'explained',
+          relation: crossing.term?.trim() || 'relación no declarada',
           block,
           phrase: crossing.said,
           revision: revisionsByCrossing.get(crossing.stableId) ?? revisionsByBlock.get(block) ?? null,

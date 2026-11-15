@@ -7,6 +7,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { listen } from '../src/server.ts';
+import { answerLibrarianRequest } from '../src/librarian.ts';
 
 const PORT = 4292;
 const OWNER = 'participant:herbert';
@@ -59,6 +60,89 @@ before(async () => {
 after(async () => { await running.close(); });
 
 describe('solicitudes al bibliotecario', () => {
+  it('permite aceptar, modificar o rechazar campos propuestos sin escritura anticipada', async () => {
+    const created = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, text: 'Propón un estado revisable' },
+    });
+    const id = created.json['id'] as string;
+    assert.equal((await call(`/librarian/requests/${encodeURIComponent(id)}/claim`, {
+      method: 'POST', secret,
+    })).status, 200);
+    const answered = answerLibrarianRequest(running.vera.store, {
+      id,
+      answeredBy: COTITO as `participant:${string}`,
+      text: 'Propongo el campo estado.',
+      changes: [{ kind: 'set_property', page, propertyKey: 'estado', propertyValue: 'borrador' }],
+    });
+    const proposal = answered?.reply?.proposal;
+    assert.ok(proposal);
+    assert.equal(running.vera.graph.propertiesOf(page).some((one) => one.key === 'estado'), false,
+      'proponer no debe escribir');
+
+    const accepted = await call(`/librarian/proposals/${encodeURIComponent(proposal.id)}/accept`, {
+      method: 'POST', body: {
+        changes: [{ kind: 'set_property', page, propertyKey: 'estado', propertyValue: 'en desarrollo' }],
+        bases: [{ page, propertyKey: 'estado', propertyValue: null }],
+      },
+    });
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.json));
+    assert.equal(accepted.json['modified'], true);
+    assert.equal(running.vera.graph.propertiesOf(page).find((one) => one.key === 'estado')?.value, 'en desarrollo');
+    const stored = await call(`/librarian/requests/${encodeURIComponent(id)}`);
+    const decided = ((stored.json['reply'] as Record<string, any>)['proposal'] as Record<string, any>);
+    assert.equal(decided['status'], 'accepted');
+    assert.equal(decided['decidedChanges'][0].propertyValue, 'en desarrollo');
+    assert.equal((await call(`/librarian/proposals/${encodeURIComponent(proposal.id)}/accept`, {
+      method: 'POST', body: {
+        changes: [{ kind: 'set_property', page, propertyKey: 'estado', propertyValue: 'en desarrollo' }],
+        bases: [{ page, propertyKey: 'estado', propertyValue: null }],
+      },
+    })).status, 200, 'la misma decisión es idempotente');
+
+    const rejectedRequest = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, text: 'Propón prioridad' },
+    });
+    const rejectedId = rejectedRequest.json['id'] as string;
+    await call(`/librarian/requests/${encodeURIComponent(rejectedId)}/claim`, { method: 'POST', secret });
+    const rejectedAnswer = answerLibrarianRequest(running.vera.store, {
+      id: rejectedId,
+      answeredBy: COTITO as `participant:${string}`,
+      text: 'Propongo prioridad.',
+      changes: [{ kind: 'set_property', page, propertyKey: 'prioridad', propertyValue: 'alta' }],
+    });
+    const rejected = await call(
+      `/librarian/proposals/${encodeURIComponent(rejectedAnswer!.reply!.proposal!.id)}/reject`,
+      { method: 'POST' },
+    );
+    assert.equal(rejected.status, 200);
+    assert.equal(running.vera.graph.propertiesOf(page).some((one) => one.key === 'prioridad'), false);
+
+    const conflictingRequest = await call('/librarian/requests', {
+      method: 'POST', body: { pageId: page, text: 'Propón una etapa' },
+    });
+    const conflictingId = conflictingRequest.json['id'] as string;
+    await call(`/librarian/requests/${encodeURIComponent(conflictingId)}/claim`, { method: 'POST', secret });
+    const conflictingAnswer = answerLibrarianRequest(running.vera.store, {
+      id: conflictingId,
+      answeredBy: COTITO as `participant:${string}`,
+      text: 'Propongo etapa.',
+      changes: [{ kind: 'set_property', page, propertyKey: 'etapa', propertyValue: 'inicial' }],
+    });
+    await write({ kind: 'set_property', page, propertyKey: 'etapa', propertyValue: 'humana' });
+    const conflict = await call(
+      `/librarian/proposals/${encodeURIComponent(conflictingAnswer!.reply!.proposal!.id)}/accept`,
+      {
+        method: 'POST',
+        body: {
+          changes: [{ kind: 'set_property', page, propertyKey: 'etapa', propertyValue: 'inicial' }],
+          bases: [{ page, propertyKey: 'etapa', propertyValue: null }],
+        },
+      },
+    );
+    assert.equal(conflict.status, 409, JSON.stringify(conflict.json));
+    assert.equal(running.vera.graph.propertiesOf(page).find((one) => one.key === 'etapa')?.value, 'humana');
+  });
+
   it('conserva una cola FIFO durable y nunca entrega dos turnos a la vez', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'vera-librarian-queue-'));
     const databasePath = join(directory, 'vera.sqlite');

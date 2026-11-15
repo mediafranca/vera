@@ -1473,6 +1473,22 @@ const addLibrarianContextPolicy: Migration = {
   },
 };
 
+/** 41 — una propuesta bibliotecaria conserva exactamente lo que se aceptó. */
+const addLibrarianProposalDecisions: Migration = {
+  version: 41,
+  name: 'decisiones revisables de campos bibliotecarios',
+  apply(db) {
+    const table = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='agent_operation_proposals'",
+    ).get();
+    if (table === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(agent_operation_proposals)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'decided_changes_json')) {
+      db.exec('ALTER TABLE agent_operation_proposals ADD COLUMN decided_changes_json TEXT');
+    }
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1514,6 +1530,7 @@ export const MIGRATIONS: readonly Migration[] = [
   addConfigurableLibrarianExecutionAdapter,
   addStructuredLibrarianInscription,
   addLibrarianContextPolicy,
+  addLibrarianProposalDecisions,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */

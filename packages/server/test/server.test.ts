@@ -1903,6 +1903,24 @@ describe('relaciones explicadas', () => {
     assert.equal(entran.crossingsIn[0]?.reads, 'es profundizada por');
   });
 
+  it('admite declarar primero la relación y explicar después, si hiciera falta', async () => {
+    const from = await write({ kind: 'create_page', title: 'Origen estructural', visibility: 'private' });
+    const to = await write({ kind: 'create_page', title: 'Destino estructural', visibility: 'private' });
+    const crossing = await write({
+      kind: 'create_crossing', fromPage: from, toPage: to, content: '', term: null,
+    });
+    const declared = (await get(`/pages/${encodeURIComponent(from)}`)) as {
+      crossingsOut: { stableId: string; reads: string | null; says: string }[];
+    };
+    assert.equal(declared.crossingsOut.find((one) => one.stableId === crossing)?.says, '');
+    assert.equal(declared.crossingsOut.find((one) => one.stableId === crossing)?.reads, null);
+
+    await write({ kind: 'edit_crossing', crossing, content: '', term: 'acompaña' });
+    const classified = (await get(`/pages/${encodeURIComponent(from)}`)) as typeof declared;
+    assert.equal(classified.crossingsOut.find((one) => one.stableId === crossing)?.reads, 'acompaña');
+    assert.equal(classified.crossingsOut.find((one) => one.stableId === crossing)?.says, '');
+  });
+
   it('explicar es escribir: no hay operación propia', async () => {
     // Todo lo anterior pasó por POST /operations, como cualquier edición. Si
     // hubiera un camino propio, esta cuenta no cuadraría.

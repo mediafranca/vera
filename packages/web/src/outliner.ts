@@ -3901,6 +3901,29 @@ function renderRelationOutline(
   }
 }
 
+let relationTypeFieldCounter = 0;
+
+/** Vocabulario gobernado, pero abierto: usar una relación nueva no edita Gobierno. */
+function relationTypeField(value: string | null): { field: HTMLInputElement; list: HTMLDataListElement } {
+  relationTypeFieldCounter += 1;
+  const field = document.createElement('input');
+  field.type = 'text';
+  field.className = 'relation-type-select';
+  field.setAttribute('aria-label', 'tipo de relación');
+  field.placeholder = 'relación no declarada';
+  field.value = value ?? '';
+  const list = document.createElement('datalist');
+  list.id = `relation-type-options-${relationTypeFieldCounter}`;
+  field.setAttribute('list', list.id);
+  void api.ontology().then((ontology) => {
+    for (const relation of ontology.relations
+      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')) {
+      list.append(new Option(relation.labels['es'] ?? relation.name, relation.name));
+    }
+  }).catch(() => undefined);
+  return { field, list };
+}
+
 /** La metazona de una arista: clasificar acompaña la escritura, no la habilita. */
 function renderRelationTypeControl(
   host: HTMLElement,
@@ -3912,31 +3935,14 @@ function renderRelationTypeControl(
   meta.className = 'relation-meta';
   const caption = document.createElement('span');
   caption.textContent = 'Tipo';
-  const select = document.createElement('select');
-  select.className = 'relation-type-select';
-  select.setAttribute('aria-label', 'tipo de relación');
-  select.disabled = readOnly;
-  select.append(new Option('Sin tipificar', ''));
-  if (relation.term !== null) select.append(new Option(relation.term, relation.term));
-  select.value = relation.term ?? '';
-  meta.append(caption, select);
+  const { field, list } = relationTypeField(relation.term);
+  field.disabled = readOnly;
+  meta.append(caption, field, list);
   host.append(meta);
 
-  void api.ontology().then((ontology) => {
-    const held = select.value;
-    const names = ontology.relations
-      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
-      .map((one) => one.name);
-    for (const name of names) {
-      if ([...select.options].some((option) => option.value === name)) continue;
-      select.append(new Option(name, name));
-    }
-    select.value = held;
-  }).catch(() => undefined);
-
-  select.addEventListener('change', () => {
+  field.addEventListener('change', () => {
     void (async () => {
-      const term = select.value.trim();
+      const term = field.value.trim();
       const root = [...relation.blocks]
         .filter((block) => block.parent === null)
         .sort((a, b) => a.position - b.position)[0];
@@ -5536,6 +5542,11 @@ export function renderOutliner(
         corpusNames().kind,
         (change) => submitAndReload(change, callbacks),
         properties,
+        {
+          canAskLibrarian: callbacks.canAskLibrarian === true,
+          dayKind: corpusNames().day,
+          onReload: () => callbacks.onReload(null),
+        },
       );
       metadata.append(inspector);
     }).catch(() => undefined);
@@ -8131,12 +8142,11 @@ export function renderOutliner(
           if (held !== undefined) {
             const said = document.createElement('div');
             said.className = 'relation-said';
-            if (held.term !== null) {
-              const term = document.createElement('span');
-              term.className = 'relation-term';
-              term.textContent = held.term;
-              said.append(term);
-            }
+            const term = document.createElement('span');
+            term.className = 'relation-term';
+            term.textContent = held.term ?? 'relación no declarada';
+            if (held.term === null) term.classList.add('relation-undeclared');
+            said.append(term);
             const explanation = document.createElement('div');
             renderRelationOutline(
               explanation, held, callbacks, readOnly,
@@ -8270,24 +8280,8 @@ async function explainTowards(
   meta.className = 'relation-meta relation-ask-type';
   const caption = document.createElement('span');
   caption.textContent = 'Tipo';
-  const type = document.createElement('select');
-  type.className = 'relation-type-select';
-  type.setAttribute('aria-label', 'tipo de relación');
-  type.append(new Option('Sin tipificar', ''));
-  if (held?.term != null) type.append(new Option(held.term, held.term));
-  type.value = held?.term ?? '';
-  meta.append(caption, type);
-
-  void api.ontology().then((ontology) => {
-    const chosen = type.value;
-    for (const name of ontology.relations
-      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
-      .map((one) => one.name)) {
-      if ([...type.options].some((option) => option.value === name)) continue;
-      type.append(new Option(name, name));
-    }
-    type.value = chosen;
-  }).catch(() => undefined);
+  const { field: type, list: typeOptions } = relationTypeField(held?.term ?? null);
+  meta.append(caption, type, typeOptions);
 
   const field = document.createElement('textarea');
   field.className = 'relation-field';
@@ -8320,21 +8314,14 @@ async function explainTowards(
     if (settled) return;
     settled = true;
     const clean = field.value.trim();
+    const term = type.value.trim();
 
-    // Vaciar la caja de una relación que existía es retirarla: se borra el
-    // bloque, que es donde vivía. Ver crossings en el dominio — la relación era
-    // el bloque.
-    if (clean === '') {
-      if (held !== undefined) {
-        notify(held.fromBlock === null
-          ? 'vaciar no retira una conectiva: todavía falta el gesto explícito de retiro'
-          : 'vaciar retiraría el bloque antiguo; no se hizo ningún cambio');
-      }
+    // Abrir y salir sin decir ni clasificar no crea nada por accidente. Una
+    // relación estructural sin tipo se crea desde su compositor explícito.
+    if (clean === '' && term === '' && held === undefined) {
       asking.remove();
       return;
     }
-
-    const term = type.value.trim();
 
     /*
      * Si ya había una, se corrige; si no, nace.

@@ -39,6 +39,7 @@ export interface LibrarianRequest {
     proposal: null | {
       id: string;
       changes: Change[];
+      decidedChanges: Change[] | null;
       status: 'proposed' | 'accepted' | 'rejected';
     };
   };
@@ -81,7 +82,21 @@ interface RequestRow {
   lineage_source_reference: string | null;
   proposal_id: string | null;
   changes_json: string | null;
+  decided_changes_json: string | null;
   proposal_status: 'proposed' | 'accepted' | 'rejected' | null;
+}
+
+export interface LibrarianOperationProposal {
+  id: string;
+  reply: string;
+  request: string;
+  proposedBy: ParticipantId;
+  changes: Change[];
+  decidedChanges: Change[] | null;
+  status: 'proposed' | 'accepted' | 'rejected';
+  proposedAt: number;
+  decidedBy: ParticipantId | null;
+  decidedAt: number | null;
 }
 
 function conversation(store: Store, human: ParticipantId, agent: ParticipantId, now: number): string {
@@ -202,7 +217,7 @@ export function createLibrarianRequest(store: Store, input: {
 const SELECT_REQUEST = `SELECT r.*,
   a.id AS reply_id, a.answered_by, a.text AS reply_text, a.created_at AS reply_created_at,
   a.lineage_relation, a.lineage_participant_id, a.lineage_source_kind, a.lineage_source_reference,
-  p.id AS proposal_id, p.changes_json, p.status AS proposal_status
+  p.id AS proposal_id, p.changes_json, p.decided_changes_json, p.status AS proposal_status
   FROM agent_requests r
   LEFT JOIN agent_replies a ON a.request_id=r.id
   LEFT JOIN agent_operation_proposals p ON p.reply_id=a.id`;
@@ -280,10 +295,72 @@ function fromRow(store: Store, row: RequestRow): LibrarianRequest {
       proposal: row.proposal_id === null ? null : {
         id: row.proposal_id,
         changes: JSON.parse(row.changes_json ?? '[]') as Change[],
+        decidedChanges: row.decided_changes_json === null
+          ? null
+          : JSON.parse(row.decided_changes_json) as Change[],
         status: row.proposal_status!,
       },
     },
   };
+}
+
+interface LibrarianProposalRow {
+  id: string;
+  reply_id: string;
+  request_id: string;
+  proposed_by: ParticipantId;
+  changes_json: string;
+  decided_changes_json: string | null;
+  status: 'proposed' | 'accepted' | 'rejected';
+  proposed_at: number;
+  decided_by: ParticipantId | null;
+  decided_at: number | null;
+}
+
+/** Propuesta de una conversación, cercada al grafo efectivo de la tienda. */
+export function librarianOperationProposal(
+  store: Store,
+  id: string,
+): LibrarianOperationProposal | null {
+  const row = store.db.prepare(`SELECT p.*, reply.request_id
+    FROM agent_operation_proposals p
+    JOIN agent_replies reply ON reply.id=p.reply_id
+    JOIN agent_requests request ON request.id=reply.request_id
+    WHERE request.graph_id=? AND p.id=?`).get(store.graphId, id) as LibrarianProposalRow | undefined;
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    reply: row.reply_id,
+    request: row.request_id,
+    proposedBy: row.proposed_by,
+    changes: JSON.parse(row.changes_json) as Change[],
+    decidedChanges: row.decided_changes_json === null
+      ? null
+      : JSON.parse(row.decided_changes_json) as Change[],
+    status: row.status,
+    proposedAt: row.proposed_at,
+    decidedBy: row.decided_by,
+    decidedAt: row.decided_at,
+  };
+}
+
+/** La decisión y su selección exacta se guardan en la misma transacción que las operaciones. */
+export function decideLibrarianOperationProposal(store: Store, input: {
+  id: string;
+  reviewer: ParticipantId;
+  status: 'accepted' | 'rejected';
+  changes: Change[];
+  now?: number;
+}): boolean {
+  return Number(store.db.prepare(`UPDATE agent_operation_proposals
+    SET status=?,decided_changes_json=?,decided_by=?,decided_at=?
+    WHERE id=? AND status='proposed'`).run(
+      input.status,
+      JSON.stringify(input.changes),
+      input.reviewer,
+      input.now ?? Date.now(),
+      input.id,
+    ).changes) === 1;
 }
 
 export function librarianRequest(store: Store, id: string): LibrarianRequest | undefined {
