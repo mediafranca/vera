@@ -43,7 +43,16 @@
  * lo que hace falta aquí es distinguir lo que se comporta distinto: un enlace
  * lleva a alguna parte, una fecha ordena y tiene su día, y lo demás es texto.
  */
-export const FIELD_KINDS = ['texto', 'número', 'fecha', 'enlace', 'sí/no', 'una de'] as const;
+export const FIELD_KINDS = [
+  'texto',
+  'número',
+  'fecha',
+  'enlace',
+  'url',
+  'sí/no',
+  'una de',
+  'posición geográfica',
+] as const;
 
 export type FieldKind = (typeof FIELD_KINDS)[number];
 
@@ -60,6 +69,9 @@ const FIELD_ALIASES: Record<string, FieldKind> = {
   enlace: 'enlace',
   link: 'enlace',
   página: 'enlace',
+  url: 'url',
+  enlace_externo: 'url',
+  'enlace externo': 'url',
   'sí/no': 'sí/no',
   'si/no': 'sí/no',
   booleano: 'sí/no',
@@ -67,10 +79,133 @@ const FIELD_ALIASES: Record<string, FieldKind> = {
   'una de': 'una de',
   'uno de': 'una de',
   enum: 'una de',
+  'posición geográfica': 'posición geográfica',
+  'posicion geografica': 'posición geográfica',
+  coordenadas: 'posición geográfica',
+  geoposición: 'posición geográfica',
+  geoposicion: 'posición geográfica',
+  geolocation: 'posición geográfica',
+  geopoint: 'posición geográfica',
 };
 
 export function fieldKindOf(said: string): FieldKind | null {
   return FIELD_ALIASES[said.trim().toLowerCase()] ?? null;
+}
+
+export type FieldValueState = 'empty' | 'valid' | 'invalid' | 'unlisted';
+
+export interface FieldValueReading {
+  state: FieldValueState;
+  /** Forma portable recomendada. Nunca se escribe por el mero hecho de leer. */
+  canonical: string | null;
+  reason: string | null;
+  coordinates?: { latitude: number; longitude: number };
+}
+
+const folded = (said: string): string =>
+  said.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+const canonicalNumber = (said: string): string | null => {
+  const trimmed = said.trim();
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? String(value) : null;
+};
+
+const canonicalDate = (said: string): string | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(said.trim());
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? `${match[1]}-${match[2]}-${match[3]}`
+    : null;
+};
+
+const canonicalUrl = (said: string): string | null => {
+  try {
+    const url = new URL(said.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+};
+
+export function geographicPosition(said: string): { latitude: number; longitude: number } | null {
+  const match = /^(?:geo:)?\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i.exec(said.trim());
+  if (match === null) return null;
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
+export function canonicalGeographicPosition(latitude: number, longitude: number): string | null {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  const concise = (value: number): string => String(Number(value.toFixed(7)));
+  return `geo:${concise(latitude)},${concise(longitude)}`;
+}
+
+/**
+ * Una sola lectura de los valores gobernados, compartida por servidor y cliente.
+ * Leer propone una forma canónica y un diagnóstico; nunca migra lo ya escrito.
+ */
+export function readFieldValue(
+  field: FieldKind | null,
+  said: string,
+  options: readonly string[] = [],
+): FieldValueReading {
+  const trimmed = said.trim();
+  if (trimmed === '') return { state: 'empty', canonical: '', reason: null };
+  if (field === null || field === 'texto' || field === 'enlace') {
+    return { state: 'valid', canonical: trimmed, reason: null };
+  }
+  if (field === 'número') {
+    const canonical = canonicalNumber(trimmed);
+    return canonical === null
+      ? { state: 'invalid', canonical: null, reason: 'se esperaba un número' }
+      : { state: 'valid', canonical, reason: null };
+  }
+  if (field === 'fecha') {
+    const canonical = canonicalDate(trimmed);
+    return canonical === null
+      ? { state: 'invalid', canonical: null, reason: 'se esperaba una fecha AAAA-MM-DD' }
+      : { state: 'valid', canonical, reason: null };
+  }
+  if (field === 'url') {
+    const canonical = canonicalUrl(trimmed);
+    return canonical === null
+      ? { state: 'invalid', canonical: null, reason: 'se esperaba una URL http o https' }
+      : { state: 'valid', canonical, reason: null };
+  }
+  if (field === 'sí/no') {
+    const key = folded(trimmed);
+    const canonical = ['si', 'yes', 'true', '1'].includes(key)
+      ? 'sí'
+      : ['no', 'false', '0'].includes(key)
+        ? 'no'
+        : null;
+    return canonical === null
+      ? { state: 'invalid', canonical: null, reason: 'se esperaba sí o no' }
+      : { state: 'valid', canonical, reason: null };
+  }
+  if (field === 'una de') {
+    const known = options.find((one) => folded(one) === folded(trimmed));
+    return known === undefined && options.length > 0
+      ? { state: 'unlisted', canonical: trimmed, reason: 'el valor todavía no está entre las opciones declaradas' }
+      : { state: 'valid', canonical: known ?? trimmed, reason: null };
+  }
+  const coordinates = geographicPosition(trimmed);
+  const canonical = coordinates === null
+    ? null
+    : canonicalGeographicPosition(coordinates.latitude, coordinates.longitude);
+  return canonical === null || coordinates === null
+    ? { state: 'invalid', canonical: null, reason: 'se esperaba geo:latitud,longitud' }
+    : { state: 'valid', canonical, reason: null, coordinates };
 }
 
 /**

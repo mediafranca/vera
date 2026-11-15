@@ -3,7 +3,7 @@
 // Toda escritura pasa por submitOperation, igual que en el servidor y en el
 // dominio: el cliente no tiene ninguna vía propia para cambiar el grafo.
 
-import type { Trail } from '@vera/core';
+import type { FieldKind, Trail } from '@vera/core';
 import type { GraphData } from './graph/types.ts';
 import type { Recording } from './voice.ts';
 import type { CanonicalOp } from './behind.ts';
@@ -138,7 +138,16 @@ export interface PageView {
   properties: {
     key: string;
     value: string;
-    definition?: { block: string; field: string | null; many: boolean; range: string[] };
+    valueState?: 'empty' | 'valid' | 'invalid' | 'unlisted';
+    canonicalValue?: string | null;
+    valueProblem?: string | null;
+    definition?: {
+      block: string;
+      field: FieldKind | null;
+      many: boolean;
+      range: string[];
+      values: string[];
+    };
   }[];
   /** Plantillas de la biblioteca; describen objetos, no capacidades del núcleo. */
   objectTemplates?: ObjectDeclared[];

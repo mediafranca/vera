@@ -1,4 +1,5 @@
 @import "reveal.js/reveal.css";
+@import "leaflet/dist/leaflet.css";
 
 :root {
   --form-control-height: 2.75rem;
@@ -3017,6 +3018,17 @@ tr.adopted { opacity: 0.58; }
   text-underline-offset: 0.18em;
 }
 
+.property-value-invalid,
+.property-value-unlisted {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--warning);
+  text-underline-offset: 0.2em;
+}
+
+.property-value-invalid { color: var(--danger, #a33); }
+.property-geographic { font-family: var(--font-mono); font-size: 0.84em; }
+
 /* Una URL larga sigue siendo texto del front matter, no una razón para que la
    página entera gane un segundo eje. `pre-wrap` conserva cualquier separación
    deliberada y `anywhere` permite partir también una dirección sin espacios. */
@@ -3060,6 +3072,15 @@ tr.adopted { opacity: 0.58; }
   color: var(--text-dim);
   cursor: pointer;
 }
+
+/* Editar deja de ser un gesto oculto. La acción está siempre presente, también
+   sin hover y en pantallas táctiles; el fondo tenue la separa de navegar. */
+.property-edit-visible {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  opacity: 0.72;
+}
+
+.property-edit-visible:is(:hover, :focus-visible) { opacity: 1; }
 
 .property-edit .icon {
   width: 0.8rem;
@@ -3754,7 +3775,7 @@ tr.adopted { opacity: 0.58; }
   background: transparent;
 }
 
-#text.read-only :is(.property-drop, .property-add, .drawn-edit) {
+#text.read-only :is(.property-drop, .property-edit, .property-choose, .property-add, .drawn-edit) {
   display: none !important;
 }
 
@@ -4080,6 +4101,53 @@ tr.adopted { opacity: 0.58; }
   border-radius: 5px;
   padding: 0.3rem 0.45rem;
   box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+}
+
+.inline-boolean {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.7rem;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.inline-boolean input { accent-color: var(--accent); }
+.inline-edit-typed { min-width: min(16rem, 62vw); }
+
+.geo-picker-dialog {
+  width: min(42rem, calc(100vw - 1.25rem));
+  max-height: calc(100vh - 1.25rem);
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  color: var(--text);
+  background: var(--bg-raised);
+  box-shadow: 0 0.8rem 2.4rem rgb(0 0 0 / 28%);
+  font-family: var(--font-ui);
+}
+
+.geo-picker-dialog::backdrop { background: rgb(0 0 0 / 42%); }
+.geo-picker-dialog h2 { margin: 0 0 0.2rem; font-size: 1.05rem; }
+.geo-picker-dialog p { margin: 0 0 0.8rem; color: var(--text-dim); font-size: 0.82rem; }
+.geo-picker-map { height: min(52vh, 25rem); min-height: 15rem; border-radius: 0.4rem; overflow: hidden; }
+.geo-picker-coordinates { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; margin: 0.8rem 0; }
+.geo-picker-coordinates label { display: grid; gap: 0.25rem; color: var(--text-dim); font-size: 0.76rem; }
+.geo-picker-coordinates input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 0.3rem;
+  padding: 0.45rem 0.55rem;
+  color: var(--text);
+  background: var(--bg);
+  font: 0.86rem var(--font-mono);
+}
+.geo-picker-dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 0.55rem; margin-top: 0.8rem; }
+
+@media (max-width: 36rem) {
+  .geo-picker-map { height: 45vh; }
+  .geo-picker-coordinates { grid-template-columns: 1fr; }
 }
 
 .table-shape-dialog {

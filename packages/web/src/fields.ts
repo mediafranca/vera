@@ -7,7 +7,7 @@
 // corrige el título de una página o el valor de una propiedad, y dos copias de
 // un campo de texto acaban comportándose distinto.
 
-import { titleKey } from '@vera/core';
+import { readFieldValue, titleKey, type FieldKind } from '@vera/core';
 
 /**
  * Deja algo flotante junto a su ancla, dentro de la ventana.
@@ -103,6 +103,130 @@ export function editInPlace(
       host.innerHTML = held;
     }
   });
+}
+
+/**
+ * Edita un valor con el mismo contrato que lo valida y proyecta el servidor.
+ *
+ * Fechas, números y booleanos no vuelven a inventar su gramática en cada
+ * formulario. Los campos de vocabulario y referencias conservan
+ * `completeInPlace`, porque además de tipo necesitan opciones del corpus.
+ */
+export function editFieldInPlace(
+  host: HTMLElement,
+  original: string,
+  label: string,
+  kind: FieldKind | null,
+  commit: (next: string) => Promise<boolean>,
+): void {
+  if (kind === null || kind === 'texto' || kind === 'enlace' || kind === 'una de' || kind === 'posición geográfica') {
+    editInPlace(host, original, label, commit);
+    return;
+  }
+  if (host.querySelector('input') !== null) return;
+
+  const held = host.innerHTML;
+  host.innerHTML = '';
+
+  if (kind === 'sí/no') {
+    const reading = readFieldValue(kind, original);
+    const control = document.createElement('label');
+    control.className = 'inline-boolean';
+    const field = document.createElement('input');
+    field.type = 'checkbox';
+    field.role = 'switch';
+    field.checked = reading.canonical === 'sí';
+    field.setAttribute('aria-label', label);
+    const word = document.createElement('span');
+    const say = (): void => { word.textContent = field.checked ? 'sí' : 'no'; };
+    say();
+    control.append(field, word);
+    host.append(control);
+    field.focus();
+    let settled = false;
+    const finish = (accept: boolean): void => {
+      if (settled) return;
+      settled = true;
+      if (!accept) {
+        host.innerHTML = held;
+        return;
+      }
+      const next = field.checked ? 'sí' : 'no';
+      if (next === reading.canonical) {
+        host.innerHTML = held;
+        return;
+      }
+      void commit(next).then((applied) => {
+        if (!applied) host.innerHTML = held;
+      });
+    };
+    field.addEventListener('change', () => {
+      say();
+      finish(true);
+    });
+    field.addEventListener('blur', () => finish(false));
+    field.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        finish(false);
+      }
+    });
+    return;
+  }
+
+  const field = document.createElement('input');
+  field.type = kind === 'fecha' ? 'date' : kind === 'número' ? 'number' : 'url';
+  field.className = 'inline-edit inline-edit-typed';
+  field.value = original;
+  field.setAttribute('aria-label', label);
+  if (kind === 'número') {
+    field.step = 'any';
+    field.inputMode = 'decimal';
+  }
+  host.append(field);
+  field.focus();
+  if (kind !== 'fecha') field.select();
+
+  let settled = false;
+  const finish = (accept: boolean): void => {
+    if (settled) return;
+    if (!accept || field.value === original) {
+      settled = true;
+      host.innerHTML = held;
+      return;
+    }
+    const reading = readFieldValue(kind, field.value);
+    if (reading.state === 'invalid' || reading.canonical === null) {
+      field.setCustomValidity(reading.reason ?? 'valor inválido');
+      field.reportValidity();
+      field.focus();
+      return;
+    }
+    settled = true;
+    void commit(reading.canonical).then((applied) => {
+      if (!applied) host.innerHTML = held;
+    });
+  };
+  field.addEventListener('input', () => field.setCustomValidity(''));
+  field.addEventListener('blur', () => finish(true));
+  field.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      finish(true);
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      settled = true;
+      host.innerHTML = held;
+    }
+  });
+  if (kind === 'fecha') {
+    try {
+      (field as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+    } catch {
+      // WebKit puede exigir otro gesto; el campo enfocado sigue siendo usable.
+    }
+  }
 }
 
 /** Una respuesta que se ofrece mientras se escribe. */

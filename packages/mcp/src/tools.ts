@@ -765,7 +765,12 @@ export const TOOLS: readonly VeraTool[] = [
           : trouble(page);
       }
 
-      const properties = page.properties.map((one) => `${one.key}:: ${one.value}`).join('\n');
+      const properties = page.properties.map((one) =>
+        `${one.key}:: ${one.value}` +
+        (one.valueState === 'invalid' || one.valueState === 'unlisted'
+          ? ` [${one.valueProblem ?? one.valueState}]`
+          : ''),
+      ).join('\n');
       /*
        * Qué bloques no escribió el dueño.
        *

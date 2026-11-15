@@ -351,7 +351,10 @@ export interface Page {
   properties: {
     key: string;
     value: string;
-    definition?: { block: string; field: string | null; many: boolean; range: string[] };
+    valueState?: 'empty' | 'valid' | 'invalid' | 'unlisted';
+    canonicalValue?: string | null;
+    valueProblem?: string | null;
+    definition?: { block: string; field: string | null; many: boolean; range: string[]; values: string[] };
   }[];
   propertyReferences?: {
     property: string;

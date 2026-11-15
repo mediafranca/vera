@@ -543,7 +543,7 @@ describe('dominios declarados de propiedades', () => {
     const written = detail.properties.find((one) => one.key === 'autor');
     assert.equal(written?.value, portable);
     assert.deepEqual(written?.definition, {
-      block: author, field: 'enlace', many: true, range: ['Persona'],
+      block: author, field: 'enlace', many: true, range: ['Persona'], values: ['Herbert', 'Ward'],
     });
     assert.deepEqual(detail.propertyReferences, [
       {
@@ -569,6 +569,52 @@ describe('dominios declarados de propiedades', () => {
     assert.equal(map.links.some((one) =>
       one.source === method && one.target === ivana &&
       one.kind === 'property-reference' && one.label === 'autor'), true);
+  });
+
+  it('proyecta un mismo diagnóstico portable para los campos escalares', async () => {
+    const properties = 'page:test-properties-governing';
+    const date = await write({
+      kind: 'create_block', stableId: 'block:test-date-property', page: properties,
+      parent: null, position: 3, content: 'fecha de prueba',
+    });
+    await write({ kind: 'set_property', block: date, propertyKey: 'campo', propertyValue: 'fecha' });
+    const location = await write({
+      kind: 'create_block', stableId: 'block:test-geo-property', page: properties,
+      parent: null, position: 4, content: 'coordenadas de prueba',
+    });
+    await write({
+      kind: 'set_property', block: location, propertyKey: 'campo', propertyValue: 'posición geográfica',
+    });
+
+    const page = await write({ kind: 'create_page', title: 'Campos habitables', visibility: 'private' });
+    await write({ kind: 'set_property', page, propertyKey: 'fecha de prueba', propertyValue: '15/11/2026' });
+    await write({
+      kind: 'set_property', page, propertyKey: 'coordenadas de prueba',
+      propertyValue: 'geo:-33.0472,-71.6127',
+    });
+
+    const detail = await get(`/pages/${encodeURIComponent(page)}`) as {
+      properties: Array<{
+        key: string; valueState?: string; canonicalValue?: string | null; valueProblem?: string | null;
+        definition?: { field: string | null; values: string[] };
+      }>;
+    };
+    assert.deepEqual(
+      detail.properties.find((one) => one.key === 'fecha de prueba'),
+      {
+        key: 'fecha de prueba', value: '15/11/2026', valueState: 'invalid', canonicalValue: null,
+        valueProblem: 'se esperaba una fecha AAAA-MM-DD',
+        definition: { block: date, field: 'fecha', many: false, range: [], values: [] },
+      },
+    );
+    assert.deepEqual(
+      detail.properties.find((one) => one.key === 'coordenadas de prueba'),
+      {
+        key: 'coordenadas de prueba', value: 'geo:-33.0472,-71.6127', valueState: 'valid',
+        canonicalValue: 'geo:-33.0472,-71.6127', valueProblem: null,
+        definition: { block: location, field: 'posición geográfica', many: false, range: [], values: [] },
+      },
+    );
   });
 
   it('ofrece el dominio de una propiedad constitutiva antes de que tenga valor', async () => {

@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  canonicalGeographicPosition,
   fieldKindOf,
+  geographicPosition,
   missingFor,
   propertyDeclarationForKey,
   readObjectDeclarations,
   readPropertyDeclarations,
+  readFieldValue,
   readRelationDeclarations,
 } from '../src/ontology.ts';
 import { namesFromRoles } from '../src/property-names.ts';
@@ -159,6 +162,33 @@ describe('readPropertyDeclarations', () => {
     assert.equal(fieldKindOf('  Enlace '), 'enlace');
     assert.equal(fieldKindOf('booleano'), 'sí/no');
     assert.equal(fieldKindOf('color'), null);
+  });
+});
+
+describe('readFieldValue', () => {
+  it('comparte formas canónicas para fecha, número, booleano y URL', () => {
+    assert.deepEqual(readFieldValue('fecha', '2026-02-29'), {
+      state: 'invalid', canonical: null, reason: 'se esperaba una fecha AAAA-MM-DD',
+    });
+    assert.equal(readFieldValue('fecha', '2026-11-15').canonical, '2026-11-15');
+    assert.equal(readFieldValue('número', '01.500').canonical, '1.5');
+    assert.equal(readFieldValue('sí/no', 'true').canonical, 'sí');
+    assert.equal(readFieldValue('url', 'https://example.org/a').canonical, 'https://example.org/a');
+  });
+
+  it('distingue una opción nueva de un valor estructuralmente inválido', () => {
+    assert.equal(readFieldValue('una de', 'en revisión', ['borrador', 'publicado']).state, 'unlisted');
+    assert.equal(readFieldValue('número', 'doce').state, 'invalid');
+  });
+
+  it('lee y escribe una posición portable sin depender del mapa', () => {
+    assert.deepEqual(geographicPosition('geo:-33.0472,-71.6127'), {
+      latitude: -33.0472,
+      longitude: -71.6127,
+    });
+    assert.equal(canonicalGeographicPosition(-33.04720001, -71.61270001), 'geo:-33.0472,-71.6127');
+    assert.equal(readFieldValue('posición geográfica', '91,0').state, 'invalid');
+    assert.equal(fieldKindOf('coordenadas'), 'posición geográfica');
   });
 });
 
