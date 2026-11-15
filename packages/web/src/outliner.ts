@@ -7965,7 +7965,7 @@ export function renderOutliner(
           member.mentioned && !member.linked ? 'mención potencial' : '',
         ].filter(Boolean).join(' · ');
         row.append(link, modes);
-        if (member.mentioned && !member.linked && member.formalization !== null) {
+        if (!readOnly && member.mentioned && !member.linked && member.formalization !== null) {
           const proposal = member.formalization;
           const formalize = document.createElement('button');
           formalize.type = 'button';
@@ -8082,21 +8082,24 @@ export function renderOutliner(
            * mención ocurre —o, si la mención está en la otra página, de un bloque
            * nuevo al final de ésta, porque la afirmación es de aquí.
            */
-          const quill = document.createElement('button');
-          quill.type = 'button';
-          quill.className = 'reference-explain';
-          quill.innerHTML = icon('feather');
-          quill.title = `explicar por qué ${row.title} tiene que ver con esta página`;
-          quill.setAttribute('aria-label', `explicar la relación con ${row.title}`);
           const held = row.relation ?? undefined;
-          if (held !== undefined) {
-            quill.classList.add('explained');
-            quill.title = `cambiar por qué ${row.title} tiene que ver con esta página`;
+          if (!readOnly) {
+            const quill = document.createElement('button');
+            quill.type = 'button';
+            quill.className = 'reference-explain';
+            quill.innerHTML = icon('feather');
+            quill.title = `explicar por qué ${row.title} tiene que ver con esta página`;
+            quill.setAttribute('aria-label', `explicar la relación con ${row.title}`);
+            if (held !== undefined) {
+              quill.classList.add('explained');
+              quill.title = `cambiar por qué ${row.title} tiene que ver con esta página`;
+            }
+            quill.addEventListener('click', (event) => {
+              event.stopPropagation();
+              explainTowards(item, row.title, row.page, held, page, toast, callbacks);
+            });
+            item.append(quill);
           }
-          quill.addEventListener('click', (event) => {
-            event.stopPropagation();
-            explainTowards(item, row.title, row.page, held, page, toast, callbacks);
-          });
 
           const link = document.createElement('div');
           link.className = 'backlink';
@@ -8135,7 +8138,7 @@ export function renderOutliner(
             open();
           });
 
-          item.append(quill, link);
+          item.append(link);
 
           // Y debajo, lo que se dijo de ella. Es la prueba de que lo escrito se
           // escribió: sin enseñarlo, guardar y no guardar se ven igual.
