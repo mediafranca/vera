@@ -1317,9 +1317,6 @@ async function openPage(
 
       // Se descarta la llave vieja; la canónica se retendrá al abrirla.
       void held.forgetPage(page.id);
-      const active = document.activeElement;
-      const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
-        (active instanceof HTMLElement && active.isContentEditable);
       const blockIds = new Set(openView.blocks.map((block) => block.stableId));
       const pendingHere = (outbox?.pending() ?? []).some((one) => {
         const change = one.change;
@@ -1328,7 +1325,7 @@ async function openPage(
         return false;
       });
 
-      if (writing || pendingHere) {
+      if (hasLiveWritingSurface() || pendingHere) {
         markShowing(text, true, 'divergent');
         announcing = {
           state: 'attention-required',
@@ -1399,10 +1396,7 @@ async function openPage(
 
       const finish = (): void => {
         if (opening !== thisOpening || workspace.activePage !== complete.id || openView === null) return;
-        const active = document.activeElement;
-        const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
-          (active instanceof HTMLElement && active.isContentEditable);
-        if (writing) {
+        if (hasLiveWritingSurface()) {
           window.setTimeout(finish, 500);
           return;
         }
@@ -1671,11 +1665,7 @@ function catchUp(): void {
   if (!derivedStale) return;
   window.clearTimeout(catchUpTimer);
   catchUpTimer = window.setTimeout(() => {
-    const at = document.activeElement;
-    const writing =
-      at instanceof HTMLTextAreaElement || at instanceof HTMLInputElement ||
-      (at instanceof HTMLElement && at.isContentEditable);
-    if (writing) {
+    if (hasLiveWritingSurface()) {
       catchUp();
       return;
     }
@@ -2110,10 +2100,7 @@ async function refreshVisiblePage(): Promise<void> {
   const target = openView;
   if (target === null || workspace.activePage !== target.id) return;
 
-  const active = document.activeElement;
-  const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
-    (active instanceof HTMLElement && active.isContentEditable);
-  if (writing) throw new Error('termina la edición antes de actualizar');
+  if (hasLiveWritingSurface()) throw new Error('termina la edición antes de actualizar');
 
   if (!isAnybody()) {
     await catchUpWithCorpus();
@@ -2488,7 +2475,10 @@ async function catchUpWithCorpus(): Promise<void> {
 
 /** Sustituye la representación provisional de un día cuando ya existe. */
 async function revalidateUnstartedDay(): Promise<boolean> {
-  if (workspace.activePage !== null || document.visibilityState !== 'visible') return false;
+  if (
+    workspace.activePage !== null || document.visibilityState !== 'visible' ||
+    hasLiveWritingSurface()
+  ) return false;
   const route = parseRoute(new URL(window.location.href));
   if (route.page === null || !/^\d{4}-\d{2}-\d{2}$/.test(route.page)) return false;
   try {
@@ -2521,11 +2511,30 @@ async function revalidateUnstartedDay(): Promise<boolean> {
  * drena lo local y se vuelve a pedir la página visible. Nunca se recompone
  * encima de una caja de edición activa: lo que la mano todavía está escribiendo
  * manda sobre una actualización de fondo.
+ *
+ * Una caja puede seguir bajo la mano aunque el sistema operativo le quite foco.
+ *
+ * Al volver desde otra aplicación, WebKit suele dejar `activeElement` en `body`.
+ * Preguntar sólo por el foco hacía parecer terminada una edición que seguía
+ * abierta y permitía que la sincronización desmontara su DOM. La existencia de
+ * la superficie editable es la señal durable durante esa transición.
  */
+function hasLiveWritingSurface(): boolean {
+  return document.querySelector(
+    '#text .body.editing textarea.editor, ' +
+    '#text .block-gloss.editing textarea.gloss-editor, ' +
+    '#text input.inline-edit, #text .inline-boolean input, ' +
+    '#text [contenteditable]:not([contenteditable="false"]):not([hidden])',
+  ) !== null;
+}
+
 async function resumeVisiblePage(): Promise<void> {
   if (document.visibilityState !== 'visible' || isAnybody()) return;
 
   await catchUpWithCorpus();
+  // Preguntar y anunciar es seguro; repintar o drenar mientras hay una caja
+  // abierta no lo es. El borrador permanece exactamente donde estaba.
+  if (hasLiveWritingSurface()) return;
   await api.drain();
 
   const page = workspace.activePage;
@@ -2541,12 +2550,14 @@ async function resumeVisiblePage(): Promise<void> {
     await revalidateUnstartedDay();
     return;
   }
-  const active = document.activeElement;
-  const writing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ||
-    (active instanceof HTMLElement && active.isContentEditable);
-  if (writing) return;
+  if (hasLiveWritingSurface()) return;
 
-  await openPage(page, null, { fromUrl: true, replaceRoute: true });
+  // Lo que otra mano cambió en esta página se anuncia y espera a ser tomado.
+  // Reanudar la PWA no es el acto de aceptar esa actualización.
+  if ((waiting?.here ?? 0) > 0) return;
+
+  // Una página ya canónica y sin novedades no necesita ser desmontada al volver.
+  if (showingKept) await openPage(page, null, { fromUrl: true, replaceRoute: true });
 }
 
 /** Enciende —o apaga— el aviso de la barra. rule AnnounceWaitingCanonicalWork. */
@@ -4531,9 +4542,30 @@ wirePullToRefresh({
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js').then((registration) => {
-      const ask = (): void => {
-        if (document.visibilityState === 'visible') void registration.update();
+      let announcedWaitingUpdate = false;
+      const activateWaitingUpdate = (): void => {
+        const waiting = registration.waiting;
+        if (waiting === null) return;
+        if (hasLiveWritingSurface()) {
+          if (!announcedWaitingUpdate) {
+            announcedWaitingUpdate = true;
+            notice('Hay una actualización lista. Vera la aplicará cuando termines de editar.');
+          }
+          return;
+        }
+        waiting.postMessage({ type: 'VERA_ACTIVATE_UPDATE' });
       };
+      const ask = (): void => {
+        if (document.visibilityState !== 'visible') return;
+        void registration.update().then(activateWaitingUpdate);
+      };
+      registration.addEventListener('updatefound', () => {
+        const installing = registration.installing;
+        installing?.addEventListener('statechange', () => {
+          if (installing.state === 'installed') activateWaitingUpdate();
+        });
+      });
+      document.addEventListener('focusout', () => queueMicrotask(activateWaitingUpdate));
       ask();
       document.addEventListener('visibilitychange', ask);
     });
@@ -4542,8 +4574,9 @@ if ('serviceWorker' in navigator) {
   /*
    * Un worker nuevo toma el control: la página que está a la vista es vieja.
    *
-   * El worker se activa solo —hace `skipWaiting`— pero eso cambia quién sirve
-   * los archivos, no lo que ya está corriendo en la ventana. Sin recargar, la
+   * El worker toma el control sólo después de que Vera comprueba que no hay una
+   * edición abierta. Eso cambia quién sirve los archivos, no lo que ya está
+   * corriendo en la ventana. Sin recargar, la
    * aplicación se queda con el JavaScript de la versión anterior hasta que
    * alguien la cierre, que es el problema entero visto desde el otro lado.
    *
@@ -4555,6 +4588,10 @@ if ('serviceWorker' in navigator) {
   const hadWorker = navigator.serviceWorker.controller !== null;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadWorker || renewing) return;
+    if (hasLiveWritingSurface()) {
+      notice('La actualización esperará: hay una edición abierta.');
+      return;
+    }
     renewing = true;
     rememberReadingPlace();
     window.location.reload();

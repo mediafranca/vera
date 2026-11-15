@@ -38,7 +38,10 @@
 // v12 retira el morado histórico del manifiesto instalable. Sin una generación
 // nueva, las instalaciones existentes conservarían ese manifiesto en el shell
 // aunque el tema activo ya proyectara otro fondo dentro de Vera.
-const SHELL = 'vera-shell-v12';
+// v13 deja de tomar el control mientras una instalación abierta puede estar
+// escribiendo. La aplicación pide la activación sólo cuando no queda un editor
+// vivo; así una actualización no convierte un borrador local en daño colateral.
+const SHELL = 'vera-shell-v13';
 const ASSETS = [
   '/',
   '/map-frame.html',
@@ -51,7 +54,13 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(ASSETS)));
-  self.skipWaiting();
+});
+
+// Esperar es deliberado: hasta los clientes anteriores a v13 pueden instalar
+// este worker sin que su listener de `controllerchange` recargue un editor.
+// Un cliente que ya conoce el protocolo solicita la activación cuando es seguro.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'VERA_ACTIVATE_UPDATE') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

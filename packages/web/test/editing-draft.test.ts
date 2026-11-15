@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import {
   discardEditingDraft,
+  forgetEditingDraft,
   keepEditingDraft,
   recoverEditingDraft,
 } from '../src/editing-draft.ts';
@@ -21,19 +22,38 @@ describe('borrador de una jugada editorial', () => {
     assert.match(outliner, /const preserveDraft = \(\): void =>/);
     assert.match(outliner, /keepEditingDraft\(block\.stableId, block\.content, session\.buffer\(\)\)/);
     assert.doesNotMatch(outliner, /setTimeout\(\(\) => void flush\(session\.pending\(\)\)/);
+    assert.match(
+      outliner,
+      /flush\(session\.pending\(\)\)\.then\(\(saved\) => \{[\s\S]*if \(!saved\)/,
+      'una partición o traslado no puede continuar si el borrador no se asentó',
+    );
   });
 
   it('sobrevive localmente sin convertirse en otro estado canónico', () => {
     const storage = new MemoryStorage();
     keepEditingDraft('block:1', 'antes', 'después', storage);
-    assert.equal(recoverEditingDraft('block:1', 'antes', storage), 'después');
+    const recovered = recoverEditingDraft('block:1', 'antes', storage);
+    assert.equal(recovered?.base, 'antes');
+    assert.equal(recovered?.content, 'después');
+    assert.equal(recovered?.baseChanged, false);
+    assert.equal(typeof recovered?.keptAt, 'number');
   });
 
-  it('no pisa una revisión base que cambió entretanto', () => {
+  it('conserva ambas versiones cuando la base cambió entretanto', () => {
     const storage = new MemoryStorage();
     keepEditingDraft('block:1', 'antes', 'mi cambio', storage);
+    const recovered = recoverEditingDraft('block:1', 'cambio ajeno', storage);
+    assert.equal(recovered?.content, 'mi cambio');
+    assert.equal(recovered?.base, 'antes');
+    assert.equal(recovered?.baseChanged, true);
+    assert.equal(storage.values.size, 1, 'sin una decisión humana el borrador no se retira');
+  });
+
+  it('sólo una decisión explícita puede retirar un borrador en desacuerdo', () => {
+    const storage = new MemoryStorage();
+    keepEditingDraft('block:1', 'antes', 'mi cambio', storage);
+    forgetEditingDraft('block:1', storage);
     assert.equal(recoverEditingDraft('block:1', 'cambio ajeno', storage), null);
-    assert.equal(storage.values.size, 0);
   });
 
   it('se retira al confirmar exactamente el resultado de la jugada', () => {
@@ -47,6 +67,6 @@ describe('borrador de una jugada editorial', () => {
     const storage = new MemoryStorage();
     keepEditingDraft('block:1', 'antes', 'posterior', storage);
     discardEditingDraft('block:1', 'intermedio', storage);
-    assert.equal(recoverEditingDraft('block:1', 'antes', storage), 'posterior');
+    assert.equal(recoverEditingDraft('block:1', 'antes', storage)?.content, 'posterior');
   });
 });

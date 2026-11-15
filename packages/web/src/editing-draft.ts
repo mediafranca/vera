@@ -10,10 +10,12 @@ interface DraftStorage {
   removeItem(key: string): void;
 }
 
-interface StoredDraft {
+export interface RecoveredEditingDraft {
   base: string;
   content: string;
   keptAt: number;
+  /** El corpus cambió desde que comenzó esta jugada; ambas versiones importan. */
+  baseChanged: boolean;
 }
 
 const PREFIX = 'vera.editing-draft:';
@@ -22,10 +24,10 @@ function key(block: string): string {
   return `${PREFIX}${block}`;
 }
 
-function parsed(raw: string | null): StoredDraft | null {
+function parsed(raw: string | null): Omit<RecoveredEditingDraft, 'baseChanged'> | null {
   if (raw === null) return null;
   try {
-    const value = JSON.parse(raw) as Partial<StoredDraft>;
+    const value = JSON.parse(raw) as Partial<RecoveredEditingDraft>;
     return typeof value.base === 'string' && typeof value.content === 'string' &&
       typeof value.keptAt === 'number'
       ? { base: value.base, content: value.content, keptAt: value.keptAt }
@@ -54,25 +56,40 @@ export function keepEditingDraft(
   }
 }
 
-/** Recupera sólo sobre la misma revisión base; nunca pisa una edición ajena. */
+/**
+ * Recupera siempre el borrador local.
+ *
+ * Si la base canónica cambió, conservar ambas versiones es precisamente lo que
+ * permite resolver el desacuerdo. Borrar la local en ese caso convertía una
+ * sincronización en pérdida de texto: la situación más importante era la única
+ * en que el depósito se vaciaba.
+ */
 export function recoverEditingDraft(
   block: string,
   base: string,
   storage: DraftStorage = localStorage,
-): string | null {
+): RecoveredEditingDraft | null {
   try {
     const draft = parsed(storage.getItem(key(block)));
     if (draft === null) {
       storage.removeItem(key(block));
       return null;
     }
-    if (draft.base !== base) {
-      storage.removeItem(key(block));
-      return null;
-    }
-    return draft.content;
+    return { ...draft, baseChanged: draft.base !== base };
   } catch {
     return null;
+  }
+}
+
+/** Retira un borrador sólo por una decisión explícita de tomar el corpus. */
+export function forgetEditingDraft(
+  block: string,
+  storage: DraftStorage = localStorage,
+): void {
+  try {
+    storage.removeItem(key(block));
+  } catch {
+    // La decisión ya se tomó; un residuo local sólo podrá volver a ofrecerse.
   }
 }
 
