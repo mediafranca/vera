@@ -119,6 +119,7 @@ describe('front matter habitable', () => {
     assert.match(source, /editFieldInPlace\(value, property\.value/);
     assert.match(source, /field === 'posición geográfica'/);
     assert.match(source, /pickGeographicPosition/);
+    assert.match(source, /renderTemplateInspector\([\s\S]*properties,/);
   });
 
   it('renombra una propiedad como un solo lote canónico', () => {

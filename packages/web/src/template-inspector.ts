@@ -93,6 +93,7 @@ export function renderTemplateInspector(
   ontology: OntologyView,
   kindKey: string,
   write: WriteTemplateChange,
+  propertyTable?: HTMLDListElement,
 ): HTMLElement {
   const inspected = inspectTemplate(page, ontology, kindKey);
   const section = document.createElement('section');
@@ -104,9 +105,11 @@ export function renderTemplateInspector(
   title.textContent = inspected.template === null
     ? inspected.kind === null ? 'Ficha de nota' : `Ficha de «${inspected.kind}»`
     : `Ficha de ${inspected.template.labels['es'] ?? inspected.template.name}`;
-  const answered = inspected.properties.filter((one) => one.written.length > 0).length;
+  const missing = inspected.properties.filter((one) => one.written.length === 0);
   const summary = document.createElement('span');
-  summary.textContent = `${answered} de ${inspected.properties.length} propiedades presentes`;
+  summary.textContent = missing.length === 0
+    ? 'ficha completa'
+    : `${missing.length} ${missing.length === 1 ? 'propiedad pendiente' : 'propiedades pendientes'}`;
   head.append(title, summary);
   section.append(head);
 
@@ -117,23 +120,30 @@ export function renderTemplateInspector(
     section.append(warning);
   }
 
-  const properties = document.createElement('ul');
-  properties.className = 'template-property-list';
-  for (const property of inspected.properties) {
-    const item = document.createElement('li');
-    item.className = property.written.length === 0 ? 'missing' : 'present';
-    const name = document.createElement('span');
-    name.className = 'template-property-name';
-    name.textContent = property.definition.labels['es'] ?? property.definition.name;
-    const value = document.createElement('span');
-    value.className = 'template-property-value';
-    value.textContent = property.written.length === 0
-      ? property.expectedBy === 'global' ? 'esperada en toda página' : 'esperada por la plantilla'
-      : property.written.map((one) => one.value === '' ? 'sin respuesta' : one.value).join(' · ');
-    item.append(name, value);
-    if (property.written.length === 0) {
+  /*
+   * Una sola ficha, no una lista que repite la tabla superior.
+   *
+   * Las propiedades presentes ya viven en el `dl` canónico del front matter.
+   * Sólo las faltantes se agregan allí, con el mismo ritmo clave/valor/acción.
+   * El inspector conserva debajo únicamente el nombre de la plantilla y sus
+   * relaciones posibles. Así «esperada» describe un hueco, nunca una segunda
+   * representación de algo que ya está escrito.
+   */
+  if (propertyTable !== undefined) {
+    for (const property of missing) {
+      const name = document.createElement('dt');
+      name.className = 'property-key template-property-missing';
+      name.textContent = property.definition.labels['es'] ?? property.definition.name;
+      const value = document.createElement('dd');
+      value.className = 'property-value template-property-missing';
+      const reason = document.createElement('span');
+      reason.className = 'template-property-reason';
+      reason.textContent = property.expectedBy === 'global'
+        ? 'esperada en toda página'
+        : 'esperada por la plantilla';
       const add = document.createElement('button');
       add.type = 'button';
+      add.className = 'property-edit property-edit-visible';
       add.textContent = 'Añadir';
       add.setAttribute('aria-label', `Añadir ${property.definition.name}`);
       add.addEventListener('click', () => {
@@ -145,11 +155,10 @@ export function renderTemplateInspector(
           propertyValue: '',
         }).then((applied) => { if (!applied) add.disabled = false; });
       });
-      item.append(add);
+      value.append(reason, add);
+      propertyTable.append(name, value);
     }
-    properties.append(item);
   }
-  section.append(properties);
 
   if (inspected.relations.length > 0) {
     const relationHead = document.createElement('h3');

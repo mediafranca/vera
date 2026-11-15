@@ -2896,7 +2896,6 @@ html.presenting body {
   color: var(--text);
 }
 
-.template-property-list,
 .template-relation-list {
   display: flex;
   flex-wrap: wrap;
@@ -2906,7 +2905,6 @@ html.presenting body {
   list-style: none;
 }
 
-.template-property-list li,
 .template-relation-list li {
   display: inline-flex;
   align-items: center;
@@ -2918,19 +2916,17 @@ html.presenting body {
   background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
 }
 
-.template-property-list li.missing { border-style: dashed; }
-.template-property-name { color: var(--text); }
-.template-property-value { max-width: 22rem; overflow-wrap: anywhere; }
-.template-property-list button {
-  margin: 0;
-  padding: 0.08rem 0.3rem;
-  border: 0;
-  border-radius: 0.3rem;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  font: inherit;
-  cursor: pointer;
+.properties .template-property-missing {
+  border-top: 1px dashed color-mix(in srgb, var(--text-dim) 28%, transparent);
+  color: var(--text-dim);
 }
+.properties dd.template-property-missing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+.template-property-reason { font-style: italic; }
 
 .template-relation-list li.present {
   border-color: color-mix(in srgb, var(--success) 48%, transparent);
