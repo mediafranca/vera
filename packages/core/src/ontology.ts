@@ -113,14 +113,18 @@ const canonicalNumber = (said: string): string | null => {
 };
 
 const canonicalDate = (said: string): string | null => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(said.trim());
+  const match = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(said.trim());
   if (match === null) return null;
-  const year = Number(match[1]);
+  const yearSaid = match[1] ?? '';
+  if (match[2] === undefined) return yearSaid;
+  const year = Number(yearSaid);
   const month = Number(match[2]);
+  if (month < 1 || month > 12) return null;
+  if (match[3] === undefined) return `${yearSaid}-${match[2]}`;
   const day = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-    ? `${match[1]}-${match[2]}-${match[3]}`
+    ? `${yearSaid}-${match[2]}-${match[3]}`
     : null;
 };
 
@@ -173,7 +177,7 @@ export function readFieldValue(
   if (field === 'fecha') {
     const canonical = canonicalDate(trimmed);
     return canonical === null
-      ? { state: 'invalid', canonical: null, reason: 'se esperaba una fecha AAAA-MM-DD' }
+      ? { state: 'invalid', canonical: null, reason: 'se esperaba una fecha AAAA, AAAA-MM o AAAA-MM-DD' }
       : { state: 'valid', canonical, reason: null };
   }
   if (field === 'url') {

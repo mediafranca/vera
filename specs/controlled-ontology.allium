@@ -1381,7 +1381,8 @@ surface LibraryGovernment {
     @guarantee OneValueKindHasOneReadingAndOneEditor
         -- Front matter, block properties and every other writing surface obtain
         -- parsing, canonical form and the input control from the same declared
-        -- value kind. Date is always AAAA-MM-DD, number uses one portable
+        -- value kind. Date preserves ISO precision as AAAA, AAAA-MM or
+        -- AAAA-MM-DD; a calendar writes day precision. Number uses one portable
         -- decimal notation, boolean is always yes or no, and geographic
         -- position is always a portable geo URI. A second form does not invent
         -- a second grammar for the same property.

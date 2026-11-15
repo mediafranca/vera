@@ -168,9 +168,11 @@ describe('readPropertyDeclarations', () => {
 describe('readFieldValue', () => {
   it('comparte formas canónicas para fecha, número, booleano y URL', () => {
     assert.deepEqual(readFieldValue('fecha', '2026-02-29'), {
-      state: 'invalid', canonical: null, reason: 'se esperaba una fecha AAAA-MM-DD',
+      state: 'invalid', canonical: null, reason: 'se esperaba una fecha AAAA, AAAA-MM o AAAA-MM-DD',
     });
     assert.equal(readFieldValue('fecha', '2026-11-15').canonical, '2026-11-15');
+    assert.equal(readFieldValue('fecha', '2024').canonical, '2024');
+    assert.equal(readFieldValue('fecha', '2024-06').canonical, '2024-06');
     assert.equal(readFieldValue('número', '01.500').canonical, '1.5');
     assert.equal(readFieldValue('sí/no', 'true').canonical, 'sí');
     assert.equal(readFieldValue('url', 'https://example.org/a').canonical, 'https://example.org/a');
