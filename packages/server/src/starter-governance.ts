@@ -13,6 +13,7 @@ export interface StarterPropertyDefinition {
   readonly subject?: 'página' | 'bloque';
   readonly field?: 'texto' | 'número' | 'fecha' | 'enlace' | 'sí/no' | 'una de';
   readonly many?: boolean;
+  readonly range?: readonly string[];
   readonly role?: string;
   readonly values?: readonly string[];
   readonly says: string;
@@ -55,7 +56,7 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
   { id: 'url', name: 'url', says: 'dónde vive eso fuera de Vera' },
   { id: 'alias', name: 'alias', field: 'texto', many: true, says: 'otros nombres de la misma cosa' },
   { id: 'search-alias', name: 'frase alternativa', subject: 'bloque', field: 'texto', many: true, role: 'search_alias', says: 'otra frase o lengua que recupera este pasaje sin cambiar lo que afirma' },
-  { id: 'organization', name: 'org', field: 'enlace', many: true, says: 'a qué organización pertenece' },
+  { id: 'organization', name: 'org', field: 'enlace', many: true, range: ['Organización'], says: 'a qué organización pertenece' },
   { id: 'position', name: 'cargo', field: 'texto', says: 'qué hace allí una persona' },
   { id: 'degree', name: 'grado', field: 'texto', says: 'qué estudió una persona' },
   { id: 'email', name: 'email', field: 'texto', says: 'dirección de correo' },
@@ -65,7 +66,7 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
   { id: 'zotero-version', name: 'zotero-versión', field: 'número', says: 'versión del ítem traído desde Zotero' },
   { id: 'zotero-library', name: 'zotero-biblioteca', field: 'texto', says: 'biblioteca de Zotero de la que vino' },
   { id: 'class', name: 'clase', field: 'una de', says: 'clase bibliográfica: libro, artículo, tesis u otra' },
-  { id: 'author', name: 'autor', field: 'enlace', many: true, says: 'quién lo escribió' },
+  { id: 'author', name: 'autor', field: 'enlace', many: true, range: ['Persona'], says: 'quién lo escribió' },
   { id: 'publication', name: 'publicación', field: 'texto', says: 'revista, libro o actas donde apareció' },
   { id: 'publisher', name: 'editorial', field: 'texto', says: 'quién lo publicó' },
   { id: 'doi', name: 'doi', field: 'texto', says: 'identificador de objeto digital' },
@@ -74,7 +75,7 @@ export const STARTER_PROPERTY_DEFINITIONS: readonly StarterPropertyDefinition[] 
   { id: 'service', name: 'servicio', field: 'una de', says: 'con qué servicio externo habla una página de servicio' },
   { id: 'library', name: 'biblioteca', field: 'texto', says: 'con qué biblioteca o cuenta de ese servicio' },
   { id: 'collections', name: 'colecciones', field: 'texto', many: true, says: 'qué colecciones del servicio se sincronizan' },
-  { id: 'theme', name: 'tema', field: 'enlace', says: 'hoja de estilo gobernada que aplica una presentación' },
+  { id: 'theme', name: 'tema', field: 'enlace', range: ['Hoja de estilo'], says: 'hoja de estilo gobernada que aplica una presentación' },
   { id: 'epistemic-role', name: 'rol epistémico', field: 'una de', values: ['fuente', 'testimonio', 'análisis', 'síntesis', 'pregunta', 'afirmación'], says: 'función principal que cumple una página en el conocimiento' },
   { id: 'argument-maturity', name: 'madurez argumental', field: 'una de', values: ['contexto', 'estructura', 'composición', 'validación', 'argumento'], says: 'hasta dónde ha madurado un argumento; el último valor lo declara publicable' },
 ];

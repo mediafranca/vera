@@ -86,13 +86,21 @@ describe('namesFromRelationRoles', () => {
 describe('readPropertyDeclarations', () => {
   it('lee una propiedad con su clase de campo', () => {
     const [said] = readPropertyDeclarations([
-      block('concepto', { campo: 'enlace', varios: 'sí', papel: 'topic', qué: 'de qué trata' }),
+      block('concepto', { campo: 'enlace', varios: 'sí', rango: 'Concepto', papel: 'topic', qué: 'de qué trata' }),
     ]);
     assert.equal(said?.name, 'concepto');
     assert.equal(said?.field, 'enlace');
     assert.equal(said?.many, true);
+    assert.deepEqual(said?.range, ['Concepto']);
     assert.equal(said?.role, 'topic');
     assert.equal(said?.says, 'de qué trata');
+  });
+
+  it('admite varios tipos de destino sin inventar una segunda identidad', () => {
+    const [said] = readPropertyDeclarations([
+      block('autor', { campo: 'enlace', rango: 'Persona, Organización', varios: 'sí' }),
+    ]);
+    assert.deepEqual(said?.range, ['Persona', 'Organización']);
   });
 
   it('conserva una identidad y reúne sus rótulos por idioma', () => {

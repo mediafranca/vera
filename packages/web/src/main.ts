@@ -1378,6 +1378,7 @@ async function openPage(
       openView.pendingLinks = complete.pendingLinks ?? [];
       openView.backlinks = complete.backlinks;
       openView.references = complete.references;
+      openView.propertyReferences = complete.propertyReferences ?? [];
       openView.crossingsOut = complete.crossingsOut;
       openView.crossingsIn = complete.crossingsIn;
       openView.trail = complete.trail ?? null;
@@ -2322,6 +2323,7 @@ function blankPage(id: string, title: string): PageView {
     authorship: {},
     backlinks: [],
     references: [],
+    propertyReferences: [],
     crossingsOut: [],
     crossingsIn: [],
   };

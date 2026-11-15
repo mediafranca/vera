@@ -2051,6 +2051,8 @@ export class VeraGraph {
     canRead?: (page: PageId) => boolean;
     allowedRelations?: readonly string[];
     maxDegree?: number | null;
+    /** Aristas derivadas por una capa que conoce vocabularios del corpus. */
+    additionalEdges?: readonly NeighbourhoodEdge[];
   }): GraphNeighbourhood {
     if (!this.#isActive(input.participant)) {
       throw new Error(`${input.participant} has no active membership in this graph`);
@@ -2059,7 +2061,7 @@ export class VeraGraph {
     if (input.depth < 0) throw new Error('depth cannot be negative');
     const canRead = input.canRead ?? (() => true);
     if (!canRead(input.centre)) throw new Error('no such page');
-    const requestedRelations = input.allowedRelations ?? ['link', 'query_result'];
+    const requestedRelations = input.allowedRelations ?? ['link', 'query_result', 'property_reference'];
     const allowedRelations = new Set(requestedRelations.map(titleKey).filter((one) => one !== ''));
     const maxDegree = input.maxDegree ?? null;
     if (maxDegree !== null && (!Number.isInteger(maxDegree) || maxDegree < 0)) {
@@ -2119,6 +2121,7 @@ export class VeraGraph {
         },
       });
     }
+    for (const edge of input.additionalEdges ?? []) add(edge);
     const edgesByKey = [...candidates.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     const adjacency = new Map<PageId, Array<{ key: string; edge: NeighbourhoodEdge }>>();
     for (const [key, edge] of edgesByKey) {

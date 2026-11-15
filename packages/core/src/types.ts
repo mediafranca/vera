@@ -437,7 +437,11 @@ export interface NeighbourhoodNode {
   readonly path: readonly NeighbourhoodPathStep[];
 }
 
-export type NeighbourhoodRelationKind = 'link' | 'query_result' | 'explained_relation';
+export type NeighbourhoodRelationKind =
+  | 'link'
+  | 'query_result'
+  | 'explained_relation'
+  | 'property_reference';
 
 export interface NeighbourhoodEdgeEvidence {
   readonly kind: NeighbourhoodRelationKind;

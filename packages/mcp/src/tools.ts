@@ -794,9 +794,17 @@ export const TOOLS: readonly VeraTool[] = [
         const out = page.references.map(
           (one) => `→ ${one.title}${one.page === null ? ' (aún sin escribir)' : ''}`,
         );
+        const propertyOut = (page.propertyReferences ?? []).map((one) =>
+          `→ ${one.targetTitle} · ${one.property}` +
+          (one.status === 'unresolved'
+            ? ' (aún sin escribir)'
+            : one.status === 'incompatible'
+              ? ` (incompatible con ${one.expectedTypes.join(', ')})`
+              : ''),
+        );
         const back = page.backlinks.map((one) => `← ${one.title}: ${one.excerpt}`);
-        if (out.length > 0 || back.length > 0) {
-          parts.push(`\n## Vecindad\n${[...out, ...back].join('\n')}`);
+        if (out.length > 0 || propertyOut.length > 0 || back.length > 0) {
+          parts.push(`\n## Vecindad\n${[...out, ...propertyOut, ...back].join('\n')}`);
         }
       }
 
@@ -820,6 +828,7 @@ export const TOOLS: readonly VeraTool[] = [
             visibility: page.visibility,
             lastEditedAt: page.lastEditedAt,
             properties: page.properties,
+            propertyReferences: page.propertyReferences ?? [],
           },
           window,
           blocks: page.blocks.map((block) => ({

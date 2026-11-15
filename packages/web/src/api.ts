@@ -135,7 +135,11 @@ export interface PageView {
   createdBy?: { participant: string; name: string } | null;
   originCreatedAt: number | null;
   lastEditedAt: number | null;
-  properties: { key: string; value: string }[];
+  properties: {
+    key: string;
+    value: string;
+    definition?: { block: string; field: string | null; many: boolean; range: string[] };
+  }[];
   /** Plantillas de la biblioteca; describen objetos, no capacidades del núcleo. */
   objectTemplates?: ObjectDeclared[];
   /**
@@ -206,6 +210,8 @@ export interface PageView {
   backlinks: Backlink[];
   /** A quién nombra esta página: una fila por página nombrada, no por mención. */
   references: Reference[];
+  /** Aristas derivadas de propiedades declaradas como enlaces internos. */
+  propertyReferences?: PropertyReference[];
   /** Lo que esta página afirma sobre otras. */
   crossingsOut: CrossingRow[];
   /** Y lo que otras afirman sobre ella, leído desde este lado. */
@@ -325,6 +331,7 @@ export type PageEnrichment = Pick<
   | 'pendingLinks'
   | 'backlinks'
   | 'references'
+  | 'propertyReferences'
   | 'crossingsOut'
   | 'crossingsIn'
   | 'trail'
@@ -369,6 +376,17 @@ export interface Reference {
   /** El bloque donde se la nombra por primera vez, que es donde se presenta. */
   block: string;
   excerpt: string;
+}
+
+/** Una propiedad que nombra otra página, resuelta sin alterar su valor portable. */
+export interface PropertyReference {
+  property: string;
+  definition: string;
+  targetTitle: string;
+  targetPage: string | null;
+  expectedTypes: string[];
+  actualTypes: string[];
+  status: 'resolved' | 'unresolved' | 'incompatible';
 }
 
 export interface Backlink {
@@ -441,6 +459,8 @@ export interface PropertyDeclared {
   labelKeys: Record<string, string>;
   field: string | null;
   many: boolean;
+  /** Tipos de página admitidos cuando el campo es una referencia. */
+  range: string[];
   role: string | null;
   /**
    * De qué cuelga: de un bloque o de una página.

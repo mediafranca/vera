@@ -95,6 +95,7 @@ const GOVERNANCE_STARTER_CHANGES: readonly StarterChange[] = [
       ...(definition.subject === undefined ? [] : [blockProperty(id, 'sujeto', definition.subject)]),
       ...(definition.field === undefined ? [] : [blockProperty(id, 'campo', definition.field)]),
       ...(definition.many === true ? [blockProperty(id, 'varios', 'sí')] : []),
+      ...(definition.range === undefined ? [] : [blockProperty(id, 'rango', definition.range.join(', '))]),
       ...(definition.role === undefined ? [] : [blockProperty(id, 'papel', definition.role)]),
       ...(definition.values === undefined ? [] : [blockProperty(id, 'valores', definition.values.join(', '))]),
       blockProperty(id, 'qué', definition.says),

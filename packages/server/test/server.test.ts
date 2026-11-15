@@ -518,6 +518,59 @@ describe('dominios declarados de propiedades', () => {
     ]);
   });
 
+  it('resuelve una propiedad referencial por rango sin reescribir su valor', async () => {
+    const author = 'block:test-multilingual-author';
+    await write({ kind: 'set_property', block: author, propertyKey: 'campo', propertyValue: 'enlace' });
+    await write({ kind: 'set_property', block: author, propertyKey: 'varios', propertyValue: 'sí' });
+    await write({ kind: 'set_property', block: author, propertyKey: 'rango', propertyValue: 'Persona' });
+
+    const ivana = await write({ kind: 'create_page', title: 'Ivana de prueba', visibility: 'private' });
+    await write({ kind: 'set_property', page: ivana, propertyKey: 'tipo', propertyValue: 'Persona' });
+    const project = await write({ kind: 'create_page', title: 'Proyecto que no es persona', visibility: 'private' });
+    await write({ kind: 'set_property', page: project, propertyKey: 'tipo', propertyValue: 'Proyecto' });
+    const method = await write({ kind: 'create_page', title: 'METHOD de prueba', visibility: 'private' });
+    const portable = 'Ivana de prueba, Proyecto que no es persona, Persona aún no escrita';
+    await write({ kind: 'set_property', page: method, propertyKey: 'autor', propertyValue: portable });
+
+    const detail = await get(`/pages/${encodeURIComponent(method)}`) as {
+      properties: { key: string; value: string; definition?: { field: string; range: string[] } }[];
+      domains: Record<string, { value: string; uses: number; declared?: boolean }[]>;
+      propertyReferences: {
+        targetTitle: string; targetPage: string | null; expectedTypes: string[];
+        actualTypes: string[]; status: string;
+      }[];
+    };
+    const written = detail.properties.find((one) => one.key === 'autor');
+    assert.equal(written?.value, portable);
+    assert.deepEqual(written?.definition, {
+      block: author, field: 'enlace', many: true, range: ['Persona'],
+    });
+    assert.deepEqual(detail.propertyReferences, [
+      {
+        property: 'autor', definition: author, targetTitle: 'Ivana de prueba', targetPage: ivana,
+        expectedTypes: ['Persona'], actualTypes: ['Persona'], status: 'resolved',
+      },
+      {
+        property: 'autor', definition: author, targetTitle: 'Proyecto que no es persona', targetPage: project,
+        expectedTypes: ['Persona'], actualTypes: ['Proyecto'], status: 'incompatible',
+      },
+      {
+        property: 'autor', definition: author, targetTitle: 'Persona aún no escrita', targetPage: null,
+        expectedTypes: ['Persona'], actualTypes: [], status: 'unresolved',
+      },
+    ]);
+    assert.equal(detail.domains.autor?.some((one) => one.value === 'Ivana de prueba' && one.declared), true);
+
+    const map = await get(`/graph/${encodeURIComponent(method)}?depth=1`) as {
+      nodes: { id: string }[];
+      links: { source: string; target: string; kind?: string; label?: string }[];
+    };
+    assert.equal(map.nodes.some((one) => one.id === ivana), true);
+    assert.equal(map.links.some((one) =>
+      one.source === method && one.target === ivana &&
+      one.kind === 'property-reference' && one.label === 'autor'), true);
+  });
+
   it('ofrece el dominio de una propiedad constitutiva antes de que tenga valor', async () => {
     const maturity = await write({
       kind: 'create_block',

@@ -143,6 +143,10 @@ describe('memoria inicial distribuida', () => {
       })).filter((block) => block.properties.length > 0);
     };
     assert.equal(readPropertyDeclarations(declared('VERA: Propiedades')).length, STARTER_PROPERTY_DEFINITIONS.length);
+    assert.deepEqual(
+      readPropertyDeclarations(declared('VERA: Propiedades')).find((one) => one.name === 'autor')?.range,
+      ['Persona'],
+    );
     assert.equal(readObjectDeclarations(declared('VERA: Objetos')).length, STARTER_OBJECT_DEFINITIONS.length);
     assert.equal(readRelationDeclarations(declared('VERA: Relaciones')).length, STARTER_RELATION_DEFINITIONS.length);
     assert.equal(

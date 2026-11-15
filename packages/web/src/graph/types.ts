@@ -29,7 +29,7 @@ export interface GraphLink {
   target: string | GraphNode;
   /** Bloque/frase que origina la referencia cuando se conoce. */
   block?: string | null;
-  kind?: 'reference' | 'gloss' | 'crossing';
+  kind?: 'reference' | 'gloss' | 'crossing' | 'property-reference';
   /** Título mencionado: permite anclar en la frase exacta y no sólo en el bloque. */
   targetTitle?: string;
   /** Las relaciones explicadas conservan su término y su outline legible. */
