@@ -8967,10 +8967,28 @@ html[data-working-slow='true']::after {
   flex-basis: 100%;
 }
 
-.relation-ask-target,
-.relation-ask-type {
+.relation-ask-target {
   display: flex;
   width: min(100%, 46rem);
+}
+
+/* Clasificar la arista es la decisión estructural principal del gesto. El
+   destino ya está en la fila contextual; el tipo necesita una jerarquía mayor
+   que la metainformación ordinaria, sin convertirse en otra tarjeta. */
+.relation-ask-type {
+  display: grid;
+  width: min(100%, 46rem);
+  gap: .2rem;
+  margin: .55rem 0 .7rem;
+  padding: .35rem 0 .45rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 38%, var(--rule));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 38%, var(--rule));
+  color: var(--accent);
+}
+
+.relation-ask-type > span {
+  font-weight: 650;
+  letter-spacing: .015em;
 }
 
 .relation-target,
@@ -8985,13 +9003,20 @@ html[data-working-slow='true']::after {
   font: inherit;
 }
 
+.relation-ask-type input {
+  width: 100%;
+  padding: .15rem 1.2rem .15rem 0;
+  color: var(--text);
+  font: .85rem/1.45 var(--font-body);
+  border-bottom-color: color-mix(in srgb, var(--accent) 32%, var(--rule));
+}
+
 .relation-target:focus,
 .relation-ask-type input:focus { outline: 0; border-color: var(--accent); }
 .relation-target[readonly] { color: var(--text-dim); }
 
 .relation-ask-actions {
   display: flex;
-  gap: .55rem;
   margin-top: .45rem;
 }
 
@@ -9009,6 +9034,10 @@ html[data-working-slow='true']::after {
 
 .relation-ask-actions button:hover,
 .relation-add:hover { color: var(--accent); border-color: var(--accent); }
+.relation-ask-actions button[type='submit'] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--rule));
+}
 .relation-add { margin: 0 0 .65rem; }
 
 .relation-field {
