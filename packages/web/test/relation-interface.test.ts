@@ -14,8 +14,10 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
   it('usa una estructura lineal en vez de otra tarjeta redondeada', () => {
     const outline = rule('.relation-outline');
     assert.doesNotMatch(outline, /border-radius|background:/);
+    const reference = rule('.reference');
+    assert.match(reference, /border-left: 1px solid transparent/);
     const declared = rule('.reference:is(.relation-declared, .relation-editing)');
-    assert.match(declared, /border-left: 1px/);
+    assert.match(declared, /border-left-color:/);
     assert.doesNotMatch(declared, /border-radius|background:/);
   });
 
@@ -37,9 +39,20 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
   });
 
   it('hace que el filete contenga la relación completa y no sólo su explicación', () => {
-    assert.match(styles, /\.reference:is\(\.relation-declared, \.relation-editing\)\s*\{[^}]*border-left:/s);
+    assert.match(styles, /\.reference\s*\{[^}]*border-left: 1px solid transparent/s);
+    assert.match(styles, /\.reference:is\(\.relation-declared, \.relation-editing\)\s*\{[^}]*border-left-color:/s);
+    assert.match(styles, /\.reference \.backlink\s*\{[^}]*border-left: 0/s);
     assert.doesNotMatch(styles, /\.relation-outline\s*\{[^}]*border-left:/s);
     assert.doesNotMatch(styles, /\.relation-ask\s*\{[^}]*border-left:/s);
+  });
+
+  it('reserva margen, padding y ancho del filete antes de activarlo', () => {
+    const reference = rule('.reference');
+    const active = rule('.reference:is(.relation-declared, .relation-editing)');
+    assert.match(reference, /margin: \.35rem 0/);
+    assert.match(reference, /padding: \.15rem 0 \.3rem \.9rem/);
+    assert.match(reference, /border-left: 1px solid transparent/);
+    assert.doesNotMatch(active, /margin:|padding:|border-left:/);
   });
 
   it('la pluma alterna abrir y cerrar el mismo editor', () => {
