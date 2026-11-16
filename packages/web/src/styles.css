@@ -4062,16 +4062,99 @@ tr.adopted { opacity: 0.58; }
  * ellos en el peor momento.
  */
 .date-picker {
-  position: absolute;
+  position: fixed;
   z-index: 40;
-  font-family: var(--font-ui);
-  font-size: 0.85rem;
+  width: min(19rem, calc(100vw - 1rem));
+  padding: .55rem;
+  font: .82rem/1.25 var(--font-ui);
   color: var(--text);
   background: var(--bg-raised);
   border: 1px solid var(--rule);
-  border-radius: 5px;
-  padding: 0.3rem 0.45rem;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+  border-radius: .45rem;
+  box-shadow: 0 .55rem 1.6rem color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.date-picker-header {
+  display: grid;
+  grid-template-columns: 2rem 1fr 2rem;
+  align-items: center;
+  gap: .25rem;
+  margin-bottom: .35rem;
+}
+
+.date-picker-header strong {
+  font: 600 .84rem/1.2 var(--font-ui);
+  text-align: center;
+}
+
+.date-picker-step,
+.date-picker-day,
+.date-picker-today {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.date-picker-step {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: .3rem;
+  color: var(--text-dim);
+}
+
+.date-picker-step svg { width: 1rem; height: 1rem; }
+
+.date-picker-weekdays,
+.date-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: .12rem;
+}
+
+.date-picker-weekdays {
+  margin-bottom: .12rem;
+  color: var(--text-dim);
+  font: .68rem/1.6 var(--font-ui);
+  text-align: center;
+}
+
+.date-picker-day {
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: .3rem;
+}
+
+.date-picker-day.outside { color: color-mix(in srgb, var(--text-dim) 55%, transparent); }
+.date-picker-day[aria-current='date'] {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 68%, var(--rule));
+}
+
+.date-picker :is(button:hover, button:focus-visible) {
+  outline: 0;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.date-picker footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: .35rem;
+  padding-top: .4rem;
+  border-top: 1px solid var(--rule);
+}
+
+.date-picker-today {
+  padding: .3rem .55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--rule));
+  border-radius: .3rem;
+  color: var(--accent);
 }
 
 .inline-boolean {

@@ -116,6 +116,7 @@ import {
   isDay,
   matchingCommands,
   queryOf,
+  calendarDate,
   today,
   type Open,
 } from './autocomplete.ts';
@@ -1837,48 +1838,191 @@ export function offeredPropertyOptions<T extends { declared?: boolean }>(offered
 /**
  * Elegir un día en el calendario.
  *
- * Usa el selector del propio navegador y no uno dibujado aquí. Un calendario es
- * de las pocas cosas que todo sistema ya resuelve bien y en el idioma y con la
- * semana que quien mira espera —lunes o domingo primero, según dónde viva—, y
- * reimplementarlo sería reimplementar eso también, peor.
- *
- * Se descarta al perder el foco y no deja rastro: mientras no se elija un día,
- * no ha pasado nada.
+ * El selector nativo no expone su superficie a los tokens de Vera y tampoco
+ * confirma un valor que ya estaba elegido: como nacía con hoy, pulsar «Hoy» o
+ * Enter no emitía `change` y el comando quedaba mudo. Este calendario conserva
+ * idioma y primer día de la semana del navegador, pero hace visible una sola
+ * acción de confirmación para clic, «Hoy» y teclado.
  */
-function pickDate(anchor: HTMLElement, onPick: (date: string) => void): void {
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.className = 'date-picker';
-  input.value = today();
+function pickDate(
+  anchor: HTMLElement,
+  onPick: (date: string) => void,
+  onDismiss: () => void,
+): void {
+  document.querySelector('.date-picker')?.dispatchEvent(new Event('vera:dismiss-date-picker'));
 
-  const rect = anchor.getBoundingClientRect();
-  input.style.left = `${Math.round(rect.left + window.scrollX)}px`;
-  input.style.top = `${Math.round(rect.bottom + window.scrollY)}px`;
+  const locale = navigator.language || 'es-CL';
+  const initial = new Date();
+  initial.setHours(12, 0, 0, 0);
+  let focused = initial;
+  let month = new Date(initial.getFullYear(), initial.getMonth(), 1, 12);
 
-  const dismiss = (): void => input.remove();
-  input.addEventListener('change', () => {
-    const chosen = input.value;
+  const localeWeek = new Intl.Locale(locale) as Intl.Locale & {
+    getWeekInfo?: () => { firstDay: number };
+    weekInfo?: { firstDay: number };
+  };
+  const firstDay = (localeWeek.getWeekInfo?.() ?? localeWeek.weekInfo)?.firstDay ?? 1;
+  const weekStarts = firstDay % 7;
+
+  const picker = document.createElement('section');
+  picker.className = 'date-picker';
+  picker.setAttribute('role', 'dialog');
+  picker.setAttribute('aria-label', 'Elegir fecha');
+
+  const header = document.createElement('header');
+  header.className = 'date-picker-header';
+  const previous = document.createElement('button');
+  previous.type = 'button';
+  previous.className = 'date-picker-step';
+  previous.setAttribute('aria-label', 'Mes anterior');
+  previous.innerHTML = icon('chevron-left');
+  const heading = document.createElement('strong');
+  heading.setAttribute('aria-live', 'polite');
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.className = 'date-picker-step';
+  next.setAttribute('aria-label', 'Mes siguiente');
+  next.innerHTML = icon('chevron-right');
+  header.append(previous, heading, next);
+
+  const weekdays = document.createElement('div');
+  weekdays.className = 'date-picker-weekdays';
+  weekdays.setAttribute('aria-hidden', 'true');
+  const knownSunday = new Date(2024, 0, 7, 12);
+  const weekdayName = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = new Date(knownSunday);
+    day.setDate(knownSunday.getDate() + ((weekStarts + offset) % 7));
+    const label = document.createElement('span');
+    label.textContent = weekdayName.format(day).replace(/\.$/, '');
+    weekdays.append(label);
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'date-picker-grid';
+  grid.setAttribute('role', 'grid');
+
+  const footer = document.createElement('footer');
+  const chooseToday = document.createElement('button');
+  chooseToday.type = 'button';
+  chooseToday.className = 'date-picker-today';
+  chooseToday.textContent = 'Hoy';
+  footer.append(chooseToday);
+  picker.append(header, weekdays, grid, footer);
+
+  let settled = false;
+  const dismiss = (): void => {
+    if (settled) return;
+    settled = true;
+    document.removeEventListener('pointerdown', outside, true);
+    picker.remove();
+    onDismiss();
+    anchor.focus();
+  };
+  picker.addEventListener('vera:dismiss-date-picker', () => dismiss());
+  const commit = (date: string): void => {
     dismiss();
-    if (chosen !== '') onPick(chosen);
+    onPick(date);
+  };
+  const sameDay = (left: Date, right: Date): boolean =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+  const monthName = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' });
+  const dayName = new Intl.DateTimeFormat(locale, {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
-  input.addEventListener('blur', dismiss);
-  input.addEventListener('keydown', (event) => {
+
+  const render = (focusDay = false): void => {
+    heading.textContent = monthName.format(month);
+    grid.replaceChildren();
+    const leading = (new Date(month.getFullYear(), month.getMonth(), 1, 12).getDay() - weekStarts + 7) % 7;
+    const first = new Date(month.getFullYear(), month.getMonth(), 1 - leading, 12);
+    for (let index = 0; index < 42; index += 1) {
+      const date = new Date(first);
+      date.setDate(first.getDate() + index);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'date-picker-day';
+      button.textContent = String(date.getDate());
+      button.dataset['date'] = calendarDate(date);
+      button.setAttribute('role', 'gridcell');
+      button.setAttribute('aria-label', dayName.format(date));
+      button.tabIndex = sameDay(date, focused) ? 0 : -1;
+      if (date.getMonth() !== month.getMonth()) button.classList.add('outside');
+      if (sameDay(date, initial)) button.setAttribute('aria-current', 'date');
+      button.addEventListener('click', () => commit(button.dataset['date'] ?? ''));
+      grid.append(button);
+    }
+    if (focusDay) grid.querySelector<HTMLButtonElement>('[tabindex="0"]')?.focus();
+  };
+
+  const moveFocus = (days: number): void => {
+    const moved = new Date(focused);
+    moved.setDate(moved.getDate() + days);
+    focused = moved;
+    month = new Date(moved.getFullYear(), moved.getMonth(), 1, 12);
+    render(true);
+  };
+  const moveMonth = (amount: number): void => {
+    const wantedDay = focused.getDate();
+    const target = new Date(focused.getFullYear(), focused.getMonth() + amount + 1, 0, 12);
+    target.setDate(Math.min(wantedDay, target.getDate()));
+    focused = target;
+    month = new Date(target.getFullYear(), target.getMonth(), 1, 12);
+    render(true);
+  };
+
+  previous.addEventListener('click', () => moveMonth(-1));
+  next.addEventListener('click', () => moveMonth(1));
+  chooseToday.addEventListener('click', () => commit(today()));
+  picker.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      event.preventDefault();
       event.stopPropagation();
       dismiss();
-      anchor.focus();
+      return;
+    }
+    if (event.key === 'Enter') {
+      const date = (event.target as HTMLElement).dataset['date'];
+      if (date !== undefined) {
+        event.preventDefault();
+        event.stopPropagation();
+        commit(date);
+      }
+      return;
+    }
+    const steps: Partial<Record<string, number>> = {
+      ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7,
+    };
+    const step = steps[event.key];
+    if (step !== undefined) {
+      event.preventDefault();
+      moveFocus(step);
+    } else if (event.key === 'PageUp' || event.key === 'PageDown') {
+      event.preventDefault();
+      moveMonth(event.key === 'PageUp' ? -1 : 1);
     }
   });
 
-  document.body.append(input);
-  input.focus();
-  // Abrir el calendario sin obligar a pulsar el iconito. No todos los
-  // navegadores lo permiten, y donde no, el campo sigue sirviendo.
-  try {
-    (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
-  } catch {
-    // El navegador exige un gesto suyo para abrirlo. El campo ya está enfocado.
+  function outside(event: PointerEvent): void {
+    if (!(event.target instanceof globalThis.Node) || !picker.contains(event.target)) dismiss();
   }
+
+  document.body.append(picker);
+  render();
+  const anchorRect = anchor.getBoundingClientRect();
+  const pickerRect = picker.getBoundingClientRect();
+  const inset = 8;
+  const left = Math.min(Math.max(inset, anchorRect.left), window.innerWidth - pickerRect.width - inset);
+  const below = anchorRect.bottom + 6;
+  const top = below + pickerRect.height <= window.innerHeight - inset
+    ? below
+    : Math.max(inset, anchorRect.top - pickerRect.height - 6);
+  picker.style.left = `${Math.round(left)}px`;
+  picker.style.top = `${Math.round(top)}px`;
+  document.addEventListener('pointerdown', outside, true);
+  grid.querySelector<HTMLButtonElement>('[tabindex="0"]')?.focus();
 }
 
 /** `/tabla` decide forma y eje antes de escribir una sola tubería. */
@@ -9280,6 +9424,7 @@ function startEditing(
   let choosingAttachment = false;
   let choosingTable = false;
   let choosingIframe = false;
+  let choosingDate = false;
   // Una salida estructural no vuelve a dibujar aquí: la página se recarga entera
   // y sería dibujar algo que está a punto de desaparecer.
   let leaving = false;
@@ -9747,6 +9892,7 @@ function startEditing(
     // pasa tiempo, y el cursor puede haberse ido a otra parte.
     if (acts === 'elegir-fecha') {
       const at = applied.cursor;
+      choosingDate = true;
       pickDate(editor, (date) => {
         const written = `[[${date}]]`;
         editor.value = editor.value.slice(0, at) + written + editor.value.slice(at);
@@ -9756,7 +9902,7 @@ function startEditing(
         autosize();
         preserveDraft();
         editor.focus();
-      });
+      }, () => { choosingDate = false; });
       return;
     }
 
@@ -9769,6 +9915,7 @@ function startEditing(
      * trae. @invariant DueIsALinkToTheDay: el valor es un día, que es una página.
      */
     if (acts === 'poner-plazo') {
+      choosingDate = true;
       pickDate(editor, (date) => {
         void submitQuietly({
           kind: 'set_property',
@@ -9778,7 +9925,7 @@ function startEditing(
         }).then((applied) => {
           if (applied) callbacks.onReload(null);
         });
-      });
+      }, () => { choosingDate = false; });
       return;
     }
 
@@ -9999,7 +10146,7 @@ function startEditing(
 
   editor.addEventListener('blur', () => {
     closeList();
-    if (choosingAttachment || choosingTable || choosingIframe) return;
+    if (choosingAttachment || choosingTable || choosingIframe || choosingDate) return;
     leave();
   });
 
