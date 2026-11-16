@@ -365,8 +365,12 @@ function useCorpus(health: CorpusHealth): void {
   const librarianLabel = health.librarian === null || health.librarian === undefined
     ? 'Hablar con el agente de biblioteca'
     : `Hablar con ${health.librarian.name}`;
-  librarianButton.title = librarianLabel;
-  librarianButton.setAttribute('aria-label', librarianLabel);
+  // El sondeo del corpus no debe borrar el estado más específico que el
+  // outliner acaba de poner mientras una solicitud sigue en curso.
+  if (!librarianButton.classList.contains('librarian-active')) {
+    librarianButton.title = librarianLabel;
+    librarianButton.setAttribute('aria-label', librarianLabel);
+  }
   if (health.names !== undefined) nameProperties(health.names);
   if (health.embedHosts !== undefined) allowEmbedsFrom(health.embedHosts);
 }
