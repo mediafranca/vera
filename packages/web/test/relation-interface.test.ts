@@ -72,4 +72,27 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
     assert.match(editor, /kind: 'create_crossing'/);
     assert.match(editor, /submitCanonicalBatch\(changes\)/);
   });
+
+  it('no repite el destino contextual ni usa botones genéricos de guardar o cancelar', () => {
+    const editor = outliner.slice(outliner.indexOf('async function editRelation'));
+    assert.match(editor, /if \(row === null\) asking\.append\(destination\)/);
+    assert.match(editor, /'Declarar relación'/);
+    assert.match(editor, /'Actualizar relación'/);
+    assert.doesNotMatch(editor, /'Guardar relación'|'Guardar cambios'|cancel\.textContent = 'Cancelar'/);
+  });
+
+  it('cierra también el compositor global desde la misma acción que lo abre', () => {
+    const editor = outliner.slice(outliner.indexOf('async function editRelation'));
+    assert.match(outliner, /add\.setAttribute\('aria-expanded', 'false'\)/);
+    assert.match(editor, /querySelector<HTMLButtonElement>\('\.relation-edit, \.relation-add'\)/);
+  });
+
+  it('destaca el tipo como decisión principal del editor', () => {
+    const type = rule('.relation-ask-type');
+    assert.match(outliner, /caption\.textContent = 'Tipo de relación'/);
+    assert.match(type, /display: grid/);
+    assert.match(type, /border-top:/);
+    assert.match(type, /border-bottom:/);
+    assert.match(styles, /\.relation-ask-type input\s*\{[^}]*font: \.85rem\/1\.45 var\(--font-body\)/s);
+  });
 });

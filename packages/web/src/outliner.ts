@@ -8006,6 +8006,7 @@ export function renderOutliner(
         add.type = 'button';
         add.className = 'relation-add';
         add.textContent = '+ Relacionar otra página';
+        add.setAttribute('aria-expanded', 'false');
         add.addEventListener('click', () => {
           void editRelation(section, null, undefined, page, toast, callbacks);
         });
@@ -8215,7 +8216,7 @@ async function editRelation(
   notify: (message: string) => void,
   callbacks: OutlinerCallbacks,
 ): Promise<void> {
-  const toggle = host.querySelector<HTMLButtonElement>('.relation-edit');
+  const toggle = host.querySelector<HTMLButtonElement>('.relation-edit, .relation-add');
   const open = host.querySelector<HTMLElement>(':scope > .relation-ask');
   if (open !== null) {
     open.remove();
@@ -8255,7 +8256,7 @@ async function editRelation(
   const meta = document.createElement('label');
   meta.className = 'relation-meta relation-ask-type';
   const caption = document.createElement('span');
-  caption.textContent = 'Tipo';
+  caption.textContent = 'Tipo de relación';
   const { field: type, list: typeOptions } = relationTypeField(held?.term ?? null);
   meta.append(caption, type, typeOptions);
 
@@ -8270,15 +8271,13 @@ async function editRelation(
 
   const actions = document.createElement('div');
   actions.className = 'relation-ask-actions';
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.textContent = 'Cancelar';
-  const saveButton = document.createElement('button');
-  saveButton.type = 'submit';
-  saveButton.textContent = held === undefined ? 'Guardar relación' : 'Guardar cambios';
-  actions.append(cancel, saveButton);
+  const actionButton = document.createElement('button');
+  actionButton.type = 'submit';
+  actionButton.textContent = held === undefined ? 'Declarar relación' : 'Actualizar relación';
+  actions.append(actionButton);
 
-  asking.append(destination, meta, field, actions);
+  if (row === null) asking.append(destination);
+  asking.append(meta, field, actions);
   host.append(asking);
   host.classList.add('relation-editing');
   toggle?.setAttribute('aria-expanded', 'true');
@@ -8319,7 +8318,7 @@ async function editRelation(
     }
     target.setCustomValidity('');
     settled = true;
-    saveButton.disabled = true;
+    actionButton.disabled = true;
 
     if (held !== undefined) {
       if (held.fromBlock === null) {
@@ -8330,7 +8329,7 @@ async function editRelation(
           term: term === '' ? undefined : term,
         });
         if (written.status === 'rejected') {
-          notify(`no se pudo guardar: ${written.reason}`);
+          notify(`no se pudo actualizar la relación: ${written.reason}`);
           callbacks.onReload(null, reloadAfterDerivedWriting());
         }
         else {
@@ -8354,9 +8353,9 @@ async function editRelation(
       }
       const written = await api.submitCanonicalBatch(changes);
       if (written.status === 'rejected') {
-        notify(`no se pudo guardar: ${written.reason}`);
+        notify(`no se pudo actualizar la relación: ${written.reason}`);
         settled = false;
-        saveButton.disabled = false;
+        actionButton.disabled = false;
         return;
       }
       notify(`cambiada la relación con ${selected.title}`);
@@ -8372,7 +8371,7 @@ async function editRelation(
       term: term === '' ? undefined : term,
     });
     if (born.status === 'rejected') {
-      notify(`no se pudo guardar: ${born.reason}`);
+      notify(`no se pudo declarar la relación: ${born.reason}`);
       // Puede haber sido aceptada antes y haberse perdido sólo la respuesta.
       // Reconciliar enseña esa relación en vez de dejar una caja vacía que al
       // segundo intento contesta «ya existe».
@@ -8400,9 +8399,6 @@ async function editRelation(
     }
   });
   target.addEventListener('input', () => target.setCustomValidity(''));
-  cancel.addEventListener('click', () => {
-    close();
-  });
 }
 
 /**
