@@ -103,3 +103,27 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
     assert.match(outliner, /document\.addEventListener\('vera:ontology-local-change', invalidateRelationTypes\)/);
   });
 });
+
+describe('calendario de /fecha', () => {
+  it('usa una superficie propia gobernada por tokens', () => {
+    const picker = rule('.date-picker');
+    assert.match(picker, /background: var\(--bg-raised\)/);
+    assert.match(picker, /color: var\(--text\)/);
+    assert.match(picker, /border: 1px solid var\(--rule\)/);
+    assert.match(picker, /font: \.82rem\/1\.25 var\(--font-ui\)/);
+    assert.doesNotMatch(outliner, /input\.type = 'date'|showPicker/);
+  });
+
+  it('confirma tanto Hoy como una fecha enfocada con Enter', () => {
+    assert.match(outliner, /chooseToday\.addEventListener\('click', \(\) => commit\(today\(\)\)\)/);
+    assert.match(outliner, /if \(event\.key === 'Enter'\)/);
+    assert.match(outliner, /commit\(date\)/);
+  });
+
+  it('conserva vivo el editor mientras el calendario tiene el foco', () => {
+    assert.match(outliner, /let choosingDate = false/);
+    assert.match(outliner, /choosingDate = true;\s*pickDate\(editor/s);
+    assert.match(outliner, /\|\| choosingDate\) return/);
+    assert.match(outliner, /onDismiss\(\);\s*anchor\.focus\(\)/s);
+  });
+});
