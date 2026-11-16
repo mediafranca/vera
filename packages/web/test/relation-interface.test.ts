@@ -87,12 +87,19 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
     assert.match(editor, /querySelector<HTMLButtonElement>\('\.relation-edit, \.relation-add'\)/);
   });
 
-  it('destaca el tipo como decisión principal del editor', () => {
+  it('pone relación y su selector en una fila sin una regla divisoria', () => {
     const type = rule('.relation-ask-type');
-    assert.match(outliner, /caption\.textContent = 'Tipo de relación'/);
-    assert.match(type, /display: grid/);
-    assert.match(type, /border-top:/);
-    assert.match(type, /border-bottom:/);
+    assert.match(outliner, /caption\.textContent = 'Relación'/);
+    assert.match(type, /display: flex/);
+    assert.match(type, /align-items: baseline/);
+    assert.doesNotMatch(type, /border-(?:top|bottom):/);
     assert.match(styles, /\.relation-ask-type input\s*\{[^}]*font: \.85rem\/1\.45 var\(--font-body\)/s);
+  });
+
+  it('precalienta y comparte el vocabulario antes de abrir el selector', () => {
+    assert.match(outliner, /if \(typeof document !== 'undefined'\)/);
+    assert.match(outliner, /void knownRelationTypes\(\)\.catch/);
+    assert.match(outliner, /if \(relationTypeOptionsPending !== null\) return relationTypeOptionsPending/);
+    assert.match(outliner, /document\.addEventListener\('vera:ontology-local-change', invalidateRelationTypes\)/);
   });
 });

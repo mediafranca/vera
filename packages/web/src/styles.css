@@ -8948,21 +8948,21 @@ html[data-working-slow='true']::after {
   width: min(100%, 46rem);
 }
 
-/* Clasificar la arista es la decisión estructural principal del gesto. El
-   destino ya está en la fila contextual; el tipo necesita una jerarquía mayor
-   que la metainformación ordinaria, sin convertirse en otra tarjeta. */
+/* Clasificar acompaña la frase en una sola línea. No necesita un separador: el
+   filete vertical ya contiene la relación completa y repetir aquí una regla
+   horizontal introduce otro lenguaje geométrico. */
 .relation-ask-type {
-  display: grid;
+  display: flex;
+  align-items: baseline;
   width: min(100%, 46rem);
-  gap: .2rem;
+  gap: .55rem;
   margin: .55rem 0 .7rem;
-  padding: .35rem 0 .45rem;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 38%, var(--rule));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 38%, var(--rule));
+  padding: 0;
   color: var(--accent);
 }
 
 .relation-ask-type > span {
+  flex: none;
   font-weight: 650;
   letter-spacing: .015em;
 }
@@ -8980,7 +8980,8 @@ html[data-working-slow='true']::after {
 }
 
 .relation-ask-type input {
-  width: 100%;
+  width: auto;
+  flex: 1 1 auto;
   padding: .15rem 1.2rem .15rem 0;
   color: var(--text);
   font: .85rem/1.45 var(--font-body);
