@@ -13,8 +13,10 @@ function rule(selector: string): string {
 describe('superficie para crear y editar relaciones entre páginas', () => {
   it('usa una estructura lineal en vez de otra tarjeta redondeada', () => {
     const outline = rule('.relation-outline');
-    assert.match(outline, /border-left: 1px/);
     assert.doesNotMatch(outline, /border-radius|background:/);
+    const declared = rule('.reference.relation-declared');
+    assert.match(declared, /border-left: 1px/);
+    assert.doesNotMatch(declared, /border-radius|background:/);
   });
 
   it('da a la explicación el ancho de la columna y no una ranura', () => {
@@ -28,9 +30,15 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
     assert.match(outliner, /className = 'relation-edit'/);
     assert.match(outliner, /edit\.innerHTML = icon\('feather'\)/);
     assert.match(outliner, /relationLine\.append\(edit\)/);
+    assert.match(outliner, /item\.classList\.add\('relation-declared'\)/);
     assert.match(outliner, /className = 'relation-add'/);
     assert.match(outliner, /add\.textContent = '\+ Relacionar otra página'/);
     assert.doesNotMatch(outliner, /reference-explain|concept-formalize/);
+  });
+
+  it('hace que el filete contenga la relación completa y no sólo su explicación', () => {
+    assert.match(styles, /\.reference\.relation-declared\s*\{[^}]*border-left:/s);
+    assert.doesNotMatch(styles, /\.relation-outline\s*\{[^}]*border-left:/s);
   });
 
   it('pide destino, tipo y explicación en un solo formulario', () => {

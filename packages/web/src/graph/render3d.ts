@@ -34,6 +34,7 @@ import type { GraphData, GraphNode, GraphResource } from "./types.ts";
 import { resourceOrbit, type RenderSettings } from "./render.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { icon } from "../icons.ts";
+import { inlineOpenGlyph } from './open-glyph.ts';
 import {
   advanceAutoRotation,
   clampElevation,
@@ -986,43 +987,30 @@ export function renderGraph3D(
        * puede ser la más corta, y una flecha flotando lejos del texto no se lee
        * como parte de él.
        *
-       * Del alto de media versal y pegada al nombre, como en dos dimensiones.
-       * Feather dibuja esta flecha entre 7 y 17 de un lienzo de 24, y con el
-       * trazo y sus remates la tinta llega a doce de veinticuatro: lo que se ve
-       * es la mitad del lienzo. Es un diacrítico y no una segunda palabra —lo
-       * que dice lo dice igual pequeña, y grande compite con el nombre.
+       * Como en dos dimensiones, mide 1em y usa la anchura real de la última
+       * línea. La longitud del título deja de estimarse por cantidad de letras:
+       * una i y una m ya no desplazan el icono como si midieran lo mismo.
        */
       if (d.open !== null) {
         if (hovered === d.node.id) {
           const last = d.lines[d.lines.length - 1] ?? '';
-          const width = last.length * CHAR_EM * px;
+          const lastText = d.texts[d.texts.length - 1];
+          const measured = lastText?.getComputedTextLength() ?? 0;
+          const width = measured > 0 ? measured : last.length * CHAR_EM * px;
           const baseline = ((d.lines.length - 1) / 2) * px * LINE_EM;
-          const glyph = px * 0.35;
-          const canvas = glyph * 2.4;
-          /** Media tinta: el trazo llega a seis de los veinticuatro del lienzo. */
-          const ink = canvas / 4;
-          // El aire hasta la flecha y el que el marco deja alrededor de ella.
-          // Van juntos: el borde izquierdo del marco cae en `gap - pad` desde el
-          // final del nombre, así que holgar el marco se come la separación y
-          // termina pisando la última letra. Los mismos que en dos dimensiones.
-          const gap = px * 0.32;
-          const pad = px * 0.18;
-          const cx = width / 2 + ink + gap;
-          // A media altura de la letra y no de la flecha: lo que la alinea con
-          // el nombre es el ojo de las minúsculas, no su propio tamaño.
-          const cy = baseline - px * 0.3;
+          const glyph = inlineOpenGlyph(px, width / 2, baseline);
           const art = d.open.querySelector(".map3d-open-arrow");
           if (art !== null) {
-            art.setAttribute("x", (cx - canvas / 2).toFixed(1));
-            art.setAttribute("y", (cy - canvas / 2).toFixed(1));
-            art.setAttribute("width", canvas.toFixed(1));
-            art.setAttribute("height", canvas.toFixed(1));
+            art.setAttribute("x", glyph.x.toFixed(1));
+            art.setAttribute("y", glyph.y.toFixed(1));
+            art.setAttribute("width", glyph.size.toFixed(1));
+            art.setAttribute("height", glyph.size.toFixed(1));
           }
           const frame = d.open.querySelector(".map3d-open-frame");
           if (frame !== null) {
-            const side = ink * 2 + pad * 2;
-            frame.setAttribute("x", (cx - side / 2).toFixed(1));
-            frame.setAttribute("y", (cy - side / 2).toFixed(1));
+            const side = glyph.size;
+            frame.setAttribute("x", glyph.frameX.toFixed(1));
+            frame.setAttribute("y", glyph.frameY.toFixed(1));
             frame.setAttribute("width", side.toFixed(1));
             frame.setAttribute("height", side.toFixed(1));
             frame.setAttribute("rx", (side * 0.22).toFixed(1));
@@ -1030,15 +1018,10 @@ export function renderGraph3D(
           }
           const target = d.open.lastElementChild;
           if (target !== null) {
-            // Nunca menor que un dedo torpe. Un nombre lejano se dibuja a ocho
-            // píxeles y su flecha mide once: se ve, y aun así no se acierta.
-            // Debajo de ese suelo el blanco deja de encoger aunque el dibujo
-            // siga haciéndolo.
-            const reach = Math.max(canvas * 0.8, 16);
-            target.setAttribute("x", (cx - reach / 2).toFixed(1));
-            target.setAttribute("y", (cy - reach / 2).toFixed(1));
-            target.setAttribute("width", reach.toFixed(1));
-            target.setAttribute("height", reach.toFixed(1));
+            target.setAttribute("x", glyph.hitX.toFixed(1));
+            target.setAttribute("y", glyph.hitY.toFixed(1));
+            target.setAttribute("width", glyph.hitWidth.toFixed(1));
+            target.setAttribute("height", glyph.hitHeight.toFixed(1));
           }
           d.open.removeAttribute("display");
         } else if (!d.open.hasAttribute("display")) {

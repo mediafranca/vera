@@ -8022,6 +8022,7 @@ export function renderOutliner(
           item.className = 'reference';
 
           const held = row.relation ?? undefined;
+          if (held !== undefined) item.classList.add('relation-declared');
 
           const link = document.createElement('div');
           link.className = 'backlink';

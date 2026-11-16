@@ -8851,13 +8851,11 @@ html[data-working-slow='true']::after {
   margin: 0.15rem 0 0;
 }
 
-/* Una sola regla basta para distinguir la voz de la relación de las páginas
-   que conecta. No se encierra cada nivel en otra tarjeta: la jerarquía ya la
-   dicen la sangría y las viñetas. */
+/* El filete ya contiene la relación completa. Aquí sólo la sangría y las
+   viñetas expresan la jerarquía de su explicación. */
 .relation-outline {
   margin: 0.4rem 0 0.25rem;
-  padding: 0.15rem 0 0.15rem 0.9rem;
-  border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
+  padding: 0.15rem 0;
 }
 .relation-outline-node { margin-left: calc(var(--relation-depth) * 1.15rem); }
 .relation-outline-line { display: grid; grid-template-columns: 1rem minmax(0, 1fr); align-items: start; }
@@ -9128,12 +9126,25 @@ html[data-working-slow='true']::after {
   padding: 0;
 }
 
-/* Cada renglón reúne destino, evidencia observada y declaración explícita. */
+/* Cada renglón reúne destino, evidencia observada y declaración explícita. El
+   filete de una declaración contiene la relación completa: página, evidencia,
+   tipo y explicación. No pertenece sólo al outline que la desarrolla. */
 .reference {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.4rem;
+}
+
+.reference.relation-declared {
+  margin: .35rem 0;
+  padding: .15rem 0 .3rem .9rem;
+  border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
+}
+
+.reference.relation-declared .backlink {
+  border-left: 0;
+  padding-left: 0;
 }
 
 .relation-link-line {
@@ -9181,7 +9192,7 @@ html[data-working-slow='true']::after {
    para que las dos líneas arranquen en la misma vertical. */
 .reference .relation-said {
   flex-basis: 100%;
-  margin: 0.1rem 0 0 calc(0.85em + 1.2rem);
+  margin: 0.1rem 0 0;
   font-size: 0.85rem;
   line-height: 1.5;
 }
