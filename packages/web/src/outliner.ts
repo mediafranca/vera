@@ -3819,6 +3819,58 @@ function renderRelationOutline(
 
 let relationTypeFieldCounter = 0;
 
+interface RelationTypeOption {
+  label: string;
+  value: string;
+}
+
+let relationTypeOptions: RelationTypeOption[] | null = null;
+let relationTypeOptionsPending: Promise<RelationTypeOption[]> | null = null;
+let relationTypeOptionsGeneration = 0;
+
+/**
+ * El vocabulario llega antes que el gesto de abrir el editor.
+ *
+ * Pedir `/ontology` recién al construir el campo dejaba el primer despliegue
+ * vacío: el menú nativo ya estaba abierto cuando llegaban sus opciones. Una
+ * sola promesa compartida calienta el vocabulario al cargar el outliner y los
+ * campos posteriores se llenan sin otra espera. Si Gobierno cambia, su evento
+ * común invalida esta proyección para que la próxima lectura vuelva a la
+ * fuente viva.
+ */
+function knownRelationTypes(): Promise<RelationTypeOption[]> {
+  if (relationTypeOptions !== null) return Promise.resolve(relationTypeOptions);
+  if (relationTypeOptionsPending !== null) return relationTypeOptionsPending;
+  const generation = relationTypeOptionsGeneration;
+  const request = api.ontology()
+    .then((ontology) => ontology.relations
+      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')
+      .map((one) => ({
+        label: one.labels['es'] ?? one.name,
+        value: one.name,
+      })))
+    .then((options) => {
+      if (generation === relationTypeOptionsGeneration) relationTypeOptions = options;
+      return options;
+    })
+    .finally(() => {
+      if (relationTypeOptionsPending === request) relationTypeOptionsPending = null;
+    });
+  relationTypeOptionsPending = request;
+  return request;
+}
+
+function invalidateRelationTypes(): void {
+  relationTypeOptionsGeneration += 1;
+  relationTypeOptions = null;
+  relationTypeOptionsPending = null;
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('vera:ontology-local-change', invalidateRelationTypes);
+  void knownRelationTypes().catch(() => undefined);
+}
+
 /** Vocabulario gobernado, pero abierto: usar una relación nueva no edita Gobierno. */
 function relationTypeField(value: string | null): { field: HTMLInputElement; list: HTMLDataListElement } {
   relationTypeFieldCounter += 1;
@@ -3831,10 +3883,9 @@ function relationTypeField(value: string | null): { field: HTMLInputElement; lis
   const list = document.createElement('datalist');
   list.id = `relation-type-options-${relationTypeFieldCounter}`;
   field.setAttribute('list', list.id);
-  void api.ontology().then((ontology) => {
-    for (const relation of ontology.relations
-      .filter((one) => one.status?.trim().toLowerCase() !== 'obsoleta')) {
-      list.append(new Option(relation.labels['es'] ?? relation.name, relation.name));
+  void knownRelationTypes().then((options) => {
+    for (const option of options) {
+      list.append(new Option(option.label, option.value));
     }
   }).catch(() => undefined);
   return { field, list };
@@ -8170,7 +8221,7 @@ async function editRelation(
   const meta = document.createElement('label');
   meta.className = 'relation-meta relation-ask-type';
   const caption = document.createElement('span');
-  caption.textContent = 'Tipo de relación';
+  caption.textContent = 'Relación';
   const { field: type, list: typeOptions } = relationTypeField(held?.term ?? null);
   meta.append(caption, type, typeOptions);
 
