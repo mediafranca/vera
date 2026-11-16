@@ -19,7 +19,6 @@ export interface TemplateInspection {
   kind: string | null;
   properties: InspectedProperty[];
   extra: { key: string; value: string }[];
-  relations: OntologyView['relations'];
 }
 
 const normalized = (text: string): string => text.trim().toLocaleLowerCase();
@@ -49,7 +48,7 @@ const objectForName = (objects: readonly ObjectDeclared[], name: string): Object
  * puerta. Lo ausente se enseña; lo adicional permanece y se nombra como tal.
  */
 export function inspectTemplate(
-  page: Pick<PageView, 'properties' | 'crossingsOut' | 'crossingsIn'>,
+  page: Pick<PageView, 'properties'>,
   ontology: OntologyView,
   kindKey: string,
 ): TemplateInspection {
@@ -81,16 +80,7 @@ export function inspectTemplate(
     else inspected.written.push(assignment);
   }
 
-  const domainAccepts = (domain: readonly string[]): boolean => {
-    if (domain.length === 0) return true;
-    if (template === null) return false;
-    return domain.some((name) => objectForName([template], name) !== null);
-  };
-  const relations = ontology.relations.filter((one) =>
-    normalized(one.status ?? '') !== 'obsoleta' && domainAccepts(one.domain),
-  );
-
-  return { template, kind, properties: [...expected.values()], extra, relations };
+  return { template, kind, properties: [...expected.values()], extra };
 }
 
 export type WriteTemplateChange = (change: Change) => Promise<boolean>;
@@ -214,7 +204,7 @@ function renderLibrarianProposal(
 
 /** Dibuja una ficha de plantilla pequeña dentro del front matter de la página. */
 export function renderTemplateInspector(
-  page: Pick<PageView, 'id' | 'title' | 'properties' | 'crossingsOut' | 'crossingsIn'>,
+  page: Pick<PageView, 'id' | 'title' | 'properties'>,
   ontology: OntologyView,
   kindKey: string,
   write: WriteTemplateChange,
@@ -270,9 +260,9 @@ export function renderTemplateInspector(
    *
    * Las propiedades presentes ya viven en el `dl` canónico del front matter.
    * Sólo las faltantes se agregan allí, con el mismo ritmo clave/valor/acción.
-   * El inspector conserva debajo únicamente el nombre de la plantilla y sus
-   * relaciones posibles. Así «esperada» describe un hueco, nunca una segunda
-   * representación de algo que ya está escrito.
+   * El inspector conserva debajo únicamente el nombre de la plantilla. Las
+   * relaciones viven en el registro único del pie: una relación no es una
+   * propiedad ni una pregunta de la ficha.
    */
   if (propertyTable !== undefined) {
     for (const property of missing) {
@@ -351,89 +341,5 @@ export function renderTemplateInspector(
     }).catch(() => proposals.remove());
   }
 
-  const relationHead = document.createElement('h3');
-  relationHead.textContent = 'Relaciones';
-  const relationList = document.createElement('ul');
-  relationList.className = 'template-relation-list';
-  const existing = new Set(
-    [...(page.crossingsOut ?? []), ...(page.crossingsIn ?? [])]
-      .flatMap((one) => one.term === null ? [] : [normalized(one.term)]),
-  );
-  const relationTypes = document.createElement('datalist');
-  relationTypes.id = `relation-types-${page.id.replace(/[^a-z0-9_-]/gi, '-')}`;
-  const type = document.createElement('input');
-  type.className = 'structural-relation-type';
-  type.setAttribute('list', relationTypes.id);
-  type.placeholder = 'relación no declarada';
-  type.setAttribute('aria-label', 'tipo de relación');
-  for (const relation of inspected.relations) {
-    const item = document.createElement('li');
-    const choose = document.createElement('button');
-    choose.type = 'button';
-    const label = relation.labels['es'] ?? relation.name;
-    choose.textContent = relation.range.length === 0
-      ? label
-      : `${label} → ${relation.range.join(', ')}`;
-    choose.addEventListener('click', () => {
-      type.value = relation.name;
-      type.focus();
-    });
-    if (existing.has(normalized(relation.name)) || existing.has(normalized(label))) {
-      item.classList.add('present');
-      item.title = 'esta página ya usa esta relación';
-    }
-    item.append(choose);
-    relationList.append(item);
-    relationTypes.append(new Option(label, relation.name));
-  }
-
-  const composer = document.createElement('form');
-  composer.className = 'structural-relation-composer';
-  const target = document.createElement('input');
-  target.className = 'structural-relation-target';
-  target.placeholder = 'página relacionada';
-  target.required = true;
-  target.setAttribute('aria-label', 'página relacionada');
-  const targets = document.createElement('datalist');
-  targets.id = `relation-targets-${page.id.replace(/[^a-z0-9_-]/gi, '-')}`;
-  target.setAttribute('list', targets.id);
-  let knownPages: Awaited<ReturnType<typeof api.pages>> = [];
-  void api.pages().then((pages) => {
-    knownPages = pages.filter((candidate) => candidate.id !== page.id);
-    for (const candidate of knownPages) targets.append(new Option(candidate.title, candidate.title));
-  }).catch(() => undefined);
-  const addRelation = document.createElement('button');
-  addRelation.type = 'submit';
-  addRelation.textContent = 'Añadir relación';
-  const feedback = document.createElement('span');
-  feedback.className = 'structural-relation-feedback';
-  composer.append(type, relationTypes, target, targets, addRelation, feedback);
-  composer.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const destination = knownPages.find((candidate) => normalized(candidate.title) === normalized(target.value));
-    if (destination === undefined) {
-      feedback.textContent = 'elige una página existente';
-      target.focus();
-      return;
-    }
-    addRelation.disabled = true;
-    feedback.textContent = '';
-    const term = type.value.trim();
-    void write({
-      kind: 'create_crossing',
-      fromPage: page.id,
-      toPage: destination.id,
-      content: '',
-      ...(term === '' ? {} : { term }),
-    }).then((applied) => {
-      if (!applied) {
-        addRelation.disabled = false;
-        feedback.textContent = 'no se pudo crear la relación';
-      }
-    });
-  });
-  section.append(relationHead);
-  if (relationList.children.length > 0) section.append(relationList);
-  section.append(composer);
   return section;
 }

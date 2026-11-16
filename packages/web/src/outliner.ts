@@ -4045,6 +4045,8 @@ export interface PageReferenceRow {
   title: string;
   page: string | null;
   excerpt: string;
+  /** La vecindad fue observada en el texto, no inferida de una propiedad. */
+  mentioned: boolean;
   /** El bloque de esta página donde ocurre la mención, si ocurre aquí. */
   from: string | null;
   /** La explicación canónica de esta misma dirección, cuando alguien la escribió. */
@@ -4061,7 +4063,7 @@ export interface PageReferenceRow {
 export function pageReferenceRows(
   page: Pick<
     PageView,
-    'blocks' | 'blockProperties' | 'references' | 'propertyReferences' | 'backlinks' | 'crossingsOut' | 'crossingsIn'
+    'blocks' | 'blockProperties' | 'references' | 'backlinks' | 'crossingsOut' | 'crossingsIn'
   >,
 ): { namedBy: PageReferenceRow[]; names: PageReferenceRow[] } {
   const key = (id: string | null, title: string): string =>
@@ -4072,18 +4074,8 @@ export function pageReferenceRows(
       title: reference.title,
       page: reference.page,
       excerpt: projectedReferenceText(page, reference.block, reference.excerpt),
+      mentioned: true,
       from: reference.block,
-      relation: null,
-    });
-  }
-  for (const reference of page.propertyReferences ?? []) {
-    const at = key(reference.targetPage, reference.targetTitle);
-    if (names.has(at)) continue;
-    names.set(at, {
-      title: reference.targetTitle,
-      page: reference.targetPage,
-      excerpt: `${reference.property}:: ${reference.targetTitle}`,
-      from: null,
       relation: null,
     });
   }
@@ -4093,7 +4085,10 @@ export function pageReferenceRows(
     names.set(at, {
       title: existing?.title ?? relation.title,
       page: existing?.page ?? relation.toPage,
-      excerpt: existing?.excerpt ?? relation.says,
+      // Sin mención no hay extracto textual: la voz de la relación se muestra
+      // una sola vez en su outline, no duplicada como supuesto contexto.
+      excerpt: existing?.excerpt ?? '',
+      mentioned: existing?.mentioned ?? false,
       from: existing?.from ?? relation.fromBlock,
       relation,
     });
@@ -4107,6 +4102,7 @@ export function pageReferenceRows(
       title: backlink.title,
       page: backlink.page,
       excerpt: backlink.excerpt,
+      mentioned: true,
       from: null,
       relation: null,
     });
@@ -4117,7 +4113,8 @@ export function pageReferenceRows(
     namedBy.set(at, {
       title: existing?.title ?? relation.title,
       page: existing?.page ?? relation.fromPage,
-      excerpt: existing?.excerpt ?? relation.says,
+      excerpt: existing?.excerpt ?? '',
+      mentioned: existing?.mentioned ?? false,
       from: null,
       relation,
     });
@@ -5531,8 +5528,8 @@ export function renderOutliner(
      *
      * Antes sólo influía en el menú de «+ propiedad»: para saber qué faltaba
      * había que comenzar a añadir algo. La ficha deja presentes las preguntas
-     * de la plantilla, incluso vacías, y muestra las relaciones posibles sin
-     * convertir ninguna de las dos cosas en una validación obligatoria.
+     * de la plantilla, incluso vacías, sin convertirlas en una validación
+     * obligatoria. Las relaciones se administran sólo en el registro del pie.
      */
     void api.ontology().then((ontology) => {
       if (!metadata.isConnected) return;
@@ -7965,52 +7962,6 @@ export function renderOutliner(
           member.mentioned && !member.linked ? 'mención potencial' : '',
         ].filter(Boolean).join(' · ');
         row.append(link, modes);
-        if (!readOnly && member.mentioned && !member.linked && member.formalization !== null) {
-          const proposal = member.formalization;
-          const formalize = document.createElement('button');
-          formalize.type = 'button';
-          formalize.className = 'concept-formalize';
-          formalize.textContent = 'formalizar enlace';
-          formalize.setAttribute(
-            'aria-label',
-            `Formalizar «${proposal.written}» como enlace a ${page.title}`,
-          );
-          formalize.addEventListener('click', () => {
-            void (async () => {
-              formalize.disabled = true;
-              try {
-                // La fila es derivada y puede haber envejecido. Se vuelve a leer
-                // sólo la página fuente antes de escribir para no reemplazar una
-                // edición posterior con el texto desde el que nació la sugerencia.
-                const source = await api.page(member.page, 10_000);
-                const current = source.blocks.find(
-                  (block) => block.stableId === proposal.block,
-                );
-                if (current?.content !== proposal.content) {
-                  toast('la mención cambió; se actualizó la lista sin escribir');
-                  callbacks.onReload(null);
-                  return;
-                }
-                const outcome = await api.submitCanonical({
-                  kind: 'edit_block',
-                  block: proposal.block,
-                  content: proposal.next,
-                });
-                if (outcome.status === 'rejected') {
-                  toast(`no se pudo formalizar: ${outcome.reason}`);
-                  formalize.disabled = false;
-                  return;
-                }
-                toast(`enlazada «${proposal.written}» con «${page.title}»`);
-                callbacks.onReload(null);
-              } catch {
-                toast('no se pudo comprobar ni formalizar la mención');
-                formalize.disabled = false;
-              }
-            })();
-          });
-          row.append(formalize);
-        }
         if (member.excerpt !== '') {
           const said = document.createElement('div');
           said.className = 'markdown-preview';
@@ -8031,74 +7982,59 @@ export function renderOutliner(
   }
 
   /*
-   * Referencias: una sola sección, en los dos sentidos.
+   * Registro único de relaciones, en los dos sentidos.
    *
-   * El pie contestaba media pregunta —quién habla de esta página— y la otra
-   * mitad, de qué habla ella, estaba sólo dentro del texto: para saber de qué es
-   * vecina una página había que releerla entera.
-   *
-   * Las dos columnas van a la par porque son la misma pregunta mirada desde los
-   * dos lados. Explicar una referencia no crea otro vecindario: la explicación,
-   * su tipo y su outline viven en la fila que ya une esas páginas. Si el vínculo
-   * va en ambos sentidos aparece una vez en cada dirección; esconderlo en una
-   * tercera categoría obligaría a reaprender qué significa cada lista.
-   *
-   * Y cada renglón lleva su pluma. El momento en que alguien sabe por qué dos
-   * páginas se tocan es el momento en que las está mirando juntas, y aquí están
-   * juntas: explicar desde otro sitio sería pedirle que se acuerde después.
+   * Una mención es evidencia observada en el texto. Una relación es una
+   * declaración con identidad propia. No son el mismo dato, pero sí describen
+   * la misma vecindad y por eso comparten una fila. El front matter conserva
+   * sólo propiedades: nunca se usa como un segundo compositor relacional.
    */
   {
     const { namedBy: named, names } = pageReferenceRows(page);
 
-    if (names.length + named.length > 0) {
+    if (!readOnly || names.length + named.length > 0) {
       const whole = foldingSection(
         `referencias:${page.id}`,
-        `Referencias (${names.length + named.length})`,
+        `Relaciones (${names.length + named.length})`,
         2,
       );
       whole.section.classList.add('references');
       const section = whole.body;
 
-      /*
-     * La explicación que esta referencia ya tiene, si la tiene.
-     *
-     * Se busca entre lo que la página afirma: una relación explicada apunta a
-     * una página, y una referencia nombra a una página. Sin esto, la pluma abría
-     * siempre una caja en blanco y lo escrito ayer no aparecía por ninguna parte
-     * —parecía que no se hubiera guardado, y lo que pasaba es que no se enseñaba.
-     */
-    const list = (
-      rows: PageReferenceRow[],
-      gesture: 'followed_reference' | 'followed_backlink',
-    ): HTMLElement => {
+      if (!readOnly) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'relation-add';
+        add.textContent = '+ Relación';
+        add.addEventListener('click', () => {
+          void editRelation(section, null, undefined, page, toast, callbacks);
+        });
+        section.append(add);
+      }
+
+      const list = (
+        rows: PageReferenceRow[],
+        gesture: 'followed_reference' | 'followed_backlink',
+      ): HTMLElement => {
         const ul = document.createElement('ul');
         for (const row of rows) {
           const item = document.createElement('li');
           item.className = 'reference';
 
-          /*
-           * La pluma, arriba a la izquierda. Explicar por qué estas dos páginas
-           * se tocan es escribir, y lo que escribe cuelga del bloque donde la
-           * mención ocurre —o, si la mención está en la otra página, de un bloque
-           * nuevo al final de ésta, porque la afirmación es de aquí.
-           */
           const held = row.relation ?? undefined;
-          if (!readOnly) {
-            const quill = document.createElement('button');
-            quill.type = 'button';
-            quill.className = 'reference-explain';
-            quill.innerHTML = icon('feather');
-            quill.title = `explicar por qué ${row.title} tiene que ver con esta página`;
-            quill.setAttribute('aria-label', `explicar la relación con ${row.title}`);
-            if (held !== undefined) {
-              quill.classList.add('explained');
-              quill.title = `cambiar por qué ${row.title} tiene que ver con esta página`;
-            }
-            quill.addEventListener('click', (event) => {
+          // Sólo la columna saliente expresa lo que esta página afirma. Una
+          // relación entrante se lee aquí, pero se edita desde su página origen.
+          if (!readOnly && gesture === 'followed_reference') {
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'relation-edit';
+            edit.textContent = held === undefined ? 'Declarar' : 'Editar';
+            edit.setAttribute('aria-label', `${edit.textContent} relación con ${row.title}`);
+            edit.addEventListener('click', (event) => {
               event.stopPropagation();
-              explainTowards(item, row.title, row.page, held, page, toast, callbacks);
+              void editRelation(item, row, held, page, toast, callbacks);
             });
-            item.append(quill);
+            item.append(edit);
           }
 
           const link = document.createElement('div');
@@ -8140,6 +8076,13 @@ export function renderOutliner(
 
           item.append(link);
 
+          const evidence = document.createElement('span');
+          evidence.className = 'relation-evidence';
+          evidence.textContent = row.mentioned && held !== undefined
+            ? 'mencionada · declarada'
+            : row.mentioned ? 'mencionada en el contenido' : 'declarada';
+          item.append(evidence);
+
           // Y debajo, lo que se dijo de ella. Es la prueba de que lo escrito se
           // escribió: sin enseñarlo, guardar y no guardar se ven igual.
           if (held !== undefined) {
@@ -8152,7 +8095,7 @@ export function renderOutliner(
             said.append(term);
             const explanation = document.createElement('div');
             renderRelationOutline(
-              explanation, held, callbacks, readOnly,
+              explanation, held, callbacks, true,
               (host, content) => renderPreview(host, content, gesture),
             );
             said.append(explanation);
@@ -8246,17 +8189,15 @@ function foldingSection(name: string, label: string, level: 2 | 3): {
 }
 
 /**
- * Explica una relación cuyo destino ya se sabe.
+ * Declara o corrige una relación en un solo gesto.
  *
- * Desde una referencia, la página del otro extremo no hay que preguntarla: está
- * ahí, es la que se está mirando. Lo que falta es lo único que Vera no puede
- * poner, así que la caja pide eso —la frase—. La tipología se elige aparte con
- * el mismo vocabulario gobernado que se ofrece al leer cualquier relación.
+ * Destino, tipo y explicación son partes de una misma intención. La mención
+ * textual sigue siendo evidencia derivada: guardar aquí nunca reescribe el
+ * cuerpo para fabricar un wikienlace.
  */
-async function explainTowards(
+async function editRelation(
   host: HTMLElement,
-  title: string,
-  target: string | null,
+  row: PageReferenceRow | null,
   held: CrossingRow | undefined,
   page: PageView,
   notify: (message: string) => void,
@@ -8264,20 +8205,32 @@ async function explainTowards(
 ): Promise<void> {
   if (host.querySelector('.relation-ask') !== null) return;
 
-  /*
-   * Una caja de escribir, no un renglón.
-   *
-   * Lo que se pide aquí es una frase —por qué estas dos páginas se tocan—, y una
-   * frase no cabe en un campo de una línea: se escribe mirando un agujero por el
-   * que sólo pasan seis palabras. Nace con el alto del renglón que explica y
-   * crece con lo que se escriba.
-   *
-   * Y con la letra del extracto que tiene al lado, porque va a leerse junto a
-   * él: dos tamaños distintos en la misma fila hacen que uno parezca un pie de
-   * página del otro.
-   */
-  const asking = document.createElement('div');
+  const asking = document.createElement('form');
   asking.className = 'relation-ask';
+
+  const destination = document.createElement('label');
+  destination.className = 'relation-meta relation-ask-target';
+  const destinationCaption = document.createElement('span');
+  destinationCaption.textContent = 'Página';
+  const target = document.createElement('input');
+  target.type = 'text';
+  target.className = 'relation-target';
+  target.placeholder = 'página relacionada';
+  target.required = true;
+  target.value = row?.title ?? '';
+  target.readOnly = row !== null;
+  target.setAttribute('aria-label', 'página relacionada');
+  const targets = document.createElement('datalist');
+  targets.id = `relation-target-options-${relationTypeFieldCounter + 1}`;
+  target.setAttribute('list', targets.id);
+  destination.append(destinationCaption, target, targets);
+
+  let knownPages: Awaited<ReturnType<typeof api.pages>> = [];
+  const knownPagesReady = api.pages().then((pages) => {
+    knownPages = pages.filter((candidate) => candidate.id !== page.id);
+    for (const candidate of knownPages) targets.append(new Option(candidate.title, candidate.title));
+    return knownPages;
+  }).catch(() => knownPages);
 
   const meta = document.createElement('label');
   meta.className = 'relation-meta relation-ask-type';
@@ -8289,17 +8242,23 @@ async function explainTowards(
   const field = document.createElement('textarea');
   field.className = 'relation-field';
   field.rows = 2;
-  field.placeholder = `por qué ${title} tiene que ver con esta página`;
+  field.placeholder = 'explicación opcional';
   field.setAttribute('aria-label', field.placeholder);
   // Lo que ya había, para poder corregirlo en vez de escribirlo otra vez. La
   // tipología vive en su selector: la caja contiene sólo la voz de la relación.
   field.value = held?.said ?? '';
 
-  const hint = document.createElement('p');
-  hint.className = 'relation-hint';
-  hint.textContent = 'Enter guarda · Escape deja las cosas como estaban';
+  const actions = document.createElement('div');
+  actions.className = 'relation-ask-actions';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancelar';
+  const saveButton = document.createElement('button');
+  saveButton.type = 'submit';
+  saveButton.textContent = held === undefined ? 'Guardar relación' : 'Guardar cambios';
+  actions.append(cancel, saveButton);
 
-  asking.append(meta, field, hint);
+  asking.append(destination, meta, field, actions);
   host.append(asking);
 
   const autosize = (): void => {
@@ -8307,32 +8266,31 @@ async function explainTowards(
     field.style.height = `${field.scrollHeight}px`;
   };
   field.addEventListener('input', autosize);
-  field.focus();
-  field.select();
+  (row === null ? target : field).focus();
+  if (row !== null) field.select();
   autosize();
 
   let settled = false;
 
   const save = async (): Promise<void> => {
     if (settled) return;
-    settled = true;
     const clean = field.value.trim();
     const term = type.value.trim();
-
-    // Abrir y salir sin decir ni clasificar no crea nada por accidente. Una
-    // relación estructural sin tipo se crea desde su compositor explícito.
-    if (clean === '' && term === '' && held === undefined) {
-      asking.remove();
+    if (row === null || row.page === null) await knownPagesReady;
+    const selected = row?.page === null || row === null
+      ? knownPages.find((candidate) =>
+          candidate.title.trim().toLocaleLowerCase() === target.value.trim().toLocaleLowerCase())
+      : { id: row.page, title: row.title };
+    if (selected === undefined || selected.id === null) {
+      target.setCustomValidity('Elige una página existente.');
+      target.reportValidity();
+      target.focus();
       return;
     }
+    target.setCustomValidity('');
+    settled = true;
+    saveButton.disabled = true;
 
-    /*
-     * Si ya había una, se corrige; si no, nace.
-     *
-     * Corregir y no crear otra es lo que hace que volver a la pluma sea volver a
-     * lo escrito. Antes cada visita creaba una relación nueva y la anterior
-     * seguía ahí, invisible, porque sólo se enseñaba la primera.
-     */
     if (held !== undefined) {
       if (held.fromBlock === null) {
         const written = await api.submitCanonical({
@@ -8346,74 +8304,59 @@ async function explainTowards(
           callbacks.onReload(null, reloadAfterDerivedWriting());
         }
         else {
-          notify(`cambiada la conectiva con ${title}`);
+          notify(`cambiada la relación con ${selected.title}`);
           callbacks.onReload(null, reloadAfterDerivedWriting());
         }
         return;
       }
-      const written = await api.submitCanonical({
-        kind: 'edit_block',
-        block: held.connective,
-        content: clean,
-      });
+      const changes: Array<Parameters<typeof api.submitCanonicalBatch>[0][number]> = [{
+        change: { kind: 'edit_block', block: held.connective, content: clean },
+      }];
+      if (term === '' && held.term !== null) {
+        changes.push({ change: {
+          kind: 'remove_property', block: held.connective, propertyKey: names.term,
+        } });
+      } else if (term !== '') {
+        changes.push({ change: {
+          kind: 'set_property', block: held.connective,
+          propertyKey: names.term, propertyValue: term,
+        } });
+      }
+      const written = await api.submitCanonicalBatch(changes);
       if (written.status === 'rejected') {
         notify(`no se pudo guardar: ${written.reason}`);
-        asking.remove();
+        settled = false;
+        saveButton.disabled = false;
         return;
       }
-      if (term === '') {
-        if (held.term !== null) {
-          await api.submitCanonical({
-            kind: 'remove_property',
-            block: held.connective,
-            propertyKey: names.term,
-          });
-        }
-      } else {
-        await api.submitCanonical({
-          kind: 'set_property',
-          block: held.connective,
-          propertyKey: names.term,
-          propertyValue: term,
-        });
-      }
-      notify(`cambiada la relación con ${title}`);
+      notify(`cambiada la relación con ${selected.title}`);
       callbacks.onReload(null, reloadAfterDerivedWriting());
       return;
     }
 
-    /*
-     * Dónde cuelga lo que se escribe.
-     *
-     * Si la mención ocurre en esta página, del bloque que la dice: ahí es donde
-     * la afirmación tiene sujeto. Si ocurre en la otra —alguien nos nombró—, lo
-     * que se está escribiendo es texto nuevo de esta página, y va al final como
-     * cualquier cosa que se escribe.
-     */
-    if (target === null) {
-      notify(`primero tiene que existir la página ${title}`);
-      asking.remove();
-      return;
-    }
     const born = await api.submitCanonical({
       kind: 'create_crossing',
       fromPage: page.id,
-      toPage: target,
+      toPage: selected.id,
       content: clean,
       term: term === '' ? undefined : term,
     });
     if (born.status === 'rejected') {
-      notify(`no se pudo explicar: ${born.reason}`);
+      notify(`no se pudo guardar: ${born.reason}`);
       // Puede haber sido aceptada antes y haberse perdido sólo la respuesta.
       // Reconciliar enseña esa relación en vez de dejar una caja vacía que al
       // segundo intento contesta «ya existe».
       callbacks.onReload(null, reloadAfterDerivedWriting());
       return;
     }
-    notify(`explicada la conectiva con ${title}`);
+    notify(`declarada la relación con ${selected.title}`);
     callbacks.onReload(null, reloadAfterDerivedWriting());
   };
 
+  asking.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void save();
+  });
   field.addEventListener('keydown', (event) => {
     // Enter guarda; con Shift, salta de línea. Es lo mismo que hace un bloque, y
     // aquí se está escribiendo la misma clase de cosa.
@@ -8427,19 +8370,10 @@ async function explainTowards(
       asking.remove();
     }
   });
-  // Salir de la caja guarda, como salir de un bloque: nada de lo que se escribe
-  // en Vera se pierde por mirar a otro lado.
-  field.addEventListener('blur', () => {
-    // El selector forma parte del mismo gesto. Darle foco no debe guardar una
-    // relación a medio escribir ni cerrar el editor bajo el puntero.
-    setTimeout(() => {
-      if (!asking.contains(document.activeElement)) void save();
-    });
-  });
-  type.addEventListener('blur', () => {
-    setTimeout(() => {
-      if (!asking.contains(document.activeElement)) void save();
-    });
+  target.addEventListener('input', () => target.setCustomValidity(''));
+  cancel.addEventListener('click', () => {
+    settled = true;
+    asking.remove();
   });
 }
 

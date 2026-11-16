@@ -57,6 +57,22 @@ surface RelationsOfAPage {
         fulfils StructuralPageRelations
 
     @guarantee TheComposerAsksForStructureFirst
-        -- Destino y tipo están en la zona de relaciones. La explicación puede
-        -- añadirse después en el outline de esa misma arista.
+        -- Destino, tipo opcional y explicación opcional forman un solo gesto en
+        -- el registro al pie. Guardar crea o corrige una sola arista; no exige
+        -- inventar prosa ni repartir la intención entre dos compositores.
+
+    @guarantee MentionsAndDeclarationsShareOneRowWithoutBecomingTheSameFact
+        -- Una mención observada en el contenido y una relación declarada son
+        -- evidencias distintas. Cuando apuntan a la misma página y dirección se
+        -- leen en una fila enriquecida; declarar nunca reescribe el contenido.
+
+    @guarantee PropertiesRemainInFrontMatterAndRelationsRemainAtTheFoot
+        -- Una propiedad referencial describe al objeto y permanece en su ficha.
+        -- No reaparece como relación ni habilita un segundo compositor. El pie
+        -- reúne sólo menciones observadas y relaciones declaradas.
+
+    @guarantee IncomingAssertionsAreReadFromTheirOrigin
+        -- La columna entrante muestra lo que otra página afirma, pero no lo edita
+        -- desde el destino. Toda nueva declaración nace en la columna saliente
+        -- de la página que asume su autoría.
 }

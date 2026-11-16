@@ -23,16 +23,19 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
     assert.match(field, /border-radius: 0/);
   });
 
-  it('no ofrece pluma ni formalización en una proyección de sólo lectura', () => {
-    const referenceStart = outliner.indexOf('const held = row.relation ?? undefined');
-    const referenceEnd = outliner.indexOf("const link = document.createElement('div')", referenceStart);
-    const referenceAuthoring = outliner.slice(referenceStart, referenceEnd);
-    assert.match(referenceAuthoring, /if \(!readOnly\) \{/);
-    assert.match(referenceAuthoring, /className = 'reference-explain'/);
-    assert.match(
-      outliner,
-      /if \(!readOnly && member\.mentioned && !member\.linked && member\.formalization !== null\)/,
-    );
-    assert.doesNotMatch(outliner, /item\.append\(quill, link\)/);
+  it('concentra la autoría en un editor saliente y la oculta en sólo lectura', () => {
+    assert.match(outliner, /if \(!readOnly && gesture === 'followed_reference'\)/);
+    assert.match(outliner, /className = 'relation-edit'/);
+    assert.match(outliner, /className = 'relation-add'/);
+    assert.doesNotMatch(outliner, /reference-explain|concept-formalize/);
+  });
+
+  it('pide destino, tipo y explicación en un solo formulario', () => {
+    const editor = outliner.slice(outliner.indexOf('async function editRelation'));
+    assert.match(editor, /className = 'relation-target'/);
+    assert.match(editor, /relationTypeField/);
+    assert.match(editor, /className = 'relation-field'/);
+    assert.match(editor, /kind: 'create_crossing'/);
+    assert.match(editor, /submitCanonicalBatch\(changes\)/);
   });
 });

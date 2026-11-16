@@ -21,21 +21,20 @@ describe('inspector de plantilla', () => {
     assert.equal(definitionForKey(ontology.properties, 'website')?.block, 'p:url');
   });
 
-  it('muestra preguntas globales, faltantes, adicionales y relaciones posibles', () => {
+  it('muestra preguntas globales, faltantes y adicionales sin mezclar relaciones', () => {
     const inspected = inspectTemplate({
       properties: [
         { key: 'type', value: 'Organization' },
         { key: 'website', value: 'https://example.org' },
         { key: 'color', value: 'azul' },
       ],
-      crossingsOut: [], crossingsIn: [],
     }, ontology, 'tipo');
     assert.equal(inspected.template?.name, 'Organización');
     assert.deepEqual(inspected.properties.map((one) => [one.definition.name, one.written.length]), [
       ['tipo', 1], ['concepto', 0], ['url', 1],
     ]);
     assert.deepEqual(inspected.extra, [{ key: 'color', value: 'azul' }]);
-    assert.deepEqual(inspected.relations.map((one) => one.name), ['forma parte de']);
+    assert.equal('relations' in inspected, false);
   });
 
   it('proyecta sólo los huecos en la tabla canónica y no repite las presentes', () => {
@@ -58,11 +57,9 @@ describe('inspector de plantilla', () => {
     assert.equal(derivedPropertySuggestion({ title: '15 de noviembre' }, 'bitácora', date), null);
   });
 
-  it('crea relaciones estructurales sin inventar una frase', () => {
+  it('deja las relaciones fuera del front matter', () => {
     const source = readFileSync(new URL('../src/template-inspector.ts', import.meta.url), 'utf8');
-    assert.match(source, /kind: 'create_crossing'/);
-    assert.match(source, /content: ''/);
-    assert.match(source, /structural-relation-composer/);
-    assert.match(source, /const relationTypes = document\.createElement\('datalist'\)/);
+    assert.doesNotMatch(source, /kind: 'create_crossing'/);
+    assert.doesNotMatch(source, /structural-relation-composer|template-relation-list/);
   });
 });
