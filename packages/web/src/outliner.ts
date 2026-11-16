@@ -1409,116 +1409,36 @@ function librarianRequestState(request: LibrarianRequestView, librarianName?: st
   return `Solicitud entregada; esperando a ${actor.object}`;
 }
 
-let activeLibrarianRequests: LibrarianRequestView[] = [];
-let activeLibrarianName: string | undefined;
-
-function updateLibrarianProgress(
-  dialog: HTMLDialogElement,
-  requests: LibrarianRequestView[],
-  librarianName = activeLibrarianName,
-): void {
-  const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0];
-  if (latest === undefined) return;
-  const state = dialog.querySelector<HTMLElement>('.librarian-progress-state');
-  const asked = dialog.querySelector<HTMLElement>('.librarian-progress-request');
-  const elapsed = dialog.querySelector<HTMLElement>('.librarian-progress-elapsed');
-  const more = dialog.querySelector<HTMLElement>('.librarian-progress-more');
-  if (state !== null) state.textContent = librarianRequestState(latest, librarianName);
-  if (asked !== null) asked.textContent = latest.text;
-  if (elapsed !== null) elapsed.textContent = `Tiempo transcurrido: ${saySeconds(Math.max(0, Date.now() - latest.createdAt))}`;
-  if (more !== null) {
-    const others = requests.length - 1;
-    more.textContent = others === 0 ? '' : `${others} solicitud${others === 1 ? '' : 'es'} más en la cola`;
-    more.hidden = others === 0;
-  }
-}
-
-function openLibrarianProgress(requests: LibrarianRequestView[], librarianName?: string): void {
-  const already = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
-  if (already !== null) {
-    updateLibrarianProgress(already, requests, librarianName);
-    if (!already.open) already.showModal();
-    return;
-  }
-  const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0];
-  if (latest === undefined) return;
-  const dialog = document.createElement('dialog');
-  dialog.className = 'librarian-dialog librarian-progress-dialog';
-  const header = librarianDialogHeader(
-    'Solicitud en curso',
-    librarianRequestState(latest, librarianName),
-    librarianName,
-  );
-  header.querySelector('p')?.classList.add('librarian-progress-state');
-
-  const body = document.createElement('div');
-  body.className = 'librarian-progress-body';
-  const label = document.createElement('span');
-  label.className = 'librarian-dialog-label';
-  label.textContent = 'Solicitud';
-  const asked = document.createElement('blockquote');
-  asked.className = 'librarian-progress-request';
-  const elapsed = document.createElement('p');
-  elapsed.className = 'librarian-progress-elapsed';
-  const more = document.createElement('p');
-  more.className = 'librarian-progress-more';
-  body.append(label, asked, elapsed, more);
-
-  const actions = document.createElement('div');
-  actions.className = 'librarian-dialog-actions';
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.textContent = 'Seguir leyendo';
-  close.addEventListener('click', () => dialog.close());
-  actions.append(close);
-  dialog.append(header, body, actions);
-  document.body.append(dialog);
-  updateLibrarianProgress(dialog, requests, librarianName);
-  const clock = window.setInterval(() => updateLibrarianProgress(
-    dialog,
-    activeLibrarianRequests,
-    activeLibrarianName,
-  ), 1_000);
-  dialog.addEventListener('close', () => {
-    window.clearInterval(clock);
-    dialog.remove();
-  }, { once: true });
-  dialog.showModal();
-}
-
 /**
  * Una solicitud en curso es estado de la interfaz, no contenido de la página.
- * Vive como una sola marca periférica; el detalle vuelve al centro sólo cuando
- * se lo pide. Las respuestas terminadas sí vuelven a su lugar de origen.
+ * El botón de conversación ya ocupa la periferia estable de Vera: hacerlo
+ * palpitar comunica el trabajo sin inventar otro icono ni tapar la lectura.
+ * Las respuestas terminadas sí vuelven a su lugar de origen.
  */
 function showLibrarianActivity(
   requests: LibrarianRequestView[],
   librarianName?: string,
-  openConversation?: () => void,
 ): void {
-  activeLibrarianRequests = requests;
-  activeLibrarianName = librarianName;
-  const current = document.querySelector<HTMLButtonElement>('.librarian-activity');
+  const activity = document.querySelector<HTMLButtonElement>('#librarian');
+  if (activity === null) return;
+  const restingLabel = librarianName === undefined
+    ? 'Hablar con el agente de biblioteca'
+    : `Hablar con ${librarianName}`;
   if (requests.length === 0) {
-    current?.remove();
-    const dialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
-    if (dialog?.open) dialog.close();
+    activity.classList.remove('librarian-active');
+    delete activity.dataset['request'];
+    delete activity.dataset['state'];
+    activity.title = restingLabel;
+    activity.setAttribute('aria-label', restingLabel);
     return;
   }
 
   const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0]!;
-  const activity = current ?? document.createElement('button');
-  activity.type = 'button';
-  activity.className = 'librarian-activity';
-  activity.innerHTML = icon('vera');
+  activity.classList.add('librarian-active');
   activity.dataset['request'] = latest.id;
   activity.dataset['state'] = latest.dispatchStatus === 'failed' ? 'waiting' : latest.status;
-  activity.title = `${librarianRequestState(latest, librarianName)} · abrir detalle`;
+  activity.title = `${librarianRequestState(latest, librarianName)} · abrir conversación`;
   activity.setAttribute('aria-label', activity.title);
-  activity.onclick = openConversation ?? (() => openLibrarianProgress(requests, librarianName));
-  if (current === null) document.body.append(activity);
-  const dialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
-  if (dialog !== null) updateLibrarianProgress(dialog, requests);
 }
 
 async function showLibrarianTurns(
@@ -1536,11 +1456,7 @@ async function showLibrarianTurns(
   // debe convertir una repetición de transporte en dos avisos iguales.
   const unique = [...new Map(requests.map((request) => [request.id, request])).values()];
   const active = unique.filter((request) => request.status === 'queued' || request.status === 'working');
-  showLibrarianActivity(
-    active,
-    callbacks.librarianName,
-    () => void openLibrarianConversation(page, callbacks),
-  );
+  showLibrarianActivity(active, callbacks.librarianName);
   // Las respuestas terminadas son contenido del grafo: sobre un bloque lo
   // reemplazan y sobre una página nacen como un bloque ordinario. La solicitud
   // auxiliar permanece en el registro, pero no vuelve a montarse como una copia
@@ -4328,9 +4244,7 @@ export function renderOutliner(
 ): void {
   stopReading();
   if (historyPage !== null && historyPage !== page.id) closeHistoryInspector(false);
-  document.querySelector('.librarian-activity')?.remove();
-  const librarianDialog = document.querySelector<HTMLDialogElement>('.librarian-progress-dialog');
-  if (librarianDialog?.open) librarianDialog.close();
+  showLibrarianActivity([], callbacks.librarianName);
   container.innerHTML = '';
   container.dataset['page'] = page.id;
   container.classList.toggle('read-only', readOnly);

@@ -18,18 +18,20 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.doesNotMatch(polling, /callbacks\.onReload/);
   });
 
-  it('pide dentro de Vera y reduce el trabajo activo a su marca pulsable', () => {
+  it('pide dentro de Vera y comunica el trabajo en el botón estable de conversación', () => {
     const asking = outliner.slice(outliner.indexOf('async function askLibrarian('), outliner.indexOf('function librarianDialogHeader('));
     assert.doesNotMatch(asking, /window\.prompt/);
     assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
-    assert.match(outliner, /activity\.className = 'librarian-activity'/);
-    assert.match(outliner, /activity\.onclick = openConversation \?\? \(\(\) => openLibrarianProgress\(requests, librarianName\)\)/);
-    assert.match(outliner, /Tiempo transcurrido:/);
+    assert.match(outliner, /querySelector<HTMLButtonElement>\('#librarian'\)/);
+    assert.match(outliner, /activity\.classList\.add\('librarian-active'\)/);
+    assert.match(outliner, /activity\.classList\.remove\('librarian-active'\)/);
+    assert.match(outliner, /abrir conversación/);
     assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
-    assert.match(styles, /\.librarian-activity \.icon/);
-    assert.match(styles, /\.librarian-activity \.icon[\s\S]*?animation: librarian-mark-pulse/);
+    assert.doesNotMatch(outliner, /className = 'librarian-activity'/);
+    assert.match(styles, /#librarian\.librarian-active \.icon[\s\S]*?animation: librarian-mark-pulse/);
     assert.match(styles, /@keyframes librarian-mark-pulse/);
-    assert.match(styles, /prefers-reduced-motion[\s\S]*?\.librarian-activity \.icon \{ animation: none; \}/);
+    assert.match(styles, /prefers-reduced-motion[\s\S]*?#librarian\.librarian-active \.icon \{ animation: none; \}/);
+    assert.match(main, /if \(!librarianButton\.classList\.contains\('librarian-active'\)\)/);
   });
 
   it('presenta la conversación durable como un hilo acumulado y copiable', () => {
