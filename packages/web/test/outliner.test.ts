@@ -521,6 +521,7 @@ describe('referencias explicadas', () => {
     });
     assert.equal(rows.names.length, 1);
     assert.equal(rows.names[0]?.relation, relation);
+    assert.equal(rows.names[0]?.mentioned, true);
   });
 
   it('incluye una relación explicada aunque no exista una mención literal', () => {
@@ -531,22 +532,16 @@ describe('referencias explicadas', () => {
     });
     assert.deepEqual(rows.names.map((row) => row.title), ['Otra']);
     assert.equal(rows.names[0]?.relation, relation);
+    assert.equal(rows.names[0]?.mentioned, false);
+    assert.equal(rows.names[0]?.excerpt, '');
   });
 
-  it('incluye una propiedad referencial como vecindad sin fingir un bloque', () => {
+  it('no convierte una propiedad referencial en relación del pie', () => {
     const rows = pageReferenceRows({
       blocks: [], blockProperties: {}, references: [], backlinks: [],
-      propertyReferences: [{
-        property: 'autor', definition: 'block:autor', targetTitle: 'Ivana Nakarada-Kordic',
-        targetPage: 'page:ivana', expectedTypes: ['Persona'], actualTypes: ['Persona'],
-        status: 'resolved',
-      }],
       crossingsOut: [], crossingsIn: [],
     });
-    assert.deepEqual(rows.names, [{
-      title: 'Ivana Nakarada-Kordic', page: 'page:ivana',
-      excerpt: 'autor:: Ivana Nakarada-Kordic', from: null, relation: null,
-    }]);
+    assert.deepEqual(rows.names, []);
   });
 
   it('mantiene las dos direcciones en La nombran y Nombra a, sin una tercera categoría', () => {
