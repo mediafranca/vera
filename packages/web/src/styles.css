@@ -8963,8 +8963,7 @@ html[data-working-slow='true']::after {
  */
 .relation-ask {
   margin: 0.45rem 0 0.3rem;
-  padding-left: 0.9rem;
-  border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
+  padding-left: 0;
   flex-basis: 100%;
 }
 
@@ -9136,13 +9135,13 @@ html[data-working-slow='true']::after {
   gap: 0.4rem;
 }
 
-.reference.relation-declared {
+.reference:is(.relation-declared, .relation-editing) {
   margin: .35rem 0;
   padding: .15rem 0 .3rem .9rem;
   border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
 }
 
-.reference.relation-declared .backlink {
+.reference:is(.relation-declared, .relation-editing) .backlink {
   border-left: 0;
   padding-left: 0;
 }

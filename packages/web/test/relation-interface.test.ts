@@ -14,7 +14,7 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
   it('usa una estructura lineal en vez de otra tarjeta redondeada', () => {
     const outline = rule('.relation-outline');
     assert.doesNotMatch(outline, /border-radius|background:/);
-    const declared = rule('.reference.relation-declared');
+    const declared = rule('.reference:is(.relation-declared, .relation-editing)');
     assert.match(declared, /border-left: 1px/);
     assert.doesNotMatch(declared, /border-radius|background:/);
   });
@@ -37,8 +37,18 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
   });
 
   it('hace que el filete contenga la relación completa y no sólo su explicación', () => {
-    assert.match(styles, /\.reference\.relation-declared\s*\{[^}]*border-left:/s);
+    assert.match(styles, /\.reference:is\(\.relation-declared, \.relation-editing\)\s*\{[^}]*border-left:/s);
     assert.doesNotMatch(styles, /\.relation-outline\s*\{[^}]*border-left:/s);
+    assert.doesNotMatch(styles, /\.relation-ask\s*\{[^}]*border-left:/s);
+  });
+
+  it('la pluma alterna abrir y cerrar el mismo editor', () => {
+    const editor = outliner.slice(outliner.indexOf('async function editRelation'));
+    assert.match(outliner, /edit\.setAttribute\('aria-expanded', 'false'\)/);
+    assert.match(editor, /host\.classList\.add\('relation-editing'\)/);
+    assert.match(editor, /open\.remove\(\)/);
+    assert.match(editor, /host\.classList\.remove\('relation-editing'\)/);
+    assert.match(editor, /toggle\?\.setAttribute\('aria-expanded', 'false'\)/);
   });
 
   it('pide destino, tipo y explicación en un solo formulario', () => {
