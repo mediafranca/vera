@@ -7,6 +7,7 @@ import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
 import { graphBalance, graphBalanceNeedsLayout } from './balance.ts';
+import { inlineOpenGlyph } from './open-glyph.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -640,40 +641,7 @@ export function renderGraph(
       baseline = start.y;
     }
 
-    /*
-     * Del alto de media versal, y pegada.
-     *
-     * Feather dibuja dentro de un lienzo de 24 y esta flecha ocupa de 7 a 17;
-     * con el trazo y sus remates redondos, la tinta llega a doce de veinticuatro
-     * —justo la mitad del lienzo—, así que lo que se ve es el doble de lo que la
-     * cuenta ingenua diría. Pedida del alto de una versal salía un aspa al lado
-     * del nombre en vez de un signo dentro de él.
-     *
-     * Va a media versal y separada del texto por una nada. Es un diacrítico, no
-     * una segunda palabra: lo que tiene que decir —que ahí se entra— lo dice
-     * igual pequeña, y grande compite con el nombre, que es lo que de verdad hay
-     * que leer.
-     */
-    const glyph = fs * 0.35;
-    const canvas = glyph * 2.4;
-    /** Media tinta: el trazo llega a seis de los veinticuatro del lienzo. */
-    const ink = canvas / 4;
-    /*
-     * El aire entre la última letra y la tinta de la flecha, y el que el marco
-     * deja alrededor de ella.
-     *
-     * No son independientes: el borde izquierdo del marco cae en `gap - pad`
-     * desde el final del nombre, así que un marco más holgado se come la
-     * separación y termina pisando la última letra. Los dos números están
-     * elegidos juntos para que quede una nada visible entre el texto y el marco
-     * y la flecha siga leyéndose como parte del nombre.
-     */
-    const gap = fs * 0.32;
-    const pad = fs * 0.18;
-    const cx = endX + ink + gap;
-    // A media altura de la letra y no de la flecha: lo que la alinea con el
-    // nombre es el ojo de las minúsculas, no su propio tamaño.
-    const cy = baseline - fs * 0.3;
+    const glyph = inlineOpenGlyph(fs, endX, baseline);
 
     const opener = g
       .append("g")
@@ -686,10 +654,10 @@ export function renderGraph(
     opener
       .select("svg")
       .attr("class", "node-open-arrow")
-      .attr("width", canvas)
-      .attr("height", canvas)
-      .attr("x", cx - canvas / 2)
-      .attr("y", cy - canvas / 2)
+      .attr("width", glyph.size)
+      .attr("height", glyph.size)
+      .attr("x", glyph.x)
+      .attr("y", glyph.y)
       .attr("stroke", colors.hoverAccent);
 
     /*
@@ -704,12 +672,12 @@ export function renderGraph(
      * Va detrás del dibujo y con las esquinas apenas curvadas: lo que se
      * enciende es el sitio donde se va a pulsar, no un botón nuevo.
      */
-    const side = ink * 2 + pad * 2;
+    const side = glyph.size;
     const frame = opener
       .insert("rect", ":first-child")
       .attr("class", "node-open-frame")
-      .attr("x", cx - side / 2)
-      .attr("y", cy - side / 2)
+      .attr("x", glyph.frameX)
+      .attr("y", glyph.frameY)
       .attr("width", side)
       .attr("height", side)
       .attr("rx", side * 0.22)
@@ -723,13 +691,12 @@ export function renderGraph(
     // píxeles, y pedir puntería sobre una línea es pedir que no se use. Empieza
     // dentro de la última letra para que no haya ni un píxel muerto entre el
     // nombre y la flecha.
-    const reach = Math.max(canvas * 0.8, 16);
     opener
       .append("rect")
-      .attr("x", endX - fs * 0.2)
-      .attr("y", cy - reach / 2)
-      .attr("width", reach)
-      .attr("height", reach)
+      .attr("x", glyph.hitX)
+      .attr("y", glyph.hitY)
+      .attr("width", glyph.hitWidth)
+      .attr("height", glyph.hitHeight)
       .attr("fill", "transparent");
     opener
       .on("mouseenter", () => frame.attr("opacity", 1))
