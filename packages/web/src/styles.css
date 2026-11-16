@@ -9126,22 +9126,24 @@ html[data-working-slow='true']::after {
 }
 
 /* Cada renglón reúne destino, evidencia observada y declaración explícita. El
-   filete de una declaración contiene la relación completa: página, evidencia,
-   tipo y explicación. No pertenece sólo al outline que la desarrolla. */
+   filete reserva siempre su espacio en transparente: declarar o editar cambia
+   sólo el color, nunca la geometría. Cuando se enciende contiene la relación
+   completa —página, evidencia, tipo y explicación— y no sólo el outline. */
 .reference {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.4rem;
+  margin: .35rem 0;
+  padding: .15rem 0 .3rem .9rem;
+  border-left: 1px solid transparent;
 }
 
 .reference:is(.relation-declared, .relation-editing) {
-  margin: .35rem 0;
-  padding: .15rem 0 .3rem .9rem;
-  border-left: 1px solid color-mix(in srgb, var(--accent) 68%, var(--rule));
+  border-left-color: color-mix(in srgb, var(--accent) 68%, var(--rule));
 }
 
-.reference:is(.relation-declared, .relation-editing) .backlink {
+.reference .backlink {
   border-left: 0;
   padding-left: 0;
 }
