@@ -8077,6 +8077,7 @@ export function renderOutliner(
               ? `Declarar relación con ${row.title}`
               : `Editar relación con ${row.title}`;
             edit.setAttribute('aria-label', edit.title);
+            edit.setAttribute('aria-expanded', 'false');
             if (held !== undefined) edit.classList.add('explained');
             edit.addEventListener('click', (event) => {
               event.stopPropagation();
@@ -8214,7 +8215,15 @@ async function editRelation(
   notify: (message: string) => void,
   callbacks: OutlinerCallbacks,
 ): Promise<void> {
-  if (host.querySelector('.relation-ask') !== null) return;
+  const toggle = host.querySelector<HTMLButtonElement>('.relation-edit');
+  const open = host.querySelector<HTMLElement>(':scope > .relation-ask');
+  if (open !== null) {
+    open.remove();
+    host.classList.remove('relation-editing');
+    toggle?.setAttribute('aria-expanded', 'false');
+    toggle?.focus();
+    return;
+  }
 
   const asking = document.createElement('form');
   asking.className = 'relation-ask';
@@ -8271,6 +8280,8 @@ async function editRelation(
 
   asking.append(destination, meta, field, actions);
   host.append(asking);
+  host.classList.add('relation-editing');
+  toggle?.setAttribute('aria-expanded', 'true');
 
   const autosize = (): void => {
     field.style.height = 'auto';
@@ -8282,6 +8293,14 @@ async function editRelation(
   autosize();
 
   let settled = false;
+
+  const close = (): void => {
+    settled = true;
+    asking.remove();
+    host.classList.remove('relation-editing');
+    toggle?.setAttribute('aria-expanded', 'false');
+    toggle?.focus();
+  };
 
   const save = async (): Promise<void> => {
     if (settled) return;
@@ -8377,14 +8396,12 @@ async function editRelation(
     }
     if (event.key === 'Escape') {
       event.preventDefault();
-      settled = true;
-      asking.remove();
+      close();
     }
   });
   target.addEventListener('input', () => target.setCustomValidity(''));
   cancel.addEventListener('click', () => {
-    settled = true;
-    asking.remove();
+    close();
   });
 }
 
