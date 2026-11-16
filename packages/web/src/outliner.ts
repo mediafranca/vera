@@ -8005,7 +8005,7 @@ export function renderOutliner(
         const add = document.createElement('button');
         add.type = 'button';
         add.className = 'relation-add';
-        add.textContent = '+ Relación';
+        add.textContent = '+ Relacionar otra página';
         add.addEventListener('click', () => {
           void editRelation(section, null, undefined, page, toast, callbacks);
         });
@@ -8022,20 +8022,6 @@ export function renderOutliner(
           item.className = 'reference';
 
           const held = row.relation ?? undefined;
-          // Sólo la columna saliente expresa lo que esta página afirma. Una
-          // relación entrante se lee aquí, pero se edita desde su página origen.
-          if (!readOnly && gesture === 'followed_reference') {
-            const edit = document.createElement('button');
-            edit.type = 'button';
-            edit.className = 'relation-edit';
-            edit.textContent = held === undefined ? 'Declarar' : 'Editar';
-            edit.setAttribute('aria-label', `${edit.textContent} relación con ${row.title}`);
-            edit.addEventListener('click', (event) => {
-              event.stopPropagation();
-              void editRelation(item, row, held, page, toast, callbacks);
-            });
-            item.append(edit);
-          }
 
           const link = document.createElement('div');
           link.className = 'backlink';
@@ -8074,7 +8060,31 @@ export function renderOutliner(
             open();
           });
 
-          item.append(link);
+          const relationLine = document.createElement('div');
+          relationLine.className = 'relation-link-line';
+          relationLine.append(link);
+
+          // La pluma pertenece visualmente al vínculo que modifica. Sólo la
+          // columna saliente expresa lo que esta página afirma; lo entrante se
+          // edita desde su página origen.
+          if (!readOnly && gesture === 'followed_reference') {
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'relation-edit';
+            edit.innerHTML = icon('feather');
+            edit.title = held === undefined
+              ? `Declarar relación con ${row.title}`
+              : `Editar relación con ${row.title}`;
+            edit.setAttribute('aria-label', edit.title);
+            if (held !== undefined) edit.classList.add('explained');
+            edit.addEventListener('click', (event) => {
+              event.stopPropagation();
+              void editRelation(item, row, held, page, toast, callbacks);
+            });
+            relationLine.append(edit);
+          }
+
+          item.append(relationLine);
 
           const evidence = document.createElement('span');
           evidence.className = 'relation-evidence';

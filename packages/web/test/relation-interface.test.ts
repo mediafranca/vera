@@ -26,7 +26,10 @@ describe('superficie para crear y editar relaciones entre páginas', () => {
   it('concentra la autoría en un editor saliente y la oculta en sólo lectura', () => {
     assert.match(outliner, /if \(!readOnly && gesture === 'followed_reference'\)/);
     assert.match(outliner, /className = 'relation-edit'/);
+    assert.match(outliner, /edit\.innerHTML = icon\('feather'\)/);
+    assert.match(outliner, /relationLine\.append\(edit\)/);
     assert.match(outliner, /className = 'relation-add'/);
+    assert.match(outliner, /add\.textContent = '\+ Relacionar otra página'/);
     assert.doesNotMatch(outliner, /reference-explain|concept-formalize/);
   });
 
