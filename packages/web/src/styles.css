@@ -8999,8 +8999,7 @@ html[data-working-slow='true']::after {
 }
 
 .relation-ask-actions button,
-.relation-add,
-.relation-edit {
+.relation-add {
   appearance: none;
   border: 1px solid var(--rule);
   border-radius: .3rem;
@@ -9012,8 +9011,7 @@ html[data-working-slow='true']::after {
 }
 
 .relation-ask-actions button:hover,
-.relation-add:hover,
-.relation-edit:hover { color: var(--accent); border-color: var(--accent); }
+.relation-add:hover { color: var(--accent); border-color: var(--accent); }
 .relation-add { margin: 0 0 .65rem; }
 
 .relation-field {
@@ -9138,7 +9136,40 @@ html[data-working-slow='true']::after {
   gap: 0.4rem;
 }
 
+.relation-link-line {
+  display: flex;
+  align-items: flex-start;
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.relation-link-line .backlink {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.relation-edit {
+  appearance: none;
+  flex: none;
+  margin: .28rem .15rem 0 .2rem;
+  padding: .3rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  opacity: .72;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.relation-edit svg { width: 1rem; height: 1rem; }
+.relation-edit:hover,
+.relation-edit:focus-visible,
+.relation-edit.explained { color: var(--accent); opacity: 1; }
+
 .relation-evidence {
+  flex-basis: 100%;
+  margin-left: .6rem;
   color: var(--text-dim);
   font: .68rem var(--font-mono);
 }
