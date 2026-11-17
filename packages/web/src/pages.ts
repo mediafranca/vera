@@ -7,6 +7,7 @@
 
 import { api, type SubmitResult } from './api.ts';
 import { today } from './autocomplete.ts';
+import { isDateTitle } from '@vera/core';
 
 /**
  * Cuándo nació una página, dicho como Vera dice las fechas.
@@ -21,6 +22,16 @@ import { today } from './autocomplete.ts';
  */
 export const BORN_KEY = 'fecha de creación';
 
+/** La fecha inicial distingue el día documentado del día en que nació la página. */
+export function initialDateProperty(
+  title: string,
+  bornOn = today(),
+): { key: string; value: string } {
+  return isDateTitle(title)
+    ? { key: 'fecha', value: title.trim() }
+    : { key: BORN_KEY, value: bornOn };
+}
+
 /**
  * Crear una página, con lo que Vera pone en toda página que nace.
  *
@@ -30,9 +41,9 @@ export const BORN_KEY = 'fecha de creación';
  * su número de secuencia. Si el segundo falla, queda una página sin sello, que
  * es algo que se puede mirar y arreglar; nunca media página.
  *
- * El sello no se pone en la bitácora del propio día: una página llamada
- * `2026-08-07` que dijera «fecha de creación: 2026-08-07» se estaría señalando a
- * sí misma, y una propiedad que repite el título no informa de nada.
+ * Una bitácora es la excepción: su `fecha` no dice cuándo se creó el registro,
+ * sino qué día documenta. Sale del título canónico y se escribe al nacer, sin
+ * convertir una certeza estructural en una pregunta posterior.
  */
 export async function createPage(
   title: string,
@@ -41,14 +52,12 @@ export async function createPage(
   const born = await api.submit({ kind: 'create_page', title, visibility });
   if (born.status === 'rejected') return born;
 
-  const day = today();
-  if (title.trim() !== day) {
-    await api.submit({
-      kind: 'set_property',
-      page: born.subjectId,
-      propertyKey: BORN_KEY,
-      propertyValue: day,
-    });
-  }
+  const date = initialDateProperty(title);
+  await api.submit({
+    kind: 'set_property',
+    page: born.subjectId,
+    propertyKey: date.key,
+    propertyValue: date.value,
+  });
   return born;
 }
