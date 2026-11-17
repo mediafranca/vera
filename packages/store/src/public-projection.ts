@@ -178,7 +178,13 @@ export const p5FrameDocument = `<!doctype html>
 <style>:root{color-scheme:light dark;--bg:transparent;--text:currentColor;--font-body:system-ui,sans-serif}html,body{margin:0;min-height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:var(--text-size,16px)/var(--line-height,1.55) var(--font-body)}canvas{display:block;max-width:100%;height:auto!important}html[data-presentation="true"],html[data-presentation="true"] body{width:100%;height:100%}html[data-presentation="true"] canvas{width:100%!important;height:auto!important;max-width:none;max-height:100%;object-fit:contain}pre{white-space:pre-wrap;color:var(--accent,#a00);padding:1rem}</style>
 <script src="/p5.min.js"></script></head><body><script>
 const veraFrame = 'vera-executable-frame';
-const report = () => parent.postMessage({ type: veraFrame, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) }, '*');
+let reportedHeight = -1;
+const report = () => {
+  const height = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0);
+  if (height === reportedHeight) return;
+  reportedHeight = height;
+  parent.postMessage({ type: veraFrame, height }, '*');
+};
 addEventListener('message', event => {
   if (event.source !== parent || event.data?.type !== veraFrame) return;
   const appearance = event.data.appearance;
@@ -235,15 +241,24 @@ const publicExecutableFrames = `<script>
   };
   const frames = () => [...document.querySelectorAll('iframe[data-executable-frame]')];
   const send = frame => frame.contentWindow?.postMessage({ type, appearance: appearance() }, '*');
+  const wired = new WeakSet();
+  const wire = frame => {
+    if (!wired.has(frame)) {
+      wired.add(frame);
+      frame.addEventListener('load', () => send(frame));
+    }
+    send(frame);
+  };
   addEventListener('message', event => {
     if (event.data?.type !== type) return;
     const frame = frames().find(one => one.contentWindow === event.source);
     if (!frame) return;
     const asked = Number.isFinite(event.data.height) ? event.data.height : 24;
-    frame.style.height = Math.min(2400, Math.max(24, Math.ceil(asked))) + 'px';
-    send(frame);
+    const height = Math.min(2400, Math.max(24, Math.ceil(asked))) + 'px';
+    if (frame.style.height !== height) frame.style.height = height;
   });
   addEventListener('vera-public-appearance', () => frames().forEach(send));
+  frames().forEach(wire);
 })();
 </script>`;
 

@@ -508,6 +508,13 @@ describe('renderMarkdown', () => {
       assert.ok(!html.includes('script-src &#39;nonce-'));
     });
 
+    it('reporta una talla sólo cuando cambia y no alimenta un eco con Vera', () => {
+      const bridge = executableFrameBridge();
+      assert.match(bridge, /let reportedHeight = -1/);
+      assert.match(bridge, /if \(height === reportedHeight\) return/);
+      assert.match(bridge, /parent\.postMessage\(\{ type: veraFrame, height \}/);
+    });
+
     it('respeta la proporción rectangular declarada por el SVG', () => {
       const html = renderMarkdown('```svg\n<svg viewBox="0 0 510 240"></svg>\n```');
       assert.match(html, /aspect-ratio:510 \/ 240;height:auto/);
