@@ -208,6 +208,15 @@ contract AuthoredExecutableBlocks {
         -- todo el alto disponible antes de ejecutarlo y nunca menos de 640 píxeles,
         -- para que esa medida describa un espacio útil desde el primer cuadro.
 
+    @invariant FrameExchangeConverges
+        -- Medir y prestar apariencia forman un protocolo finito, no un pulso
+        -- permanente entre documentos. El recinto informa su alto sólo cuando
+        -- cambia; Vera ajusta la caja sólo si la medida efectiva difiere y no
+        -- responde a cada informe reenviando la misma apariencia. Cambiar tema,
+        -- entrar en presentación o cargar de nuevo el recinto sí vuelve a
+        -- sincronizarlo, pero una vista asentada deja de intercambiar mensajes y
+        -- no consume CPU ni memoria por el mero hecho de permanecer abierta.
+
     @invariant P5TravelsWithVera
         -- El runtime p5.js que ejecuta un bloque `/p5js` viene incluido con Vera.
         -- Presentar o editar el sketch funciona sin red y no contacta un CDN ni

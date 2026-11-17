@@ -1005,13 +1005,19 @@ function executableBlock(language: string, source: string, options: RenderOption
  * La prueba calcula este valor desde `executableFrameBridge()`: si el puente
  * cambia, la CSP no puede quedar silenciosamente apuntando al programa viejo.
  */
-export const SVG_EXECUTABLE_BRIDGE_SHA256 = 'Lrm+hc3dvXxJBJsHCImB6K1kaMzKFd2PVS1CjIOzlug=';
+export const SVG_EXECUTABLE_BRIDGE_SHA256 = 'LbJon7tuuQgMlo/ZeY8K8IZk0eSvY2fjnPqCUY60GUg=';
 
 /** Puente mínimo del recinto: recibe apariencia y sólo devuelve su talla. */
 export function executableFrameBridge(): string {
   return `
 const veraFrame = ${JSON.stringify('vera-executable-frame')};
-const report = () => parent.postMessage({ type: veraFrame, height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0) }, '*');
+let reportedHeight = -1;
+const report = () => {
+  const height = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0);
+  if (height === reportedHeight) return;
+  reportedHeight = height;
+  parent.postMessage({ type: veraFrame, height }, '*');
+};
 addEventListener('message', event => {
   if (event.source !== parent || event.data?.type !== veraFrame) return;
   const appearance = event.data.appearance;

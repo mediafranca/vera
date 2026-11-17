@@ -80,6 +80,17 @@ function send(frame: HTMLIFrameElement): void {
   }, '*'));
 }
 
+const wiredFrames = new WeakSet<HTMLIFrameElement>();
+
+/** La apariencia viaja al cargar y al sincronizar, no como eco de la talla. */
+function wireFrame(frame: HTMLIFrameElement): void {
+  if (!wiredFrames.has(frame)) {
+    wiredFrames.add(frame);
+    frame.addEventListener('load', () => send(frame));
+  }
+  send(frame);
+}
+
 const wiredMaps = new WeakSet<HTMLIFrameElement>();
 
 function sendMapAppearance(frame: HTMLIFrameElement): void {
@@ -146,7 +157,7 @@ function wireHtmlControls(root: ParentNode = document): void {
 export function syncExecutableFrames(): void {
   wireHtmlControls();
   wireEmbeddedMaps();
-  for (const frame of frames()) send(frame);
+  for (const frame of frames()) wireFrame(frame);
 }
 
 addEventListener('vera-sync-executable-frames', syncExecutableFrames);
@@ -159,8 +170,8 @@ addEventListener('message', (event: MessageEvent<unknown>) => {
   const asked = typeof data.height === 'number' && Number.isFinite(data.height) ? data.height : MIN_HEIGHT;
   const fillsAvailableHeight = frame.closest('.executable-window-height') !== null;
   const minimum = fillsAvailableHeight ? Math.max(640, window.innerHeight) : MIN_HEIGHT;
-  frame.style.height = `${Math.min(MAX_HEIGHT, Math.max(minimum, Math.ceil(asked)))}px`;
-  send(frame);
+  const height = `${Math.min(MAX_HEIGHT, Math.max(minimum, Math.ceil(asked)))}px`;
+  if (frame.style.height !== height) frame.style.height = height;
 });
 
 addEventListener('resize', () => {

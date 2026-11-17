@@ -185,12 +185,16 @@ describe('proyección pública', () => {
     assert.ok(summary.files.includes('p5-frame.html'));
     assert.ok(readFileSync(join(target, 'p5.min.js')).byteLength > 100_000);
     const frame = readFileSync(join(target, 'p5-frame.html'), 'utf8');
+    assert.match(frame, /let reportedHeight = -1/);
+    assert.match(frame, /if \(height === reportedHeight\) return/);
     assert.match(frame, /new ResizeObserver\(report\)\.observe\(document\.body\)/);
     assert.match(frame, /new MutationObserver\(report\)\.observe\(document\.body/);
     assert.match(frame, /dataset\.presentation = event\.data\.presentation === true/);
     assert.match(frame, /html\[data-presentation="true"\] canvas\{width:100%!important;height:auto!important;max-width:none;max-height:100%/);
     const publishedPage = readFileSync(join(target, 'pagina-publica', 'index.html'), 'utf8');
     assert.match(publishedPage, /src="\/p5-frame\.html#/);
+    assert.match(publishedPage, /frame\.addEventListener\('load', \(\) => send\(frame\)\)/);
+    assert.doesNotMatch(publishedPage, /frame\.style\.height = height;\s*send\(frame\)/);
     for (const token of [
       '--bg', '--bg-raised', '--text', '--text-dim', '--rule', '--accent',
       '--node-central', '--node-text', '--link-stroke', '--link-in', '--link-out',
