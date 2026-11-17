@@ -1097,9 +1097,16 @@ describe('POST /captures', () => {
     assert.equal(first.status, 202, JSON.stringify(first.json));
     assert.equal(second.status, 200, JSON.stringify(second.json));
     assert.equal(second.json['status'], 'duplicate');
-    const page = await get(`/pages/${encodeURIComponent(String(first.json['page']))}`) as { blocks: { content: string }[] };
+    const page = await get(`/pages/${encodeURIComponent(String(first.json['page']))}`) as {
+      title: string;
+      properties: { key: string; value: string }[];
+      blocks: { content: string }[];
+    };
     assert.equal(page.blocks.filter((block) => block.content === 'Fragmento capturado').length, 1);
     assert.ok(page.blocks.some((block) => block.content.includes('https://example.com/articulo')));
+    assert.ok(page.properties.some((property) =>
+      property.key === 'fecha' && property.value === page.title),
+    'la captura creó una bitácora sin la fecha del día documentado');
 
     const history = await get(`/blocks/${encodeURIComponent(String(first.json['block']))}/history`) as {
       origin: { kind: string; route: string; source: string; sourceKind: string; capturedAt: string } | null;

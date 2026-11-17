@@ -133,6 +133,15 @@ rule TheDayOpensWhenSomethingArrives {
                 key: "type",
                 value: "bitácora"
             )
+            -- La fecha documentada no es la fecha en que el registro fue
+            -- creado. Es la identidad del día y, por tanto, se completa desde
+            -- el mismo título sin pedir una decisión que Vera ya conoce.
+            core/PropertyAssignment.created(
+                graph: graph,
+                page: page,
+                key: "date",
+                value: date
+            )
         core/Block.created(
             page: DailyLog{graph: graph, date: date}.page,
             parent: null,
@@ -257,6 +266,15 @@ invariant OneDayPerDate {
 invariant ADayIsItsTitle {
     for day in DailyLogs:
         day.page.title = day.date
+}
+
+invariant ADayCarriesItsDate {
+    for day in DailyLogs:
+        exists core/PropertyAssignment{
+            page: day.page,
+            key: "date",
+            value: day.date
+        }
 }
 
 -- The converse, which is what keeps the corpus from growing a second, silent kind

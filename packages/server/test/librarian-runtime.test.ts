@@ -764,6 +764,8 @@ describe('runtime embebido de la bibliotecaria', () => {
       assert.ok(daily, 'Lucienne no creó su apartado diario');
       assert.ok(running.vera.graph.propertiesOf(daily.id)
         .some((property) => property.key === 'tipo' && property.value === 'bitácora'));
+      assert.ok(running.vera.graph.propertiesOf(daily.id)
+        .some((property) => property.key === 'fecha' && property.value === daily.title));
       const root = running.vera.graph.blocksOf(daily.id)
         .find((block) => block.content === '**Bitácora de Lucienne:**')!;
       const inscription = running.vera.graph.blocksOf(daily.id)

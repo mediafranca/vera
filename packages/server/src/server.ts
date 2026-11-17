@@ -1301,6 +1301,14 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         );
         if (typed !== null) return typed;
       }
+      if (!trial.propertiesOf(page.id).some((property) =>
+        titleKey(property.key) === titleKey('fecha') && property.value === day)) {
+        const dated = apply(
+          { kind: 'set_property', page: page.id, propertyKey: 'fecha', propertyValue: day },
+          `librarian:${turn.id}:daily-date`,
+        );
+        if (dated !== null) return dated;
+      }
       const rootId = `block:librarian-daily:${day}:${agent.slice('participant:'.length)}`;
       let root = trial.block(rootId);
       if (root !== undefined && (root.page !== page.id || root.parent !== null || root.content.trim() !== dailyHeading)) {
@@ -3519,6 +3527,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const changes: Array<{ originId: string; change: Change }> = [];
       if (existingDay === undefined) {
         changes.push({ originId: `${origin}:page`, change: { kind: 'create_page', stableId: pageId, title: day, visibility: 'private' } });
+      }
+      if (existingDay === undefined || !graph.propertiesOf(existingDay.id).some((property) =>
+        titleKey(property.key) === titleKey('fecha') && property.value === day)) {
+        changes.push({ originId: `${origin}:date`, change: { kind: 'set_property', page: pageId, propertyKey: 'fecha', propertyValue: day } });
       }
       const position = existingDay === undefined ? 0 : graph.blocksOf(pageId).filter((block) => block.parent === null).length;
       const safeTitle = title.replace(/\]/g, '\\]');
