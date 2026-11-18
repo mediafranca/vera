@@ -316,6 +316,12 @@ rule DrawingOpensAWholeScreen {
         -- retira trazos. No hay paleta, selector de color ni regla de grosores:
         -- el color sigue viniendo del texto y el grosor, de la presión.
 
+    @invariant PrecisionNeverHidesThePointer
+        -- Lápiz y goma conservan una referencia precisa y visible bajo la mano.
+        -- Un stylus informa mejor que un ratón dónde toca, pero no dónde va a
+        -- tocar: ocultar el cursor obliga a llegar a ciegas y borrar no justifica
+        -- perder esa referencia.
+
     @invariant ShiftMakesOneStraightStroke
         -- Si Shift participa mientras se hace un trazo, éste conserva sólo el
         -- punto donde se apoyó y el punto donde se levantó. Mientras la mano se
