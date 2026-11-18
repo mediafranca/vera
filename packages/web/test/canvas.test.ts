@@ -114,4 +114,14 @@ describe('los controles del lienzo', () => {
     assert.match(styles, /\.canvas-tool \{[\s\S]*?width: 2\.75rem;[\s\S]*?height: 2\.75rem;/);
     assert.match(styles, /\.canvas-controls > \.canvas-tool \+ \.canvas-tool \{\s*border-left:/);
   });
+
+  it('mantiene una referencia precisa también al borrar con stylus', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    const canvasStyles = styles.slice(
+      styles.indexOf('/* --- Dibujar a mano'),
+      styles.indexOf('/* --- La historia de un bloque'),
+    );
+    assert.match(canvasStyles, /\.canvas-sheet \{[\s\S]*?cursor: crosshair;/);
+    assert.doesNotMatch(canvasStyles, /cursor:\s*none/);
+  });
 });

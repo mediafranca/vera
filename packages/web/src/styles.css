@@ -9615,8 +9615,8 @@ html[data-working-slow='true']::after {
 
 .canvas-sheet {
   display: block;
-  /* El cursor de cruz dice que aquí se dibuja; en una tableta no se ve ninguno
-     y lo dice el propio lienzo vacío. */
+  /* La cruz conserva una referencia precisa bajo ratón o lápiz. Un stylus no
+     vuelve prescindible el puntero: ocultarlo hace que la mano llegue a ciegas. */
   cursor: crosshair;
 }
 
@@ -9688,10 +9688,6 @@ html[data-working-slow='true']::after {
 .canvas-button.done svg {
   width: 1.1rem;
   height: 1.1rem;
-}
-
-.canvas-sheet.erasing {
-  cursor: none;
 }
 
 /*
