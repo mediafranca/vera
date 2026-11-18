@@ -7,6 +7,14 @@
 // @invariant TheMachineNeverPassesForAHand: la transcripción llega escrita por
 // la máquina y firmada como tal; deja de estarlo en cuanto alguien la edita.
 
+import {
+  createVoiceOutbox,
+  durableVoiceStore,
+  identityOf,
+  type PendingRecording,
+  type VoiceOutbox,
+} from './voice-outbox.ts';
+
 export interface Recording {
   id: string;
   audioHash: string | null;
@@ -21,6 +29,10 @@ export interface Recording {
   evidence: { reference: string; capturedAt: number };
   capturedBy: string;
   capturedAt: number;
+  /** Reproductor de los bytes que todavía sólo viven en este aparato. */
+  localUrl?: string;
+  /** Distingue una grabación durable local de una ya canónica. */
+  pending?: boolean;
 }
 
 /**
@@ -261,20 +273,136 @@ async function ask<T>(path: string, options: RequestInit = {}): Promise<T | { er
   }
 }
 
+let voiceOutbox: VoiceOutbox | null = null;
+let voiceDurable = false;
+let drainingVoice = false;
+
+async function prepareVoice(): Promise<{ durable: boolean }> {
+  if (voiceOutbox !== null) return { durable: voiceDurable };
+  const opened = await durableVoiceStore();
+  voiceOutbox = createVoiceOutbox(opened.store);
+  await voiceOutbox.restore();
+  voiceDurable = opened.durable;
+  return { durable: opened.durable };
+}
+
+function localRecording(pending: PendingRecording): Recording {
+  return {
+    id: pending.id,
+    audioHash: pending.hash,
+    mediaType: pending.mediaType,
+    durationMs: pending.durationMs,
+    transcript: null,
+    placedInBlock: pending.placedInBlock,
+    placedInPage: pending.placedInPage,
+    evidence: {
+      reference: 'voz guardada en este dispositivo; procedencia pendiente de sincronizar',
+      capturedAt: pending.capturedAt,
+    },
+    capturedBy: 'participant:local',
+    capturedAt: pending.capturedAt,
+    localUrl: URL.createObjectURL(pending.audio),
+    pending: true,
+  };
+}
+
+async function sendRecording(pending: PendingRecording): Promise<Recording | { error: string }> {
+  return ask<Recording>('/recordings', {
+    method: 'POST',
+    headers: {
+      'content-type': pending.mediaType,
+      'x-duration-ms': String(Math.round(pending.durationMs)),
+      'x-in-block': pending.placedInBlock,
+      'x-captured-at': String(pending.capturedAt),
+    },
+    body: pending.audio,
+  });
+}
+
+async function drainVoice(): Promise<number> {
+  await prepareVoice();
+  if (drainingVoice || voiceOutbox === null) return 0;
+  drainingVoice = true;
+  let settled = 0;
+  try {
+    for (const pending of voiceOutbox.pending()) {
+      await voiceOutbox.mark(pending.id, 'sending');
+      const canonical = await sendRecording(pending);
+      if ('error' in canonical) {
+        await voiceOutbox.mark(pending.id, 'local');
+        return settled;
+      }
+      await voiceOutbox.settle(pending.id);
+      settled += 1;
+    }
+    return settled;
+  } finally {
+    drainingVoice = false;
+  }
+}
+
 export const voice = {
+  /** Abre la bandeja antes de ofrecer el micrófono. */
+  prepare: prepareVoice,
+
   /**
-   * Sube el audio y lo pega a un bloque. Nada se transcribe sin pedirlo.
+   * Conserva el audio aquí y lo pega al bloque; la subida viene después.
    */
-  capture: (audio: Blob, durationMs: number, inBlock?: string) =>
-    ask<Recording>('/recordings', {
-      method: 'POST',
-      headers: {
-        'content-type': audio.type || 'audio/webm',
-        'x-duration-ms': String(Math.round(durationMs)),
-        ...(inBlock === undefined ? {} : { 'x-in-block': inBlock }),
-      },
-      body: audio,
-    }),
+  async capture(audio: Blob, durationMs: number, inBlock?: string, inPage?: string): Promise<Recording | { error: string }> {
+    // Una pregunta hablada al bibliotecario se transcribe inmediatamente y no
+    // tiene todavía un bloque que pueda sostenerla offline.
+    if (inBlock === undefined || inPage === undefined) {
+      return ask<Recording>('/recordings', {
+        method: 'POST',
+        headers: {
+          'content-type': audio.type || 'audio/webm',
+          'x-duration-ms': String(Math.round(durationMs)),
+          'x-captured-at': String(Date.now()),
+        },
+        body: audio,
+      });
+    }
+    await prepareVoice();
+    if (voiceOutbox === null) return { error: 'no se pudo abrir la memoria local de grabaciones' };
+    const identity = await identityOf(audio);
+    const pending: PendingRecording = {
+      ...identity,
+      audio,
+      mediaType: audio.type || 'audio/webm',
+      durationMs: Math.round(durationMs),
+      placedInBlock: inBlock,
+      placedInPage: inPage,
+      capturedAt: Date.now(),
+      status: 'local',
+    };
+    try {
+      await voiceOutbox.remember(pending);
+    } catch {
+      return { error: 'el navegador no pudo conservar la grabación en este dispositivo' };
+    }
+    const local = localRecording(pending);
+    void drainVoice();
+    return local;
+  },
+
+  /** Reintenta después de que los bloques pendientes hayan llegado al corpus. */
+  drain: drainVoice,
+
+  /** Lo grabado aquí vuelve a aparecer aunque la PWA se haya cerrado. */
+  async pendingForPage(page: string): Promise<Recording[]> {
+    await prepareVoice();
+    return (voiceOutbox?.pending() ?? [])
+      .filter((pending) => pending.placedInPage === page)
+      .map(localRecording);
+  },
+
+  /** Retira una grabación que todavía no salió de este aparato. */
+  async discardPending(id: string): Promise<boolean> {
+    await prepareVoice();
+    if (voiceOutbox === null || !voiceOutbox.pending().some((pending) => pending.id === id)) return false;
+    await voiceOutbox.settle(id);
+    return true;
+  },
 
   /**
    * Transcribe y escribe el texto del bloque. Volver a llamarla lo reemplaza y
@@ -316,5 +444,6 @@ export const voice = {
 
 /** La URL del audio, para oírlo desde donde se lee lo que dice. */
 export function audioUrl(recording: Recording): string | null {
+  if (recording.localUrl !== undefined) return recording.localUrl;
   return recording.audioHash === null ? null : `/media/${recording.audioHash}`;
 }

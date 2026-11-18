@@ -1494,6 +1494,8 @@ export function createRecording(
     durationMs: number | null;
     evidence: { reference: string; capturedAt: number };
     capturedBy: string;
+    /** Cuándo se habló, que puede preceder a la vuelta del servidor. */
+    capturedAt?: number;
     /**
      * El bloque que le guarda el lugar, cuando se habló dentro de un documento.
      * Sin él la grabación existe por sí sola y se asentará donde se decida.
@@ -1502,7 +1504,7 @@ export function createRecording(
   },
 ): Recording | { error: string } {
   const id = `recording:${input.audioHash.slice(0, 16)}`;
-  const at = Date.now();
+  const at = input.capturedAt ?? Date.now();
   const place = input.placedInBlock ?? null;
 
   if (place !== null) {

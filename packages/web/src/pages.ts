@@ -22,6 +22,11 @@ import { isDateTitle } from '@vera/core';
  */
 export const BORN_KEY = 'fecha de creación';
 
+/** La misma fecha nombra el mismo día en todos los aparatos. */
+export function dailyPageId(date: string): string {
+  return `page:day:${date.trim()}`;
+}
+
 /** La fecha inicial distingue el día documentado del día en que nació la página. */
 export function initialDateProperty(
   title: string,
@@ -48,8 +53,9 @@ export function initialDateProperty(
 export async function createPage(
   title: string,
   visibility: 'private' | 'public' = 'private',
+  stableId?: string,
 ): Promise<SubmitResult> {
-  const born = await api.submit({ kind: 'create_page', title, visibility });
+  const born = await api.submit({ kind: 'create_page', title, visibility, stableId });
   if (born.status === 'rejected') return born;
 
   const date = initialDateProperty(title);

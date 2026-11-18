@@ -607,6 +607,23 @@ describe('una grabación con lugar en la escritura', () => {
     store.close();
   });
 
+  it('conserva la hora en que se habló aunque el servidor vuelva después', () => {
+    const { store, write, page } = withPage();
+    const block = write({ kind: 'create_block', page, parent: null, position: 0, content: '' });
+    const capturedAt = 1_795_000_000_000;
+    const recording = createRecording(store, {
+      ...spoken,
+      capturedAt,
+      evidence: { ...spoken.evidence, capturedAt },
+      placedInBlock: block,
+    });
+    assert.ok(!('error' in recording));
+    if ('error' in recording) return;
+    assert.equal(recording.capturedAt, capturedAt);
+    assert.equal(recording.evidence.capturedAt, capturedAt);
+    store.close();
+  });
+
   it('el catálogo no llama huérfano al audio colocado en un bloque', () => {
     const { store, write, page } = withPage();
     const block = write({ kind: 'create_block', page, parent: null, position: 0, content: '' });

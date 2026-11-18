@@ -32,6 +32,22 @@ export interface Replica {
 }
 
 /**
+ * Una página que todavía sólo existe como intención local.
+ *
+ * La bitácora de hoy puede empezar mientras el servidor está caído. En ese
+ * instante no hay una PageView canónica con la cual sembrar, pero sí una
+ * identidad estable que este aparato acaba de acuñar. La réplica vacía permite
+ * aplicar `create_page` y todo lo que nace debajo por el mismo camino durable
+ * que una edición ordinaria.
+ */
+export function empty(page: string): Replica {
+  const graph = VeraGraph.create({ name: 'local' });
+  graph.addParticipant({ id: LOCAL, name: 'quien escribe', kind: 'human' });
+  graph.admit(LOCAL);
+  return { page, graph };
+}
+
+/**
  * Siembra una réplica con la página que el servidor entregó.
  *
  * Se replantan los bloques con la identidad que ya tienen, que es lo que hace
@@ -40,9 +56,8 @@ export interface Replica {
  * orden se conserva aunque la siembra no lo respetara.
  */
 export function seed(page: PageView): Replica {
-  const graph = VeraGraph.create({ name: 'local' });
-  graph.addParticipant({ id: LOCAL, name: 'quien escribe', kind: 'human' });
-  graph.admit(LOCAL);
+  const replica = empty(page.id);
+  const { graph } = replica;
 
   let at = 0;
   const submit = (change: Change): void => {
@@ -113,7 +128,7 @@ export function seed(page: PageView): Replica {
     submit({ kind: 'set_property', page: page.id, propertyKey: one.key, propertyValue: one.value });
   }
 
-  return { page: page.id, graph };
+  return replica;
 }
 
 /** Lo que sale de aplicar un cambio en casa. */

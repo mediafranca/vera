@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyLocally, blockPropertiesOf, blocksOf, pagePropertiesOf, seed } from '../src/replica.ts';
+import { applyLocally, blockPropertiesOf, blocksOf, empty, pagePropertiesOf, seed } from '../src/replica.ts';
 import type { PageView } from '../src/api.ts';
 
 const view = (overrides: Partial<PageView> = {}): PageView =>
@@ -141,6 +141,20 @@ describe('sembrar la réplica', () => {
 });
 
 describe('aplicar en casa', () => {
+  it('un día puede nacer en una réplica sin entrega del servidor', () => {
+    const replica = empty('page:day:2026-11-18');
+    const page = applyLocally(replica, {
+      kind: 'create_page', title: '2026-11-18', visibility: 'private', stableId: replica.page,
+    }, 'local:day');
+    assert.equal(page.kind, 'applied');
+    const block = applyLocally(replica, {
+      kind: 'create_block', page: replica.page, parent: null, position: 0,
+      content: 'Alexei está caído y esto queda aquí', stableId: 'block:offline',
+    }, 'local:block');
+    assert.equal(block.kind, 'applied');
+    assert.equal(blocksOf(replica)[0]?.content, 'Alexei está caído y esto queda aquí');
+  });
+
   it('tabular un padre lleva el mismo subárbol plegado o desplegado', () => {
     const blocks: PageView['blocks'] = [
       { stableId: 'block:a', parent: null, position: 0, content: 'encima' },

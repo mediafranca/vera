@@ -59,6 +59,18 @@ contract MaximallyFluidLocalFirstWorkspace {
     @invariant SilenceNeverPretendsToBeSuccess
         -- The participant can distinguish local, synchronising, synchronised, offline,
         -- rejected and conflicted work without inspecting logs or guessing from delay.
+
+    @invariant AnUnseenPageCanBeginHere
+        -- A page that does not yet exist canonically may begin in an available
+        -- local replica. Creating today's journal is not a special permission
+        -- granted by the server: page, properties and first block become durable
+        -- on this device and enter the same ordered outbox as every other gesture.
+
+    @invariant EqualLocalPageIdentityConverges
+        -- Two devices that independently begin the same semantic page use the
+        -- same stable identity. When title, visibility and identity agree, the
+        -- canonical log recognises one creation and accepts both devices' later
+        -- blocks beneath it; it never splits one day into parallel pages.
 }
 
 ------------------------------------------------------------
@@ -421,6 +433,33 @@ rule OpenWorkspaceWithoutTheServer {
         -- checking health, refreshing the index and enriching derived relations happen
         -- behind that reading. Connectivity is not local-first merely because it will
         -- eventually time out.
+}
+
+rule BeginUnseenPageWithoutTheServer {
+    when: CreatePageLocally(replica, participant, page, title, visibility)
+
+    requires: replica.availability = available
+    requires: page = stable_local_identity(title)
+    requires: not exists core/Page{graph: replica.graph, id: page}
+
+    ensures:
+        let pending = PendingChange.created(
+            replica: replica,
+            origin_id: fresh_origin(),
+            change: create_page(page, title, visibility),
+            channel: typed_text,
+            evidence: null,
+            status: local,
+            canonical_sequence: null,
+            rejection_reason: null
+        )
+        LocalProjectionApplied(replica: replica, pending: pending)
+        LocalChangeBecameDurable(pending: pending)
+
+    @guidance
+        -- The outbox must be restored before any creation control is offered.
+        -- Otherwise a fast hand can write during IndexedDB startup and receive
+        -- local feedback for work that will disappear when the PWA closes.
 }
 
 ------------------------------------------------------------
