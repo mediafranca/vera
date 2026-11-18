@@ -139,6 +139,13 @@ contract SpokenContent {
         -- writing cursor exists, both capture into that position; the toolbar
         -- never diverts speech to the end of today's journal. Without a writing
         -- cursor Vera asks for one instead of choosing a hidden destination.
+
+    @invariant CapturingDoesNotRequireTheServer
+        -- Stopping the microphone first writes the audio bytes, their content
+        -- identity, capture time and destination block into durable storage on
+        -- this device. The recording is immediately audible there and survives
+        -- closing the PWA. Upload and transcription wait for the canonical server;
+        -- capture itself never does.
 }
 
 contract AppellationOfOrigin {

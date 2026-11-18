@@ -7251,6 +7251,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
         const mediaType = String(request.headers['content-type'] ?? 'audio/webm').split(';')[0] ?? 'audio/webm';
         const duration = Number(request.headers['x-duration-ms'] ?? '');
+        const declaredCapture = Number(request.headers['x-captured-at'] ?? '');
+        const capturedAt = Number.isFinite(declaredCapture) && declaredCapture > 0
+          ? Math.round(declaredCapture)
+          : Date.now();
         // El bloque donde se estaba escribiendo cuando se habló, si se habló
         // dentro de un documento. Va en una cabecera porque el cuerpo son los
         // bytes del audio y no cabe nada más.
@@ -7283,9 +7287,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           durationMs: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null,
           evidence: {
             reference: `speaker:${owner.id} (asumido, sin autenticación)`,
-            capturedAt: at,
+            capturedAt,
           },
           capturedBy: owner.id,
+          capturedAt,
           placedInBlock: inBlock === '' ? null : inBlock,
         });
 

@@ -111,6 +111,48 @@ describe('entity fields', () => {
   });
 });
 
+describe('creación convergente de una página local', () => {
+  it('reconoce la misma identidad y significado desde otro aparato', () => {
+    const graph = inhabitedGraph();
+    const change = {
+      kind: 'create_page' as const,
+      title: '2026-11-18',
+      visibility: 'private' as const,
+      stableId: 'page:day:2026-11-18',
+    };
+    const first = graph.submitOperation({
+      originId: 'phone:a', participant: OWNER, channel: 'typed_text', change,
+    });
+    const second = graph.submitOperation({
+      originId: 'phone:b', participant: OWNER, channel: 'typed_text', change,
+    });
+    assert.equal(first.status, 'applied');
+    assert.equal(second.status, 'duplicate');
+    assert.equal(graph.pages().filter((page) => page.title === '2026-11-18').length, 1);
+  });
+
+  it('no confunde una identidad igual con una página distinta', () => {
+    const graph = inhabitedGraph();
+    graph.submitOperation({
+      originId: 'phone:a', participant: OWNER, channel: 'typed_text',
+      change: {
+        kind: 'create_page', title: '2026-11-18', visibility: 'private',
+        stableId: 'page:day:2026-11-18',
+      },
+    });
+    const other = graph.submitOperation({
+      originId: 'phone:b', participant: OWNER, channel: 'typed_text',
+      change: {
+        kind: 'create_page', title: 'otra cosa', visibility: 'private',
+        stableId: 'page:day:2026-11-18',
+      },
+    });
+    assert.deepEqual(other, {
+      status: 'rejected', reason: 'a page already holds the stable id page:day:2026-11-18',
+    });
+  });
+});
+
 describe('linaje de contribución por revisión', () => {
   it('conserva la mano, la relación y la fuente sin reescribir revisiones anteriores', () => {
     const graph = inhabitedGraph();

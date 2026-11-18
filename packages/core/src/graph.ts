@@ -622,6 +622,29 @@ export class VeraGraph {
       return { status: 'duplicate', operation: seen };
     }
 
+    /*
+     * Dos aparatos pueden crear el mismo día mientras el servidor no está.
+     * La bitácora acuña una identidad determinista a partir de la fecha. Cuando
+     * esa misma identidad vuelve con el mismo título y visibilidad, reconoce la
+     * creación ya registrada. La misma identidad con otro significado conserva
+     * el rechazo ordinario.
+     */
+    if (input.change.kind === 'create_page' && input.change.stableId !== undefined) {
+      const page = this.#pages.get(input.change.stableId);
+      if (
+        page !== undefined &&
+        titleKey(page.title) === titleKey(input.change.title) &&
+        page.visibility === input.change.visibility
+      ) {
+        const creation = [...this.#operations]
+          .reverse()
+          .find((operation) =>
+            operation.subjectId === page.id && operation.submission.change.kind === 'create_page',
+          );
+        if (creation !== undefined) return { status: 'duplicate', operation: creation };
+      }
+    }
+
     const refusal = this.#validate(input.change);
     if (refusal !== null) {
       return { status: 'rejected', reason: refusal };

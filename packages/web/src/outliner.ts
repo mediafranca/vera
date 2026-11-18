@@ -4513,6 +4513,10 @@ export function renderOutliner(
       page.recordings = next;
       callbacks.onReload(null);
     },
+    onRemoved: (recording) => {
+      page.recordings = (page.recordings ?? []).filter((held) => held.id !== recording);
+      callbacks.onReload(null);
+    },
     onTranscribed: (recording, block, content) => {
       const recordings = page.recordings ?? [];
       const at = recordings.findIndex((held) => held.id === recording.id);
@@ -6544,7 +6548,7 @@ export function renderOutliner(
     if (speaking) speakingIn = null;
 
     if (speaking) {
-      renderRecorder(body, node.block.stableId, audioHandlers, speakingDestination);
+      renderRecorder(body, node.block.stableId, page.id, audioHandlers, speakingDestination);
     } else {
       if (attached !== undefined) {
         renderAudioBlock(body, attached, audioHandlers, node.block.content);

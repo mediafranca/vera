@@ -17,6 +17,8 @@ export interface AudioBlockHandlers {
   notify(message: string): void;
   /** La grabación cambió sin que el árbol se mueva. */
   onChanged(recording: Recording): void;
+  /** Una grabación aún local fue descartada antes de sincronizar. */
+  onRemoved(recording: string): void;
   /** La transcripción cambió a la vez la grabación y el texto de su bloque. */
   onTranscribed(recording: Recording, block: string, text: string): void;
 }
@@ -83,6 +85,7 @@ const SILENCIO = 0.012;
 export function renderRecorder(
   host: HTMLElement,
   block: string,
+  page: string,
   handlers: AudioBlockHandlers,
   destination = 'este bloque',
 ): void {
@@ -207,7 +210,7 @@ export function renderRecorder(
             handlers.onSettled();
             return;
           }
-          const captured = await voice.capture(audio, durationMs, block);
+          const captured = await voice.capture(audio, durationMs, block, page);
           if ('error' in captured) {
             handlers.notify(captured.error);
             host.innerHTML = '';
@@ -300,9 +303,27 @@ export function renderAudioBlock(
     recording.durationMs === null
       ? new Date(recording.capturedAt).toLocaleString('es')
       : `${clock(recording.durationMs)} · ${new Date(recording.capturedAt).toLocaleString('es')}`;
+  if (recording.pending === true) said.textContent += ' · guardado aquí · esperando a Vera';
   row.append(said);
 
-  if (recording.audioHash !== null) {
+  if (recording.pending === true) {
+    const drop = action('descartar', 'quiet');
+    drop.title = 'Eliminar la grabación de este dispositivo antes de sincronizarla';
+    drop.addEventListener('click', () => {
+      if (!window.confirm('Esta grabación todavía existe sólo en este dispositivo. ¿Descartarla?')) return;
+      drop.disabled = true;
+      void voice.discardPending(recording.id).then((removed) => {
+        if (!removed) {
+          handlers.notify('la grabación ya no estaba en la bandeja local');
+          drop.disabled = false;
+          return;
+        }
+        if (recording.localUrl !== undefined) URL.revokeObjectURL(recording.localUrl);
+        handlers.onRemoved(recording.id);
+      });
+    });
+    row.append(drop);
+  } else if (recording.audioHash !== null) {
     // Transcribir por primera vez, o volver a hacerlo. Es el mismo acto: escribe
     // el texto del bloque y no toca el audio.
     const again = recording.transcript !== null;

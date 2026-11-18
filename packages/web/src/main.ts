@@ -21,6 +21,7 @@ import {
   applyLocally,
   blockPropertiesOf,
   blocksOf,
+  empty,
   pagePropertiesOf,
   seed,
   type Replica,
@@ -59,7 +60,7 @@ import { voice } from './voice.ts';
 import { brandMark, icon, type IconName } from './icons.ts';
 import { is } from './bindings.ts';
 import { pageSearchResults } from './search-results.ts';
-import { createPage } from './pages.ts';
+import { createPage, dailyPageId } from './pages.ts';
 import { isMissingPageError, recoveryAfterPageDeletion } from './deleted-page-recovery.ts';
 import { changesGraphMeaning } from './invalidation.ts';
 import { sameReadablePage } from './page-validation.ts';
@@ -700,9 +701,25 @@ async function startDay(date: string, content = ''): Promise<string | null> {
   let pageId = existing?.id ?? null;
 
   if (pageId === null) {
-    const born = await createPage(date);
+    /*
+     * El día nace primero en este aparato.
+     *
+     * `drawUnstartedDay` no tiene página activa y, por tanto, tampoco una
+     * réplica en la que aceptar `create_page`. Ése era el único punto donde una
+     * caída de Alexei todavía dejaba la mano sin sitio. Se prepara una réplica
+     * vacía con la identidad determinista del día; desde aquí página,
+     * propiedades y primer bloque pasan por la misma bandeja durable que toda
+     * edición.
+     */
+    pageId = dailyPageId(date);
+    replica = empty(pageId);
+    openView = blankPage(pageId, date);
+
+    const born = await createPage(date, 'private', pageId);
     if (born.status === 'rejected') {
       notice(`no se pudo abrir el día: ${born.reason}`);
+      replica = null;
+      openView = null;
       return null;
     }
     pageId = born.subjectId;
@@ -721,6 +738,7 @@ async function startDay(date: string, content = ''): Promise<string | null> {
     // El índice en memoria tiene que enterarse, o el día parecería no existir
     // hasta la próxima recarga.
     pages.unshift({ id: pageId, title: date, visibility: 'private', blockCount: 0, linkCount: 0 });
+    await held.keepIndex(pages);
   }
 
   const block = await api.submit({
@@ -734,7 +752,24 @@ async function startDay(date: string, content = ''): Promise<string | null> {
     notice(`no se pudo escribir en el día: ${block.reason}`);
     return null;
   }
-  await openPage(pageId, { block: block.subjectId, at: 0 }, { gesture: 'opened_directly' });
+  /*
+   * Lo que acaba de nacer queda retenido antes de dibujarse. Cerrar la PWA en
+   * este instante no puede devolver mañana un día vacío teniendo toda la
+   * intención durable en la bandeja.
+   */
+  const local = blankPage(pageId, date);
+  if (replica?.page === pageId) {
+    local.blocks = blocksOf(replica);
+    local.blockProperties = blockPropertiesOf(replica);
+    local.properties = pagePropertiesOf(replica);
+    local.visibility = replica.graph.page(pageId)?.visibility ?? 'private';
+  }
+  await held.keepPage(local);
+  await openPage(
+    pageId,
+    { block: block.subjectId, at: 0 },
+    { gesture: 'opened_directly', delivered: local },
+  );
   return block.subjectId;
 }
 
@@ -1269,6 +1304,21 @@ async function openPage(
   page.properties = pagePropertiesOf(replica);
   page.visibility = replica.graph.page(replica.page)?.visibility ?? page.visibility;
 
+  /*
+   * Los bytes de voz tienen su propia bandeja porque no son operaciones del
+   * grafo. Se vuelven a montar por identidad sobre la entrega retenida o
+   * canónica: así una grabación sigue audible después de cerrar la PWA aunque
+   * Alexei todavía no haya vuelto.
+   */
+  if (!isAnybody()) {
+    const localVoice = await voice.pendingForPage(page.id);
+    if (localVoice.length > 0) {
+      const recordings = new Map((page.recordings ?? []).map((recording) => [recording.id, recording]));
+      for (const recording of localVoice) recordings.set(recording.id, recording);
+      page.recordings = [...recordings.values()];
+    }
+  }
+
   // Una referencia nombra un bloque aunque alguno de sus ancestros estuviera
   // plegado. Se abre sólo ese camino en esta composición; de otro modo el
   // destino jamás entraría al DOM y ningún desplazamiento podría encontrarlo.
@@ -1798,6 +1848,7 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
         openView.blockProperties = blockPropertiesOf(replica);
         openView.properties = pagePropertiesOf(replica);
         openView.visibility = replica.graph.page(replica.page)?.visibility ?? openView.visibility;
+        void held.keepPage(openView);
         renderOutliner(text, openView, callbacksFor(openView), continued, workspace.focusRoot, isReadOnly(),
           isAnybody() && corpus?.transparentBlockTraceability === true);
         restoreTextViewport(text, viewport);
@@ -4226,23 +4277,35 @@ async function start(): Promise<void> {
    * un almacén de memoria: perder lo pendiente al cerrar es peor que hoy, pero
    * no poder escribir sería mucho peor que eso.
    */
-  void durableOrNot().then(async ({ store, durable }) => {
-    outbox = createOutbox(store);
-    await outbox.restore();
-    api.usesOutbox(outbox);
-    if (!durable) {
-      notice('Este navegador no deja guardar lo pendiente, así que lo que se escriba sin red se pierde al cerrar.');
-    }
-    /*
-     * Y no se drena aquí.
-     *
-     * Lo pendiente sale al final del arranque, después de la primera pregunta al
-     * corpus. Drenar aquí era una carrera perdida: lo que este aparato tenía sin
-     * mandar salía antes de que nadie supiera que el corpus ya había cambiado ese
-     * mismo bloque, y ganaba por ser posterior. La otra versión se perdía sin que
-     * se dijera, que es lo que rule ExposeConcurrentConflict existe para impedir.
-     */
+  const durable = await durableOrNot();
+  outbox = createOutbox(durable.store);
+  await outbox.restore();
+  api.usesOutbox(outbox);
+  if (!durable.durable) {
+    notice('Este navegador no deja guardar lo pendiente, así que lo que se escriba sin red se pierde al cerrar.');
+  }
+
+  const voiceStorage = await voice.prepare();
+  if (!voiceStorage.durable) {
+    notice('Este navegador no deja conservar grabaciones pendientes al cerrar.');
+  }
+  // Pide que el sistema trate estas bandejas como trabajo durable y no como un
+  // caché prescindible bajo presión. La negativa no impide escribir ni grabar.
+  void navigator.storage?.persist?.().catch(() => false);
+  // Un audio puede haberse detenido antes de que el bloque que lo sostiene
+  // llegara al servidor. Cada confirmación estructural vuelve a intentar la voz.
+  onSubmissionActivity((activity) => {
+    if (activity.phase === 'synchronised') void voice.drain();
   });
+  /*
+   * No se drena todavía.
+   *
+   * Pero la bandeja sí tiene que estar lista antes de dibujar un control de
+   * escritura. Antes se abría en segundo plano: una mano muy rápida podía crear
+   * el día sin servidor mientras `outbox` aún era nula y perderlo al cerrar.
+   * Lo pendiente sale al final del arranque, después de la primera pregunta al
+   * corpus, para conservar la guarda de conflictos.
+   */
 
   /*
    * Y cuando vuelve la red, lo que quedó sale solo — y lo que se leía se pone al
@@ -4276,7 +4339,8 @@ async function start(): Promise<void> {
    */
   window.addEventListener('online', () => {
     void catchUpWithCorpus().then(() =>
-      api.drain().then(() => {
+      api.drain().then(async () => {
+        await voice.drain();
         if (!showingKept || workspace.activePage === null) return;
         void openPage(workspace.activePage);
       }),
@@ -4460,6 +4524,7 @@ async function start(): Promise<void> {
    */
   await catchUpWithCorpus();
   await api.drain();
+  await voice.drain();
 }
 
 /**
