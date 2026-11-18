@@ -387,6 +387,18 @@ export function librarianRequestsFor(
   return rows.map((row) => fromRow(store, row));
 }
 
+/** Solicitudes todavía vivas de una persona, sin depender de la página visible. */
+export function activeLibrarianRequestsFor(
+  store: Store,
+  askedBy: ParticipantId,
+): LibrarianRequest[] {
+  const rows = store.db.prepare(
+    `${SELECT_REQUEST} WHERE r.graph_id=? AND r.asked_by=? AND r.status IN ('queued', 'working')
+      ORDER BY r.created_at DESC, r.rowid DESC`,
+  ).all(store.graphId, askedBy) as unknown as RequestRow[];
+  return rows.map((row) => fromRow(store, row));
+}
+
 /** Todos los turnos de una conversación, en orden de lectura. */
 export function librarianRequestsInConversation(
   store: Store,

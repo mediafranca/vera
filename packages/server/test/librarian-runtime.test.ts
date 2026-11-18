@@ -424,7 +424,9 @@ describe('runtime embebido de la bibliotecaria', () => {
       for await (const chunk of request) inferencePrompt += chunk.toString();
       inferenceCalls += 1;
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ output_text: 'Respuesta de Aster.' }));
+      response.end(JSON.stringify({
+        output_text: `## Respuesta de Aster\n\n${'Detalle verificable. '.repeat(80)}\n\nCierre completo conservado en el chat.`,
+      }));
     });
     await new Promise<void>((resolve) => inference.listen(4399, '127.0.0.1', resolve));
     process.env['VERA_TEST_LIBRARIAN_KEY'] = 'test-secret';
@@ -498,9 +500,11 @@ describe('runtime embebido de la bibliotecaria', () => {
       }
       assert.ok(answered, 'Aster no respondió la solicitud');
       assert.equal((answered['reply'] as Record<string, unknown>)['answeredBy'], librarianAgent);
+      assert.match(String((answered['reply'] as Record<string, unknown>)['text']), /Cierre completo conservado en el chat/);
       assert.ok((answered['events'] as Array<Record<string, string>>)
         .some((event) => event.text === 'Aster leyó la solicitud'));
       assert.match(inferencePrompt, /Eres Aster, agente de biblioteca residente de esta Vera/);
+      assert.match(inferencePrompt, /"max_output_tokens":2400/);
       const pageView = await call(`/pages/${encodeURIComponent(page)}`);
       assert.match(JSON.stringify(pageView.json), /Respuesta de Aster/);
       const exposures = await call(`/exposures?participant=${encodeURIComponent(librarianAgent)}`);

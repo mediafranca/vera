@@ -384,9 +384,13 @@ describe('solicitudes al bibliotecario', () => {
     const events = progress.json['events'] as Record<string, unknown>[];
     assert.equal(events[0]?.['text'], 'Contrastando el corpus');
     assert.equal(events[0]?.['kind'], 'tool');
+    const active = await call('/librarian/requests?active=true');
+    assert.equal(active.status, 200, JSON.stringify(active.json));
+    assert.deepEqual((active.json as unknown as Record<string, unknown>[]).map((turn) => turn['id']), [id]);
     assert.equal((await call(`/librarian/requests/${encodeURIComponent(id)}/reply`, {
       method: 'POST', secret, body: { text: 'Trabajo visible.', changes: [], lineageRelation: 'direct' },
     })).status, 201);
+    assert.deepEqual((await call('/librarian/requests?active=true')).json, []);
 
     const reopened = await call(`/librarian/conversations/${encodeURIComponent(previous)}/activate`, { method: 'POST' });
     assert.equal(reopened.status, 200, JSON.stringify(reopened.json));

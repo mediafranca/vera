@@ -1210,6 +1210,9 @@ export const api = {
     return json<LibrarianRequestView[]>(`/librarian/requests?${query.toString()}`);
   },
 
+  /** Trabajo propio todavía activo, aunque haya nacido en otra página. */
+  librarianActivity: () => json<LibrarianRequestView[]>('/librarian/requests?active=true'),
+
   decideLibrarianProposal: (
     id: string,
     decision: 'accept' | 'reject',

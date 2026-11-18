@@ -798,6 +798,16 @@ surface LibrarianConversationPage {
         -- While the librarian works, the request names the work and counts elapsed time.
         -- A spinner or typing theatre is not evidence that work continues.
 
+    @guarantee GlobalActivitySurvivesNavigation
+        -- The stable conversation control remains visibly active while any request
+        -- from this human is queued or working, even after navigating away from
+        -- the page where the request originated.
+
+    @guarantee TheChatKeepsTheCompleteUsefulReply
+        -- The final answer remains complete and usefully detailed in the thread.
+        -- A shorter inscription receipt may organise the corpus, but does not
+        -- replace the conversational answer with a terse summary.
+
     @guarantee VoiceRemainsAudibleBesideItsTranscript
         -- An audio request keeps the original recording playable. Its transcript
         -- is the request text, not a replacement that discards the speaker's voice.

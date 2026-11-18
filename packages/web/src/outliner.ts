@@ -865,6 +865,7 @@ export async function askLibrarian(
       ...(block === null ? {} : { blockId: block.stableId }),
       text: instruction,
     });
+    showLibrarianActivity([request], callbacks.librarianName);
     toast(request.dispatchStatus === 'failed'
       ? `pedido guardado; ${actor.subject} no está disponible y podrá retomarlo`
       : request.dispatchStatus === 'pending'
@@ -1217,7 +1218,8 @@ export async function openLibrarianConversation(
     void api.askLibrarian({
       pageId: page.id, text,
       ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),
-    }).then(async () => {
+    }).then(async (request) => {
+      showLibrarianActivity([request], callbacks.librarianName);
       composer.value = '';
       await refresh(true);
       callbacks.onReload(null);
@@ -1434,7 +1436,10 @@ function showLibrarianActivity(
     return;
   }
 
-  const latest = [...requests].sort((a, b) => b.createdAt - a.createdAt)[0]!;
+  // Si una solicitud ya está trabajando, su pulso prima sobre otra más nueva
+  // que todavía espera en cola: hay trabajo efectivo que comunicar.
+  const latest = [...requests].sort((a, b) =>
+    Number(b.status === 'working') - Number(a.status === 'working') || b.createdAt - a.createdAt)[0]!;
   activity.classList.add('librarian-active');
   activity.dataset['request'] = latest.id;
   activity.dataset['state'] = latest.dispatchStatus === 'failed' ? 'waiting' : latest.status;
@@ -1448,15 +1453,14 @@ async function showLibrarianTurns(
   callbacks: OutlinerCallbacks,
 ): Promise<void> {
   let requests: LibrarianRequestView[];
-  try { requests = await api.librarianRequests(page.id); }
+  try { requests = await api.librarianActivity(); }
   catch { return; }
   // Una lectura iniciada por la página anterior no debe dejar su aviso sobre
   // la página que la reemplazó mientras esperaba la red.
   if (container.dataset['page'] !== page.id) return;
   // El servidor no debiera repetir identidades, pero esta superficie tampoco
   // debe convertir una repetición de transporte en dos avisos iguales.
-  const unique = [...new Map(requests.map((request) => [request.id, request])).values()];
-  const active = unique.filter((request) => request.status === 'queued' || request.status === 'working');
+  const active = [...new Map(requests.map((request) => [request.id, request])).values()];
   showLibrarianActivity(active, callbacks.librarianName);
   // Las respuestas terminadas son contenido del grafo: sobre un bloque lo
   // reemplazan y sobre una página nacen como un bloque ordinario. La solicitud
