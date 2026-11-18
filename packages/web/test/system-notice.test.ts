@@ -23,12 +23,15 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
     assert.doesNotMatch(asking, /window\.prompt/);
     assert.match(outliner, /dialog\.className = 'librarian-dialog librarian-request-dialog'/);
     assert.match(outliner, /querySelector<HTMLButtonElement>\('#librarian'\)/);
+    assert.match(outliner, /api\.librarianActivity\(\)/);
     assert.match(outliner, /activity\.classList\.add\('librarian-active'\)/);
     assert.match(outliner, /activity\.classList\.remove\('librarian-active'\)/);
+    assert.match(outliner, /Number\(b\.status === 'working'\) - Number\(a\.status === 'working'\)/);
     assert.match(outliner, /abrir conversación/);
     assert.doesNotMatch(outliner, /librarianOverlayCorners|Reubicar/);
     assert.doesNotMatch(outliner, /className = 'librarian-activity'/);
     assert.match(styles, /#librarian\.librarian-active \.icon[\s\S]*?animation: librarian-mark-pulse/);
+    assert.match(styles, /#librarian\.librarian-active \{[\s\S]*?box-shadow:/);
     assert.match(styles, /@keyframes librarian-mark-pulse/);
     assert.match(styles, /prefers-reduced-motion[\s\S]*?#librarian\.librarian-active \.icon \{ animation: none; \}/);
     assert.match(main, /if \(!librarianButton\.classList\.contains\('librarian-active'\)\)/);

@@ -122,6 +122,7 @@ import {
 import {
   activateLibrarianConversation,
   addLibrarianProgress,
+  activeLibrarianRequestsFor,
   activeLibrarianConversation,
   answerLibrarianRequest,
   claimLibrarianRequest,
@@ -1551,8 +1552,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
         ...(resolvedRuntimeSecret(config.secretReference) === undefined
           ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
-        maxTokens: 450,
-        contextTokens: 6_144,
+        maxTokens: 2_400,
+        contextTokens: 12_288,
         timeoutMs: 300_000,
       };
       const contextExposure = librarianContextExposure(claimed.contextSnapshot);
@@ -1734,13 +1735,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       );
       if (writeFailure !== null) throw new Error(writeFailure);
       const answered = answerLibrarianRequest(store, {
-        id, answeredBy: config.agent as ParticipantId, text: summary,
+        id, answeredBy: config.agent as ParticipantId, text: decision.text,
         lineage: librarianContributionLineageFor(claimed),
         changes: proposedChanges,
       });
       if (answered === undefined) throw new Error('no se pudo guardar la respuesta final');
       if (gate !== null) completeDialecticGate(store, id);
-      finishLibrarianRuntimeRun(store, run.id, { output: summary });
+      finishLibrarianRuntimeRun(store, run.id, { output: decision.text });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'el runtime no pudo responder';
       abandonDialecticGate(store, id);
@@ -3927,6 +3928,19 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     }
 
     if (request.method === 'GET' && path === '/librarian/requests') {
+      if (url.searchParams.get('active') === 'true') {
+        if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
+          send(response, 403, { error: 'sólo una persona puede leer su actividad bibliotecaria' });
+          return;
+        }
+        const active = activeLibrarianRequestsFor(store, conversationalHuman).map(librarianRequestView);
+        deliver(active, {
+          surface: 'GET /librarian/requests?active=true',
+          subject: conversationalHuman,
+          delivered: active.map((turn) => turn.id),
+        });
+        return;
+      }
       const pageId = url.searchParams.get('page');
       const block = url.searchParams.has('block') ? url.searchParams.get('block') : undefined;
       if (pageId === null || graph.page(pageId) === undefined) {
