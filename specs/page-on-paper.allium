@@ -68,8 +68,10 @@ contract APageBecomesADocument {
     @invariant ItIsComposedAtHome
         -- El PDF se compone en esta máquina. Mandar la página a un servicio que
         -- la maquete sería mandar el corpus fuera para que se lo lea alguien, y
-        -- es exactamente lo que un cuaderno soberano no hace. Donde no haya con
-        -- qué componerlo se dice que no lo hay.
+        -- es exactamente lo que un cuaderno soberano no hace. Una Vera Desktop
+        -- usa el motor de composición que ya trae la aplicación; no exige otro
+        -- navegador instalado. Una Vera de servidor puede usar un compositor
+        -- local declarado y, si no existe, dice que no lo hay.
 
     @invariant AQuotedBlockTravelsAsItsWords
         -- Una cita de bloque —`((…))`— va al papel con el texto entero del bloque
@@ -129,10 +131,17 @@ contract APageBecomesADocument {
         -- lado, como en pantalla: es lo único que permite arreglarlo, y callarlo
         -- dejaría un hueco donde iba una figura sin decir por qué.
         --
-        -- Donde no haya con qué dibujarlo —no hay Chrome en esta máquina— se dice
-        -- que no lo hay, igual que con el PDF entero. No se compone fuera de
-        -- casa: mandar el diagrama a un servicio que lo dibuje sería mandar el
-        -- texto de la página a que lo lea otro.
+        -- Desktop lo dibuja con el mismo motor incorporado que compone el PDF;
+        -- no depende de un Chrome instalado aparte. Donde un servidor no tenga
+        -- compositor local se dice que no lo hay. No se compone fuera de casa:
+        -- mandar el diagrama a un servicio que lo dibuje sería mandar el texto
+        -- de la página a que lo lea otro.
+
+    @invariant DesktopCarriesItsComposer
+        -- Instalar Vera Desktop basta para exportar una página ordinaria, una
+        -- página con Mermaid y un librillo. El PDF no lleva fecha ni dirección
+        -- automáticas, conserva caracteres y fuentes, y declara qué motor local
+        -- lo produjo para poder reproducir un defecto.
 
     @invariant ADiagramFitsOnOnePage
         -- Un diagrama impreso cabe entero en una página, y guarda su proporción.

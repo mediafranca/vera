@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { bookletHtml, diagramsIn, paperHtml } from '../src/paper.ts';
+import { bookletHtml, composePaper, diagramsIn, paperHtml } from '../src/paper.ts';
 
 const bloque = (stableId: string, parent: string | null, position: number, content: string) => ({
   stableId,
@@ -359,6 +359,14 @@ describe('un diagrama en el papel', () => {
     });
     assert.deepEqual(diagramsIn(html), []);
     assert.match(html, /const a = 1;/);
+  });
+
+  it('Desktop puede aportar su compositor sin depender de Chrome externo', async () => {
+    const html = await composePaper(
+      { title: 'T', blocks: conDiagrama(cercado(fuente)) },
+      { diagramRenderer: async (sources) => new Map(sources.map((source) => [source, { svg: '<svg id="electron"></svg>' }])) },
+    );
+    assert.match(html, /<svg id="electron">/);
   });
 });
 

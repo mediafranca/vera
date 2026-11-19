@@ -98,7 +98,7 @@ const voiceConfiguration = new VoiceConfiguration({
     ];
     return {
       ready: found.ready,
-      engine: 'whisper.cpp',
+      engine: found.dialect ?? 'Whisper',
       language: paths.speechToTextLanguage,
       paths: { ffmpeg: found.ffmpeg, engine: found.whisper, model: found.model },
       missing,

@@ -98,13 +98,17 @@ import {
   workspaceOf,
   type Store,
 } from '@vera/store';
-import { composeBooklet, composePaper, toPdf } from './paper.ts';
+import {
+  composeBooklet, composePaper, toPdf,
+  type DiagramRenderer, type PdfRenderer,
+} from './paper.ts';
 import { googleMapEmbedUrl, resolveGoogleMapPoint } from './google-map.ts';
 import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } from '@vera/store/objects';
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
 import { clientsSeen, exposuresOf, recordExposure } from '@vera/store/exposures';
 import { parseDocument } from '@vera/importer/document';
+import { extractAcademicPdf } from './academic-pdf.ts';
 import {
   SCOPES,
   bearerOf,
@@ -470,6 +474,10 @@ export interface ServerOptions {
   publicPreviewPort?: number;
   /** Dirección privada que el dueño puede abrir para ver esa proyección. */
   publicPreviewUrl?: string;
+  /** Compositor local provisto por el cliente nativo (Electron en Desktop). */
+  pdfRenderer?: PdfRenderer;
+  /** Mermaid local provisto por el cliente nativo, sin navegador externo. */
+  diagramRenderer?: DiagramRenderer;
 }
 
 export interface VeraServer {
@@ -7356,7 +7364,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
         const mediaType = String(request.headers['content-type'] ?? '').split(';')[0] ?? '';
 
-        const parsed = await parseDocument(bytes, filename, mediaType);
+        const parsed = await parseDocument(bytes, filename, mediaType, {
+          academicPdfExtractor: extractAcademicPdf,
+        });
         if ('error' in parsed) {
           send(response, 422, parsed);
           return;
@@ -7369,6 +7379,11 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             blocks: parsed.pieces.length,
             format: parsed.format,
             losses: parsed.losses,
+            extraction: parsed.extractionEngine === undefined ? null : {
+              engine: parsed.extractionEngine,
+              pages: parsed.pages ?? null,
+              artifact: parsed.extractionArtifact?.filename ?? null,
+            },
             excerpt: parsed.pieces.slice(0, 3).map((piece) => piece.content).join('\n\n').slice(0, 900),
           });
           return;
@@ -7448,6 +7463,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           { kind: 'set_property', page, propertyKey: 'procedencia', propertyValue: provenance === 'own' ? 'documento propio' : 'fuente externa' },
           { kind: 'set_property', page, propertyKey: 'archivo original', propertyValue: filename },
         ];
+        if (parsed.extractionEngine !== undefined) {
+          changes.push({ kind: 'set_property', page, propertyKey: 'motor de extracción', propertyValue: parsed.extractionEngine });
+        }
         if (importedDate !== '') changes.push({ kind: 'set_property', page, propertyKey: 'fecha', propertyValue: importedDate });
         if (tags !== '') changes.push({ kind: 'set_property', page, propertyKey: 'etiquetas', propertyValue: tags });
 
@@ -7456,6 +7474,41 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           kind: 'create_block', stableId: attachment, page, parent: null, position: 0,
           content: `[Archivo original: ${portable.name.replace(/[\[\]]/g, '')}](${assetPath.replace(/ /g, '%20')})`,
         });
+
+        let extractionAsset: {
+          path: string;
+          hash: string;
+          mediaType: string;
+          filename: string;
+          bytes: Buffer;
+        } | null = null;
+        if (parsed.extractionArtifact !== undefined) {
+          const artifactPortable = portableMediaPath(parsed.extractionArtifact.filename);
+          if (artifactPortable === null) {
+            send(response, 422, { error: 'el nombre del artefacto de extracción no se puede conservar' });
+            return;
+          }
+          const artifactHash = hashBytes(parsed.extractionArtifact.bytes);
+          let artifactPath = artifactPortable.path;
+          const artifactOccupied = media.find((entry) => entry.path === artifactPath);
+          if (artifactOccupied !== undefined && artifactOccupied.hash !== artifactHash) {
+            const dot = artifactPortable.name.lastIndexOf('.');
+            artifactPath = dot < 1
+              ? `../assets/${artifactPortable.name}-${artifactHash.slice(0, 8)}`
+              : `../assets/${artifactPortable.name.slice(0, dot)}-${artifactHash.slice(0, 8)}${artifactPortable.name.slice(dot)}`;
+          }
+          extractionAsset = {
+            path: artifactPath,
+            hash: artifactHash,
+            mediaType: parsed.extractionArtifact.mediaType,
+            filename: artifactPortable.name,
+            bytes: parsed.extractionArtifact.bytes,
+          };
+          changes.push({
+            kind: 'create_block', stableId: `block:${randomUUID()}`, page, parent: null, position: 1,
+            content: `[Extracción estructurada: ${artifactPortable.name.replace(/[\[\]]/g, '')}](${artifactPath.replace(/ /g, '%20')})`,
+          });
+        }
 
         /*
          * De profundidades a padres.
@@ -7466,7 +7519,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
          * después ya no es hijo de aquello.
          */
         const open = new Map<number, string>();
-        let rootPosition = 1;
+        let rootPosition = extractionAsset === null ? 1 : 2;
         for (const piece of parsed.pieces) {
           const depth = Math.max(0, piece.depth);
           let parent: string | null = null;
@@ -7508,12 +7561,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         }
 
         const stored = putObject(objectsRoot, bytes);
+        const storedExtraction = extractionAsset === null ? null : putObject(objectsRoot, extractionAsset.bytes);
         store.db.exec('BEGIN');
         try {
           recordMedia(store, {
             path: assetPath, hash: stored.hash, mediaType: declaredMediaType,
             byteSize: stored.byteSize, at: Date.now(), originalName: filename,
           });
+          if (extractionAsset !== null && storedExtraction !== null) {
+            recordMedia(store, {
+              path: extractionAsset.path,
+              hash: storedExtraction.hash,
+              mediaType: extractionAsset.mediaType,
+              byteSize: storedExtraction.byteSize,
+              at: Date.now(),
+              originalName: extractionAsset.filename,
+            });
+          }
           for (const operation of applied) recordOperation(store, trial, operation);
           if (publicSharedImport && publicScopedSpace !== null) {
             includeManualPage(store, submitter.participant, publicScopedSpace, page);
@@ -7524,6 +7588,18 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           const entry = { path: assetPath, hash: stored.hash, mediaType: declaredMediaType, description: null, alternativeText: null };
           if (held < 0) media.push(entry);
           else media[held] = entry;
+          if (extractionAsset !== null && storedExtraction !== null) {
+            const extractionHeld = media.findIndex((candidate) => candidate.path === extractionAsset.path);
+            const extractionEntry = {
+              path: extractionAsset.path,
+              hash: storedExtraction.hash,
+              mediaType: extractionAsset.mediaType,
+              description: null,
+              alternativeText: null,
+            };
+            if (extractionHeld < 0) media.push(extractionEntry);
+            else media[extractionHeld] = extractionEntry;
+          }
         } catch (error) {
           store.db.exec('ROLLBACK');
           send(response, 500, {
@@ -7539,6 +7615,13 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           blocks: parsed.pieces.length,
           format: parsed.format,
           losses: parsed.losses,
+          extraction: parsed.extractionEngine === undefined ? null : {
+            engine: parsed.extractionEngine,
+            pages: parsed.pages ?? null,
+            artifact: storedExtraction === null || extractionAsset === null
+              ? null
+              : { path: extractionAsset.path, url: `/media/${storedExtraction.hash}` },
+          },
           asset: { path: assetPath, url: `/media/${stored.hash}` },
           scope: publicSharedImport && publicScopedSpace !== null
             ? { slug: publicScopedSpace.slug, name: publicScopedSpace.name }
@@ -9949,7 +10032,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
                 return { page: graph.page(cited.page)?.title ?? cited.page, excerpt: cited.content };
               },
             })),
-          }).then((html) => {
+          }, options.diagramRenderer === undefined ? {} : { diagramRenderer: options.diagramRenderer }).then((html) => {
             const body = Buffer.from(html, 'utf8');
             response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': body.byteLength });
             response.end(body);
@@ -9968,7 +10051,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         query.set('title', title);
         if (url.searchParams.get('sangria') !== null) query.set('sangria', '1');
         const where = `http://127.0.0.1:${port}/booklet/paper?${query.toString()}`;
-        void toPdf(where).then((made) => {
+        const renderPdf = options.pdfRenderer ?? toPdf;
+        void renderPdf(where).then((made) => {
           if ('error' in made) return send(response, 503, made);
           const disposition = url.searchParams.get('inline') !== null ? 'inline' : 'attachment';
           response.writeHead(200, {
@@ -10053,7 +10137,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               const from = graph.page(cited.page);
               return { page: from?.title ?? cited.page, excerpt: cited.content };
             },
-          }).then(
+          }, options.diagramRenderer === undefined ? {} : { diagramRenderer: options.diagramRenderer }).then(
             (html) => {
               const body = Buffer.from(html, 'utf8');
               response.writeHead(200, {
@@ -10091,7 +10175,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           : (request.socket.localPort ?? 4173);
         const suffix = url.searchParams.get('sangria') !== null ? '?sangria=1' : '';
         const where = `http://127.0.0.1:${port}/pages/${encodeURIComponent(page.id)}/paper${suffix}`;
-        void toPdf(where).then((made) => {
+        const renderPdf = options.pdfRenderer ?? toPdf;
+        void renderPdf(where).then((made) => {
           if ('error' in made) {
             send(response, 503, made);
             return;

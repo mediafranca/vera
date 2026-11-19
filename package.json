@@ -93,6 +93,10 @@
         "to": "p5.min.js"
       },
       {
+        "from": "node_modules/mermaid/dist/mermaid.min.js",
+        "to": "mermaid.min.js"
+      },
+      {
         "from": "scripts",
         "to": "voice-setup",
         "filter": [

@@ -1596,7 +1596,10 @@ export const api = {
   previewDocument: async (
     file: File,
   ): Promise<
-    { filename: string; title: string; blocks: number; format: string; losses: string[]; excerpt: string } | { error: string }
+    {
+      filename: string; title: string; blocks: number; format: string; losses: string[]; excerpt: string;
+      extraction: { engine: string; pages: number | null; artifact: string | null } | null;
+    } | { error: string }
   > => {
     try {
       const response = await fetch('/import/preview', {
@@ -1611,6 +1614,7 @@ export const api = {
       if (!response.ok) return { error: body.error ?? `error ${response.status}` };
       return body as unknown as {
         filename: string; title: string; blocks: number; format: string; losses: string[]; excerpt: string;
+        extraction: { engine: string; pages: number | null; artifact: string | null } | null;
       };
     } catch {
       return { error: 'sin conexión con el servidor' };
@@ -1630,6 +1634,9 @@ export const api = {
     {
       page: string; title: string; blocks: number; format: string; losses: string[];
       asset: { path: string; url: string }; scope: { slug: string; name: string } | null;
+      extraction: {
+        engine: string; pages: number | null; artifact: { path: string; url: string } | null;
+      } | null;
     } | { error: string }
   > => {
     try {
@@ -1651,6 +1658,9 @@ export const api = {
       return body as unknown as {
         page: string; title: string; blocks: number; format: string; losses: string[];
         asset: { path: string; url: string }; scope: { slug: string; name: string } | null;
+        extraction: {
+          engine: string; pages: number | null; artifact: { path: string; url: string } | null;
+        } | null;
       };
     } catch {
       return { error: 'sin conexión con el servidor' };

@@ -7,11 +7,9 @@
 //
 // Así que se compone aquí y se descarga hecho. El HTML lo dibuja `renderMarkdown`
 // —el mismo que dibuja la pantalla, por eso vive en el dominio y no en el
-// cliente— y quien lo pasa a papel es un Chrome sin ventana, encontrado como se
-// encuentra whisper o llama: un binario en el sistema, y donde no lo haya se dice
-// que no lo hay. @invariant TheModelIsLocalOrThereIsNone dice esto mismo para el
-// modelo; aquí vale igual, y por la misma razón: componer un PDF fuera de casa
-// sería mandar la página entera a un servidor ajeno para que la lea.
+// cliente— y Desktop lo imprime con el Chromium que Electron ya distribuye. El
+// servidor sin Desktop conserva el compositor externo como compatibilidad. En
+// ningún caso se manda la página a un servicio remoto para que la lea.
 //
 // Lo que el papel deja fuera lo decidió Herbert: las propiedades de la cabecera,
 // las referencias del pie, los fondos y la sangría del esquema. Un papel no se
@@ -87,6 +85,16 @@ export interface BookletOptions {
   title: string;
   pages: readonly PaperOptions[];
 }
+
+export type DiagramResult = { svg: string } | { error: string };
+export type DiagramRenderer = (
+  sources: readonly string[],
+  options?: { timeoutMs?: number; dark?: boolean },
+) => Promise<Map<string, DiagramResult>>;
+export type PdfRenderer = (
+  url: string,
+  options?: { timeoutMs?: number },
+) => Promise<{ pdf: Buffer } | { error: string }>;
 
 /** El orden de lectura: cada bloque después de su padre, y los hijos por posición. */
 function inReadingOrder(blocks: readonly PaperBlock[]): { block: PaperBlock; depth: number }[] {
@@ -733,8 +741,8 @@ function mermaidLibrary(): string | null {
 export async function drawDiagrams(
   sources: readonly string[],
   options: { timeoutMs?: number; dark?: boolean } = {},
-): Promise<Map<string, { svg: string } | { error: string }>> {
-  const made = new Map<string, { svg: string } | { error: string }>();
+): Promise<Map<string, DiagramResult>> {
+  const made = new Map<string, DiagramResult>();
   if (sources.length === 0) return made;
 
   const presence = paperPresence();
@@ -853,27 +861,29 @@ export async function drawDiagrams(
  * adivinar qué hay que dibujar por otro camino costaría que los dos caminos se
  * separaran.
  *
- * Una página sin diagramas no paga nada: no se arranca ningún navegador.
+ * Una página sin diagramas no paga nada: no se arranca ningún compositor.
  */
 export async function composePaper(
   options: PaperOptions,
-  how: { timeoutMs?: number; dark?: boolean } = {},
+  how: { timeoutMs?: number; dark?: boolean; diagramRenderer?: DiagramRenderer } = {},
 ): Promise<string> {
   const first = paperHtml(options);
   const sources = diagramsIn(first);
   if (sources.length === 0) return first;
-  return paperHtml({ ...options, diagrams: await drawDiagrams(sources, how) });
+  const renderer = how.diagramRenderer ?? drawDiagrams;
+  return paperHtml({ ...options, diagrams: await renderer(sources, how) });
 }
 
 /** Compone de una vez todos los diagramas que aparecen en un librillo. */
 export async function composeBooklet(
   options: BookletOptions,
-  how: { timeoutMs?: number; dark?: boolean } = {},
+  how: { timeoutMs?: number; dark?: boolean; diagramRenderer?: DiagramRenderer } = {},
 ): Promise<string> {
   const first = bookletHtml(options);
   const sources = diagramsIn(first);
   if (sources.length === 0) return first;
-  const diagrams = await drawDiagrams(sources, how);
+  const renderer = how.diagramRenderer ?? drawDiagrams;
+  const diagrams = await renderer(sources, how);
   return bookletHtml({
     ...options,
     pages: options.pages.map((page) => ({ ...page, diagrams })),

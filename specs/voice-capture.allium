@@ -74,6 +74,15 @@ contract GovernedVoiceRuntime {
         -- native client may offer a file chooser, while an ordinary browser
         -- keeps manual entry because it cannot inspect the host filesystem.
         -- Saving immediately re-diagnoses the selected installation.
+
+    @invariant NativeDiscoveryProvesWhatItFound
+        -- A native client searches the host before asking for a path. On
+        -- Windows this includes executable suffixes and the ordinary locations
+        -- used by Python, WinGet, Scoop, Chocolatey, Conda and virtual
+        -- environments. A candidate becomes effective only after Vera runs its
+        -- help command and identifies the compatible Whisper dialect. If more
+        -- than one working installation exists the owner can choose; manual
+        -- entry remains an escape, never the first requirement.
 }
 
 ------------------------------------------------------------

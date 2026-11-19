@@ -57,6 +57,24 @@ contract StructureIsRead {
     @invariant AnEmptyDocumentIsNotAPage
         -- Un archivo del que no sale ningún bloque con texto no crea nada. Una
         -- página vacía con nombre de archivo es basura que hay que ir a borrar.
+
+    @invariant AcademicFurnitureIsNotBodyText
+        -- En un PDF académico, folios y cabeceras o pies repetidos no se mezclan
+        -- con los párrafos. El extractor estructurado manda cuando está
+        -- disponible; la lectura incorporada sólo retira líneas repetidas en
+        -- bordes de página y números de página inequívocos. La limpieza nunca
+        -- reescribe el argumento ni pide a un modelo que lo adivine.
+
+    @invariant ExtractionRemainsAuditable
+        -- El PDF original es siempre el árbitro. Cuando una herramienta produce
+        -- TEI, Docling JSON u otro artefacto estructurado, Vera conserva también
+        -- ese resultado, el motor que lo produjo y las pérdidas declaradas. Los
+        -- bloques son una proyección editable, no la única copia de la lectura.
+
+    @invariant ScansAskForOCRInsteadOfInventingText
+        -- Si la capa de texto no alcanza para leer el documento y no hay un
+        -- extractor OCR local comprobado, la vista previa dice que necesita OCR
+        -- y no crea una página vacía o una sucesión de caracteres rotos.
 }
 
 ------------------------------------------------------------
@@ -87,6 +105,16 @@ entity ParsedDocument {
     -- Lo que se leyó y no se supo representar, dicho en palabras. Vacío cuando
     -- no se perdió nada.
     losses: String
+    -- Qué extractor produjo la lectura y qué representación estructurada debe
+    -- viajar junto al PDF para poder auditarla.
+    extraction_engine: String
+    extraction_artifact: ExtractionArtifact?
+}
+
+entity ExtractionArtifact {
+    filename: String
+    media_type: String
+    extraction_engine: String
 }
 
 -- Un trozo de documento que va a ser un bloque.
@@ -334,6 +362,12 @@ surface DocumentImport {
         -- Si algo del documento no se supo traer, se dice al llegar y en
         -- palabras: qué clase de cosa y cuántas. Enterarse leyendo, semanas
         -- después, de que las tablas no estaban, es enterarse tarde.
+
+    @guarantee AcademicExtractionIsVisibleBeforeImport
+        -- La vista previa nombra si leyó con GROBID, Docling o el extractor
+        -- incorporado, cuántas páginas vio, qué mobiliario retiró y si requiere
+        -- OCR. Elegir un motor es una decisión de esta instalación, no una
+        -- propiedad escondida del archivo.
 
     @guarantee ImportedTextIsOrdinaryText
         -- Lo que entra son bloques como los demás: se editan, se enlazan, se

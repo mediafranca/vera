@@ -25,7 +25,31 @@ export interface ParsedDocument {
   pieces: DocumentPiece[];
   /** Lo que se leyó y no se supo representar, dicho en palabras. */
   losses: string[];
+  /** Motor que produjo el texto; nunca sustituye al archivo original. */
+  extractionEngine?: string;
+  /** Cantidad de páginas observadas por el extractor, cuando existe. */
+  pages?: number;
+  /** Artefacto estructurado que permite auditar o repetir la extracción. */
+  extractionArtifact?: {
+    filename: string;
+    mediaType: string;
+    bytes: Buffer;
+  };
 }
+
+export interface AcademicPdfExtraction {
+  markdown: string;
+  title?: string | null;
+  engine: string;
+  pages?: number;
+  losses?: string[];
+  artifact?: ParsedDocument['extractionArtifact'];
+}
+
+export type AcademicPdfExtractor = (
+  bytes: Buffer,
+  filename: string,
+) => Promise<AcademicPdfExtraction | null>;
 
 /** Convierte prosa plana en párrafos sin inventar jerarquía. */
 function parsePlainTextDocument(
@@ -448,14 +472,66 @@ async function parsePdf(bytes: Buffer): Promise<ParsedDocument | null> {
     const title = typeof info.info?.Title === 'string' && info.info.Title.trim() !== ''
       ? info.info.Title.trim()
       : null;
-    return parsePlainTextDocument(text.text, 'pdf', title, [
+    const cleaned = cleanAcademicPages(text.pages.map((page) => page.text));
+    const parsed = parsePlainTextDocument(cleaned.text, 'pdf', title, [
       'el PDF conserva su archivo original; diagramas, imágenes y disposición de página no se convierten en bloques',
+      ...(cleaned.removed === 0 ? [] : [`${cleaned.removed} líneas repetidas de cabecera, pie o folio quedaron fuera del texto informativo`]),
     ]);
+    return { ...parsed, extractionEngine: 'pdf.js', pages: text.total };
   } catch {
     return null;
   } finally {
     await parser.destroy().catch(() => undefined);
   }
+}
+
+const PAGE_NUMBER = /^(?:p(?:á|a)g(?:ina)?\.?\s*)?[-–—]?\s*(?:\d+|[ivxlcdm]+)\s*[-–—]?$/i;
+
+const furnitureKey = (line: string): string => line
+  .normalize('NFKC')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLocaleLowerCase('es');
+
+/**
+ * Retira sólo mobiliario de borde demostrable: folios aislados y líneas que se
+ * repiten en el borde de varias páginas. El cuerpo no se deduplica.
+ */
+export function cleanAcademicPages(pages: readonly string[]): { text: string; removed: number } {
+  const split = pages.map((page) => page.replace(/\r\n?/g, '\n').split('\n'));
+  const occurrences = new Map<string, Set<number>>();
+  split.forEach((lines, page) => {
+    const nonEmpty = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.trim() !== '');
+    const edge = [...nonEmpty.slice(0, 2), ...nonEmpty.slice(-2)];
+    for (const { line } of edge) {
+      const key = furnitureKey(line);
+      if (key === '') continue;
+      const held = occurrences.get(key) ?? new Set<number>();
+      held.add(page);
+      occurrences.set(key, held);
+    }
+  });
+  const threshold = Math.max(2, Math.ceil(pages.length * 0.6));
+  const repeated = new Set([...occurrences]
+    .filter(([, seen]) => seen.size >= threshold)
+    .map(([key]) => key));
+
+  let removed = 0;
+  const cleaned = split.map((lines) => {
+    const nonEmpty = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.trim() !== '');
+    const edgeIndexes = new Set([...nonEmpty.slice(0, 2), ...nonEmpty.slice(-2)].map(({ index }) => index));
+    return lines.filter((line, index) => {
+      if (!edgeIndexes.has(index)) return true;
+      const furniture = repeated.has(furnitureKey(line)) || PAGE_NUMBER.test(line.trim());
+      if (furniture) removed += 1;
+      return !furniture;
+    }).join('\n').trim();
+  });
+  return { text: cleaned.filter(Boolean).join('\n\n'), removed };
 }
 
 /**
@@ -469,6 +545,7 @@ export async function parseDocument(
   bytes: Buffer,
   filename: string,
   mediaType: string,
+  options: { academicPdfExtractor?: AcademicPdfExtractor } = {},
 ): Promise<ParsedDocument | { error: string }> {
   const name = filename.toLowerCase();
   const looksDocx =
@@ -484,8 +561,22 @@ export async function parseDocument(
       return { error: 'no se pudo leer este .docx; ¿es un documento de Word?' };
     }
   } else if (name.endsWith('.pdf') || mediaType === 'application/pdf') {
-    parsed = await parsePdf(bytes);
-    if (parsed === null) return { error: 'no se pudo leer este PDF; puede estar cifrado o no contener texto extraíble' };
+    const academic = await options.academicPdfExtractor?.(bytes, filename) ?? null;
+    if (academic !== null) {
+      const markdown = parseMarkdownDocument(academic.markdown);
+      parsed = {
+        ...markdown,
+        format: 'pdf',
+        title: academic.title ?? markdown.title,
+        losses: academic.losses ?? [],
+        extractionEngine: academic.engine,
+        ...(academic.pages === undefined ? {} : { pages: academic.pages }),
+        ...(academic.artifact === undefined ? {} : { extractionArtifact: academic.artifact }),
+      };
+    } else {
+      parsed = await parsePdf(bytes);
+    }
+    if (parsed === null) return { error: 'no se pudo leer este PDF; puede estar cifrado o requerir OCR (needs_ocr)' };
   } else if (name.endsWith('.rtf') || mediaType === 'application/rtf' || mediaType === 'text/rtf') {
     parsed = parseRtf(bytes);
     if (parsed === null) return { error: 'no se pudo leer este RTF' };
