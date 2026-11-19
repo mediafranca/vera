@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 
-import { parseDocument, parseDocx, parseMarkdownDocument } from '../src/document.ts';
+import { cleanAcademicPages, parseDocument, parseDocx, parseMarkdownDocument } from '../src/document.ts';
 
 describe('parseMarkdownDocument', () => {
   it('toma el primer encabezado de primer nivel como título y no como bloque', () => {
@@ -195,6 +195,33 @@ describe('parseDocx', () => {
 });
 
 describe('parseDocument', () => {
+  it('retira cabeceras, pies y folios repetidos sólo desde el borde de página', () => {
+    const cleaned = cleanAcademicPages([
+      'Revista de Diseño\nPrimer párrafo.\nConcepto central.\n1',
+      'Revista de Diseño\nSegundo párrafo.\nRevista de Diseño dentro del argumento.\n2',
+      'Revista de Diseño\nTercer párrafo.\nCierre.\n3',
+    ]);
+    assert.equal(cleaned.removed, 6);
+    assert.ok(!cleaned.text.split('\n').includes('Revista de Diseño'));
+    assert.match(cleaned.text, /Revista de Diseño dentro del argumento/);
+  });
+
+  it('acepta una extracción académica y conserva su artefacto separado', async () => {
+    const artifact = Buffer.from('<TEI/>');
+    const out = await parseDocument(Buffer.from('%PDF'), 'artículo.pdf', 'application/pdf', {
+      academicPdfExtractor: async () => ({
+        markdown: '# Título\n\n## Método\n\nTexto.', engine: 'grobid',
+        artifact: { filename: 'artículo.tei.xml', mediaType: 'application/tei+xml', bytes: artifact },
+      }),
+    });
+    assert.ok(!('error' in out));
+    if (!('error' in out)) {
+      assert.equal(out.title, 'Título');
+      assert.equal(out.extractionEngine, 'grobid');
+      assert.deepEqual(out.extractionArtifact?.bytes, artifact);
+    }
+  });
+
   it('elige el lector por la extensión', async () => {
     const md = await parseDocument(Buffer.from('# Hola\n\nqué tal\n'), 'notas.md', 'text/markdown');
     assert.equal('error' in md ? null : md.format, 'markdown');

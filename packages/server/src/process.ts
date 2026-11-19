@@ -141,10 +141,14 @@ async function read(url: string, timeoutMs: number): Promise<LinkReading> {
     const body = answer.body;
     if (body === null) return reading;
     let html = '';
-    for await (const chunk of body) {
+    const reader = body.getReader();
+    while (true) {
+      const { done, value: chunk } = await reader.read();
+      if (done) break;
       html += Buffer.from(chunk as Uint8Array).toString('utf8');
       if (html.length > 64 * 1024 || /<\/title>/i.test(html)) break;
     }
+    await reader.cancel().catch(() => undefined);
     reading.title = titleOf(html);
   } catch (error) {
     reading.unreachable =

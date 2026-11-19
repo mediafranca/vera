@@ -7,6 +7,7 @@ const root = JSON.parse(readFileSync(new URL('../../../package.json', import.met
   build?: {
     asar?: { unpack?: string[] };
     mac?: { universal?: { x64ArchFiles?: string } };
+    extraResources?: Array<{ from?: string; to?: string }>;
   };
 };
 const documentReader = readFileSync(
@@ -41,6 +42,13 @@ test('Desktop lleva el canvas nativo que PDF.js resuelve en ejecución', () => {
 test('la lectura de PDF no condiciona el arranque de una biblioteca', () => {
   assert.doesNotMatch(documentReader, /^import .* from 'pdf-parse';/m);
   assert.match(documentReader, /const \{ PDFParse \} = await import\('pdf-parse'\)/);
+});
+
+test('Desktop compone PDF y Mermaid con el Chromium incorporado', () => {
+  assert.match(desktopMain, /webContents\.printToPDF/);
+  assert.match(desktopMain, /pdfRenderer: renderPdfWithElectron/);
+  assert.match(desktopMain, /diagramRenderer: renderDiagramsWithElectron/);
+  assert.ok(root.build?.extraResources?.some((resource) => resource.to === 'mermaid.min.js'));
 });
 
 test('un cargador CommonJS distinto no convierte el actualizador en pantalla blanca', () => {

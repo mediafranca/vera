@@ -25,7 +25,8 @@ describe('custodia Desktop del secreto de la bibliotecaria', () => {
     assert.match(main, /path: voiceConfigurationPath/);
     assert.match(main, /diagnoseSpeechToText/);
     assert.match(main, /diagnoseTextToSpeech/);
-    assert.match(main, /process\.platform === 'win32'\) voice = 'unavailable'/);
+    assert.match(main, /transcriberDiagnosis\(\{ model: 'small' \}\)/);
+    assert.match(main, /preparedVoice = \{ speechToText: true, textToSpeech: false \}/);
   });
 
   it('abre una biblioteca nueva en su recibo inaugural', () => {

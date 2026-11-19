@@ -143,10 +143,12 @@
         remote.disabled = true;
         inferenceNote.textContent = 'Este equipo no ofrece almacenamiento seguro para una clave remota. La bibliotecaria puede configurarse después con un runtime local.';
       }
-      installVoice.disabled = !capabilities.localVoiceInstaller;
-      if (!capabilities.localVoiceInstaller) {
+      installVoice.disabled = !capabilities.localVoiceInstaller && !capabilities.existingSpeechToText;
+      if (capabilities.existingSpeechToText) {
+        voiceNote.textContent = 'Vera encontró y comprobó un motor de transcripción existente. Lo usará sin pedirte una ruta.';
+      } else if (!capabilities.localVoiceInstaller) {
         voiceNote.textContent = capabilities.platform === 'win32'
-          ? 'Windows todavía no dispone de un preparador local confiable. La voz queda pendiente y Vera lo registrará así.'
+          ? 'Vera buscará Whisper en PATH, Python y los instaladores habituales de Windows. La ruta manual queda como alternativa.'
           : 'Esta edición no contiene el preparador de voz. Podrás indicar runtimes existentes desde el Centro de Vera.';
       }
     });

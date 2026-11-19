@@ -9,6 +9,7 @@ type Preview = {
   format: string;
   losses: string[];
   excerpt: string;
+  extraction: { engine: string; pages: number | null; artifact: string | null } | null;
 };
 
 type Candidate = {
@@ -163,6 +164,7 @@ export function openDocumentImportDialog(options: DocumentImportDialogOptions): 
           candidate.preview = preview;
           candidate.title.value = preview.title;
           state.textContent = `${preview.format.toUpperCase()} · ${preview.blocks} bloques` +
+            (preview.extraction === null ? '' : ` · extracción ${preview.extraction.engine}`) +
             (preview.losses.length === 0 ? '' : ` · ${preview.losses.join('; ')}`);
           state.title = preview.excerpt;
         }

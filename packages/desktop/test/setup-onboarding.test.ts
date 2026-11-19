@@ -35,6 +35,9 @@ test('pide permiso explícito para preparar voz y admite dejarla pendiente', () 
   assert.match(source, /name="voice" value="install"/);
   assert.match(source, /Preparar voz local ahora/);
   assert.match(source, /Vera comprobará lo que realmente quedó instalado/);
+  assert.match(source, /existingSpeechToText/);
+  assert.match(source, /Vera encontró y comprobó un motor de transcripción existente/);
+  assert.match(source, /buscará Whisper en PATH, Python y los instaladores habituales de Windows/);
 });
 
 test('anticipa el corpus inicial y la bitácora de instalación', () => {

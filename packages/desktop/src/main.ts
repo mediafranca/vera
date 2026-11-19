@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { userInfo } from 'node:os';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
 import { DesktopConecta, type ConectaState, type SecureConectaStore } from './conecta.ts';
@@ -44,6 +45,9 @@ const voiceRuntimeRoot = join(dataRoot, 'voice');
 const voiceSetupRoot = app.isPackaged ? join(process.resourcesPath, 'voice-setup') : join(ROOT, 'scripts');
 const externalEditsRoot = join(dataRoot, 'external-edits');
 const externalEditorsPath = join(dataRoot, 'external-editors.json');
+const mermaidRuntimePath = app.isPackaged
+  ? join(process.resourcesPath, 'mermaid.min.js')
+  : join(ROOT, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js');
 
 const EXTERNAL_EDITOR_KEYS = new Set([
   'markdown', 'mermaid', 'svg', 'html', 'javascript', 'process', 'mediawiki', 'code',
@@ -113,6 +117,98 @@ const externalEditing = new DesktopExternalEditing(
   },
 );
 
+const hiddenWindow = (): BrowserWindow => new BrowserWindow({
+  show: false,
+  webPreferences: {
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: true,
+  },
+});
+
+/** Compone el papel con el Chromium que Electron ya distribuye. */
+const renderPdfWithElectron = async (url: string): Promise<{ pdf: Buffer } | { error: string }> => {
+  const renderer = hiddenWindow();
+  try {
+    await renderer.loadURL(url);
+    await renderer.webContents.executeJavaScript(`Promise.race([
+      Promise.all([
+        document.fonts ? document.fonts.ready : Promise.resolve(),
+        ...Array.from(document.images).map((image) => image.complete
+          ? Promise.resolve()
+          : new Promise((done) => {
+              image.addEventListener('load', done, { once: true });
+              image.addEventListener('error', done, { once: true });
+            }))
+      ]),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('el papel no terminó de cargar')), 30000))
+    ])`, true);
+    const pdf = await renderer.webContents.printToPDF({
+      pageSize: 'Letter',
+      displayHeaderFooter: false,
+      printBackground: false,
+      preferCSSPageSize: true,
+    });
+    return { pdf };
+  } catch (error) {
+    return { error: `no se pudo componer el PDF con Electron: ${error instanceof Error ? error.message : String(error)}` };
+  } finally {
+    if (!renderer.isDestroyed()) renderer.destroy();
+  }
+};
+
+/** Dibuja Mermaid en una ventana aislada del Chromium incorporado. */
+const renderDiagramsWithElectron = async (
+  sources: readonly string[],
+): Promise<Map<string, { svg: string } | { error: string }>> => {
+  const made = new Map<string, { svg: string } | { error: string }>();
+  if (sources.length === 0) return made;
+  if (!existsSync(mermaidRuntimePath)) {
+    for (const source of sources) made.set(source, { error: 'esta edición no contiene el runtime de Mermaid' });
+    return made;
+  }
+  const workshop = await mkdtemp(join(tmpdir(), 'vera-electron-diagramas-'));
+  const page = join(workshop, 'diagramas.html');
+  const renderer = hiddenWindow();
+  try {
+    const safeSources = JSON.stringify(sources).replace(/</g, '\\u003c');
+    await writeFile(page, `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="donde"></div>
+      <script src="${pathToFileURL(mermaidRuntimePath).href}"></script>
+      <script>
+      const sources = ${safeSources};
+      window.__veraDiagrams = (async () => {
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default', fontFamily: 'IBM Plex Sans, sans-serif' });
+        const results = [];
+        for (let index = 0; index < sources.length; index += 1) {
+          try {
+            const { svg } = await mermaid.render('vera-electron-d' + index, sources[index], document.getElementById('donde'));
+            results.push({ svg });
+          } catch (error) {
+            results.push({ error: error && error.message ? String(error.message) : 'no compila' });
+          }
+        }
+        return results;
+      })();
+      </script></body></html>`, 'utf8');
+    await renderer.loadFile(page);
+    const results = await renderer.webContents.executeJavaScript('window.__veraDiagrams', true) as Array<{
+      svg?: unknown; error?: unknown;
+    }>;
+    sources.forEach((source, index) => {
+      const result = results[index];
+      if (typeof result?.svg === 'string') made.set(source, { svg: result.svg });
+      else made.set(source, { error: typeof result?.error === 'string' ? result.error : 'el compositor no devolvió el dibujo' });
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    for (const source of sources) made.set(source, { error: reason });
+  } finally {
+    if (!renderer.isDestroyed()) renderer.destroy();
+    await rm(workshop, { recursive: true, force: true });
+  }
+  return made;
+};
+
 const secureConectaStore = (): SecureConectaStore => ({
   available: () =>
     safeStorage.isEncryptionAvailable() &&
@@ -157,8 +253,12 @@ const desktopVoicePaths = (): VoiceRuntimePaths => {
   const kokoro = join(voiceRuntimeRoot, 'kokoro');
   return {
     ffmpeg: '',
-    speechToTextEngine: join(voiceRuntimeRoot, 'whisper/source/build/bin/whisper-cli'),
-    speechToTextModel: join(voiceRuntimeRoot, 'whisper/ggml-small.bin'),
+    speechToTextEngine: process.platform === 'win32'
+      ? ''
+      : join(voiceRuntimeRoot, 'whisper/source/build/bin/whisper-cli'),
+    speechToTextModel: process.platform === 'win32'
+      ? 'small'
+      : join(voiceRuntimeRoot, 'whisper/ggml-small.bin'),
     speechToTextLanguage: 'es',
     textToSpeechPython: join(kokoro, 'venv/bin/python'),
     textToSpeechWorker: join(voiceSetupRoot, 'tts-worker.py'),
@@ -168,12 +268,12 @@ const desktopVoicePaths = (): VoiceRuntimePaths => {
   };
 };
 
-const writeInitialVoiceConfiguration = (prepared: boolean): void => {
+const writeInitialVoiceConfiguration = (prepared: { speechToText: boolean; textToSpeech: boolean }): void => {
   mkdirSync(dirname(voiceConfigurationPath), { recursive: true });
   writeFileSync(voiceConfigurationPath, `${JSON.stringify({
-    enabled: prepared,
-    speechToText: prepared,
-    textToSpeech: prepared,
+    enabled: prepared.speechToText || prepared.textToSpeech,
+    speechToText: prepared.speechToText,
+    textToSpeech: prepared.textToSpeech,
     paths: desktopVoicePaths(),
   }, null, 2)}\n`, { mode: 0o600 });
 };
@@ -258,7 +358,7 @@ const desktopVoiceConfiguration = (): VoiceConfiguration => {
       });
       return {
         ready: found.ready,
-        engine: 'whisper.cpp',
+        engine: found.dialect ?? 'Whisper',
         language: paths.speechToTextLanguage,
         paths: { ffmpeg: found.ffmpeg, engine: found.whisper, model: found.model },
         missing: [
@@ -316,6 +416,8 @@ async function startVera(initialPath = '/'): Promise<void> {
       objectsRoot,
       webRoot,
       voiceConfiguration: desktopVoiceConfiguration(),
+      pdfRenderer: renderPdfWithElectron,
+      diagramRenderer: renderDiagramsWithElectron,
       localMcpHandler: createMCPHandler(`http://127.0.0.1:${PORT}`),
     });
   }
@@ -500,11 +602,18 @@ ipcMain.handle('vera:initialize', async (_event, rawInput: unknown) => {
     inferenceModel = model;
   }
   let voice: 'deferred' | 'configured' | 'unavailable' | 'failed' = 'deferred';
+  let preparedVoice = { speechToText: false, textToSpeech: false };
   if (input.voiceChoice === 'install') {
-    if (process.platform === 'win32') voice = 'unavailable';
-    else {
+    if (process.platform === 'win32') {
+      const found = await transcriberDiagnosis({ model: 'small' });
+      if (found.ready) {
+        preparedVoice = { speechToText: true, textToSpeech: false };
+        voice = 'configured';
+      } else voice = 'unavailable';
+    } else {
       try {
         await prepareLocalVoice();
+        preparedVoice = { speechToText: true, textToSpeech: true };
         voice = 'configured';
       } catch (error) {
         console.error('No se pudo preparar la voz local durante la instalación:', error);
@@ -512,7 +621,7 @@ ipcMain.handle('vera:initialize', async (_event, rawInput: unknown) => {
       }
     }
   }
-  writeInitialVoiceConfiguration(voice === 'configured');
+  writeInitialVoiceConfiguration(preparedVoice);
   const name = input.personName.trim();
   const { initializeStarterMemory } = await import('../../server/src/starter-memory.ts');
   initializeStarterMemory({
@@ -531,11 +640,17 @@ ipcMain.handle('vera:initialize', async (_event, rawInput: unknown) => {
 });
 
 ipcMain.handle('vera:system-name', () => userInfo().username);
-ipcMain.handle('vera:setup-capabilities', () => ({
-  secureStorage: secureSecretStorageAvailable(),
-  localVoiceInstaller: process.platform !== 'win32' && existsSync(join(voiceSetupRoot, 'setup-local-voice.sh')),
-  platform: process.platform,
-}));
+ipcMain.handle('vera:setup-capabilities', async () => {
+  const existingVoice = await transcriberDiagnosis({
+    model: process.platform === 'win32' ? 'small' : undefined,
+  });
+  return {
+    secureStorage: secureSecretStorageAvailable(),
+    localVoiceInstaller: process.platform !== 'win32' && existsSync(join(voiceSetupRoot, 'setup-local-voice.sh')),
+    existingSpeechToText: existingVoice.ready,
+    platform: process.platform,
+  };
+});
 ipcMain.handle('vera-conecta:status', () => conecta?.status() ?? {
   status: 'desactivado', installationId: null, secureStorage: false,
 });
