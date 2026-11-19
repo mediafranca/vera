@@ -121,6 +121,16 @@ contract ConversationWithAgent {
         -- conversation does not reduce it to the latest queued request or hide
         -- answered turns merely because their text also entered the graph.
 
+    @invariant ConversationNamesComeFromTheirParticipants
+        -- A default conversation title uses the effective human and agent names
+        -- of this library. A legacy factory title may be repaired only when it
+        -- still exactly equals that factory value; user-chosen titles survive.
+
+    @invariant SessionChoiceAppearsOnlyWhenThereIsAChoice
+        -- With zero or one durable conversation Vera presents a plain label,
+        -- not an inert selector. The selector appears once two or more sessions
+        -- can actually be activated, while starting a new session remains possible.
+
     @invariant EveryVisibleTurnCanBeCopied
         -- A human can copy the exact visible text of any request or reply without
         -- editing the turn, changing its provenance or creating a graph operation.

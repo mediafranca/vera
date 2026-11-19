@@ -11,6 +11,7 @@ import {
   captureAuthorization,
   clientRecipe,
   credentialState,
+  genericPublicLaunch,
   publicLaunch,
   remoteLaunch,
   visibleCredentials,
@@ -126,12 +127,25 @@ describe('la configuración HTTPS pública', () => {
     assert.equal(said.mcpServers.vera.command, undefined);
   });
 
+  it('ofrece además un JSON genérico sin reemplazar la receta específica', () => {
+    const specific = JSON.parse(publicLaunch('https://vera.example/mcp', 'antigravity-paul', 'secreto'));
+    const generic = JSON.parse(genericPublicLaunch(
+      'https://vera.example/mcp', 'antigravity-paul', 'secreto',
+    ));
+    assert.equal(specific.mcpServers.vera.url, 'https://vera.example/mcp');
+    assert.equal(generic.mcpServers.vera.serverUrl, 'https://vera.example/mcp');
+    assert.equal(generic.mcpServers.vera.timeoutSeconds, 60);
+    assert.equal(generic.mcpServers.vera.headers.Authorization, 'Bearer secreto');
+    assert.equal(generic.mcpServers.vera.headers['X-Vera-Client'], 'antigravity-paul');
+  });
+
   it('Codex distingue el formulario visual del TOML', () => {
     const made = clientRecipe('codex', 'https://vera.example/mcp', 'codex-andrei', 'secreto');
     assert.equal(made.tokenSeparate, true);
     assert.match(made.recipe, /bearer_token_env_var = "VERA_MCP_TOKEN"/);
     assert.match(made.recipe, /X-Vera-Client/);
     assert.ok(!made.recipe.includes('secreto'));
+    assert.match(made.genericRecipe, /"serverUrl"/);
     assert.deepEqual(made.visual, {
       name: 'vera',
       transport: 'HTTP secuenciable',

@@ -317,7 +317,7 @@ export const TOOLS: readonly VeraTool[] = [
         relacion: {
           type: 'string',
           enum: ['propia', 'voz_de_la_persona', 'derivada_de_la_persona', 'coautoria'],
-          description: 'Relación autoral: Lucienne; Herbert por Lucienne; Lucienne a partir de Herbert; o Herbert con Lucienne.',
+          description: 'Relación autoral: propia del agente; voz de la persona; derivada de la persona; o coautoría.',
         },
         bloques: { type: 'array', default: [], items: {
           type: 'object', additionalProperties: false, properties: {

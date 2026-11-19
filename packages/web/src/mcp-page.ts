@@ -50,6 +50,8 @@ export interface CodexVisualRecipe {
 export interface MCPClientRecipe {
   recipe: string;
   tokenSeparate: boolean;
+  /** Salida adicional y portable; nunca reemplaza la receta específica. */
+  genericRecipe: string;
   visual?: CodexVisualRecipe;
 }
 
@@ -76,6 +78,7 @@ export function clientRecipe(
         `http_headers = { "X-Vera-Client" = ${JSON.stringify(client)} }`,
       ].join('\n'),
       tokenSeparate: true,
+      genericRecipe: genericPublicLaunch(url, client, token),
       visual: {
         name: 'vera',
         transport: 'HTTP secuenciable',
@@ -97,9 +100,14 @@ export function clientRecipe(
         'No pegues el token: ChatGPT no lo enviará.',
       ].join('\n'),
       tokenSeparate: false,
+      genericRecipe: genericPublicLaunch(url, client, token),
     };
   }
-  return { recipe: publicLaunch(url, client, token), tokenSeparate: false };
+  return {
+    recipe: publicLaunch(url, client, token),
+    tokenSeparate: false,
+    genericRecipe: genericPublicLaunch(url, client, token),
+  };
 }
 
 /** Un estado que no confunde autorización con presencia en línea. */
@@ -365,6 +373,26 @@ export function publicLaunch(url: string, client: string, token: string): string
             Authorization: `Bearer ${token}`,
             'X-Vera-Client': client,
           },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/** JSON interoperable adicional para clientes que aceptan `mcpServers`. */
+export function genericPublicLaunch(url: string, client: string, token: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        vera: {
+          serverUrl: url,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Vera-Client': client,
+          },
+          timeoutSeconds: 60,
         },
       },
     },
@@ -1396,6 +1424,30 @@ function connectForm(
             '<li>Pega la configuración y reinicia o vuelve a analizar las herramientas.</li>' +
             '<li>Haz una lectura breve y vuelve aquí para comprobar “último uso”.</li>';
           born.append(value, copy, next);
+        }
+        if (recipe !== null) {
+          const generic = document.createElement('details');
+          generic.className = 'connection-generic-json';
+          const summary = document.createElement('summary');
+          summary.textContent = 'JSON genérico adicional para otro cliente MCP';
+          const note = document.createElement('p');
+          note.className = 'connect-says';
+          note.textContent =
+            'Esta salida no reemplaza la receta anterior. Úsala cuando el cliente pida un objeto mcpServers.';
+          const value = document.createElement('pre');
+          value.className = 'connect-json';
+          const code = document.createElement('code');
+          code.textContent = recipe.genericRecipe;
+          value.append(code);
+          const copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'connect-copy';
+          copy.textContent = 'copiar JSON genérico';
+          copy.addEventListener('click', () => {
+            void navigator.clipboard?.writeText(code.textContent ?? '').then(() => (copy.textContent = 'copiado'));
+          });
+          generic.append(summary, note, value, copy);
+          born.append(generic);
         }
         notify(`${made.label} conectada`);
       })

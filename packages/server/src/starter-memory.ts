@@ -354,7 +354,7 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
     const newGraph = established === null;
     const profile = ensureInstanceProfile(store, owner, options.profile, newGraph, options.libraryName);
     if (newGraph) {
-      ensureOwnerLibrarian(store, graph, owner, options.ownerLibrarianName ?? 'Lucienne');
+      ensureOwnerLibrarian(store, graph, owner, options.ownerLibrarianName ?? 'Bibliotecaria');
       if (profile === 'collective') {
         const surfaceName = options.initialCollectiveSurfaceName?.trim() || 'Superficie colectiva';
         createSharedSpace(store, owner, {
@@ -513,7 +513,11 @@ export function initializeStarterMemory(options: InitializeStarterMemoryOptions)
         saveLibrarianRuntimeConfiguration(store, {
           updatedBy: owner,
           enabled: remote,
-          model: remote ? `openai:${requestedModel || 'gpt-5.6-luna'}` : null,
+          model: remote
+            ? requestedModel?.includes(':') === true
+              ? requestedModel
+              : `openai:${requestedModel || 'gpt-5.6-luna'}`
+            : null,
           endpoint: remote ? options.installation?.inferenceEndpoint ?? null : null,
           secretReference: 'VERA_LIBRARIAN_API_KEY',
           permissions: ['read_request_context', 'reply', 'daily_round'],

@@ -99,6 +99,25 @@ export interface LibrarianOperationProposal {
   decidedAt: number | null;
 }
 
+const LEGACY_CONVERSATION_TITLE = 'Herbert y el bibliotecario';
+
+function participantName(store: Store, participant: ParticipantId): string {
+  const row = store.db.prepare('SELECT name FROM participants WHERE id=?').get(participant) as { name: string } | undefined;
+  return row?.name ?? participant;
+}
+
+function defaultConversationTitle(store: Store, human: ParticipantId, agent: ParticipantId): string {
+  return `${participantName(store, human)} y ${participantName(store, agent)}`;
+}
+
+function repairLegacyConversationTitle(store: Store, row: ConversationRow): ConversationRow {
+  if (row.title !== LEGACY_CONVERSATION_TITLE) return row;
+  const title = defaultConversationTitle(store, row.human_id, row.agent_id);
+  store.db.prepare(`UPDATE agent_conversations SET title=?
+    WHERE graph_id=? AND id=? AND title=?`).run(title, store.graphId, row.id, LEGACY_CONVERSATION_TITLE);
+  return { ...row, title };
+}
+
 function conversation(store: Store, human: ParticipantId, agent: ParticipantId, now: number): string {
   const existing = store.db.prepare(`SELECT id FROM agent_conversations
     WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).get(
@@ -109,7 +128,7 @@ function conversation(store: Store, human: ParticipantId, agent: ParticipantId, 
   store.db.prepare(`INSERT INTO agent_conversations
     (id, graph_id, human_id, agent_id, title, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'active', ?)`).run(
-    id, store.graphId, human, agent, 'Herbert y el bibliotecario', now,
+    id, store.graphId, human, agent, defaultConversationTitle(store, human, agent), now,
   );
   return id;
 }
@@ -144,7 +163,7 @@ export function createLibrarianConversation(store: Store, input: {
 export function librarianConversation(store: Store, id: string): LibrarianConversation | undefined {
   const row = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
     FROM agent_conversations WHERE graph_id=? AND id=?`).get(store.graphId, id) as ConversationRow | undefined;
-  return row === undefined ? undefined : fromConversationRow(row);
+  return row === undefined ? undefined : fromConversationRow(repairLegacyConversationTitle(store, row));
 }
 
 export function librarianConversations(
@@ -157,7 +176,7 @@ export function librarianConversations(
     ORDER BY status='active' DESC, created_at DESC`).all(
     store.graphId, human, agent,
   ) as unknown as ConversationRow[];
-  return rows.map(fromConversationRow);
+  return rows.map((row) => fromConversationRow(repairLegacyConversationTitle(store, row)));
 }
 
 export function activateLibrarianConversation(store: Store, input: {
@@ -251,7 +270,7 @@ export function activeLibrarianConversation(
     WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).get(
     store.graphId, human, agent,
   ) as ConversationRow | undefined;
-  return row === undefined ? undefined : fromConversationRow(row);
+  return row === undefined ? undefined : fromConversationRow(repairLegacyConversationTitle(store, row));
 }
 
 function fromRow(store: Store, row: RequestRow): LibrarianRequest {

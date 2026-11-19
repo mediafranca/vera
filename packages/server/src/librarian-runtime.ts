@@ -84,7 +84,7 @@ const formativePracticeMentioned = (said: string): FormativePractice | null => {
  *
  * Buscar, verificar, citar, transcribir, enlazar y completar una referencia
  * son trabajo bibliotecario determinado. Una pista, fuente, hipótesis o
- * criterio ya expresado cuenta como contribución. En ambos casos Lucienne
+ * criterio ya expresado cuenta como contribución. En ambos casos el agente
  * sirve directamente; sólo una delegación de juicio todavía vacía abre el
  * umbral.
  */

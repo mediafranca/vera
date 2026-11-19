@@ -54,11 +54,10 @@ contract DesktopLibraryConstitution {
         -- department, postgraduate programme or other deliberate name instead.
 
     @invariant EveryLibraryBeginsWithANamedOwnerLibrarian
-        -- Desktop proposes “Lucienne” as the owner's librarian agent name for
-        -- both personal and collective libraries.
-        -- It is a visible, editable smart default: accepting it constitutes that
-        -- identity; replacing it creates the chosen identity instead. The agent
-        -- belongs to the human owner; Vera supplies its librarian harness.
+        -- Desktop requires the person to name the owner's librarian agent for
+        -- both personal and collective libraries. It does not copy the name of
+        -- a librarian from the developer's corpus into a new installation. The
+        -- chosen identity belongs to the human owner; Vera supplies its harness.
 
     @invariant TheFounderIsTheLibrariansFirstHumanPrincipal
         -- Creating an agent never creates ownerless agency. The founding person
@@ -84,6 +83,12 @@ contract DesktopLibraryConstitution {
         -- A remote inference key may be supplied during first run only when the
         -- host offers secure secret storage. The key is never written to a page,
         -- operation, receipt or database belonging to the corpus.
+
+    @invariant RemoteInferenceNamesItsProviderAndDataBoundary
+        -- First run offers a provider-and-model choice rather than pretending
+        -- every remote endpoint is OpenAI-compatible. When a free hosted tier
+        -- may use prompts and responses to improve its products, Desktop says so
+        -- before the person supplies a key or sends corpus context.
 
     @invariant CapabilityReadinessIsObserved
         -- Choosing inference or voice preparation records intention separately

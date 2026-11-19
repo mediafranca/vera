@@ -883,8 +883,8 @@ export async function askLibrarian(
  * Los turnos más antiguos quedan arriba y el compositor permanece abajo. Cada
  * turno conserva el contexto desde el que nació, aunque la conversación cruce
  * varias páginas. El nombre visible viene del participante efectivo: esta
- * superficie podrá decir Lucienne cuando exista Lucienne, sin rebautizar a
- * Cotito desde el cliente.
+ * superficie usa siempre el participante efectivo, sin rebautizar a nadie
+ * desde el cliente.
  */
 export async function openLibrarianConversation(
   page: PageView,
@@ -930,11 +930,13 @@ export async function openLibrarianConversation(
   sessionControls.className = 'librarian-conversation-sessions';
   const sessionSelect = document.createElement('select');
   sessionSelect.setAttribute('aria-label', 'Conversación guardada');
+  const sessionLabel = document.createElement('span');
+  sessionLabel.className = 'librarian-conversation-session-label';
   const newSession = document.createElement('button');
   newSession.type = 'button';
   newSession.textContent = 'Nueva';
   newSession.title = 'Iniciar otra conversación';
-  sessionControls.append(sessionSelect, newSession);
+  sessionControls.append(sessionLabel, sessionSelect, newSession);
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'librarian-conversation-close';
@@ -1165,6 +1167,10 @@ export async function openLibrarianConversation(
       return option;
     }));
     if (view.conversation === null) sessionSelect.selectedIndex = -1;
+    const only = conversations.length <= 1;
+    sessionSelect.hidden = only;
+    sessionLabel.hidden = !only;
+    sessionLabel.textContent = view.conversation?.title ?? 'Conversación nueva';
   };
 
   const refresh = async (follow = false): Promise<void> => {
@@ -2618,7 +2624,7 @@ async function processPage(
             step(
               model === null
                 ? 'sin modelo: sólo estructura y coincidencias verificables'
-                : `modelo: ${String(model)}${provider === 'openai' ? ' · contenido enviado a OpenAI' : ' · en este equipo'}`,
+                : `modelo: ${String(model)}${provider === 'local' ? ' · en este equipo' : ` · contenido enviado a ${provider === 'gemini' ? 'Google Gemini' : 'OpenAI'}`}`,
               'note',
             );
             break;

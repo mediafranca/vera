@@ -1159,8 +1159,12 @@ export function createVeraServer(options: ServerOptions): VeraServer {
   let embeddedLibrarianBusy = false;
   let embeddedRuntimeStatus: LibrarianRuntimeStatus = 'unconstituted';
 
-  const resolvedRuntimeSecret = (reference: string | null): string | undefined =>
-    reference === null ? process.env['OPENAI_API_KEY'] : process.env[reference];
+  const resolvedRuntimeSecret = (reference: string | null, model: string | null = null): string | undefined =>
+    reference === null
+      ? model?.startsWith('gemini:') === true
+        ? process.env['GEMINI_API_KEY']
+        : process.env['OPENAI_API_KEY']
+      : process.env[reference];
 
   const assessEmbeddedRuntime = (): LibrarianRuntimeStatus => {
     const config = librarianRuntimeConfiguration(store);
@@ -1171,7 +1175,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (config.adapter === 'external_agent') {
       return options.librarianHook === undefined ? 'degraded' : 'ready';
     }
-    if (config.model.startsWith('openai:') && (resolvedRuntimeSecret(config.secretReference) ?? '').trim() === '') {
+    if ((config.model.startsWith('openai:') || config.model.startsWith('gemini:')) &&
+      (resolvedRuntimeSecret(config.secretReference, config.model) ?? '').trim() === '') {
       return 'degraded';
     }
     return 'ready';
@@ -1550,8 +1555,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const modelOptions = {
         model: config.model,
         ...(config.endpoint === null ? {} : { endpoint: config.endpoint }),
-        ...(resolvedRuntimeSecret(config.secretReference) === undefined
-          ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference)! }),
+        ...(resolvedRuntimeSecret(config.secretReference, config.model) === undefined
+          ? {} : { apiKey: resolvedRuntimeSecret(config.secretReference, config.model)! }),
         maxTokens: 2_400,
         contextTokens: 12_288,
         timeoutMs: 300_000,
@@ -3352,6 +3357,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const binding = activeOwnerLibrarian(store);
       const config = librarianRuntimeConfiguration(store);
       return {
+        ownerName: owner.name,
         librarian: binding === null ? null : {
           id: binding.id, agent: binding.agent, name: binding.name, owner: binding.owner,
         },
@@ -3367,7 +3373,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         territory: binding === null ? null : territoryPolicy(store, binding.agent),
         runs: librarianRuntimeRuns(store),
         secret: config?.secretReference === null || config?.secretReference === undefined
-          ? { reference: null, available: (process.env['OPENAI_API_KEY'] ?? '').trim() !== '' }
+          ? { reference: null, available: (resolvedRuntimeSecret(null, config?.model ?? null) ?? '').trim() !== '' }
           : { reference: config.secretReference, available: (process.env[config.secretReference] ?? '').trim() !== '' },
       };
     };
@@ -3582,10 +3588,10 @@ export function createVeraServer(options: ServerOptions): VeraServer {
     if (request.method === 'POST' && path === '/librarian/runtime/constitute') {
       if (who.participant !== owner.id) { send(response, 403, { error: 'sólo la persona dueña constituye su agente de biblioteca' }); return; }
       let body: Record<string, unknown> = {};
-      try { body = await readSmallJson(); } catch { /* Lucienne es el smart default */ }
+      try { body = await readSmallJson(); } catch { /* el oficio tiene un nombre neutro si se omite */ }
       try {
-        const requestedName = typeof body['name'] === 'string' ? body['name'].trim() : 'Lucienne';
-        const binding = ensureOwnerLibrarian(store, graph, owner.id, requestedName || 'Lucienne');
+        const requestedName = typeof body['name'] === 'string' ? body['name'].trim() : 'Bibliotecaria';
+        const binding = ensureOwnerLibrarian(store, graph, owner.id, requestedName || 'Bibliotecaria');
         if (activeManifest(store, binding.agent) === null) {
           const defaults = [
             { title: binding.name, role: 'identity' as ConstitutionRole },

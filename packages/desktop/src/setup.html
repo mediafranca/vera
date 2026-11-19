@@ -61,7 +61,7 @@
       </div>
 
       <label for="librarian">Nombre de tu bibliotecaria</label>
-      <input id="librarian" name="librarian" value="Lucienne" required minlength="2">
+      <input id="librarian" name="librarian" placeholder="Por ejemplo, Apolonia" required minlength="2">
 
       <fieldset class="capability">
         <legend>Inferencia de la bibliotecaria</legend>
@@ -71,13 +71,14 @@
         </div>
         <p id="inference-note" class="note">La bibliotecaria queda constituida aunque todavía no tenga modelo. También podrá descubrir un modelo local después.</p>
         <div id="remote-inference" hidden>
-          <label for="endpoint">Endpoint compatible con OpenAI</label>
-          <input id="endpoint" name="endpoint" inputmode="url" placeholder="https://api.openai.com/v1">
-          <label for="model">Modelo</label>
-          <input id="model" name="model" placeholder="gpt-5-mini">
+          <label for="model">Proveedor y modelo</label>
+          <input id="model" name="model" value="gemini:gemini-3.8-flash" placeholder="gemini:gemini-3.8-flash o openai:modelo">
+          <label for="endpoint">Endpoint alternativo (opcional)</label>
+          <input id="endpoint" name="endpoint" inputmode="url" placeholder="se usa el endpoint oficial del proveedor">
           <label for="api-key">Clave de acceso</label>
           <input id="api-key" name="api-key" type="password" autocomplete="new-password">
           <p class="note">La clave se cifra en el almacén seguro del sistema. Nunca se escribe en la base ni en la bitácora.</p>
+          <p class="note">Gemini puede usarse con una clave gratuita de Google AI Studio. En el nivel gratuito, Google puede usar entradas y salidas para mejorar sus productos; Vera envía cada turno con <code>store:false</code>.</p>
         </div>
       </fieldset>
 

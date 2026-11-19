@@ -824,6 +824,7 @@ export interface TerritoryAdministrationView {
 }
 
 export interface LibrarianRuntimeView {
+  ownerName: string;
   librarian: { id: string; agent: string; name: string; owner: string } | null;
   eligible: { agent: string; name: string }[];
   history: {
@@ -1799,7 +1800,7 @@ export const api = {
   }),
 
   processingModels: () => json<{ models: {
-    id: string; name: string; provider: 'local' | 'openai'; location: 'this_device' | 'external';
+    id: string; name: string; provider: 'local' | 'openai' | 'gemini'; location: 'this_device' | 'external';
   }[] }>('/processing/models'),
 
   constituteLibrarianRuntime: (name: string) => json<LibrarianRuntimeView>('/librarian/runtime/constitute', {
