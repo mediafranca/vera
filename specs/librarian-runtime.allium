@@ -151,10 +151,16 @@ contract ResidentLibrarianExecution {
         -- broad reach is not an exemption from provenance.
 
     @invariant IdentitySurvivesRuntimeAndProviderChanges
-        -- Lucienne's participant, office, conversations, harness, authorship and
+        -- The librarian's participant, office, conversations, harness, authorship and
         -- history do not belong to Qwen, Codex, OpenClaw or any other runtime or
         -- model provider. The owner may replace either execution adapter or
         -- provider without replacing the librarian.
+
+    @invariant RemoteInferenceIsExplicitAndStateless
+        -- A hosted provider receives only the bounded context of the current
+        -- governed turn. Vera requests stateless processing when the provider
+        -- supports it, identifies that corpus content leaves the device, and
+        -- discloses materially different data treatment on a free tier.
 
     @invariant TheConfiguredRuntimeIsTheOnlyRuntime
         -- A request is dispatched only through the execution adapter and model

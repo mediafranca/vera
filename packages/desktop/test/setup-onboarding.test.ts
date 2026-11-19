@@ -12,9 +12,10 @@ test('la primera ejecución pregunta por la biblioteca y su gobierno', () => {
   assert.match(source, /value="Superficie colectiva"/);
 });
 
-test('Lucienne es un nombre editable para la bibliotecaria de la persona', () => {
+test('la instalación pide un nombre propio para la bibliotecaria de la persona', () => {
   assert.match(source, /Nombre de tu bibliotecaria/);
-  assert.match(source, /id="librarian"[^>]+value="Lucienne"/);
+  assert.match(source, /id="librarian"[^>]+placeholder="Por ejemplo, Apolonia"/);
+  assert.doesNotMatch(source, /id="librarian"[^>]+value=/);
   assert.match(source, /ownerLibrarianName: librarian\.value/);
 });
 

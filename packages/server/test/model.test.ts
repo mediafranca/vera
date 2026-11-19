@@ -6,6 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 
 import {
   lastObjectIn,
@@ -15,6 +16,7 @@ import {
   readingPrompt,
   readLocalModelOutput,
   READING_PROMPT_CHARS,
+  ask,
 } from '../src/model.ts';
 
 describe('salida del runtime local', () => {
@@ -35,6 +37,40 @@ describe('salida del runtime local', () => {
     assert.deepEqual(readLocalModelOutput('prompt breve\nRespuesta útil.\nExiting...', 'prompt breve'), {
       text: 'Respuesta útil.',
     });
+  });
+});
+
+describe('adaptador Gemini residente', () => {
+  it('usa Interactions sin estado y conserva la respuesta para el harness', async () => {
+    const received: { headers: Record<string, string | string[] | undefined>; body: Record<string, unknown> }[] = [];
+    const server = createServer(async (request, response) => {
+      let raw = '';
+      for await (const chunk of request) raw += chunk.toString();
+      received.push({ headers: request.headers, body: JSON.parse(raw) as Record<string, unknown> });
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ output_text: 'Respuesta de Apolonia.' }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address !== null && typeof address === 'object');
+    try {
+      const result = await ask('Ordena esta página', {
+        model: 'gemini:gemini-3.8-flash',
+        apiKey: 'clave-de-prueba',
+        endpoint: `http://127.0.0.1:${address.port}`,
+        maxTokens: 321,
+      });
+      assert.deepEqual(result, { text: 'Respuesta de Apolonia.' });
+      assert.equal(received[0]?.headers['x-goog-api-key'], 'clave-de-prueba');
+      assert.deepEqual(received[0]?.body, {
+        model: 'gemini-3.8-flash',
+        input: 'Ordena esta página',
+        store: false,
+        generation_config: { max_output_tokens: 321, temperature: 0 },
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
   });
 });
 

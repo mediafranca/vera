@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-describe('custodia Desktop del secreto de Lucienne', () => {
+describe('custodia Desktop del secreto de la bibliotecaria', () => {
   it('cifra el valor y sólo expone estado y reemplazo al cliente', () => {
     const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
     const preload = readFileSync(new URL('../src/preload.ts', import.meta.url), 'utf8');

@@ -217,13 +217,20 @@ const readLibrarianSecret = (): LibrarianSecretState | null => {
 };
 
 const applyLibrarianSecret = (state: LibrarianSecretState | null): void => {
+  delete process.env['VERA_OPENAI_MODELS'];
+  delete process.env['VERA_GEMINI_MODELS'];
+  delete process.env['OPENAI_BASE_URL'];
   if (state === null) {
     delete process.env['VERA_LIBRARIAN_API_KEY'];
     return;
   }
   process.env['VERA_LIBRARIAN_API_KEY'] = state.apiKey;
-  if (state.endpoint.trim() !== '') process.env['OPENAI_BASE_URL'] = state.endpoint.trim();
-  if (state.model.trim() !== '') process.env['VERA_OPENAI_MODELS'] = state.model.replace(/^openai:/, '').trim();
+  if (state.model.startsWith('gemini:')) {
+    process.env['VERA_GEMINI_MODELS'] = state.model.slice('gemini:'.length).trim();
+  } else {
+    if (state.endpoint.trim() !== '') process.env['OPENAI_BASE_URL'] = state.endpoint.trim();
+    if (state.model.trim() !== '') process.env['VERA_OPENAI_MODELS'] = state.model.replace(/^openai:/, '').trim();
+  }
 };
 
 const databaseExists = (): boolean => existsSync(databasePath) && statSync(databasePath).size > 0;

@@ -85,6 +85,12 @@ contract MCPIsADoorAndNotASecondMemory {
         -- config.toml: pegarlas como nombres de encabezado produciría una
         -- configuración plausible que jamás presenta la credencial.
 
+    @invariant GenericJSONComplementsClientRecipes
+        -- Vera preserves the recipe tailored to each known client and also
+        -- offers a complete portable mcpServers JSON object for another client.
+        -- The generic object names serverUrl, the Bearer and client headers, and
+        -- a finite timeout; adding it never silently rewrites the specific recipe.
+
     @invariant TheServerNeedsNoModel
         -- Descubrir, buscar, leer, autorizar y escribir son deterministas. Un
         -- servidor que necesitara un modelo para decidir qué entregar tendría

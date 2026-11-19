@@ -35,7 +35,7 @@ const NAMES = ['llama-cli'];
 export interface ProcessingModel {
   id: string;
   name: string;
-  provider: 'local' | 'openai';
+  provider: 'local' | 'openai' | 'gemini';
   location: 'this_device' | 'external';
 }
 
@@ -47,8 +47,15 @@ const localDirectories = (): string[] => {
 };
 
 const openAIModels = (): string[] => {
-  if ((process.env['OPENAI_API_KEY'] ?? '').trim() === '') return [];
+  if ((process.env['OPENAI_API_KEY'] ?? process.env['VERA_LIBRARIAN_API_KEY'] ?? '').trim() === '') return [];
   const configured = process.env['VERA_OPENAI_MODELS'] ?? process.env['VERA_OPENAI_MODEL'] ?? 'gpt-5.6-luna';
+  return configured.split(',').map((one) => one.trim()).filter((one) => one !== '');
+};
+
+const geminiModels = (): string[] => {
+  const available = (process.env['GEMINI_API_KEY'] ?? process.env['VERA_LIBRARIAN_API_KEY'] ?? '').trim();
+  if (available === '') return [];
+  const configured = process.env['VERA_GEMINI_MODELS'] ?? process.env['VERA_GEMINI_MODEL'] ?? 'gemini-3.8-flash';
   return configured.split(',').map((one) => one.trim()).filter((one) => one !== '');
 };
 
@@ -80,15 +87,24 @@ export async function processingModels(): Promise<ProcessingModel[]> {
     provider: 'openai' as const,
     location: 'external' as const,
   }));
-  return [...local, ...remote];
+  const gemini = geminiModels().map((model) => ({
+    id: `gemini:${model}`,
+    name: model,
+    provider: 'gemini' as const,
+    location: 'external' as const,
+  }));
+  return [...local, ...remote, ...gemini];
 }
 
 async function selectedModel(id?: string, remoteKey?: string): Promise<{ descriptor: ProcessingModel; path?: string } | null> {
   const catalog = await processingModels();
   const descriptor = id === undefined ? catalog[0] : catalog.find((one) => one.id === id) ?? (
-    id.startsWith('openai:') && (remoteKey ?? '').trim() !== ''
-      ? { id, name: id.slice('openai:'.length), provider: 'openai' as const, location: 'external' as const }
-      : undefined
+    (remoteKey ?? '').trim() === '' ? undefined
+      : id.startsWith('openai:')
+        ? { id, name: id.slice('openai:'.length), provider: 'openai' as const, location: 'external' as const }
+        : id.startsWith('gemini:')
+          ? { id, name: id.slice('gemini:'.length), provider: 'gemini' as const, location: 'external' as const }
+          : undefined
   );
   if (descriptor === undefined) return null;
   if (descriptor.provider === 'local') {
@@ -109,8 +125,8 @@ export async function modelPresence(id?: string): Promise<ModelPresence> {
   if (id !== undefined) {
     const selected = await selectedModel(id);
     if (selected === null) return { ready: false, binary: null, model: null };
-    if (selected.descriptor.provider === 'openai') {
-      return { ready: true, binary: 'openai', model: selected.descriptor.name };
+    if (selected.descriptor.provider !== 'local') {
+      return { ready: true, binary: selected.descriptor.provider, model: selected.descriptor.name };
     }
     return { ready: true, binary: findTool(NAMES, process.env['VERA_LLAMA']), model: selected.path ?? null };
   }
@@ -227,6 +243,45 @@ export async function ask(
   options: AskOptions = {},
 ): Promise<{ text: string } | ModelFailure> {
   const selected = await selectedModel(options.model, options.apiKey);
+  if (selected?.descriptor.provider === 'gemini') {
+    const base = options.endpoint ?? 'https://generativelanguage.googleapis.com/v1beta';
+    const endpoint = base.endsWith('/interactions') ? base : `${base.replace(/\/$/, '')}/interactions`;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': options.apiKey ?? process.env['GEMINI_API_KEY'] ?? '',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selected.descriptor.name,
+          input: prompt,
+          store: false,
+          generation_config: {
+            max_output_tokens: options.maxTokens ?? 200,
+            temperature: options.temperature ?? 0,
+          },
+        }),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 120_000),
+      });
+      const body = await response.json() as {
+        error?: { message?: string };
+        output_text?: string;
+        steps?: { type?: string; content?: { type?: string; text?: string }[] }[];
+      };
+      if (!response.ok) return { error: body.error?.message ?? `Gemini respondió ${response.status}` };
+      const text = body.output_text ?? body.steps
+        ?.filter((step) => step.type === 'model_output')
+        .flatMap((step) => step.content ?? [])
+        .filter((item) => item.type === 'text' || item.type === 'output_text')
+        .map((item) => item.text ?? '')
+        .join('') ?? '';
+      return text.trim() === '' ? { error: 'Gemini no respondió nada' } : { text: text.trim() };
+    } catch (error) {
+      const why = error instanceof Error ? error.message : 'error desconocido';
+      return { error: `Gemini no pudo leer la página: ${why}` };
+    }
+  }
   if (selected?.descriptor.provider === 'openai') {
     const base = options.endpoint ?? process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1';
     const endpoint = `${base.replace(/\/$/, '')}/responses`;

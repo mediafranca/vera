@@ -60,14 +60,14 @@ describe('administración del bibliotecario embebido', () => {
     assert.match(administration, /adapter: adapter\.value === 'external_agent'/);
     assert.match(administration, /Agente de OpenClaw/);
     assert.match(administration, /Proveedor y modelo/);
-    assert.match(administration, /openai:gpt-5\.6-sol/);
+    assert.match(administration, /gemini:gemini-3\.8-flash/);
     assert.match(administration, /No existe fallback implícito/);
   });
 
   it('permite cambiar el nombre efectivo sin convertir una página en configuración', () => {
     assert.match(administration, /participantName\.value = view\.librarian\.name/);
     assert.match(administration, /api\.renameParticipant\(view\.librarian!\.agent/);
-    assert.match(administration, /Lucienne es sólo el nombre inicial/);
+    assert.match(administration, /Cambiar el nombre conserva el oficio/);
     assert.match(administration, /conserva el oficio, la constitución, el harness, el territorio y la historia/);
     assert.match(administration, /className = 'agent-name-input'/);
     assert.match(administration, /announceLibrarianIdentity\(\{ agent: renamed\.participant\.id, name: renamed\.participant\.name \}\)/);
@@ -103,7 +103,7 @@ describe('administración del bibliotecario embebido', () => {
   it('nombra los dos caminos de ejecución como evidencia de sólo lectura', () => {
     assert.match(administration, /Ejecuciones observadas · sólo lectura/);
     assert.match(administration, /dos caminos de ejecución de/);
-    assert.match(administration, /Cotito no es un runtime de \$\{agent\.agent\.name\}/);
+    assert.match(administration, /Un agente participante distinto no se convierte en runtime de \$\{agent\.agent\.name\}/);
   });
 
   it('resuelve una sola identidad y no convierte el oficio en directorio de agentes', () => {

@@ -148,7 +148,7 @@ function runtimeState(agent: AgentAdministrationView): HTMLElement {
   const section = document.createElement('section'); section.className = 'agent-runtime-state';
   const heading = document.createElement('h2'); heading.textContent = 'Ejecuciones observadas · sólo lectura';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = `Los recibos son dos caminos de ejecución de ${agent.agent.name}: el runtime interno de Vera y el agente externo de OpenClaw. Vera no confunde activación con ejecución. Cotito no es un runtime de ${agent.agent.name}: es otro participante y sólo puede aparecer como posible sucesor del oficio.`;
+  explanation.textContent = `Los recibos son dos caminos de ejecución de ${agent.agent.name}: el runtime interno de Vera y un agente externo de OpenClaw. Vera no confunde activación con ejecución. Un agente participante distinto no se convierte en runtime de ${agent.agent.name}: sólo puede aparecer como posible sucesor del oficio.`;
   section.append(heading, explanation);
   if (agent.runtimes.length === 0) {
     const empty = document.createElement('p'); empty.className = 'agent-runtime-empty';
@@ -222,7 +222,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   if (view.librarian === null) {
     const explanation = document.createElement('p'); explanation.className = 'settings-note';
     explanation.textContent = 'Esta biblioteca precede al nombre inicial. Constituir el oficio crea el agente, su vínculo con la persona dueña, el harness y un manifiesto inicial editable.';
-    const name = document.createElement('input'); name.value = 'Lucienne'; name.required = true;
+    const name = document.createElement('input'); name.placeholder = 'Nombre de la bibliotecaria'; name.required = true;
     section.append(explanation, field('Nombre inicial', name), control('Constituir agente de biblioteca', async () => {
       const next = await api.constituteLibrarianRuntime(name.value);
       announceLibrarianIdentity(next.librarian);
@@ -234,7 +234,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const identity = document.createElement('section'); identity.className = 'agent-runtime-identity';
   const identityHeading = document.createElement('h2'); identityHeading.textContent = 'Identidad y oficio';
   const identityNote = document.createElement('p'); identityNote.className = 'settings-note';
-  identityNote.textContent = 'Lucienne es sólo el nombre inicial. Cambiarlo conserva el oficio, la constitución, el harness, el territorio y la historia del participante.';
+  identityNote.textContent = 'Cambiar el nombre conserva el oficio, la constitución, el harness, el territorio y la historia del participante.';
   const identityForm = document.createElement('form'); identityForm.className = 'agent-runtime-identity-form';
   const participantName = document.createElement('input'); participantName.value = view.librarian.name;
   participantName.className = 'agent-name-input';
@@ -306,9 +306,9 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     option.selected = config.adapter === value; adapter.append(option);
   }
   const externalAgent = document.createElement('input'); externalAgent.value = config.externalAgent ?? '';
-  externalAgent.placeholder = 'lucienne';
+  externalAgent.placeholder = 'identificador del agente';
   const model = document.createElement('input'); model.value = config.model ?? '';
-  model.placeholder = 'openai:gpt-5.6-sol, anthropic:… o google:…'; model.setAttribute('list', 'librarian-models');
+  model.placeholder = 'gemini:gemini-3.8-flash u openai:modelo'; model.setAttribute('list', 'librarian-models');
   const models = document.createElement('datalist'); models.id = 'librarian-models';
   for (const offered of modelCatalog.models) {
     const option = document.createElement('option'); option.value = offered.id;
@@ -316,7 +316,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     models.append(option);
   }
   const endpoint = document.createElement('input'); endpoint.type = 'url';
-  endpoint.value = config.endpoint ?? ''; endpoint.placeholder = 'https://api.openai.com/v1';
+  endpoint.value = config.endpoint ?? ''; endpoint.placeholder = 'endpoint alternativo (opcional)';
   const reference = document.createElement('input'); reference.value = config.secretReference ?? 'VERA_LIBRARIAN_API_KEY';
   reference.pattern = '[A-Z][A-Z0-9_]{2,63}';
   const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = config.enabled;
@@ -335,6 +335,8 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   key.placeholder = view.secret.available ? 'clave guardada; deja vacío para conservarla' : 'clave de inferencia';
   const desktop = (window as unknown as { veraLibrarianSecret?: DesktopLibrarianSecretBridge }).veraLibrarianSecret;
   if (desktop === undefined) key.hidden = true;
+  const privacy = document.createElement('p'); privacy.className = 'settings-note';
+  privacy.textContent = 'Gemini admite claves gratuitas de Google AI Studio. En el nivel gratuito, Google puede usar entradas y salidas para mejorar sus productos. Vera solicita inferencia sin estado (store:false).';
 
   const permissionList = document.createElement('fieldset');
   const legend = document.createElement('legend'); legend.textContent = 'Permisos del runtime'; permissionList.append(legend);
@@ -359,7 +361,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
   const contract = document.createElement('section'); contract.className = 'agent-runtime-contract';
   const contractHeading = document.createElement('h3'); contractHeading.textContent = 'Contrato de respuesta';
   const contractText = document.createElement('p'); contractText.className = 'settings-note';
-  contractText.textContent = 'Cada turno recibe la página y el bloque de origen, más una vecindad y búsqueda acotadas de la biblioteca. La respuesta separa el recibo breve de los bloques nativos y declara si es de Lucienne, Herbert por Lucienne, Lucienne a partir de Herbert o Herbert con Lucienne.';
+  contractText.textContent = `Cada turno recibe la página y el bloque de origen, más una vecindad y búsqueda acotadas de la biblioteca. La respuesta separa el recibo breve de los bloques nativos y declara si es de ${view.librarian.name}, ${view.ownerName} por ${view.librarian.name}, ${view.librarian.name} a partir de ${view.ownerName} o ${view.ownerName} con ${view.librarian.name}.`;
   contract.append(contractHeading, contractText);
   const effective = document.createElement('p'); effective.className = 'settings-note agent-runtime-effective';
   const describeEffectiveRuntime = (): void => {
@@ -376,7 +378,7 @@ async function runtimeConfigurationPanel(view: LibrarianRuntimeView, refresh: ()
     models, field('Runtime de ejecución', adapter), field('Agente de OpenClaw', externalAgent),
     field('Proveedor y modelo', model), field('Endpoint de inferencia (sólo modo embebido)', endpoint),
     field('Referencia del secreto', reference), field('Clave (sólo Desktop)', key),
-    effective, contract, field('Presupuesto de contexto (caracteres)', contextBudget),
+    privacy, effective, contract, field('Presupuesto de contexto (caracteres)', contextBudget),
     field('Profundidad de vecindad', contextDepth), field('Resultados de búsqueda', contextSearch),
     permissionList, activeLabel, dialecticLabel, dialecticNote, routineLabel, field('Hora local de la ronda', hour),
   );
