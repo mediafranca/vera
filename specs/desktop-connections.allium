@@ -44,6 +44,17 @@ contract CustodiaDelEnlace {
         -- Un sobre MCP recibido por Desktop se ejecuta en la puerta MCP local
         -- autenticada. La ruta visual que describe conexiones no sustituye al
         -- protocolo aunque comparta el nombre `/mcp`.
+
+    @invariant LaPuertaLocalSeCompruebaComoParteDeDesktop
+        -- La salud MCP de una instalación Desktop prueba su puerta local
+        -- incorporada. No depende de que la persona haya publicado otro origen
+        -- MCP en Internet ni confunde ausencia de publicación con una avería.
+
+    @invariant LaDisponibilidadDelRelayNoEsElEstadoDelEnlace
+        -- La disponibilidad del servicio comunitario Vera Conecta y el estado
+        -- del enlace de esta instalación son hechos separados. Un relay sano no
+        -- significa que Desktop esté emparejado o conectado; un enlace
+        -- desactivado tampoco declara caído al servicio compartido.
 }
 
 contract GobiernoDeClientesRemotos {

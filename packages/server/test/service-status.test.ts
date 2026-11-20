@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { observeServiceStatuses } from '../src/service-status.ts';
+import { listen } from '../src/server.ts';
 
 const clock = (...times: number[]) => {
   let at = 0;
@@ -62,5 +63,31 @@ describe('salud observable de MCP y Vera Conecta', () => {
     });
     assert.deepEqual(statuses.map((one) => one.condition), ['unavailable', 'unavailable']);
     assert.ok(statuses.every((one) => !one.detail.includes('4180')));
+  });
+
+  it('Desktop puede comprobar la puerta MCP embebida sin publicarla', async () => {
+    const port = 4282;
+    const running = listen({
+      port,
+      databasePath: ':memory:',
+      owner: { id: 'participant:desktop-test', name: 'Desktop Test' },
+      mcpStatusOrigin: `http://127.0.0.1:${port}`,
+      conectaHealthUrl: 'data:application/json,{"service":"vera-conecta","status":"ok","protocol":1}',
+      localMcpHandler: (_request, response) => {
+        response.writeHead(401, { 'www-authenticate': 'Bearer realm="vera-mcp"' });
+        response.end('{}');
+      },
+    });
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/service-status`);
+      assert.equal(response.status, 200);
+      const statuses = await response.json() as Array<{ id: string; condition: string }>;
+      assert.deepEqual(statuses.map(({ id, condition }) => [id, condition]), [
+        ['mcp', 'available'],
+        ['conecta', 'available'],
+      ]);
+    } finally {
+      await running.close();
+    }
   });
 });
