@@ -34,6 +34,7 @@ import {
   invert,
   nextToRedo,
   nextToUndo,
+  gesturesIn,
   inverseOf,
   namesFromRoles,
   readObjectDeclarations,
@@ -8625,6 +8626,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           log = log.filter((one) => one.sequence >= boundary);
         }
         const said: {
+          operationId: string;
           sequence: number;
           at: number;
           by: string;
@@ -8642,6 +8644,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           what: string;
           content: string | null;
         }[] = [];
+        const blockOperations: Operation[] = [];
         for (const one of log) {
           const change = one.submission.change;
           const mine =
@@ -8651,7 +8654,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
               change.kind === 'remove_block') &&
               change.block === id);
           if (!mine) continue;
+          blockOperations.push(one);
           said.push({
+            operationId: one.id,
             sequence: one.sequence,
             at: one.appliedAt,
             by: graph.participant(one.submission.submittedBy)?.name ?? one.submission.submittedBy,
@@ -8693,6 +8698,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           if (prior !== undefined) {
             const change = prior.submission.change;
             said.unshift({
+              operationId: `publication-boundary:${publicBoundary.sequence}`,
               sequence: publicBoundary.sequence,
               at: publicBoundary.publishedAt,
               by: graph.participant(prior.submission.submittedBy)?.name ?? 'autor desconocido',
@@ -8716,6 +8722,33 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             });
           }
         }
+        const revisions = gesturesIn(blockOperations).map((gesture) => {
+          const first = gesture[0]!;
+          const last = gesture.at(-1)!;
+          const sequences = new Set(gesture.map((operation) => operation.sequence));
+          const states = said.filter((state) => sequences.has(state.sequence));
+          return {
+            id: `revision:${first.id}:${last.id}`,
+            beganAt: first.appliedAt,
+            endedAt: last.appliedAt,
+            by: graph.participant(first.submission.submittedBy)?.name ?? first.submission.submittedBy,
+            participant: first.submission.submittedBy,
+            operationIds: gesture.map((operation) => operation.id),
+            sequences: states.map((state) => state.sequence),
+          };
+        });
+        for (const state of said) {
+          if (revisions.some((revision) => revision.sequences.includes(state.sequence))) continue;
+          revisions.push({
+            id: `revision:${state.operationId}`,
+            beganAt: state.at,
+            endedAt: state.at,
+            by: state.by,
+            participant: state.participant,
+            operationIds: [state.operationId],
+            sequences: [state.sequence],
+          });
+        }
         // La historia de un bloque es todo lo que ese bloque dijo alguna vez,
         // incluido lo que se borró: se lleva más que leerlo.
         deliver(
@@ -8724,6 +8757,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
             alive: graph.block(id) !== undefined,
             now: graph.block(id)?.content ?? null,
             origin: historicalOriginOf(id),
+            revisions: revisions.sort((a, b) => a.beganAt - b.beganAt),
             states: said,
           },
           { surface: 'GET /blocks/:id/history', subject: id, delivered: [id] },

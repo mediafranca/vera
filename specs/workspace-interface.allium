@@ -574,6 +574,22 @@ contract BlockHistoryInspection {
         -- The inspector identifies itself as a non-modal dialog, moves focus to
         -- its close control when opened, closes with Escape or that control, and
         -- returns focus to the block action that opened it.
+
+    @invariant MeaningfulRevisionsGroupAtomicOperations
+        -- The habitual view groups consecutive operations by the same hand on
+        -- the block into one editing revision. The grouping reuses the temporal
+        -- boundary that already defines undo gestures; it does not rewrite or
+        -- compact the canonical log.
+
+    @invariant SummaryAndForensicsShareStableIdentifiers
+        -- A collapsed revision and its forensic expansion name the same stable
+        -- revision id, operation ids and sequences. Switching views never
+        -- manufactures a second history or loses attribution.
+
+    @invariant FederationReceivesTheAtomicEvidence
+        -- A future surface manifest may cite a meaningful revision, but every
+        -- cited revision keeps the exact atomic operations needed for undo,
+        -- conflicts, authorship and temporal reading.
 }
 
 contract OutlineHierarchyPresentation {

@@ -10162,6 +10162,27 @@ html[data-working-slow='true']::after {
   overscroll-behavior: contain;
 }
 
+.history-revision {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.history-revision > summary {
+  cursor: pointer;
+  padding: 0.7rem 0.8rem;
+  color: var(--text-secondary);
+}
+
+.history-revision > summary code {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.history-revision-states {
+  padding-inline: 0.8rem;
+}
+
 .history-state {
   padding: 0.35rem 0;
   border-top: 1px solid var(--rule);

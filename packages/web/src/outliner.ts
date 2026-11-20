@@ -3407,9 +3407,9 @@ async function showHistory(
   title.textContent = 'Historial del bloque';
   const summary = document.createElement('span');
   summary.textContent =
-    said.states.length === 1
+    said.revisions.length === 1
       ? 'nació así y no se ha tocado'
-      : `${said.states.length} estados${said.alive ? '' : ' · el bloque ya no está'}`;
+      : `${said.revisions.length} revisiones · ${said.states.length} operaciones${said.alive ? '' : ' · el bloque ya no está'}`;
   heading.append(title, summary);
   if (said.origin !== null) {
     const origin = document.createElement('p');
@@ -3441,7 +3441,23 @@ async function showHistory(
   states.className = 'history-states';
   panel.append(head, states);
 
-  for (const state of [...said.states].reverse()) {
+  for (const revision of [...said.revisions].reverse()) {
+    const group = document.createElement('details');
+    group.className = 'history-revision';
+    if (revision === said.revisions.at(-1)) group.open = true;
+    const revisionSummary = document.createElement('summary');
+    const began = new Date(revision.beganAt).toISOString().slice(0, 16).replace('T', ' ');
+    revisionSummary.textContent = `${began} · ${revision.by} · ${revision.sequences.length} ${
+      revision.sequences.length === 1 ? 'operación' : 'operaciones'}`;
+    const revisionId = document.createElement('code');
+    revisionId.textContent = revision.id;
+    revisionId.title = 'Identidad estable de la revisión';
+    revisionSummary.append(' ', revisionId);
+    const revisionStates = document.createElement('div');
+    revisionStates.className = 'history-revision-states';
+    group.append(revisionSummary, revisionStates);
+    const sequences = new Set(revision.sequences);
+    for (const state of said.states.filter((one) => sequences.has(one.sequence)).reverse()) {
     const line = document.createElement('div');
     line.className = state.content === said.now ? 'history-state now' : 'history-state';
     const when = document.createElement('span');
@@ -3482,7 +3498,7 @@ async function showHistory(
     const auditLabel = document.createElement('summary');
     auditLabel.textContent = 'detalle auditable';
     const auditOrigin = document.createElement('code');
-    auditOrigin.textContent = state.originId;
+    auditOrigin.textContent = `${state.operationId} · ${state.originId}`;
     audit.append(auditLabel, auditOrigin);
     line.append(audit);
     if (state.content !== null) {
@@ -3497,7 +3513,9 @@ async function showHistory(
       copy.addEventListener('click', () => copyText(state.content ?? '', notify));
       line.append(copy);
     }
-    states.append(line);
+      revisionStates.append(line);
+    }
+    states.append(group);
   }
   const controller = new AbortController();
   historyInspectorCleanup = () => controller.abort();
