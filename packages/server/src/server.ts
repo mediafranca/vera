@@ -462,6 +462,8 @@ export interface ServerOptions {
   publicSite?: { title: string; canonicalDomain: string };
   /** Origen loopback de la única ruta MCP expuesta por el dominio público. */
   publicMcpOrigin?: string;
+  /** Origen que la instancia debe sondear para comprobar su propia puerta MCP. */
+  mcpStatusOrigin?: string;
   /** Endpoint público que demuestra identidad y versión de Vera Conecta. */
   conectaHealthUrl?: string;
   /** Puerta MCP autenticada embebida por Vera Desktop para el relay saliente. */
@@ -9958,8 +9960,9 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
 
       if (path === '/service-status') {
+        const mcpStatusOrigin = options.mcpStatusOrigin ?? options.publicMcpOrigin;
         send(response, 200, await observeServiceStatuses({
-          ...(options.publicMcpOrigin === undefined ? {} : { mcpOrigin: options.publicMcpOrigin }),
+          ...(mcpStatusOrigin === undefined ? {} : { mcpOrigin: mcpStatusOrigin }),
           ...(options.conectaHealthUrl === undefined ? {} : { conectaHealthUrl: options.conectaHealthUrl }),
         }));
         return;

@@ -20,6 +20,8 @@ import { createLocalSpeech, speechDiagnosis, type SpeechSynthesizer } from '../.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../..');
 const PORT = 4173;
+const LOCAL_VERA_URL = `http://127.0.0.1:${PORT}`;
+const VERA_CONECTA_HEALTH_URL = 'https://conecta.mediafranca.net/health';
 
 const portableRoot = process.env['PORTABLE_EXECUTABLE_DIR'];
 const localRoot = process.platform === 'win32'
@@ -418,16 +420,18 @@ async function startVera(initialPath = '/'): Promise<void> {
       voiceConfiguration: desktopVoiceConfiguration(),
       pdfRenderer: renderPdfWithElectron,
       diagramRenderer: renderDiagramsWithElectron,
-      localMcpHandler: createMCPHandler(`http://127.0.0.1:${PORT}`),
+      localMcpHandler: createMCPHandler(LOCAL_VERA_URL),
+      mcpStatusOrigin: LOCAL_VERA_URL,
+      conectaHealthUrl: VERA_CONECTA_HEALTH_URL,
     });
   }
   if (conecta === null) {
-    conecta = new DesktopConecta(secureConectaStore(), `http://127.0.0.1:${PORT}`, (status) => {
+    conecta = new DesktopConecta(secureConectaStore(), LOCAL_VERA_URL, (status) => {
       window?.webContents.send('vera-conecta:status', status);
     });
     conecta.start();
   }
-  await window?.loadURL(`http://127.0.0.1:${PORT}${initialPath}`);
+  await window?.loadURL(`${LOCAL_VERA_URL}${initialPath}`);
 }
 
 async function closeVera(): Promise<void> {

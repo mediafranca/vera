@@ -51,6 +51,12 @@ test('Desktop compone PDF y Mermaid con el Chromium incorporado', () => {
   assert.ok(root.build?.extraResources?.some((resource) => resource.to === 'mermaid.min.js'));
 });
 
+test('Desktop observa su MCP local y la disponibilidad del relay comunitario', () => {
+  assert.match(desktopMain, /mcpStatusOrigin:\s*LOCAL_VERA_URL/);
+  assert.match(desktopMain, /conectaHealthUrl:\s*VERA_CONECTA_HEALTH_URL/);
+  assert.match(desktopMain, /https:\/\/conecta\.mediafranca\.net\/health/);
+});
+
 test('un cargador CommonJS distinto no convierte el actualizador en pantalla blanca', () => {
   assert.match(desktopMain, /updaterModule\.autoUpdater \?\? updaterModule\.default\?\.autoUpdater/);
   assert.match(desktopMain, /if \(autoUpdater === undefined\)/);
