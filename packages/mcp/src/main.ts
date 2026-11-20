@@ -42,7 +42,7 @@ import {
   TOOLS, toolNamed, type Ask, type Context, type Propose, type Query, type Write, type WriteBatch,
 } from './tools.ts';
 
-const VERSION = '0.10.0';
+const VERSION = '0.10.1';
 
 /**
  * Lo que un cliente lee antes de decidir cómo usar esto.
