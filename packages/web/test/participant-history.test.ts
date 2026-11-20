@@ -21,9 +21,12 @@ describe('procedencia navegable en el historial de un bloque', () => {
     assert.match(outliner, /Fuente: \$\{historySourceLabel/);
     assert.match(outliner, /Canal: \$\{historyChannelLabel\(state\.channel\)\}/);
     assert.match(outliner, /Vía: \$\{state\.route\}/);
-    assert.match(outliner, /auditOrigin\.textContent = state\.originId/);
+    assert.match(outliner, /auditOrigin\.textContent = `\$\{state\.operationId\} · \$\{state\.originId\}`/);
     assert.match(styles, /\.history-provenance \{/);
     assert.match(styles, /\.history-audit \{/);
+    assert.match(styles, /\.history-revision \{/);
+    assert.match(outliner, /said\.revisions/);
+    assert.match(outliner, /state\.operationId/);
   });
 
   it('abre un único inspector modeless fuera del flujo y devuelve el foco al cerrar', () => {

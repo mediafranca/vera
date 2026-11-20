@@ -420,6 +420,7 @@ export interface Hit {
 
 /** Un estado por el que pasó un bloque. */
 export interface BlockState {
+  operationId: string;
   sequence: number;
   at: number;
   by: string;
@@ -438,6 +439,16 @@ export interface BlockState {
   content: string | null;
 }
 
+export interface BlockRevision {
+  id: string;
+  beganAt: number;
+  endedAt: number;
+  by: string;
+  participant: string;
+  operationIds: string[];
+  sequences: number[];
+}
+
 export interface BlockHistoricalOrigin {
   kind: 'capture';
   route: string;
@@ -451,6 +462,7 @@ export interface BlockHistory {
   alive: boolean;
   now: string | null;
   origin: BlockHistoricalOrigin | null;
+  revisions: BlockRevision[];
   states: BlockState[];
 }
 

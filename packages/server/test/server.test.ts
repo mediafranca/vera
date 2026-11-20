@@ -830,6 +830,20 @@ describe('POST /operations', () => {
       sourceKind: 'document', sourceReference: 'document:1',
     });
   });
+
+  it('agrupa operaciones atómicas en revisiones estables sin perder sus ids', async () => {
+    const page = await write({ kind: 'create_page', title: 'Historia habitable', visibility: 'private' });
+    const block = await write({ kind: 'create_block', page, parent: null, position: 0, content: 'Uno' });
+    await write({ kind: 'edit_block', block, content: 'Uno y dos' });
+    const history = await get(`/blocks/${encodeURIComponent(block)}/history`) as {
+      revisions: Array<{ id: string; operationIds: string[]; sequences: number[] }>;
+      states: Array<{ operationId: string; sequence: number }>;
+    };
+    assert.equal(history.revisions.length, 1);
+    assert.match(history.revisions[0]?.id ?? '', /^revision:op:/);
+    assert.deepEqual(history.revisions[0]?.operationIds, history.states.map((state) => state.operationId));
+    assert.deepEqual(history.revisions[0]?.sequences, history.states.map((state) => state.sequence));
+  });
 });
 
 describe('POST /operations/batch', () => {
