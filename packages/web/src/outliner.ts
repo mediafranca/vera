@@ -309,6 +309,8 @@ export interface OutlinerCallbacks {
   canAskLibrarian?: boolean;
   /** Quien ocupa ahora el oficio; el rol genérico no sustituye su identidad. */
   librarianName?: string;
+  /** Conserva que una escritura futura del agente fue solicitada desde aquí. */
+  onLibrarianRequested?(requestId: string): void | Promise<void>;
   /** Apariencia compartida con el presentador, para que no invente una segunda
    * preferencia local mientras ocupa toda la pantalla. */
   scheme?(): 'light' | 'dark';
@@ -865,6 +867,7 @@ export async function askLibrarian(
       ...(block === null ? {} : { blockId: block.stableId }),
       text: instruction,
     });
+    await callbacks.onLibrarianRequested?.(request.id);
     showLibrarianActivity([request], callbacks.librarianName);
     toast(request.dispatchStatus === 'failed'
       ? `pedido guardado; ${actor.subject} no está disponible y podrá retomarlo`
@@ -1100,7 +1103,8 @@ export async function openLibrarianConversation(
               conversationId: request.conversationId,
               text: 'Esta vez necesito resolver la tarea directamente.',
               dialecticBypass: true,
-            }).then(async () => {
+            }).then(async (nextRequest) => {
+              await callbacks.onLibrarianRequested?.(nextRequest.id);
               await refresh(true);
               callbacks.onReload(null);
             }).catch(() => toast('no se pudo franquear el umbral')).finally(() => {
@@ -1225,6 +1229,7 @@ export async function openLibrarianConversation(
       pageId: page.id, text,
       ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),
     }).then(async (request) => {
+      await callbacks.onLibrarianRequested?.(request.id);
       showLibrarianActivity([request], callbacks.librarianName);
       composer.value = '';
       await refresh(true);
@@ -1285,12 +1290,13 @@ export async function openLibrarianConversation(
       if ('error' in captured) throw new Error(captured.error);
       const transcribed = await voice.transcript(captured.id);
       if ('error' in transcribed) throw new Error(transcribed.error);
-      await api.askLibrarian({
+      const request = await api.askLibrarian({
         pageId: page.id,
         text: transcribed.text,
         recordingId: captured.id,
         ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),
       });
+      await callbacks.onLibrarianRequested?.(request.id);
       await refresh(true);
       callbacks.onReload(null);
     }).catch((error: unknown) => {

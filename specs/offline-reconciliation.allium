@@ -129,6 +129,11 @@ entity WaitingWork {
     -- Whether it touches what is on screen. What moved elsewhere in the corpus
     -- may wait quietly; what moved here is what the participant is looking at.
     touches_open_page: Boolean
+    -- The operation may carry another participant's authorship and still have
+    -- been caused by a request made on this device. Causality never changes the
+    -- author; it only prevents Vera from presenting the requested answer as an
+    -- unexplained concurrent hand.
+    expected_from_local_request: Boolean
 }
 
 entity PendingChange {
@@ -584,6 +589,26 @@ rule ApplyConflictFreeRemoteOperation {
         -- The dialogue below is for the ones that cannot be applied without choosing.
 }
 
+rule TakeLocallyRequestedAgentWorkWhenIdle {
+    when: RemoteOperationReceived(replica, operation)
+
+    requires: operation_was_requested_on_replica(operation, replica)
+    requires: not writing_surface_is_active(replica)
+    requires: not conflicts_with_pending_change(replica, operation)
+
+    ensures:
+        CanonicalOperationAppliedLocally(replica: replica, operation: operation)
+        replica.canonical_cursor = operation.sequence
+        not exists WaitingWork{replica: replica, operation: operation}
+        IncrementalProjectionUpdated(replica: replica, operation: operation)
+
+    @guidance
+        -- The agent remains the author. What this device remembers is the causal
+        -- request, so its answer is expected work rather than an unexplained second
+        -- hand. An open editor or a pending edit of the same block keeps the ordinary
+        -- announcement and conflict path: causality is not permission to overwrite.
+}
+
 rule ContinueWhenConnectionReturns {
     when: ConnectionRestored(replica)
 
@@ -756,7 +781,9 @@ surface LocalFirstWorkspace {
 
     @guarantee WhatArrivesIsAnnouncedAndNotImposed
         -- Canonical work that appeared after the cursor changes an indicator and waits
-        -- to be pressed. It is never applied to what is on screen on its own.
+        -- to be pressed. It is never applied to what is on screen on its own, except
+        -- for the conflict-free answer to an agent request initiated on this same
+        -- device after the writing surface has been left.
         --
         -- The reason is that another hand writes into this corpus. A librarian agent
         -- can rewrite a page while it is being read, and there are exactly three things

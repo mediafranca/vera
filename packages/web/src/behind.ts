@@ -34,6 +34,8 @@ export interface Waiting {
   op: CanonicalOp;
   /** Si tocó la página que se está leyendo. */
   here: boolean;
+  /** Si nació de una solicitud hecha por esta persona en este aparato. */
+  expected: boolean;
 }
 
 export interface Behind {
@@ -65,6 +67,8 @@ export function behind(
     openPage: string | null;
     /** Qué páginas tiene retenidas este aparato. */
     retained: ReadonlySet<string>;
+    /** Solicitudes locales al agente; conservan causalidad, no autoría. */
+    requested?: ReadonlySet<string>;
   },
 ): Behind {
   const waiting: Waiting[] = [];
@@ -76,6 +80,9 @@ export function behind(
     upTo = Math.max(upTo, op.sequence);
     const here = what.openPage !== null && op.page === what.openPage;
     const mine = what.mine.has(op.originId);
+    const expected = [...(what.requested ?? [])].some((request) =>
+      op.originId.startsWith(`librarian:${request}:`)
+    );
     /*
      * Lo propio no se anuncia, pero sí vuelve vieja una copia retenida.
      *
@@ -85,7 +92,7 @@ export function behind(
      */
     if (op.page !== null && what.retained.has(op.page) && (mine || !here)) stale.add(op.page);
     if (mine) continue;
-    waiting.push({ op, here });
+    waiting.push({ op, here, expected });
     hands.add(op.authoredBy);
     /*
      * Una página retenida que otra mano tocó dejó de estar al día, y hay que
@@ -108,6 +115,12 @@ export function behind(
 /** Cómo se dice, en la barra, lo que espera. */
 export function said(state: Behind): { message: string; title: string } | null {
   if (state.waiting.length === 0) return null;
+  if (state.waiting.every((one) => one.expected)) {
+    return {
+      message: state.waiting.length === 1 ? 'solicitud lista' : `solicitud lista · ${state.waiting.length}`,
+      title: 'La solicitud hecha en este aparato está lista. Vera la incorporará cuando termines de escribir.',
+    };
+  }
   const quien =
     state.hands.length === 1 ? nameOf(state.hands[0] as string) : `${state.hands.length} manos`;
   if (state.here > 0) {
