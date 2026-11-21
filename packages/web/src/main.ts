@@ -1744,6 +1744,7 @@ function callbacksFor(page: PageView): OutlinerCallbacks {
       corpus?.lastSequence ?? 0,
     ),
     canAskLibrarian: corpus?.canAskLibrarian === true,
+    onLibrarianRequested: (requestId) => held.noteRequested(requestId),
     ...(corpus?.librarian?.name === undefined ? {} : { librarianName: corpus.librarian.name }),
     scheme: () => workspace.scheme,
     onScheme: (next) => {
@@ -2488,6 +2489,7 @@ async function catchUpWithCorpus(): Promise<void> {
 
   waiting = behind(ops, {
     mine: new Set(await held.sent()),
+    requested: new Set(await held.requested()),
     openPage: workspace.activePage,
     retained: new Set(await held.retained()),
   });
@@ -2526,6 +2528,18 @@ async function catchUpWithCorpus(): Promise<void> {
   // vuelve ajena a los cambios: el sondeo periódico debe sustituirla cuando el
   // día nace en otro aparato, aunque esta pestaña nunca haya ido al fondo.
   await revalidateUnstartedDay();
+  /*
+   * Una respuesta pedida desde este aparato no es una irrupción de otra mano.
+   * Se toma cuando no hay una superficie de escritura abierta ni una edición
+   * local del mismo bloque esperando. Si existe ese desacuerdo, permanece
+   * anunciado y se concilia por el camino ordinario.
+   */
+  if (
+    waiting !== null && contested.size === 0 && waiting.waiting.length > 0 &&
+    waiting.waiting.every((one) => one.expected) && !hasLiveWritingSurface()
+  ) {
+    await takeWaitingWork();
+  }
 }
 
 /** Sustituye la representación provisional de un día cuando ya existe. */

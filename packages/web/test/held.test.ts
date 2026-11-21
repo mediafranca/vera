@@ -112,6 +112,16 @@ describe('la lista y el estado del corpus', () => {
   });
 });
 
+describe('causalidad de solicitudes al agente', () => {
+  it('recuerda las solicitudes hechas en este aparato sin confundirlas con autoría propia', async () => {
+    const held = heldOn(inMemoryKeeps());
+    await held.noteRequested('agent-request:una');
+    await held.noteRequested('agent-request:una');
+    assert.deepEqual(await held.requested(), ['agent-request:una']);
+    assert.deepEqual(await held.sent(), []);
+  });
+});
+
 describe('olvidarlo todo', () => {
   it('deja el aparato como si nunca hubiera leído', async () => {
     const held = heldOn(inMemoryKeeps());

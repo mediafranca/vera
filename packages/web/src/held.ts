@@ -41,6 +41,8 @@ export const RETAINED = 240;
  * bastantes menos de los que harían de esto un segundo registro.
  */
 export const SENT = 500;
+/** Solicitudes al agente iniciadas en este aparato cuya escritura volverá después. */
+export const REQUESTED = 100;
 
 /** Una página tal como queda retenida. */
 export interface KeptPage {
@@ -102,6 +104,16 @@ export interface Held {
    */
   sent(): Promise<string[]>;
   noteSent(originId: string): Promise<void>;
+
+  /**
+   * Solicitudes hechas aquí al agente de biblioteca.
+   *
+   * La respuesta se escribe con autoría del agente, pero no es trabajo
+   * inesperado: fue causada por un gesto de esta persona en este aparato. El id
+   * permite reconocer después sus operaciones sin confundir autoría y causalidad.
+   */
+  requested(): Promise<string[]>;
+  noteRequested(requestId: string): Promise<void>;
 
   /**
    * Suelta una página retenida que dejó de estar al día.
@@ -193,6 +205,14 @@ export function heldOn(keeps: Keeps, now: () => number = Date.now): Held {
         const held = (await keeps.meta<string[]>('sent')) ?? [];
         if (held.includes(originId)) return;
         await keeps.setMeta('sent', [...held, originId].slice(-SENT));
+      }, undefined),
+
+    requested: () => quietly(async () => (await keeps.meta<string[]>('requested')) ?? [], []),
+    noteRequested: (requestId) =>
+      quietly(async () => {
+        const requested = (await keeps.meta<string[]>('requested')) ?? [];
+        if (requested.includes(requestId)) return;
+        await keeps.setMeta('requested', [...requested, requestId].slice(-REQUESTED));
       }, undefined),
 
     forgetPage: (id) => quietly(() => keeps.drop([id]), undefined),
@@ -332,6 +352,8 @@ export function holdsNothing(): Held {
     keepCursor: async () => {},
     sent: async () => [],
     noteSent: async () => {},
+    requested: async () => [],
+    noteRequested: async () => {},
     forgetPage: async () => {},
     retained: async () => [],
     count: async () => 0,

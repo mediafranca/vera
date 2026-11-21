@@ -60,6 +60,18 @@ describe('qué espera', () => {
     assert.equal(state.waiting.length, 2);
   });
 
+  it('reconoce la escritura causada por una solicitud hecha en este aparato', () => {
+    const state = behind([
+      op({
+        sequence: 10,
+        originId: 'librarian:agent-request:abc:change:0',
+        authoredBy: 'participant:lucienne',
+      }),
+    ], { ...nada, requested: new Set(['agent-request:abc']) });
+    assert.equal(state.waiting[0]?.expected, true);
+    assert.match(said(state)?.message ?? '', /solicitud lista/);
+  });
+
   it('sin página abierta, nada toca aquí', () => {
     const state = behind([op({ sequence: 10 })], nada);
     assert.equal(state.here, 0);
