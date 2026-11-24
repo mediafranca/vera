@@ -14,6 +14,12 @@ const graph: GraphData = {
     { source: 'idea', target: 'today' },
     { source: 'idea', target: 'other' },
   ],
+  resources: [{
+    id: 'resource:example',
+    url: 'https://example.org/reference',
+    domain: 'example.org',
+    page: 'idea',
+  }],
 };
 
 describe('el interruptor de diarios en el mapa', () => {
@@ -26,6 +32,7 @@ describe('el interruptor de diarios en el mapa', () => {
     const shown = journalsInMap(graph, 'idea', false);
     assert.deepEqual(shown.nodes.map((node) => node.id), ['idea', 'other']);
     assert.deepEqual(shown.links, [{ source: 'idea', target: 'other' }]);
+    assert.deepEqual(shown.resources, graph.resources);
   });
 
   it('muestra un diario cuando es el foco aunque el interruptor esté apagado', () => {

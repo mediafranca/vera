@@ -2051,6 +2051,16 @@ surface VeraWorkspace {
         -- resources rather than pages: they do not alter reach, degree,
         -- navigation or the three graph lenses, and D4 keeps them in prose.
 
+        -- A satellite keeps a stable screen size while the map zooms or changes
+        -- camera, so a dense neighbourhood cannot shrink its node or edge out
+        -- of sight. Its ordinary stroke uses the same text token as the rest of
+        -- the interface; the accent appears only on hover, press or keyboard
+        -- focus. Its diameter is 9.6 screen pixels in both 2D and 3D.
+
+        -- Filtering journals changes only journal nodes and their incident page
+        -- edges. It preserves the focused page's external resources and every
+        -- other independent layer of the graph response.
+
         -- The same normalized destination appears once. Destinations carrying
         -- embedded credentials are absent, and drawing a resource never fetches
         -- its site or favicon. Activating a satellite reuses Vera's external-link
