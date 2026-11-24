@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { resourceOrbit, resourceScreenPosition } from '../src/graph/render.ts';
+import { EXTERNAL_RESOURCES_VISIBLE, externalResourcesForMap } from '../src/graph/external-resources.ts';
+
+describe('visibilidad temporal de recursos externos', () => {
+  it('conserva el dato pero no entrega satélites a ninguna proyección', () => {
+    const resource = {
+      id: 'resource:example', url: 'https://example.org/',
+      domain: 'example.org', page: 'page:focus',
+    };
+    const data = { nodes: [], links: [], resources: [resource] };
+    assert.equal(EXTERNAL_RESOURCES_VISIBLE, false);
+    assert.deepEqual(externalResourcesForMap(data), []);
+    assert.deepEqual(data.resources, [resource]);
+  });
+});
 
 describe('órbita de recursos externos', () => {
   it('reparte cuatro destinos alrededor de toda la página y fuera de su rótulo', () => {

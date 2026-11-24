@@ -35,6 +35,7 @@ import { resourceOrbit, type RenderSettings } from "./render.ts";
 import { type Moving, runs, spineForce, straightenableRuns } from "./spine.ts";
 import { icon } from "../icons.ts";
 import { inlineOpenGlyph } from './open-glyph.ts';
+import { externalResourcesForMap } from './external-resources.ts';
 import {
   advanceAutoRotation,
   clampElevation,
@@ -614,7 +615,7 @@ export function renderGraph3D(
   const drawnById = new Map(drawn.map((d) => [d.node.id, d]));
 
   const focusedNode = nodes.find((node) => node.central === true) ?? null;
-  const resources = (data.resources ?? []).map((resource: GraphResource) => {
+  const resources = externalResourcesForMap(data).map((resource: GraphResource) => {
     const group = document.createElementNS(SVG_NS, 'g');
     group.setAttribute('class', 'map3d-resource');
     group.setAttribute('tabindex', '0');
