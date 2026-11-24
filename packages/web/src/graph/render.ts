@@ -8,6 +8,7 @@ import { conceptGravity } from './concept-gravity.ts';
 import { proximityExplanation } from './proximity.ts';
 import { graphBalance, graphBalanceNeedsLayout } from './balance.ts';
 import { inlineOpenGlyph } from './open-glyph.ts';
+import { externalResourcesForMap } from './external-resources.ts';
 
 /**
  * El hilo de un recorrido sobre el mapa.
@@ -460,7 +461,7 @@ export function renderGraph(
 
   // Los destinos web de la página en foco son satélites, no nodos del grafo.
   // No entran a la simulación ni a su alcance. @guarantee ExternalResourcesOrbitTheFocusedPage.
-  const resources = data.resources ?? [];
+  const resources = externalResourcesForMap(data);
   // Esta capa vive en coordenadas de pantalla. La página en foco sigue el zoom,
   // pero los satélites conservan su tamaño y su distancia legible en toda PWA.
   const resourceLayer = svg.append('g').attr('class', 'map-resources');
