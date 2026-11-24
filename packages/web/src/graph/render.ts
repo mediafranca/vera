@@ -94,6 +94,33 @@ export function resourceOrbit(index: number, total = 12): { x: number; y: number
   return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: (within % 3 - 1) * 8 };
 }
 
+/**
+ * Proyecta un recurso en pantalla sin escalar su órbita con el zoom del grafo.
+ *
+ * El recurso es un destino de la página en foco, no una página distante del
+ * mapa. Si su radio y su arista viven dentro del mundo ampliable, al encuadrar
+ * un vecindario grande se reducen hasta desaparecer. La página sigue la cámara;
+ * el pequeño signo que declara su salida web conserva tamaño de interfaz.
+ */
+export function resourceScreenPosition(
+  index: number,
+  total: number,
+  focus: { x: number; y: number },
+  transform: PlanarTransform,
+): { focusX: number; focusY: number; x: number; y: number } {
+  const centre = {
+    x: focus.x * transform.k + transform.x,
+    y: focus.y * transform.k + transform.y,
+  };
+  const offset = resourceOrbit(index, total);
+  return {
+    focusX: centre.x,
+    focusY: centre.y,
+    x: centre.x + offset.x,
+    y: centre.y + offset.y,
+  };
+}
+
 type NodeDimensions = Map<string, { w: number; h: number }>;
 
 export interface PlanarViewport {
@@ -359,9 +386,14 @@ export function renderGraph(
   const fontSize = settings.fontSize ?? 12;
 
   const g = svg.append("g");
+  let placeResources = (_transform: d3.ZoomTransform): void => undefined;
   const zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.2, 5])
-    .on("zoom", (event) => g.attr("transform", event.transform));
+    .on("zoom", (event) => {
+      heldTransform = event.transform;
+      g.attr("transform", event.transform);
+      placeResources(event.transform);
+    });
   svg.call(zoomBehavior as any);
 
   // Listen for external zoom/center events from the controls toolbar
@@ -429,15 +461,10 @@ export function renderGraph(
   // Los destinos web de la página en foco son satélites, no nodos del grafo.
   // No entran a la simulación ni a su alcance. @guarantee ExternalResourcesOrbitTheFocusedPage.
   const resources = data.resources ?? [];
-  const resourceLayer = g.append('g').attr('class', 'map-resources');
-  const resourceLinks = resourceLayer.append('g')
-    .attr('stroke', colors.linkStroke)
-    .attr('stroke-opacity', 0.55)
-    .selectAll<SVGLineElement, GraphResource>('line')
-    .data(resources)
-    .join('line')
-    .attr('stroke-dasharray', '2 3');
-  const resourceNodes = resourceLayer.append('g')
+  // Esta capa vive en coordenadas de pantalla. La página en foco sigue el zoom,
+  // pero los satélites conservan su tamaño y su distancia legible en toda PWA.
+  const resourceLayer = svg.append('g').attr('class', 'map-resources');
+  const resourceMarks = resourceLayer
     .selectAll<SVGGElement, GraphResource>('g')
     .data(resources)
     .join('g')
@@ -446,20 +473,38 @@ export function renderGraph(
     .attr('role', 'link')
     .attr('aria-label', (resource) => `Enlace externo: ${resource.domain}`)
     .attr('cursor', 'pointer');
-  resourceNodes.append('circle')
-    .attr('r', 6)
+  resourceMarks.append('line')
+    .attr('stroke', 'var(--text)')
+    .attr('stroke-width', 1)
+    .attr('stroke-dasharray', '2 3');
+  resourceMarks.append('circle')
+    .attr('r', 4.8)
     .attr('fill', 'var(--bg)')
-    .attr('stroke', colors.hoverAccent)
+    .attr('stroke', 'var(--text)')
     .attr('stroke-width', 1.4);
-  resourceNodes.append('title').text((resource) => resource.url);
+  resourceMarks.append('title').text((resource) => resource.url);
   const openResource = (_event: Event, resource: GraphResource): void => {
     settings.openExternalResource?.(resource.url);
   };
-  resourceNodes.on('click', openResource).on('keydown', (event, resource) => {
+  resourceMarks.on('click', openResource).on('keydown', (event, resource) => {
     if ((event as KeyboardEvent).key !== 'Enter' && (event as KeyboardEvent).key !== ' ') return;
     (event as KeyboardEvent).preventDefault();
     openResource(event as Event, resource);
   });
+  placeResources = (transform): void => {
+    const focus = data.nodes.find((one) => one.central === true);
+    const at = { x: focus?.x ?? width / 2, y: focus?.y ?? height / 2 };
+    resourceMarks.each(function (_resource, index) {
+      const point = resourceScreenPosition(index, resources.length, at, transform);
+      const mark = d3.select(this);
+      mark.select('line')
+        .attr('x1', point.focusX)
+        .attr('y1', point.focusY)
+        .attr('x2', point.x)
+        .attr('y2', point.y);
+      mark.select('circle').attr('cx', point.x).attr('cy', point.y);
+    });
+  };
 
   // Nodes
   const node = g
@@ -807,18 +852,7 @@ export function renderGraph(
       .attr("x2", (d: any) => d.target.x)
       .attr("y2", (d: any) => d.target.y);
     node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
-    const focus = data.nodes.find((one) => one.central === true);
-    const focusX = focus?.x ?? width / 2;
-    const focusY = focus?.y ?? height / 2;
-    resourceLinks
-      .attr('x1', focusX)
-      .attr('y1', focusY)
-      .attr('x2', (_resource, index) => focusX + resourceOrbit(index, resources.length).x)
-      .attr('y2', (_resource, index) => focusY + resourceOrbit(index, resources.length).y);
-    resourceNodes.attr('transform', (_resource, index) => {
-      const offset = resourceOrbit(index, resources.length);
-      return `translate(${focusX + offset.x},${focusY + offset.y})`;
-    });
+    placeResources(heldTransform ?? d3.zoomIdentity);
 
     if (thread !== null) {
       const at = new Map<string, GraphNode>();
@@ -853,10 +887,6 @@ export function renderGraph(
   if (heldTransform !== null) {
     svg.call(zoomBehavior.transform as any, heldTransform);
   }
-  zoomBehavior.on("zoom", (event) => {
-    heldTransform = event.transform;
-    g.attr("transform", event.transform);
-  });
 
   // Los nodos son cajas tipográficas: la colisión abraza el nombre completo y
   // la simulación reserva el aire que pide leerlos sin superposición.

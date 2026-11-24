@@ -463,11 +463,6 @@ export function renderGraph3D(
   const threadLayer = document.createElementNS(SVG_NS, "g");
   threadLayer.setAttribute("class", "thread-layer");
 
-  const resourceEdgeLayer = document.createElementNS(SVG_NS, 'g');
-  resourceEdgeLayer.setAttribute('class', 'map3d-resource-edges');
-  resourceEdgeLayer.setAttribute('stroke', colors.linkStroke);
-  resourceEdgeLayer.setAttribute('stroke-dasharray', '2 3');
-  resourceEdgeLayer.setAttribute('stroke-opacity', '0.55');
   const resourceLayer = document.createElementNS(SVG_NS, 'g');
   resourceLayer.setAttribute('class', 'map3d-resources');
 
@@ -491,7 +486,7 @@ export function renderGraph3D(
    */
   nodeLayer.setAttribute("pointer-events", "none");
 
-  svg.append(edgeLayer, threadLayer, resourceEdgeLayer, resourceLayer, nodeLayer);
+  svg.append(edgeLayer, threadLayer, resourceLayer, nodeLayer);
   container.append(svg);
 
   // ---------------------------------------------------------------------
@@ -620,22 +615,24 @@ export function renderGraph3D(
 
   const focusedNode = nodes.find((node) => node.central === true) ?? null;
   const resources = (data.resources ?? []).map((resource: GraphResource) => {
-    const line = document.createElementNS(SVG_NS, 'line');
-    resourceEdgeLayer.append(line);
     const group = document.createElementNS(SVG_NS, 'g');
     group.setAttribute('class', 'map3d-resource');
     group.setAttribute('tabindex', '0');
     group.setAttribute('role', 'link');
     group.setAttribute('aria-label', `Enlace externo: ${resource.domain}`);
     group.style.cursor = 'pointer';
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('stroke', 'var(--text)');
+    line.setAttribute('stroke-width', '1');
+    line.setAttribute('stroke-dasharray', '2 3');
     const circle = document.createElementNS(SVG_NS, 'circle');
-    circle.setAttribute('r', '6');
+    circle.setAttribute('r', '4.8');
     circle.setAttribute('fill', 'var(--bg)');
-    circle.setAttribute('stroke', colors.accent);
+    circle.setAttribute('stroke', 'var(--text)');
     circle.setAttribute('stroke-width', '1.4');
     const title = document.createElementNS(SVG_NS, 'title');
     title.textContent = resource.url;
-    group.append(circle, title);
+    group.append(line, circle, title);
     resourceLayer.append(group);
     const open = (event: Event): void => {
       event.stopPropagation();
@@ -1059,8 +1056,12 @@ export function renderGraph3D(
         drawnResource.line.setAttribute('y1', from.y.toFixed(1));
         drawnResource.line.setAttribute('x2', to.x.toFixed(1));
         drawnResource.line.setAttribute('y2', to.y.toFixed(1));
-        drawnResource.group.setAttribute('transform', `translate(${to.x.toFixed(1)},${to.y.toFixed(1)})`);
-        drawnResource.group.setAttribute('opacity', lejania(to.depth, orbit.distance, 0.55).toFixed(2));
+        const circle = drawnResource.group.querySelector('circle');
+        circle?.setAttribute('cx', to.x.toFixed(1));
+        circle?.setAttribute('cy', to.y.toFixed(1));
+        // Es una salida de interfaz de la página enfocada, no un nodo situado
+        // detrás en la escena: conserva contraste completo en cualquier cámara.
+        drawnResource.group.setAttribute('opacity', '1');
       });
     }
 

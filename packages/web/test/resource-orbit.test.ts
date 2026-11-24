@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { resourceOrbit } from '../src/graph/render.ts';
+import { resourceOrbit, resourceScreenPosition } from '../src/graph/render.ts';
 
 describe('órbita de recursos externos', () => {
   it('reparte cuatro destinos alrededor de toda la página y fuera de su rótulo', () => {
@@ -15,5 +16,24 @@ describe('órbita de recursos externos', () => {
     const first = resourceOrbit(0, 13);
     const thirteenth = resourceOrbit(12, 13);
     assert.ok(Math.hypot(thirteenth.x, thirteenth.y) > Math.hypot(first.x, first.y));
+  });
+
+  it('conserva tamaño y distancia de pantalla aunque el mapa se aleje', () => {
+    const normal = resourceScreenPosition(0, 4, { x: 120, y: 80 }, { x: 0, y: 0, k: 1 });
+    const far = resourceScreenPosition(0, 4, { x: 120, y: 80 }, { x: 30, y: 15, k: 0.2 });
+    assert.equal(Math.hypot(normal.x - normal.focusX, normal.y - normal.focusY), 82);
+    assert.equal(Math.hypot(far.x - far.focusX, far.y - far.focusY), 82);
+  });
+
+  it('usa tinta de texto en reposo, acento sólo al interactuar y 80 % del diámetro anterior', () => {
+    const planar = readFileSync(new URL('../src/graph/render.ts', import.meta.url), 'utf8');
+    const spatial = readFileSync(new URL('../src/graph/render3d.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    for (const source of [planar, spatial]) {
+      assert.match(source, /setAttribute\('r', '4\.8'\)|\.attr\('r', 4\.8\)/);
+      assert.match(source, /stroke['"], ['"]var\(--text\)/);
+    }
+    assert.match(styles, /\.map-resource:is\(:hover, :active, :focus-visible\)[\s\S]*?stroke: var\(--accent\)/);
+    assert.match(styles, /\.map3d-resource:is\(:hover, :active, :focus-visible\)[\s\S]*?fill: var\(--accent\)/);
   });
 });

@@ -25,5 +25,8 @@ export function journalsInMap(data: GraphData, focus: string, enabled: boolean):
   const links = data.links.filter((link) =>
     kept.has(endpoint(link.source)) && kept.has(endpoint(link.target)),
   );
-  return { nodes, links };
+  // El interruptor filtra entidades del vecindario, no las demás capas de la
+  // respuesta. Reconstruir sólo nodes/links borraba los recursos externos de
+  // toda instalación que tuviera los diarios apagados (el valor inicial).
+  return { ...data, nodes, links };
 }

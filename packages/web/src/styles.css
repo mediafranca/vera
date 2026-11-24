@@ -1409,9 +1409,18 @@ button { touch-action: manipulation; }
   height: 0.95rem;
 }
 
-.map-resource:is(:hover, :focus-visible) circle,
-.map3d-resource:is(:hover, :focus-visible) circle {
+.map-resource:is(:hover, :active, :focus-visible) :is(line, circle),
+.map3d-resource:is(:hover, :active, :focus-visible) :is(line, circle) {
+  stroke: var(--accent);
+}
+
+.map-resource:is(:hover, :active, :focus-visible) circle,
+.map3d-resource:is(:hover, :active, :focus-visible) circle {
   fill: var(--accent);
+}
+
+.map-resource:focus-visible,
+.map3d-resource:focus-visible {
   outline: none;
 }
 
