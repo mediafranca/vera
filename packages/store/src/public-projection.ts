@@ -44,19 +44,19 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
-interface PublicDesignToken {
+export interface PublicDesignToken {
   name: string;
   light: string;
   dark: string;
 }
 
-interface PublicDesign {
+export interface PublicDesign {
   id: string;
   name: string;
   tokens: PublicDesignToken[];
 }
 
-interface PublicDesignLibrary {
+export interface PublicDesignLibrary {
   active: string;
   common: PublicDesignToken[];
   designs: PublicDesign[];
@@ -93,7 +93,7 @@ function publicDesignTokens(value: unknown): PublicDesignToken[] {
   return tokens;
 }
 
-function publicDesignLibrary(source: string | null | undefined): PublicDesignLibrary | null {
+export function publicDesignLibrary(source: string | null | undefined): PublicDesignLibrary | null {
   if (source === null || source === undefined) return null;
   let value: unknown;
   try {

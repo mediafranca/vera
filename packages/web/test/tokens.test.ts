@@ -21,6 +21,7 @@ import {
   selectDesign,
   serialiseDesignTokenPackage,
   session,
+  syncPresentation,
 } from '../src/tokens.ts';
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
@@ -361,5 +362,46 @@ describe('superficies del sistema de diseño', () => {
     library = loadDesignLibrary();
     assert.equal(library.designs.length, 1);
     assert.equal(removeActiveDesign(), null);
+  });
+
+  it('lleva los diseños nombrados al sitio público sin tocar la biblioteca privada', async () => {
+    const storage = new MemoryStorage();
+    globalThis.localStorage = storage as unknown as Storage;
+    const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    const previousFetch = globalThis.fetch;
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { documentElement: { dataset: { access: 'anybody' } } },
+    });
+    const source = JSON.stringify({
+      format: 'vera.designs', version: 2, active: 'design:lucienne', common: [],
+      designs: [
+        { id: 'design:vera', name: 'Vera Original', tokens: [{ name: '--bg', light: '#eee', dark: '#111' }] },
+        { id: 'design:lucienne', name: 'Lucienne', tokens: [{ name: '--bg', light: '#ddd', dark: '#222' }] },
+      ],
+    });
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      return new Response(JSON.stringify({ designTokens: source }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    };
+
+    try {
+      assert.equal(await syncPresentation(), true);
+      assert.deepEqual(loadDesignLibrary().designs.map((design) => design.name), ['Vera Original', 'Lucienne']);
+      assert.equal(loadDesignLibrary().active, 'design:lucienne');
+      selectDesign('design:vera');
+      assert.equal(loadDesignLibrary().active, 'design:vera');
+      assert.equal(storage.getItem('vera.designs'), null);
+      assert.equal(await syncPresentation(), false);
+      assert.equal(loadDesignLibrary().active, 'design:vera');
+      assert.equal(requests, 2);
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousDocument === undefined) delete (globalThis as { document?: Document }).document;
+      else Object.defineProperty(globalThis, 'document', previousDocument);
+    }
   });
 });

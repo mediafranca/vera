@@ -385,6 +385,8 @@ export function clearTokenImportBackup(): void {
 
 const TOKENS_KEY = 'vera.tokens';
 const DESIGNS_KEY = 'vera.designs';
+const PUBLIC_DESIGNS_KEY = 'vera.publicDesigns';
+const PUBLIC_DESIGNS_SOURCE_KEY = 'vera.publicDesignsSource';
 const SCHEME_KEY = 'vera.scheme';
 const PUBLIC_SCHEME_KEY = 'vera.publicScheme';
 const PUBLIC_VIEW_KEY = 'vera.publicGraphView';
@@ -519,9 +521,14 @@ function parsedLibrary(source: string | null): DesignLibrary | null {
   }
 }
 
+const publicReading = (): boolean =>
+  typeof document !== 'undefined' && document.documentElement.dataset['access'] === 'anybody';
+
+const designsKey = (): string => publicReading() ? PUBLIC_DESIGNS_KEY : DESIGNS_KEY;
+
 /** Lo antiguo se vuelve el primer diseño sin borrar su respaldo legible. */
 export function loadDesignLibrary(): DesignLibrary {
-  const held = parsedLibrary(localStorage.getItem(DESIGNS_KEY));
+  const held = parsedLibrary(localStorage.getItem(designsKey()));
   if (held !== null) return held;
   return {
     format: DESIGN_LIBRARY_FORMAT,
@@ -538,8 +545,9 @@ export function loadDesignLibrary(): DesignLibrary {
 
 function storeDesignLibrary(library: DesignLibrary): void {
   const serialised = JSON.stringify(library);
-  localStorage.setItem(DESIGNS_KEY, serialised);
+  localStorage.setItem(designsKey(), serialised);
   const active = library.designs.find((one) => one.id === library.active) ?? library.designs[0]!;
+  if (publicReading()) return;
   localStorage.setItem(TOKENS_KEY, JSON.stringify(effectiveTokens(library, active)));
   void push({ designTokens: serialised });
 }
@@ -659,6 +667,30 @@ export interface RemotePresentation {
  * Devuelve si algo cambió, para que quien llama repinte sólo entonces.
  */
 export async function syncPresentation(): Promise<boolean> {
+  if (publicReading()) {
+    let remote: { designTokens: string | null };
+    try {
+      const answer = await fetch('/public-designs');
+      if (!answer.ok) return false;
+      remote = (await answer.json()) as { designTokens: string | null };
+    } catch {
+      return false;
+    }
+    if (remote.designTokens === null || parsedLibrary(remote.designTokens) === null) return false;
+    const previousSource = localStorage.getItem(PUBLIC_DESIGNS_SOURCE_KEY);
+    if (previousSource === remote.designTokens && parsedLibrary(localStorage.getItem(PUBLIC_DESIGNS_KEY)) !== null) {
+      return false;
+    }
+    const incoming = parsedLibrary(remote.designTokens)!;
+    const held = parsedLibrary(localStorage.getItem(PUBLIC_DESIGNS_KEY));
+    if (held !== null && incoming.designs.some((design) => design.id === held.active)) {
+      incoming.active = held.active;
+    }
+    localStorage.setItem(PUBLIC_DESIGNS_KEY, JSON.stringify(incoming));
+    localStorage.setItem(PUBLIC_DESIGNS_SOURCE_KEY, remote.designTokens);
+    return true;
+  }
+
   let remote: RemotePresentation;
   try {
     const answer = await fetch('/workspace');

@@ -108,6 +108,7 @@ import { HASH, hashBytes, mediaTypeFor, objectPath, putObject, sniffMediaType } 
 import { activityOf } from './activity.ts';
 import { forgetSecret, revealSecret, saveSecret, secretsOf, useSecret } from '@vera/store/secrets';
 import { clientsSeen, exposuresOf, recordExposure } from '@vera/store/exposures';
+import { publicDesignLibrary } from '@vera/store/public-projection';
 import { parseDocument } from '@vera/importer/document';
 import { extractAcademicPdf } from './academic-pdf.ts';
 import {
@@ -3083,6 +3084,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         path === '/' ||
         path === '/index.html' ||
         path === '/health' ||
+        path === '/public-designs' ||
         path === '/pages' ||
         path === '/buscar' ||
         path === '/search' ||
@@ -8859,6 +8861,30 @@ export function createVeraServer(options: ServerOptions): VeraServer {
 
     if (request.method === 'GET' && path === '/workspace') {
       send(response, 200, workspaceOf(store, owner.id));
+      return;
+    }
+
+    /*
+     * La biblioteca de apariencia que el sitio ofrece a cualquiera.
+     *
+     * No es `/workspace`: aquella proyección pertenece a una identidad y trae
+     * decisiones privadas de lectura. Aquí sólo salen nombres y tokens de los
+     * diseños del dueño, filtrados por la misma frontera que usa la proyección
+     * estática. Una página compartida o un espacio invitado no heredan por
+     * accidente la apariencia del sitio personal.
+     */
+    if (request.method === 'GET' && path === '/public-designs') {
+      if (!publicAccess || publicScopedSpace !== null || pageShare !== null) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      const site = publicSite();
+      if (site === undefined) {
+        send(response, 404, { error: 'not found' });
+        return;
+      }
+      const library = publicDesignLibrary(workspaceOf(store, site.owner).designTokens);
+      send(response, 200, { designTokens: library === null ? null : JSON.stringify(library) });
       return;
     }
 

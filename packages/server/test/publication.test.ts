@@ -127,6 +127,18 @@ describe('publicación del sitio personal', () => {
       `https://${hostname().split('.')[0]?.toLowerCase()}.tuatara-carat.ts.net:${PREVIEW_PORT}/`,
     );
     assert.deepEqual(configured.publications, []);
+    const publicDesignsResponse = await throughCanonical('/public-designs');
+    assert.equal(publicDesignsResponse.status, 200);
+    const publicDesigns = JSON.parse(publicDesignsResponse.body) as { designTokens: string };
+    const publicDesignLibrary = JSON.parse(publicDesigns.designTokens) as {
+      active: string;
+      designs: { id: string; name: string }[];
+    };
+    assert.equal(publicDesignLibrary.active, 'design:lucienne');
+    assert.deepEqual(publicDesignLibrary.designs.map(({ id, name }) => ({ id, name })), [
+      { id: 'design:vera', name: 'Vera Original' },
+      { id: 'design:lucienne', name: 'Lucienne' },
+    ]);
     const territories = await fetch(`${base}/territories`).then((response) => response.json()) as {
       surfaces: { kind: string; stewards: { participant: string; name: string }[] }[];
     };
