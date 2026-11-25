@@ -26,6 +26,7 @@ import {
 
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const settings = readFileSync(new URL('../src/settings.ts', import.meta.url), 'utf8');
+const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -38,6 +39,13 @@ const previous = globalThis.localStorage;
 afterEach(() => { globalThis.localStorage = previous; });
 
 describe('vista del mapa publicado', () => {
+  it('reconcilia la biblioteca pública después de conocer la autoridad anybody', () => {
+    assert.match(
+      main,
+      /const enteringPublic = health\.access === 'anybody' && !isAnybody\(\);[\s\S]*?if \(enteringPublic\) reconcilePresentation\(\)/,
+    );
+  });
+
   it('nace en 3D y recuerda una elección pública sin tocar la privada', () => {
     const storage = new MemoryStorage();
     globalThis.localStorage = storage as unknown as Storage;

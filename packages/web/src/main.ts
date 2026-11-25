@@ -350,6 +350,7 @@ const isReadOnly = (): boolean => isAnybody() && corpus?.canEdit !== true && cor
  * pasar un minuto escondida detrás de una comprobación de red.
  */
 function useCorpus(health: CorpusHealth): void {
+  const enteringPublic = health.access === 'anybody' && !isAnybody();
   corpus = health;
   document.documentElement.dataset['access'] = health.access ?? 'owner';
   if (isAnybody()) {
@@ -357,6 +358,11 @@ function useCorpus(health: CorpusHealth): void {
     workspace.scheme = session.publicScheme();
     workspace.graphView = session.publicGraphView();
     applyTokens(tokens, workspace.scheme);
+    // El primer intento de sincronización ocurre mientras `/health` todavía
+    // viaja. Hasta conocer esta autoridad el cliente no puede distinguir
+    // `/workspace` de `/public-designs`; al entrar como anybody repite por la
+    // puerta pública y adopta la biblioteca nombrada del sitio.
+    if (enteringPublic) reconcilePresentation();
     $('#brand').title = 'Portada publicada';
     $('#brand').setAttribute('aria-label', 'Ir a la portada publicada');
   }
@@ -374,6 +380,19 @@ function useCorpus(health: CorpusHealth): void {
   }
   if (health.names !== undefined) nameProperties(health.names);
   if (health.embedHosts !== undefined) allowEmbedsFrom(health.embedHosts);
+}
+
+function reconcilePresentation(): void {
+  void syncPresentation().then((changed) => {
+    if (!changed) return;
+    tokens = loadTokens();
+    workspace.scheme = isAnybody() ? session.publicScheme() : session.scheme();
+    workspace.layout = session.layout();
+    workspace.graphView = isAnybody() ? session.publicGraphView() : session.graphView();
+    workspace.divider = session.divider();
+    applyTokens(tokens, workspace.scheme);
+    applyLayout();
+  });
 }
 
 async function openHome(): Promise<void> {
@@ -4394,16 +4413,7 @@ async function start(): Promise<void> {
   // este navegador tenía. Se pide después de pintar, no antes: dibujar con lo
   // local es instantáneo, y esperar al servidor haría que abrir Vera empezara
   // por una pantalla en blanco.
-  void syncPresentation().then((changed) => {
-    if (!changed) return;
-    tokens = loadTokens();
-    workspace.scheme = isAnybody() ? session.publicScheme() : session.scheme();
-    workspace.layout = session.layout();
-    workspace.graphView = isAnybody() ? session.publicGraphView() : session.graphView();
-    workspace.divider = session.divider();
-    applyTokens(tokens, workspace.scheme);
-    applyLayout();
-  });
+  reconcilePresentation();
   wireSearch();
   wireDivider();
 
