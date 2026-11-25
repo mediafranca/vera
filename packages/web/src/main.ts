@@ -362,7 +362,7 @@ function useCorpus(health: CorpusHealth): void {
     // viaja. Hasta conocer esta autoridad el cliente no puede distinguir
     // `/workspace` de `/public-designs`; al entrar como anybody repite por la
     // puerta pública y adopta la biblioteca nombrada del sitio.
-    if (enteringPublic) reconcilePresentation();
+    if (enteringPublic) reconcilePresentation(true);
     $('#brand').title = 'Portada publicada';
     $('#brand').setAttribute('aria-label', 'Ir a la portada publicada');
   }
@@ -382,9 +382,13 @@ function useCorpus(health: CorpusHealth): void {
   if (health.embedHosts !== undefined) allowEmbedsFrom(health.embedHosts);
 }
 
-function reconcilePresentation(): void {
+function reconcilePresentation(forceApply = false): void {
   void syncPresentation().then((changed) => {
-    if (!changed) return;
+    // Al descubrir la autoridad pública puede que la biblioteca ya esté
+    // guardada y la fuente no haya cambiado. Aun así hay que volver a cargarla:
+    // `tokens` nació antes de `/health`, cuando todavía apuntaba al taller
+    // privado de este navegador.
+    if (!changed && !forceApply) return;
     tokens = loadTokens();
     workspace.scheme = isAnybody() ? session.publicScheme() : session.scheme();
     workspace.layout = session.layout();
