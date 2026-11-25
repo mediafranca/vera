@@ -131,9 +131,13 @@ describe('publicación del sitio personal', () => {
     assert.equal(publicDesignsResponse.status, 200);
     const publicDesigns = JSON.parse(publicDesignsResponse.body) as { designTokens: string };
     const publicDesignLibrary = JSON.parse(publicDesigns.designTokens) as {
+      format: string;
+      version: number;
       active: string;
       designs: { id: string; name: string }[];
     };
+    assert.equal(publicDesignLibrary.format, 'vera.designs');
+    assert.equal(publicDesignLibrary.version, 2);
     assert.equal(publicDesignLibrary.active, 'design:lucienne');
     assert.deepEqual(publicDesignLibrary.designs.map(({ id, name }) => ({ id, name })), [
       { id: 'design:vera', name: 'Vera Original' },

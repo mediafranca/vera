@@ -57,6 +57,8 @@ export interface PublicDesign {
 }
 
 export interface PublicDesignLibrary {
+  format: 'vera.designs';
+  version: 2;
   active: string;
   common: PublicDesignToken[];
   designs: PublicDesign[];
@@ -117,7 +119,13 @@ export function publicDesignLibrary(source: string | null | undefined): PublicDe
   if (designs.length === 0) return null;
   const asked = typeof value['active'] === 'string' ? value['active'] : '';
   const active = designs.some((design) => design.id === asked) ? asked : designs[0]!.id;
-  return { active, common: publicDesignTokens(value['common']), designs };
+  return {
+    format: 'vera.designs',
+    version: 2,
+    active,
+    common: publicDesignTokens(value['common']),
+    designs,
+  };
 }
 
 function tokensFor(design: PublicDesign, common: PublicDesignToken[], scheme: 'light' | 'dark'):
