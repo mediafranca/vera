@@ -42,8 +42,9 @@ describe('vista del mapa publicado', () => {
   it('reconcilia la biblioteca pública después de conocer la autoridad anybody', () => {
     assert.match(
       main,
-      /const enteringPublic = health\.access === 'anybody' && !isAnybody\(\);[\s\S]*?if \(enteringPublic\) reconcilePresentation\(\)/,
+      /const enteringPublic = health\.access === 'anybody' && !isAnybody\(\);[\s\S]*?if \(enteringPublic\) reconcilePresentation\(true\)/,
     );
+    assert.match(main, /function reconcilePresentation\(forceApply = false\)[\s\S]*?if \(!changed && !forceApply\) return;/);
   });
 
   it('nace en 3D y recuerda una elección pública sin tocar la privada', () => {
