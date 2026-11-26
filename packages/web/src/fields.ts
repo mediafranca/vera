@@ -1,4 +1,4 @@
-// Los campos de una línea con los que se corrige algo sin salir de donde está.
+// Los campos breves con los que se corrige algo sin salir de donde está.
 //
 // Tres cosas y ningún estado propio: colocar algo flotante dentro de la ventana,
 // editar un texto en su sitio, y editarlo ofreciendo mientras se escribe. Viven
@@ -101,6 +101,91 @@ export function editInPlace(
       event.preventDefault();
       settled = true;
       host.innerHTML = held;
+    }
+  });
+}
+
+/**
+ * Edita una sola línea semántica sin esconder sus pliegues visuales.
+ *
+ * Un título puede ocupar varias líneas cuando el panel es angosto, aunque no
+ * contenga saltos de línea. Un `input` obliga a desplazarlo horizontalmente y
+ * hace desaparecer casi todo el título justo cuando se intenta corregirlo. El
+ * `textarea` conserva el ancho del encabezado y crece con sus pliegues; Enter
+ * sigue significando guardar, no introducir una segunda línea en el nombre.
+ */
+export function editWrappedInPlace(
+  host: HTMLElement,
+  original: string,
+  label: string,
+  commit: (next: string) => Promise<boolean>,
+): void {
+  if (host.querySelector('textarea') !== null) return;
+
+  const field = document.createElement('textarea');
+  field.className = 'inline-edit inline-edit-wrapped';
+  field.value = original;
+  field.rows = 1;
+  field.wrap = 'soft';
+  field.setAttribute('aria-label', label);
+
+  const held = host.innerHTML;
+  host.innerHTML = '';
+  host.append(field);
+
+  const fit = (): void => {
+    field.style.height = 'auto';
+    const border = field.offsetHeight - field.clientHeight;
+    field.style.height = `${field.scrollHeight + border}px`;
+  };
+  field.addEventListener('input', fit);
+
+  let observedWidth = -1;
+  const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver((entries) => {
+    const width = entries[0]?.contentRect.width;
+    if (width === undefined || width === observedWidth) return;
+    observedWidth = width;
+    fit();
+  });
+  observer?.observe(host);
+
+  field.focus();
+  field.select();
+  fit();
+
+  let settled = false;
+  const restore = (): void => {
+    observer?.disconnect();
+    host.innerHTML = held;
+  };
+  const finish = (accept: boolean): void => {
+    if (settled) return;
+    settled = true;
+    observer?.disconnect();
+    // Pegar texto desde otro lugar puede traer retornos aunque Enter esté
+    // reservado para guardar. El nombre sigue siendo una sola línea canónica.
+    const next = field.value.replace(/\s*[\r\n]+\s*/g, ' ');
+    if (!accept || next === original) {
+      restore();
+      return;
+    }
+    void commit(next).then((applied) => {
+      // Aplicar recarga la página entera. Si la puerta rechazó el cambio,
+      // restituimos exactamente el encabezado que había antes de editar.
+      if (!applied) restore();
+    });
+  };
+
+  field.addEventListener('blur', () => finish(true));
+  field.addEventListener('keydown', (event) => {
+    if (event.isComposing) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      finish(true);
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      finish(false);
     }
   });
 }
