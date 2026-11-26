@@ -3773,6 +3773,23 @@ tr.adopted { opacity: 0.58; }
   padding: 0.05rem 0.3rem;
 }
 
+/* El título conserva todos sus pliegues mientras se edita. Es un solo nombre,
+   pero su caja crece como texto y responde al ancho de cada panel. */
+.inline-edit-wrapped {
+  display: block;
+  box-sizing: border-box;
+  min-height: 1.08em;
+  overflow: hidden;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: inherit;
+}
+
+.page-title .inline-edit-wrapped {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-raised));
+}
+
 /* El bullet es el asa del bloque: abre sus acciones. Es un `button` para que
    el teclado llegue a él, pero no debe parecer uno. */
 /*

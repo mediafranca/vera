@@ -2615,7 +2615,7 @@ function hasLiveWritingSurface(): boolean {
   return document.querySelector(
     '#text .body.editing textarea.editor, ' +
     '#text .block-gloss.editing textarea.gloss-editor, ' +
-    '#text input.inline-edit, #text .inline-boolean input, ' +
+    '#text .inline-edit, #text .inline-boolean input, ' +
     '#text [contenteditable]:not([contenteditable="false"]):not([hidden])',
   ) !== null;
 }

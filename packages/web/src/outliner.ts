@@ -59,7 +59,14 @@ import {
   type TableHeaderAxis,
 } from './table-editor.ts';
 import { sourceSelection, type SourceSelection } from './source-selection.ts';
-import { completeInPlace, editFieldInPlace, editInPlace, placeNear, type Choice } from './fields.ts';
+import {
+  completeInPlace,
+  editFieldInPlace,
+  editInPlace,
+  editWrappedInPlace,
+  placeNear,
+  type Choice,
+} from './fields.ts';
 import { pickGeographicPosition } from './geo-picker.ts';
 import { governingKind, kindSays, renderGoverning } from './governing-table.ts';
 import { renderTemplateInspector } from './template-inspector.ts';
@@ -5009,7 +5016,7 @@ export function renderOutliner(
     title.tabIndex = 0;
     title.title = 'renombrar la página';
     title.addEventListener('click', () => {
-      editInPlace(title, page.title, 'el título de la página', async (next) => {
+      editWrappedInPlace(title, page.title, 'el título de la página', async (next) => {
         if (next.trim() === '' || next === page.title) return true;
         return submitAndReload(
           { kind: 'rename_page', page: page.id, title: next.trim() },
