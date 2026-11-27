@@ -10,8 +10,10 @@
 -- Excludes:
 --   - Hosting several private graphs inside one Vera instance
 --   - Closing the current graph and opening or switching to another graph
---   - Collective ownership; collective work is composed between sovereign
---     personal libraries and belongs to federation specifications
+--   - Collective institutional governance. A collective corpus may be served by
+--     one installation without acquiring one sovereign human owner; its
+--     authorities, territories and governed artefact flows are specified in
+--     institutional-artifact-governance.allium
 --   - Authentication ceremony and session implementation
 --     (see shared-space-access.allium)
 --   - Which pages belong to a public site and how they are presented

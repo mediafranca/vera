@@ -2,9 +2,11 @@
 -- core.allium
 
 -- Scope: Participation, provenance, semantic graph changes and personal publishing
--- Terminology: Vera is the system; a memory is one human's sovereign corpus;
---   Graph is the structural domain model of that memory. A library is a
---   bibliographic region or integration within it, not a synonym for the whole.
+-- Terminology: Vera is the system; Graph is the structural domain model of a
+--   corpus. A personal memory is one human's sovereign graph; an institutional
+--   corpus may reuse the same structure under collective governance specified
+--   in institutional-artifact-governance.allium. A library is a bibliographic
+--   region or integration within a corpus, not a synonym for the whole.
 -- Includes: Human and agent participants, authenticated submissions, revisions,
 --   canonical human voice evidence, public/private page visibility, and projection
 --   of public graph pages as a personal website
@@ -102,6 +104,9 @@ entity Participant {
 
 entity Graph {
     name: String
+    -- In a personal memory this participant is the sovereign owner. In a
+    -- collective corpus the same field names the operational root custodian and
+    -- grants no institutional authority by itself.
     owner: Participant
     memberships: Membership with graph = this
     pages: Page with graph = this
