@@ -6,6 +6,8 @@
 --   synchronised replicas, local editing, origin review, provenance and
 --   withdrawal limits
 -- Excludes:
+--   - Workflow among institutional surfaces inside one collective corpus
+--     (institutional-artifact-governance.allium)
 --   - Authentication and grant mechanics (identity-access.allium)
 --   - Conflict resolution between divergent copies
 --   - Storage implementation

@@ -9,6 +9,10 @@
 --   from several criteria and explicit pages, reading, contribution and direct
 --   editing
 -- Excludes:
+--   - Institutional surfaces inside a collective corpus. A shared space here is
+--     a delimited opening made by the sovereign owner of a personal graph, not a
+--     department, library or governing body with authority of its own
+--     (see institutional-artifact-governance.allium)
 --   - Mail, messaging and QR delivery implementation
 --   - WebAuthn ceremony and cryptographic storage implementation
 --   - Replica synchronisation and continuation after withdrawal

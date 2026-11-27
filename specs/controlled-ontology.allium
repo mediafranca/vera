@@ -9,6 +9,9 @@
 --   - Free-form tags
 --   - Query syntax and visual presentation
 --   - Domain-specific lifecycle rules for individual semantic types
+--   - Modular authority over an institutional core, domain vocabularies and
+--     local extensions inside a collective corpus
+--     (institutional-artifact-governance.allium)
 
 use "./core.allium" as core
 use "./agent-participation.allium" as agent
