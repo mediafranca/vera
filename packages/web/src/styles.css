@@ -3675,6 +3675,13 @@ tr.adopted { opacity: 0.58; }
   padding-right: 3.7rem;
 }
 
+/* Un vocabulario cerrado suma el chevrón a editar y quitar. Ese tercer control
+   necesita su propio hueco: si comparte el de los otros dos, queda montado
+   sobre la última palabra del valor. */
+.property-value:has(.property-actions .property-choose) {
+  padding-right: 5.2rem;
+}
+
 .property-actions {
   position: absolute;
   right: 0.1rem;
@@ -3683,6 +3690,14 @@ tr.adopted { opacity: 0.58; }
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+}
+
+/* Las medidas de cada acción incluyen su relleno. Sin `border-box`, los 1.5rem
+   eran sólo el contenido y el grupo terminaba siendo más ancho que el espacio
+   reservado por el valor. */
+.property-actions > button {
+  box-sizing: border-box;
+  flex: 0 0 auto;
 }
 
 .property-drop {
