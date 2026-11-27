@@ -80,13 +80,16 @@ otras personas, corpus y contextos universitarios.
 - [Seguridad](https://vera.mediafranca.net/vera-seguridad/)
 - [Probar e instalar](https://vera.mediafranca.net/vera-probar-e-instalar/)
 
-Vera es actualmente una **alfa de investigación**: funciona sobre un corpus
-real, pero está destinada por ahora a una persona y un grafo. No es todavía un
-servicio multiusuario listo para producción.
+Vera es actualmente una **alfa de investigación**: funciona sobre corpus reales
+y una biblioteca puede constituirse como personal o colectiva. Cada instalación
+conserva un grafo soberano; la colaboración usa personas autenticadas,
+superficies delimitadas y permisos explícitos. No es todavía un servicio
+multiusuario general listo para producción.
 
 > [!WARNING]
 > La aplicación privada escucha en loopback por omisión. No expongas directamente
-> ese puerto a Internet: las personas aún no se autentican ante Vera. Lee
+> ese puerto a Internet: las passkeys y sesiones humanas no reemplazan una
+> frontera de red revisada, TLS ni una política de exposición. Lee
 > [Seguridad](SECURITY.md) y [Exponer Vera](docs/exponer-vera.md) antes de cambiar
 > la frontera de red.
 
@@ -96,12 +99,13 @@ servicio multiusuario listo para producción.
 
 1. **Descarga Vera Desktop** para Windows, macOS o Linux desde la
    [última versión](https://github.com/mediafranca/vera/releases/latest).
-2. **Abre la aplicación.** Vera crea una memoria inicial en tu equipo; el corpus
-   no se sube a MediaFranca ni a un proveedor de IA.
-3. **Conecta la IA que elijas** desde la página **MCP** de Vera. Si el cliente
-   corre en el mismo equipo, usa la conexión local. Si vive en Internet, activa
-   **Vera Conecta**, crea un acceso para ese cliente y copia la URL y la
-   credencial que Vera muestra una sola vez.
+2. **Constituye la biblioteca.** Vera pregunta cómo quieres aparecer, el nombre
+   de la biblioteca, si será personal o colectiva y el nombre editable de su
+   bibliotecaria. Con ella nace la ontología inicial gobernada.
+3. **Inicia la bibliotecaria** en **Centro de Vera → Agente de biblioteca**.
+   Elige un modelo local o un endpoint compatible con OpenAI, revisa sus
+   permisos y activa el runtime. Otros agentes pueden entrar por **MCP** con su
+   propia identidad y credencial revocable.
 
 La IA debe ejecutar primero `vera_quien_soy`: así compruebas la identidad y los
 alcances con que entró antes de dejarla leer o escribir. Una URL de Conecta no
@@ -112,24 +116,27 @@ Hay dos formas de instalar, según qué se necesite.
 
 ### Aplicación de escritorio (recomendada)
 
-La vía más simple para probar Vera sin tocar código: memoria inicial ya
-cargada y, donde hay firma comercial, actualización automática por canal
-estable.
+La vía más simple para probar Vera sin tocar código: biblioteca constituida,
+runtime de agente embebido y una búsqueda explícita de actualizaciones en
+**Centro de Vera → Biblioteca → Vera Desktop**.
 
 **[Descargar la última versión](https://github.com/mediafranca/vera/releases/latest)**
-desde GitHub Releases. El instalador de **Linux** (AppImage o deb) es siempre
-confiable — no requiere firma de código. Los de **Windows y macOS** hoy se
-publican **sin firmar**, marcados "(sin firmar)": conseguir una identidad
-Authenticode o notarización de Apple no es viable ahora mismo para quien
+desde GitHub Releases. El instalador de **Linux** no requiere firma de
+plataforma. Cada instalador distribuido incluye una **firma Sigstore sin clave
+persistente**, una attestation de GitHub y sumas SHA-256 para verificar su
+procedencia e integridad. Las aplicaciones de **Windows y macOS** siguen
+publicándose **sin Authenticode ni notarización de Apple**, marcadas
+"(sin firmar)": conseguir esas identidades de plataforma no es viable ahora para quien
 mantiene Vera. El sistema operativo va a advertirlo (SmartScreen o Gatekeeper)
 antes de dejarte abrirlo; las instrucciones para instalar de todas formas
 están en [Instalación en Windows](docs/instalacion-windows.md#instalar-sin-firma)
 y en [Distribución de Vera Desktop](docs/distribucion-escritorio.md#instalar-sin-firma).
 
-Vera todavía evoluciona deprisa. Mientras Windows y macOS se distribuyan sin
-firma, no hay actualización automática: conviene revisar con frecuencia la
-[última versión](https://github.com/mediafranca/vera/releases/latest), leer sus
-notas e instalarla encima de la anterior. **Actualizar el programa no reemplaza
+Vera todavía evoluciona deprisa. Mientras Windows y macOS carezcan de firma de
+plataforma, Vera no se reemplaza automáticamente. Usa **Buscar actualizaciones**
+dentro de Vera Desktop; si existe una release estable posterior, el control abre
+su página de descarga. Lee sus notas e instálala encima de la anterior.
+**Actualizar el programa no reemplaza
 la memoria:** Windows, macOS y Linux guardan el corpus fuera de los archivos de
 la aplicación y vuelven a abrir la misma base después de la actualización.
 
@@ -167,12 +174,12 @@ npm test
 
 ## Hacer que Vera funcione con IA
 
-Vera no trae una IA cautiva ni obliga a contratar otra suscripción: cualquier
-cliente que hable
+La bibliotecaria es una identidad gobernada, no un modelo cautivo. Vera Desktop
+incluye un runtime sustituible que carga su constitución activa, usa el modelo
+elegido y registra recibos de su trabajo. Cualquier cliente externo que hable
 [MCP](https://modelcontextprotocol.io/) —Claude Code, Claude Desktop, Codex,
-Gemini CLI, LM Studio y otros— se conecta a la misma puerta y opera el corpus
-con su propia identidad y credencial. La guía completa, con los cinco valores
-de conexión y un caso por cada forma de desplegar el cliente, está en
+Gemini CLI, LM Studio y otros— también puede entrar por la misma puerta con su
+propia identidad y credencial. La guía completa está en
 [Conectar una IA](docs/conectar-una-ia.md).
 
 - **Cliente local:** conecta por `stdio` o por loopback; los datos no necesitan

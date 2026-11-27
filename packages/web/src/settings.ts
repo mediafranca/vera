@@ -118,6 +118,7 @@ const CENTRE_DESTINATIONS: CentreDestination[] = [
   { section: 'apariencia', label: 'Apariencia', note: 'Tema de color, lectura, tipografías y medidas' },
   { section: 'biblioteca', label: 'Respaldo y traslado', note: 'Exportar o incorporar una biblioteca completa', terms: 'backup importar exportar vera' },
   { section: 'biblioteca', label: 'Esta biblioteca', note: 'Nombre, perfil y ubicación de datos', terms: 'instancia identidad' },
+  { section: 'biblioteca', label: 'Actualizaciones', note: 'Versión instalada y nueva release de Vera Desktop', terms: 'buscar descargar actualizar ahora software' },
 ];
 
 const waitingService = (id: ObservedServiceStatus['id']): ServiceStatus => ({
@@ -1682,6 +1683,7 @@ async function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): Promi
   heading(host, 'Biblioteca', 'Identidad, materiales y continuidad del cuaderno.');
   const shared = handlers.sharedSpace();
   if (shared === null) await drawInstanceConfiguration(host);
+  if (shared === null) await drawDesktopUpdates(host);
   heading(host, 'Materiales', 'Lo que la biblioteca contiene y registra.');
   const actions = document.createElement('div');
   actions.className = 'settings-destinations';
@@ -1704,6 +1706,75 @@ async function drawLibrary(host: HTMLElement, handlers: SettingsHandlers): Promi
   ));
   host.append(actions);
   if (shared === null) drawPortability(host);
+}
+
+type DesktopUpdateStatus = {
+  currentVersion: string;
+  automaticInstallation: boolean;
+  releaseUrl: string;
+};
+
+type DesktopUpdateCheck = DesktopUpdateStatus & {
+  latestVersion: string;
+  updateAvailable: boolean;
+};
+
+type DesktopUpdatesBridge = {
+  status(): Promise<DesktopUpdateStatus>;
+  check(): Promise<DesktopUpdateCheck>;
+  openRelease(url: string): Promise<{ opened: boolean }>;
+};
+
+const desktopUpdatesBridge = (): DesktopUpdatesBridge | null =>
+  (window as unknown as { veraUpdates?: DesktopUpdatesBridge }).veraUpdates ?? null;
+
+async function drawDesktopUpdates(host: HTMLElement): Promise<void> {
+  const bridge = desktopUpdatesBridge();
+  if (bridge === null) return;
+  heading(host, 'Vera Desktop', 'Versión instalada y actualizaciones publicadas por MediaFranca.');
+  const panel = document.createElement('section');
+  panel.className = 'desktop-updates';
+  const status = document.createElement('p');
+  status.className = 'settings-note';
+  status.textContent = 'Leyendo la versión instalada…';
+  const actions = document.createElement('div');
+  actions.className = 'settings-actions';
+  const check = document.createElement('button');
+  check.type = 'button';
+  check.textContent = 'Buscar actualizaciones';
+  const download = document.createElement('button');
+  download.type = 'button';
+  download.textContent = 'Descargar actualización';
+  download.hidden = true;
+  actions.append(check, download);
+  panel.append(status, actions);
+  host.append(panel);
+
+  try {
+    const current = await bridge.status();
+    status.textContent = `Versión instalada: ${current.currentVersion}.`;
+  } catch {
+    status.textContent = 'No se pudo leer la versión de Vera Desktop.';
+  }
+
+  check.addEventListener('click', () => {
+    check.disabled = true;
+    download.hidden = true;
+    status.textContent = 'Buscando la última release estable…';
+    void bridge.check().then((result) => {
+      if (!result.updateAvailable) {
+        status.textContent = `Vera ${result.currentVersion} está al día.`;
+        return;
+      }
+      status.textContent = `Vera ${result.latestVersion} está disponible. La memoria no será reemplazada al actualizar.`;
+      download.hidden = false;
+      download.onclick = () => void bridge.openRelease(result.releaseUrl);
+    }).catch((error: unknown) => {
+      status.textContent = error instanceof Error
+        ? `No se pudo buscar la actualización: ${error.message}`
+        : 'No se pudo buscar la actualización.';
+    }).finally(() => { check.disabled = false; });
+  });
 }
 
 function drawGovernment(host: HTMLElement, handlers: SettingsHandlers): void {

@@ -91,6 +91,9 @@ entity AlphaRelease {
     windows_installer_available: Boolean
     mac_installer_available: Boolean
     checksum_available: Boolean
+    sigstore_bundle_available: Boolean
+    github_attestation_available: Boolean
+    manual_update_check_available: Boolean
     unsigned_warning_disclosed: Boolean
 }
 
@@ -185,6 +188,19 @@ rule ReplacementFailsRestartProof {
         installation.update_state = failed
 }
 
+rule UserChecksPublishedAlphaRelease {
+    when: CheckForPublishedRelease(user, installation, release)
+    requires: installation.owner = user
+    requires: release.published
+    requires: release.manual_update_check_available
+    requires: release.version != installation.installed_version
+    ensures:
+        installation.available_version = release.version
+
+    -- Informar y abrir la release no reemplaza el programa. Sigstore demuestra
+    -- procedencia del artefacto, pero no sustituye Authenticode ni notarización.
+}
+
 ------------------------------------------------------------
 -- Invariants
 ------------------------------------------------------------
@@ -210,6 +226,9 @@ invariant AlphaReleasesDiscloseUnsignedRisk {
     for release in AlphaReleases:
         release.published implies
             release.checksum_available and
+            release.sigstore_bundle_available and
+            release.github_attestation_available and
+            release.manual_update_check_available and
             release.unsigned_warning_disclosed and
             (release.windows_installer_available or release.mac_installer_available)
 }
@@ -248,6 +267,7 @@ surface DesktopUpdateExperience {
         installation.update_state
 
     provides:
+        CheckForPublishedRelease(user, installation, release)
         DownloadUpdate(user, installation) when installation.update_state = offered
         ApplyPreparedUpdate(user, installation) when installation.update_state = ready
 

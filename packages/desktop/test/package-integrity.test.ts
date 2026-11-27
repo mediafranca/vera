@@ -19,6 +19,7 @@ const packageVerifier = readFileSync(
   'utf8',
 );
 const desktopMain = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const preload = readFileSync(new URL('../src/preload.ts', import.meta.url), 'utf8');
 const desktopWorkflow = readFileSync(
   new URL('../../../.github/workflows/desktop.yml', import.meta.url),
   'utf8',
@@ -60,4 +61,11 @@ test('Desktop observa su MCP local y la disponibilidad del relay comunitario', (
 test('un cargador CommonJS distinto no convierte el actualizador en pantalla blanca', () => {
   assert.match(desktopMain, /updaterModule\.autoUpdater \?\? updaterModule\.default\?\.autoUpdater/);
   assert.match(desktopMain, /if \(autoUpdater === undefined\)/);
+});
+
+test('el botón de actualización cruza un puente limitado y sólo abre releases de Vera', () => {
+  assert.match(desktopMain, /ipcMain\.handle\('vera-updates:check'/);
+  assert.match(desktopMain, /rawUrl\.startsWith\(`\$\{VERA_RELEASES_URL\}\/`\)/);
+  assert.match(preload, /contextBridge\.exposeInMainWorld\('veraUpdates'/);
+  assert.match(preload, /ipcRenderer\.invoke\('vera-updates:open-release', url\)/);
 });

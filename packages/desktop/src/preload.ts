@@ -45,6 +45,12 @@ contextBridge.exposeInMainWorld('veraVoiceConfiguration', {
   choosePath: (kind: string) => ipcRenderer.invoke('vera-voice:choose-path', kind),
 });
 
+contextBridge.exposeInMainWorld('veraUpdates', {
+  status: () => ipcRenderer.invoke('vera-updates:status'),
+  check: () => ipcRenderer.invoke('vera-updates:check'),
+  openRelease: (url: string) => ipcRenderer.invoke('vera-updates:open-release', url),
+});
+
 contextBridge.exposeInMainWorld('veraLibrarianSecret', {
   status: () => ipcRenderer.invoke('vera-librarian-secret:status'),
   save: (input: { apiKey: string; endpoint: string; model: string }) =>
