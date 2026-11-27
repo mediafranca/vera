@@ -110,4 +110,9 @@ describe('prioridades de interfaz posteriores al móvil', () => {
     assert.match(styles, /\.property-actions\s*\{[^}]*display:\s*inline-flex[^}]*gap:\s*0\.3rem/s);
     assert.match(styles, /\.property-drop\s*\{[^}]*min-width:\s*1\.5rem[^}]*height:\s*1\.5rem/s);
   });
+
+  it('reserva espacio para el chevrón sin montarlo sobre el valor', () => {
+    assert.match(styles, /\.property-value:has\(\.property-actions \.property-choose\)\s*\{[^}]*padding-right:\s*5\.2rem/s);
+    assert.match(styles, /\.property-actions > button\s*\{[^}]*box-sizing:\s*border-box[^}]*flex:\s*0 0 auto/s);
+  });
 });
