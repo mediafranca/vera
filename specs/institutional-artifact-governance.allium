@@ -1,0 +1,332 @@
+-- allium: 3
+-- institutional-artifact-governance.allium
+
+-- Scope: Governed artefacts and modular ontology inside one institutional corpus
+-- Includes: One collectively maintained corpus, institutional surfaces, authority
+--   by property and territory, versioned norms, review and attestation of exact
+--   revisions, delegation, and personal sources entering without being absorbed
+-- Excludes:
+--   - Human authentication ceremonies and credential storage
+--   - Synchronisation between Vera instances (peer-networking.allium)
+--   - Sharing from a sovereign personal Vera (federated-sharing.allium)
+--   - The legal validity of a particular university act or signature scheme
+--   - Product, database, queue and workflow-engine implementation
+-- Dependencies: Participants, graphs and authorship are governed by core.allium;
+--   the vocabulary of a personal Vera remains governed by
+--   controlled-ontology.allium
+
+use "./core.allium" as core
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract CollectiveInstitutionalCorpus {
+    establish_surface: (corpus: CollectiveCorpus, name: String, governing_body: String) -> InstitutionalSurface
+    register_artifact: (surface: InstitutionalSurface, stable_id: String, kind: String, author: core/Participant) -> GovernedArtifact
+    place_in_surface: (artifact: GovernedArtifact, surface: InstitutionalSurface) -> SurfacePresence
+
+    @invariant OneInstallationDoesNotMeanOneAuthority
+        -- The corpus may be operated and recovered as one service. That
+        -- technical centre is not the final editor, semantic authority or legal
+        -- decision maker for every artefact in it.
+
+    @invariant RootCustodyIsOperationalNotEditorial
+        -- The participant named as the graph owner keeps the service recoverable.
+        -- Root custody alone grants no institutional authority over an artefact,
+        -- property, ontology module, attestation or publication.
+
+    @invariant ALogicalArtifactMayCrossSeveralSurfaces
+        -- A department may produce an artefact, a vice-rectorate attest it and a
+        -- library preserve or publish it without creating competing copies. Each
+        -- surface presents the same stable artefact and the same attributed
+        -- revision history through its own authority boundary.
+
+    @invariant NoParticipantOwnsTheWholeCollectiveCorpus
+        -- Institutional authority is always justified by a territory, a norm,
+        -- an appointment or a bounded delegation. Authorship, technical custody
+        -- and competence remain distinct.
+}
+
+contract ModularInstitutionalOntology {
+    establish_module: (corpus: CollectiveCorpus, namespace: String, scope: OntologyModuleScope, authority: InstitutionalSurface) -> OntologyModule
+    map_term: (authority: InstitutionalSurface, local_term: InstitutionalTerm, related_term: InstitutionalTerm, relation: TermMappingKind) -> TermMapping
+    retire_mapping: (authority: InstitutionalSurface, mapping: TermMapping) -> TermMapping
+
+    @invariant TheInstitutionSharesOnlyTheNecessaryCore
+        -- The common core names the small set needed to coordinate identity,
+        -- units, appointments, artefacts, versions, norms, authority,
+        -- attestations, validity, provenance and delegation. It does not force
+        -- every community to use one complete vocabulary.
+
+    @invariant DomainsAndUnitsMayExtendTheCore
+        -- Teaching, research, libraries and other domains may govern modules of
+        -- their own. A unit may add local terms without asking the whole
+        -- institution, while those terms remain visibly local until adopted or
+        -- mapped beyond that territory.
+
+    @invariant CorrespondenceIsAnAttributedDecision
+        -- Exact equivalence, close correspondence and specialisation are
+        -- versioned assertions with a responsible authority. A term is never
+        -- silently made global because two labels happen to look alike.
+
+    @invariant CentralOperationDoesNotCentraliseMeaning
+        -- One service may index all approved modules and mappings. It derives
+        -- that view from governed declarations; it does not become the author of
+        -- the vocabularies it composes.
+}
+
+contract GovernedArtifactFlow {
+    revise: (artifact: GovernedArtifact, author: core/Participant, touched_properties: List<String>, source_reference: String?) -> ArtifactRevision
+    assign_jurisdiction: (module: OntologyModule, artifact_kind: String, property_name: String, competent_surface: InstitutionalSurface, normative_basis: NormativeInstrument) -> PropertyJurisdiction
+    request_attestation: (revision: ArtifactRevision, jurisdiction: PropertyJurisdiction, requester: core/Participant) -> AttestationRequest
+    attest: (request: AttestationRequest, authority: core/Participant, instrument: NormativeInstrument, signature: String) -> Attestation
+    withdraw_attestation: (attestation: Attestation, authority: core/Participant, reason: String) -> AttestationWithdrawal
+    delegate: (jurisdiction: PropertyJurisdiction, delegator: core/Participant, delegate: core/Participant, scope: String, expires_at: Timestamp) -> AuthorityDelegation
+
+    @invariant AuthorshipAndCompetenceAreIndependent
+        -- The person who writes an artefact remains its author. Another person
+        -- may have greater institutional competence over a particular property
+        -- without becoming author or owner of the whole artefact.
+
+    @invariant EveryAuthorityExplainsItself
+        -- An effective act names the property and artefact kind it concerns, the
+        -- competent surface, the normative instrument and the appointment or
+        -- delegation that made the actor competent at that time.
+
+    @invariant ReviewFollowsThePropertiesThatChanged
+        -- A revision requests only the attestations required by the jurisdictions
+        -- of the properties it touched. Updating local bibliography does not
+        -- silently invalidate a central attestation over learning outcomes.
+
+    @invariant AnAttestationNamesOneExactRevisionAndNorm
+        -- A visa or certification is a signed assertion about one immutable
+        -- revision evaluated against one versioned norm. It is not a mutable
+        -- status field on the artefact.
+
+    @invariant LaterRevisionsDoNotRewriteEarlierActs
+        -- A new revision leaves the previous attestation and the courses,
+        -- publications or decisions that cited it intact. The new revision may
+        -- remain pending, be used ad referendum under a responsible signature,
+        -- or receive its own attestation.
+
+    @invariant DelegationIsBoundedAndExpires
+        -- Delegation names jurisdiction, delegate, scope and end. It creates no
+        -- permanent role and cannot grant authority the delegator did not hold.
+
+    @invariant WithdrawalStopsFutureRelianceAndPreservesEvidence
+        -- Withdrawing an attestation prevents new reliance on it while retaining
+        -- the attributed historical act and the reason for withdrawal, subject
+        -- to explicit retention and personal-data rules.
+}
+
+contract PersonalInstitutionalBoundary {
+    contribute_source: (source_reference: String, author: core/Participant, destination: InstitutionalSurface) -> ArtifactRevision
+    return_decision: (revision: ArtifactRevision, destination: String) -> InstitutionalDecisionReceipt
+
+    @invariant APersonalSourceIsNotAbsorbed
+        -- Publishing or contributing from a personal Vera creates an attributed
+        -- institutional revision or proposal. It never grants the institution
+        -- authority over the person's remaining corpus or rewrites the personal
+        -- source as institutional property.
+
+    @invariant InstitutionalStatusLivesInTheCollectiveJurisdiction
+        -- The personal source may record a receipt, citation or synchronised
+        -- projection. Legal or institutional validity comes from the governed
+        -- acts in the collective corpus, not from changing the author's private
+        -- note in place.
+
+    @invariant FederationLivesAtTheBoundary
+        -- Peer identity, subscription, withdrawal and fork govern exchange with
+        -- personal Veras or other institutions. Workflow among surfaces of this
+        -- one corpus does not pretend to be federation between servers.
+
+    @invariant SignaturesProvenanceAndRetractionSurviveTheCrossing
+        -- Crossing the boundary preserves author, source, revision, signatures,
+        -- decisions and later retractions. Compatibility never flattens them into
+        -- an unattributed document snapshot.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum OntologyModuleScope { institutional_core | domain | local_extension }
+enum TermMappingKind { exact_match | close_match | broader | narrower }
+enum MappingStatus { active | retired }
+enum JurisdictionStatus { active | retired }
+enum AttestationRequestStatus { pending | attested | declined | withdrawn }
+enum DelegationStatus { active | expired | revoked }
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity CollectiveCorpus {
+    graph: core/Graph
+    root_custodian: core/Participant
+    surfaces: InstitutionalSurface with corpus = this
+    ontology_modules: OntologyModule with corpus = this
+    artifacts: GovernedArtifact with corpus = this
+    delegations: AuthorityDelegation with corpus = this
+}
+
+entity InstitutionalSurface {
+    corpus: CollectiveCorpus
+    name: String
+    governing_body: String
+}
+
+entity SurfacePresence {
+    artifact: GovernedArtifact
+    surface: InstitutionalSurface
+}
+
+entity OntologyModule {
+    corpus: CollectiveCorpus
+    namespace: String
+    scope: OntologyModuleScope
+    governed_by: InstitutionalSurface
+    terms: InstitutionalTerm with module = this
+}
+
+entity InstitutionalTerm {
+    module: OntologyModule
+    identifier: String
+    label: String
+}
+
+entity TermMapping {
+    local_term: InstitutionalTerm
+    related_term: InstitutionalTerm
+    relation: TermMappingKind
+    asserted_by: InstitutionalSurface
+    status: MappingStatus
+    asserted_at: Timestamp
+    retired_at: Timestamp?
+}
+
+entity GovernedArtifact {
+    corpus: CollectiveCorpus
+    stable_id: String
+    kind: String
+    originating_surface: InstitutionalSurface
+    revisions: ArtifactRevision with artifact = this
+    presences: SurfacePresence with artifact = this
+}
+
+entity ArtifactRevision {
+    artifact: GovernedArtifact
+    previous: ArtifactRevision?
+    authored_by: core/Participant
+    touched_properties: List<String>
+    source_reference: String?
+    recorded_at: Timestamp
+    requests: AttestationRequest with revision = this
+    receipts: InstitutionalDecisionReceipt with revision = this
+}
+
+entity NormativeInstrument {
+    corpus: CollectiveCorpus
+    stable_id: String
+    version: String
+    issued_by: InstitutionalSurface
+    effective_from: Timestamp
+    replaced_at: Timestamp?
+}
+
+entity PropertyJurisdiction {
+    module: OntologyModule
+    artifact_kind: String
+    property_name: String
+    competent_surface: InstitutionalSurface
+    normative_basis: NormativeInstrument
+    status: JurisdictionStatus
+}
+
+entity AttestationRequest {
+    revision: ArtifactRevision
+    jurisdiction: PropertyJurisdiction
+    requested_by: core/Participant
+    requested_at: Timestamp
+    status: AttestationRequestStatus
+    attestation: Attestation?
+}
+
+entity Attestation {
+    request: AttestationRequest
+    signed_by: core/Participant
+    instrument: NormativeInstrument
+    signature: String
+    recorded_at: Timestamp
+    withdrawal: AttestationWithdrawal?
+}
+
+entity AttestationWithdrawal {
+    attestation: Attestation
+    withdrawn_by: core/Participant
+    reason: String
+    withdrawn_at: Timestamp
+}
+
+entity AuthorityDelegation {
+    corpus: CollectiveCorpus
+    jurisdiction: PropertyJurisdiction
+    delegator: core/Participant
+    delegate: core/Participant
+    scope: String
+    expires_at: Timestamp
+    status: DelegationStatus
+}
+
+entity InstitutionalDecisionReceipt {
+    revision: ArtifactRevision
+    destination: String
+    issued_at: Timestamp
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant RootCustodianMatchesTheServedGraph {
+    for corpus in CollectiveCorpuses:
+        corpus.root_custodian = corpus.graph.owner
+}
+
+invariant EverySurfaceBelongsToTheArtifactsCorpus {
+    for presence in SurfacePresences:
+        presence.surface.corpus = presence.artifact.corpus
+}
+
+invariant EveryArtifactOriginatesInsideItsCorpus {
+    for artifact in GovernedArtifacts:
+        artifact.originating_surface.corpus = artifact.corpus
+}
+
+invariant EveryJurisdictionStaysInsideOneCorpus {
+    for jurisdiction in PropertyJurisdictions:
+        jurisdiction.module.corpus = jurisdiction.competent_surface.corpus and
+        jurisdiction.normative_basis.corpus = jurisdiction.module.corpus
+}
+
+invariant EveryAttestationAnswersItsRequest {
+    for request in AttestationRequests:
+        request.attestation != null implies request.attestation.request = request
+}
+
+invariant EveryDelegationStaysInsideItsCorpus {
+    for delegation in AuthorityDelegations:
+        delegation.jurisdiction.module.corpus = delegation.corpus
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "Which constitutional procedure approves, changes or retires the institutional core ontology?"
+open question "When two active modules claim incompatible jurisdiction over the same property, which body hears the conflict and what may continue meanwhile?"
+open question "Which transformations after attestation are merely presentational, and which create a new revision that requires another attestation?"
+open question "What exact quorum or co-signature is required for each class of consequential institutional act?"
+open question "How long are withdrawn attestations, delegations and personal data retained when legal memory and erasure rights conflict?"
+open question "May a local extension become a domain or institutional term by adoption while preserving its original namespace and history?"

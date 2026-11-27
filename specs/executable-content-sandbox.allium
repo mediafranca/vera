@@ -121,6 +121,14 @@ contract LinkedResourcesDegradeSafely {
         -- e Instagram se reconocen como proveedores; cualquier otro destino se
         -- presenta como página. Mezclada con prosa sigue siendo un enlace común.
 
+    @invariant AnOfficialYouTubeAddressMayBecomeAVideo
+        -- Una dirección HTTPS de YouTube que ocupa el bloque entero se presenta
+        -- mediante el reproductor sin cookies cuando el corpus autorizó ese
+        -- origen. Son la misma clase de fuente sus formas oficiales `watch`,
+        -- `youtu.be`, `shorts`, `embed` y `live`: que una emisión ya haya
+        -- terminado no debe degradarla a enlace. La dirección original sobrevive
+        -- como fuente y, mezclada con prosa, continúa siendo un enlace común.
+
     @invariant AGoogleMapsAddressMayBecomeAMap
         -- Una dirección de Google Maps que ocupa el bloque entero puede mostrar
         -- el mapa directamente cuando `google.com` está entre los servidores que

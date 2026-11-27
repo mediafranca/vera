@@ -7041,6 +7041,16 @@ body.settings-open #text {
   line-height: 1.5;
 }
 
+.desktop-updates {
+  margin: 0 0 1.4rem;
+  padding: .8rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+
+.desktop-updates .settings-actions { justify-content: flex-start; }
+
 .voice-configuration {
   display: grid;
   gap: .8rem;

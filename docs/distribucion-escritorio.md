@@ -31,9 +31,12 @@ una con sus propias garantías — ninguna finge tener las garantías de la otra
   releases participan de la actualización automática.
 - **`AlphaRelease`** — Windows y/o macOS sin firma comercial, mientras esa
   firma no sea alcanzable para quien mantiene Vera. Exige checksum verificable
-  y divulgación explícita del riesgo en las notas de la release. Nunca ofrece
-  actualización automática: pasar de una versión sin firmar a la siguiente es
-  una descarga manual.
+  y divulgación explícita del riesgo en las notas de la release. Cada instalador
+  lleva además una firma Sigstore *keyless* y una attestation de procedencia de
+  GitHub vinculadas al workflow que lo produjo. Estas pruebas autentican origen
+  e integridad, pero no sustituyen Authenticode, Developer ID ni notarización.
+  Nunca ofrece actualización automática: pasar de una versión sin firma de
+  plataforma a la siguiente es una descarga manual.
 
 Cuál de las dos aplica a cada plataforma, en cada release, se decide sin
 intervención humana: el workflow firma si encuentra los secretos de Windows o
@@ -106,8 +109,13 @@ circuito de distribución:
 4. cada runner genera checksums; los builds sin firmar además pierden su
    manifiesto de actualización (`latest.yml`/`latest-mac.yml`) para que
    `electron-updater` nunca los ofrezca como actualización automática.
-5. un trabajo final reúne todo en una única GitHub Release, con notas que
-   dejan explícito qué plataformas están firmadas y cuáles no.
+5. el trabajo final firma cada instalador con Sigstore mediante la identidad
+   OIDC efímera del workflow y registra una attestation de procedencia en
+   GitHub; no usa una clave privada persistente;
+6. reúne todo en una GitHub Release **en borrador**, con checksums, bundles
+   `.sigstore.json` y notas que dejan explícito qué plataformas tienen firma de
+   sistema operativo y cuáles no. La publicación ocurre sólo después de
+   descargar y verificar los artefactos.
 
 Nada se degrada en silencio: si falta una credencial, el instalador de esa
 plataforma sale marcado "(sin firmar)" y la release lo dice en sus notas, en
@@ -115,6 +123,10 @@ vez de fallar sin publicar nada (que era el comportamiento anterior) o de
 pretender la confianza de un instalador firmado.
 
 ## Secretos requeridos en GitHub Actions
+
+Sigstore y GitHub Artifact Attestations no requieren secretos: usan
+`GITHUB_TOKEN` y OIDC efímeros, limitados al job de release. El entorno
+protegido `release` gobierna ese job.
 
 Windows:
 
@@ -134,8 +146,15 @@ de Actions. Nunca se guardan en el repositorio ni dentro del instalador.
 
 ## Flujo de una actualización
 
-La comprobación está activa únicamente en una aplicación empaquetada e
-instalada de Windows o macOS. Desarrollo, Linux y la edición portable quedan
+Vera Desktop ofrece **Buscar actualizaciones** en Centro de Vera → Biblioteca.
+La comprobación manual consulta la última release estable de GitHub y compara
+su versión con la instalada. Cuando existe una versión posterior, abre la
+página oficial de la release para descargarla; no descarga ni ejecuta archivos
+por su cuenta. La memoria queda fuera de la aplicación y permanece intacta.
+
+La actualización automática está activa únicamente en una aplicación
+empaquetada, instalada y firmada por la plataforma en Windows o macOS.
+Desarrollo, Linux, la edición portable y los builds sin firma comercial quedan
 fuera.
 
 1. Vera espera diez segundos tras arrancar para no bloquear la primera lectura.
@@ -189,7 +208,10 @@ npm run release:verify-tag -- v<versión>
 
 Después se revisa y compromete el cambio de versión. Crear y empujar el tag es
 una operación humana deliberada; GitHub Actions hace el resto. Nunca se reutiliza
-un número de versión retirado: una corrección lleva un número mayor.
+un número de versión retirado: una corrección lleva un número mayor. El tag se
+crea sobre el SHA ya fusionado en `main`; la release permanece como borrador
+hasta verificar checksums, bundles Sigstore, attestations y una instalación
+limpia del artefacto descargado.
 
 `verify:desktop-package` inspecciona el `app.asar` construido y exige tanto el
 puente JavaScript como el binario nativo de cada arquitectura distribuida. En

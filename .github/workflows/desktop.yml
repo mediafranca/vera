@@ -246,8 +246,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [windows, macos, linux]
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -256,6 +259,29 @@ jobs:
           pattern: Vera-*
           path: release
           merge-multiple: true
+
+      - name: Instalar cosign
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+
+      - name: Firmar instaladores con Sigstore
+        shell: bash
+        run: |
+          shopt -s nullglob
+          artifacts=(release/*.exe release/*.dmg release/*.zip release/*.AppImage release/*.deb)
+          test "${#artifacts[@]}" -gt 0
+          for artifact in "${artifacts[@]}"; do
+            cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "$artifact"
+          done
+
+      - name: Registrar procedencia verificable en GitHub
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.AppImage
+            release/*.deb
 
       - name: Redactar notas de la release
         id: notes
@@ -301,10 +327,29 @@ jobs:
               echo "Ninguna versión sin firmar recibe actualización automática:"
               echo "actualizar significa volver a descargar de esta página."
             fi
+            echo
+            echo "### Procedencia verificable"
+            echo
+            echo "Cada instalador incluye un archivo del mismo nombre terminado en"
+            echo '`.sigstore.json`, firmado por este workflow con una identidad OIDC efímera.'
+            echo "Esta firma demuestra procedencia; no reemplaza Authenticode, la firma"
+            echo "Developer ID ni la notarización que los sistemas operativos reconocen."
+            echo
+            echo '```sh'
+            echo 'cosign verify-blob ARCHIVO \\'
+            echo '  --bundle ARCHIVO.sigstore.json \\'
+            echo "  --certificate-identity \"https://github.com/$GITHUB_WORKFLOW_REF\" \\"
+            echo '  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"'
+            echo '```'
+            echo
+            echo '```sh'
+            echo 'gh attestation verify ARCHIVO --repo mediafranca/vera \\'
+            echo '  --signer-workflow mediafranca/vera/.github/workflows/desktop.yml'
+            echo '```'
           } > "$RUNNER_TEMP/release-notes.md"
           echo "path=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Publicar una sola release multiplataforma
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --notes-file "${{ steps.notes.outputs.path }}"
+        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --draft --notes-file "${{ steps.notes.outputs.path }}"

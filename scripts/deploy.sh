@@ -38,6 +38,11 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || alto 'esto no es un repos
 RAMA="$(git rev-parse --abbrev-ref HEAD)"
 paso "Rama ${RAMA}"
 
+# `dev` es el taller que Herbert prueba; `main` es lo que los servicios
+# persistentes sirven desde su worktree propio. Permitir que este script
+# publique cualquier rama volvería a mezclar ambas cosas por accidente.
+[ "$RAMA" = 'main' ] || alto 'sólo main se despliega; integra dev mediante PR y ejecuta este script desde el worktree de producción'
+
 if [ -z "$(git status --porcelain)" ]; then
   aviso 'no hay nada que commitear; se publica lo que ya está'
   HAY_CAMBIOS=0

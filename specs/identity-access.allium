@@ -10,8 +10,10 @@
 -- Excludes:
 --   - Hosting several private graphs inside one Vera instance
 --   - Closing the current graph and opening or switching to another graph
---   - Collective ownership; collective work is composed between sovereign
---     personal libraries and belongs to federation specifications
+--   - Collective institutional governance. A collective corpus may be served by
+--     one installation without acquiring one sovereign human owner; its
+--     authorities, territories and governed artefact flows are specified in
+--     institutional-artifact-governance.allium
 --   - Authentication ceremony and session implementation
 --     (see shared-space-access.allium)
 --   - Which pages belong to a public site and how they are presented
@@ -590,10 +592,10 @@ surface OwnerPublicPreviewBoundary {
 -- Open Questions
 ------------------------------------------------------------
 
--- Answered: people authenticate with passkeys or a federated Vera identity;
--- sessions and invitations are specified in shared-space-access.allium. The
--- machine that holds the corpus remains the owner's recovery authority.
-open question "How does Herbert authorize, identify and revoke each agent?"
+-- Answered: Herbert issues each agent a named, revocable credential with
+-- explicit scopes. The credential determines identity rather than request
+-- claims, and the owner can inspect its last use, rename its alias without
+-- changing authority, and revoke it. See agent-participation.allium.
 -- Answered: a human may have several passkeys, while the server keeps bounded,
 -- revocable sessions rather than an eternal bearer credential.
 -- Answered: collaborator authority is capability-based and scoped to a named

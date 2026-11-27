@@ -118,7 +118,7 @@ describe('arquitectura de configuración', () => {
   });
 
   it('reúne identidad, materiales y continuidad en Biblioteca', () => {
-    assert.match(settings, /async function drawLibrary[\s\S]*drawInstanceConfiguration[\s\S]*drawPortability/);
+    assert.match(settings, /async function drawLibrary[\s\S]*drawInstanceConfiguration[\s\S]*drawDesktopUpdates[\s\S]*drawPortability/);
     assert.doesNotMatch(settings, /function drawSystem/);
     assert.doesNotMatch(settings, /Pendiente/);
     assert.match(settings, /api\.instanceProfile/);
@@ -126,6 +126,14 @@ describe('arquitectura de configuración', () => {
     assert.match(settings, /settings-backup/);
     assert.match(styles, /\.instance-configuration :is\(input, select\)[\s\S]*height:\s*var\(--form-control-height\)/);
     assert.match(styles, /\.configuration-field-heading[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  });
+
+  it('busca una release nueva desde Vera Desktop sin fingir firma de plataforma', () => {
+    assert.match(settings, /check\.textContent = 'Buscar actualizaciones'/);
+    assert.match(settings, /download\.textContent = 'Descargar actualización'/);
+    assert.match(settings, /bridge\.check\(\)/);
+    assert.match(settings, /bridge\.openRelease\(result\.releaseUrl\)/);
+    assert.match(styles, /\.desktop-updates\s*\{/);
   });
 
   it('mantiene Gobierno como destino de primer orden y sus tablas no se traslapan', () => {

@@ -6,7 +6,7 @@ import { tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
+import { isNewerVersion, supportsAutomaticUpdates, UPDATE_CHECK_INTERVAL_MS } from './update-policy.ts';
 import { DesktopConecta, type ConectaState, type SecureConectaStore } from './conecta.ts';
 import {
   DesktopExternalEditing,
@@ -22,6 +22,8 @@ const ROOT = join(HERE, '../..');
 const PORT = 4173;
 const LOCAL_VERA_URL = `http://127.0.0.1:${PORT}`;
 const VERA_CONECTA_HEALTH_URL = 'https://conecta.mediafranca.net/health';
+const VERA_LATEST_RELEASE_API = 'https://api.github.com/repos/mediafranca/vera/releases/latest';
+const VERA_RELEASES_URL = 'https://github.com/mediafranca/vera/releases';
 
 const portableRoot = process.env['PORTABLE_EXECUTABLE_DIR'];
 const localRoot = process.platform === 'win32'
@@ -127,6 +129,46 @@ const hiddenWindow = (): BrowserWindow => new BrowserWindow({
     sandbox: true,
   },
 });
+
+type DesktopUpdateCheck = {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  automaticInstallation: boolean;
+};
+
+const automaticUpdateEnvironment = () => supportsAutomaticUpdates({
+  isPackaged: app.isPackaged,
+  platform: process.platform,
+  portableRoot,
+  releaseChannel: process.env['VERA_LEGACY_DESKTOP'] === '1' ? 'legacy' : 'stable',
+});
+
+async function checkLatestDesktopRelease(): Promise<DesktopUpdateCheck> {
+  const response = await fetch(VERA_LATEST_RELEASE_API, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      'user-agent': `Vera/${app.getVersion()}`,
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`GitHub respondió HTTP ${response.status}`);
+  const release = await response.json() as { tag_name?: unknown; html_url?: unknown };
+  const latestVersion = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/, '') : '';
+  const releaseUrl = typeof release.html_url === 'string' ? release.html_url : '';
+  if (latestVersion === '' || !releaseUrl.startsWith(`${VERA_RELEASES_URL}/tag/`)) {
+    throw new Error('GitHub no devolvió una release estable reconocible.');
+  }
+  const currentVersion = app.getVersion();
+  return {
+    currentVersion,
+    latestVersion,
+    updateAvailable: isNewerVersion(currentVersion, latestVersion),
+    releaseUrl,
+    automaticInstallation: automaticUpdateEnvironment(),
+  };
+}
 
 /** Compone el papel con el Chromium que Electron ya distribuye. */
 const renderPdfWithElectron = async (url: string): Promise<{ pdf: Buffer } | { error: string }> => {
@@ -443,14 +485,9 @@ async function closeVera(): Promise<void> {
 }
 
 async function enableAutomaticUpdates(): Promise<void> {
-  if (!supportsAutomaticUpdates({
-    isPackaged: app.isPackaged,
-    platform: process.platform,
-    portableRoot,
-    // La edición Catalina queda fijada a un runtime fuera de soporte. Nunca
-    // debe reemplazarse sola por una release que ese sistema no abre.
-    releaseChannel: process.env['VERA_LEGACY_DESKTOP'] === '1' ? 'legacy' : 'stable',
-  })) return;
+  // La edición Catalina queda fijada a un runtime fuera de soporte. Nunca debe
+  // reemplazarse sola por una release que ese sistema no abre.
+  if (!automaticUpdateEnvironment()) return;
 
   /*
    * electron-updater es CommonJS. En el paquete ESM, Node puede exponerlo como
@@ -654,6 +691,19 @@ ipcMain.handle('vera:setup-capabilities', async () => {
     existingSpeechToText: existingVoice.ready,
     platform: process.platform,
   };
+});
+ipcMain.handle('vera-updates:status', () => ({
+  currentVersion: app.getVersion(),
+  automaticInstallation: automaticUpdateEnvironment(),
+  releaseUrl: VERA_RELEASES_URL,
+}));
+ipcMain.handle('vera-updates:check', () => checkLatestDesktopRelease());
+ipcMain.handle('vera-updates:open-release', async (_event, rawUrl: unknown) => {
+  if (typeof rawUrl !== 'string' || !rawUrl.startsWith(`${VERA_RELEASES_URL}/`)) {
+    throw new Error('La dirección de la release no pertenece a Vera.');
+  }
+  await shell.openExternal(rawUrl);
+  return { opened: true };
 });
 ipcMain.handle('vera-conecta:status', () => conecta?.status() ?? {
   status: 'desactivado', installationId: null, secureStorage: false,
