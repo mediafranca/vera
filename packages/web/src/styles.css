@@ -2622,6 +2622,59 @@ html.presenting body {
   max-height: none !important;
 }
 
+/*
+ * Un esquema vertical no deja de ser una lámina espacial por ser más alto que
+ * la pantalla. Mermaid calcula el alto natural de su iframe desde el viewBox;
+ * imponerle después el máximo genérico del viewport encoge sólo la ventana y
+ * corta el SVG que vive dentro. Los SVG escritos conservan del mismo modo su
+ * relación intrínseca. Ambos usan todo el escenario y, si aún no caben, la
+ * lámina se desplaza verticalmente sin recortar la figura.
+ */
+.vera-presentation .reveal .slides section.presentation-spatial:is(
+  [data-presentation-medium="diagram"],
+  [data-presentation-medium="svg"]
+) {
+  overflow-y: auto;
+}
+
+.vera-presentation .presentation-spatial:is(
+  [data-presentation-medium="diagram"],
+  [data-presentation-medium="svg"]
+) > .presentation-block,
+.vera-presentation .presentation-spatial:is(
+  [data-presentation-medium="diagram"],
+  [data-presentation-medium="svg"]
+) > .presentation-block > .body {
+  height: auto !important;
+  min-height: calc(100dvh - var(--presentation-slide-top) - var(--presentation-slide-bottom)) !important;
+}
+
+.vera-presentation .presentation-spatial:is(
+  [data-presentation-medium="diagram"],
+  [data-presentation-medium="svg"]
+) > .presentation-block > .body {
+  overflow: visible;
+}
+
+.vera-presentation .presentation-spatial .body > .presentation-primary-medium:is(
+  .mermaid-figure,
+  .executable-svg
+) {
+  flex: none;
+  height: auto !important;
+  overflow-y: visible;
+}
+
+.vera-presentation .presentation-spatial[data-presentation-medium="diagram"] .mermaid-figure iframe {
+  max-height: none !important;
+}
+
+.vera-presentation .presentation-spatial[data-presentation-medium="svg"] .executable.executable-svg iframe {
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
 .vera-presentation .presentation-spatial .body .executable iframe {
   width: 100% !important;
   height: 100% !important;

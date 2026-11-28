@@ -160,10 +160,11 @@ function renderNode(node: PresentationNode, options: RenderOptions, depth = 0): 
   return host;
 }
 
-type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'iframe' | 'map' | 'table' | 'video';
+type SpatialMedium = 'image' | 'drawing' | 'diagram' | 'executable' | 'iframe' | 'map' | 'svg' | 'table' | 'video';
 
 function spatialKind(host: HTMLElement): SpatialMedium | null {
   let medium = host;
+  if (medium.matches('.executable-svg')) return 'svg';
   if (medium.matches('.executable')) return 'executable';
   if (
     medium.matches('.embed') &&
@@ -184,6 +185,7 @@ function spatialKind(host: HTMLElement): SpatialMedium | null {
     medium = medium.firstElementChild as HTMLElement;
   }
 
+  if (medium.matches('.executable-svg')) return 'svg';
   if (medium.matches('img, svg')) return 'image';
   if (medium.matches('video')) return 'video';
   return null;
