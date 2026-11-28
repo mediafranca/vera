@@ -213,11 +213,20 @@ function spatialMedium(body: HTMLElement): SpatialMedium | null {
   return kind;
 }
 
+/** Un esquema alto puede vivir dentro de una lámina documental, no sólo serla. */
+export function containsTallPresentationMedium(slide: Pick<ParentNode, 'querySelector'>): boolean {
+  return slide.querySelector('.mermaid-figure, .executable-svg') !== null;
+}
+
 /** Marca sólo las láminas cuyo medio debe medir contra el viewport. */
 function classifySpatialSlides(slides: HTMLElement): void {
   for (const slide of slides.querySelectorAll<HTMLElement>(':scope > section')) {
     const body = slide.querySelector<HTMLElement>(':scope > .presentation-block > .body');
     const medium = body === null ? null : spatialMedium(body);
+    slide.classList.toggle(
+      'presentation-tall-medium',
+      containsTallPresentationMedium(slide),
+    );
     slide.classList.toggle('presentation-spatial', medium !== null);
     if (medium === null) delete slide.dataset['presentationMedium'];
     else slide.dataset['presentationMedium'] = medium;
