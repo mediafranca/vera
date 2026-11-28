@@ -1152,12 +1152,12 @@ CREATE TABLE IF NOT EXISTS agent_conversations (
     human_id        TEXT NOT NULL REFERENCES participants (id),
     agent_id        TEXT NOT NULL REFERENCES participants (id),
     title           TEXT NOT NULL,
+    scope_kind      TEXT NOT NULL DEFAULT 'library' CHECK (scope_kind IN ('library', 'page', 'block')),
+    scope_page_id   TEXT REFERENCES pages (id) ON DELETE SET NULL,
+    scope_block_id  TEXT REFERENCES blocks (id) ON DELETE SET NULL,
     status          TEXT NOT NULL CHECK (status IN ('active', 'closed')),
     created_at      INTEGER NOT NULL
 ) STRICT;
-
-CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_pair
-    ON agent_conversations (graph_id, human_id, agent_id) WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS agent_requests (
     id                 TEXT PRIMARY KEY,

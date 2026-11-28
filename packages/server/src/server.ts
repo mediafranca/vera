@@ -132,6 +132,7 @@ import {
   activeLibrarianConversation,
   answerLibrarianRequest,
   claimLibrarianRequest,
+  closeLibrarianConversation,
   createLibrarianConversation,
   createLibrarianRequest,
   decideLibrarianOperationProposal,
@@ -3793,12 +3794,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       }
       let body: Record<string, unknown> = {};
       try { body = await readSmallJson(); } catch { /* el título es opcional */ }
+      const scopeKind = body.scopeKind === 'page' || body.scopeKind === 'block' ? body.scopeKind : 'library';
+      const scopePageId = typeof body.pageId === 'string' ? body.pageId : null;
+      const scopeBlockId = typeof body.blockId === 'string' ? body.blockId : null;
+      const scopePage = scopePageId === null ? undefined : graph.page(scopePageId);
+      const scopeBlock = scopeBlockId === null ? undefined : graph.block(scopeBlockId);
+      if ((scopeKind !== 'library' && scopePage === undefined) ||
+        (scopeKind === 'block' && (scopeBlock === undefined || scopeBlock.page !== scopePageId))) {
+        send(response, 404, { error: 'el alcance de la conversación ya no existe' }); return;
+      }
       const declared = typeof body.title === 'string' ? body.title.trim() : '';
-      const title = declared || `Conversación · ${new Intl.DateTimeFormat('es-CL', {
-        dateStyle: 'medium', timeStyle: 'short',
-      }).format(new Date())}`;
+      const blockExcerpt = scopeBlock?.content.replace(/\s+/g, ' ').trim().slice(0, 56) ?? '';
+      const title = declared || (scopeKind === 'library' ? 'Biblioteca'
+        : scopeKind === 'page' ? scopePage!.title
+          : `${scopePage!.title} / ${blockExcerpt || 'bloque vacío'}`);
       send(response, 201, createLibrarianConversation(store, {
         human: conversationalHuman, agent: librarianAgent, title,
+        scope: { kind: scopeKind, pageId: scopePageId, blockId: scopeBlockId },
       }));
       return;
     }
@@ -3816,14 +3828,40 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       return;
     }
 
+    const closeConversation = path.match(/^\/librarian\/conversations\/([^/]+)\/close$/);
+    if (request.method === 'POST' && closeConversation !== null) {
+      if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
+        send(response, 403, { error: 'sólo una persona puede archivar su conversación' });
+        return;
+      }
+      const selected = closeLibrarianConversation(store, {
+        id: decodeURIComponent(closeConversation[1]!), human: conversationalHuman, agent: librarianAgent,
+      });
+      send(response, selected === undefined ? 404 : 200, selected ?? { error: 'la conversación no existe' });
+      return;
+    }
+
     if (request.method === 'GET' && path === '/librarian/conversation') {
       if (conversationalHuman === null || graph.participant(conversationalHuman)?.kind !== 'human') {
         send(response, 403, { error: `sólo una persona puede leer su conversación con ${librarianObject}` });
         return;
       }
       const requestedConversation = url.searchParams.get('id');
+      const requestedScope = url.searchParams.get('scope');
+      const requestedPage = url.searchParams.get('page');
+      const requestedBlock = url.searchParams.get('block');
+      if ((requestedScope === 'page' && requestedPage === null) ||
+        (requestedScope === 'block' && (requestedPage === null || requestedBlock === null))) {
+        send(response, 400, { error: 'el alcance solicitado está incompleto' });
+        return;
+      }
+      const scope = requestedScope === null ? undefined : requestedScope === 'page'
+        ? { kind: 'page' as const, pageId: requestedPage }
+        : requestedScope === 'block'
+          ? { kind: 'block' as const, pageId: requestedPage, blockId: requestedBlock }
+          : { kind: 'library' as const };
       const conversation = requestedConversation === null
-        ? activeLibrarianConversation(store, conversationalHuman, librarianAgent)
+        ? activeLibrarianConversation(store, conversationalHuman, librarianAgent, scope)
         : librarianConversation(store, requestedConversation);
       if (requestedConversation !== null && conversation === undefined) {
         send(response, 404, { error: 'la conversación no existe' });
@@ -3870,6 +3908,8 @@ export function createVeraServer(options: ServerOptions): VeraServer {
       const blockId = typeof body.blockId === 'string' ? body.blockId : null;
       const conversationId = typeof body.conversationId === 'string' ? body.conversationId : undefined;
       const recordingId = typeof body.recordingId === 'string' ? body.recordingId : null;
+      const declaredScope = body.scopeKind === 'library' || body.scopeKind === 'page' || body.scopeKind === 'block'
+        ? body.scopeKind : null;
       const dialecticBypass = body.dialecticBypass === true;
       const page = graph.page(pageId);
       const block = blockId === null ? undefined : graph.block(blockId);
@@ -3880,6 +3920,23 @@ export function createVeraServer(options: ServerOptions): VeraServer {
           selected.human !== conversationalHuman || selected.agent !== librarianAgent) {
           send(response, 409, { error: 'la conversación ya no está activa' }); return;
         }
+      }
+      const selectedConversation = conversationId === undefined ? undefined : librarianConversation(store, conversationId);
+      const scope = selectedConversation === undefined
+        ? (declaredScope === 'library'
+            ? { kind: 'library' as const }
+            : declaredScope === 'page'
+              ? { kind: 'page' as const, pageId }
+              : declaredScope === 'block' || blockId !== null
+                ? { kind: 'block' as const, pageId, blockId }
+                : { kind: 'page' as const, pageId })
+        : { kind: selectedConversation.scopeKind, pageId: selectedConversation.scopePageId, blockId: selectedConversation.scopeBlockId };
+      if ((declaredScope === 'block' && blockId === null) ||
+        (selectedConversation?.scopeKind === 'page' && selectedConversation.scopePageId !== pageId) ||
+        (selectedConversation?.scopeKind === 'block' &&
+          (selectedConversation.scopePageId !== pageId || selectedConversation.scopeBlockId !== blockId))) {
+        send(response, 409, { error: 'el mensaje no coincide con el alcance de la conversación' });
+        return;
       }
       const activeGate = conversationId === undefined ? null : activeDialecticGate(store, conversationId);
       if (dialecticBypass && activeGate === null) {
@@ -3927,6 +3984,7 @@ export function createVeraServer(options: ServerOptions): VeraServer {
         sourceBlockId: block?.stableId ?? null,
         recordingId,
         ...(conversationId === undefined ? {} : { conversationId }),
+        scope,
         contextSnapshot: snapshot,
       });
       try {

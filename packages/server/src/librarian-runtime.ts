@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Store } from '@vera/store';
 import type { ContributionLineage, ContributionRelation } from '@vera/core';
 import { activeManifest, type AgentManifestDocument } from './agent-manifests.ts';
-import { librarianRequest, librarianRequestsInConversation, type LibrarianRequest } from './librarian.ts';
+import { librarianConversation, librarianRequest, librarianRequestsInConversation, type LibrarianRequest } from './librarian.ts';
 import { activeOwnerLibrarian } from './owner-librarian.ts';
 
 export const LIBRARIAN_RUNTIME_ID = 'vera:embedded-librarian';
@@ -670,6 +670,12 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
   const librarianName = activeOwnerLibrarian(store)?.name ?? 'Agente de biblioteca';
   const opening = gate === null ? null : librarianRequest(store, gate.openingRequest);
   const disposition = librarianRequestDispositionFor(request.text);
+  const conversation = librarianConversation(store, request.conversationId);
+  const scope = conversation?.scopeKind === 'library'
+    ? 'Biblioteca completa: la página de origen es sólo un punto de partida y no limita el encargo.'
+    : conversation?.scopeKind === 'block'
+      ? `Bloque: ${conversation.title}.`
+      : `Página: ${conversation?.title ?? 'contexto no identificado'}.`;
   const dialectic = gate === null
     ? (config.dialectic.enabled ? [
         'Dialéctica del agente de biblioteca activa.',
@@ -704,6 +710,7 @@ export function librarianRequestPrompt(store: Store, config: LibrarianRuntimeCon
     'Si una intervención retira una página, bloque o propiedad, nombra en el resumen exactamente qué retiraste y por qué. Vera repetirá obligatoriamente esa declaración en tu bitácora diaria.',
     'Si la respuesta pedida contradice su fuente, atribuye falsamente una voz o exige sostener afirmaciones incompatibles, nombra la incoherencia antes de responder bajo una lectura coherente o pedir la decisión humana material. No presentes la abstención como un derecho personal de la IA.',
     'El contexto siguiente fue congelado cuando la persona hizo la solicitud; distingue hechos, inferencias y dudas.',
+    `Alcance durable de esta conversación: ${scope}`,
     manifestPrompt(store, config.agent, request.text),
     dialectic,
     `Historial efectivo de la conversación:\n${compactLibrarianConversationContext(store, request)}`,

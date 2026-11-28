@@ -39,13 +39,13 @@ describe('avisos y trabajo sin interrumpir la lectura', () => {
 
   it('presenta la conversación durable como un hilo acumulado y copiable', () => {
     assert.match(outliner, /export async function openLibrarianConversation/);
-    assert.match(outliner, /api\.librarianConversation\(\)/);
+    assert.match(outliner, /api\.librarianConversation\(undefined, initialScope\)/);
     assert.match(outliner, /className = 'librarian-conversation-stream'/);
     assert.match(outliner, /stream\.scrollTop = stream\.scrollHeight/);
     assert.match(outliner, /copyText\(text, toast\)/);
     assert.match(outliner, /event\.key === 'Enter' && !event\.shiftKey/);
     assert.match(outliner, /api\.librarianConversations\(\)/);
-    assert.match(outliner, /api\.createLibrarianConversation\(\)/);
+    assert.match(outliner, /api\.createLibrarianConversation\(current\)/);
     assert.match(outliner, /startRecording\(\)/);
     assert.match(outliner, /voice\.transcript\(captured\.id\)/);
     assert.match(outliner, /request\.events/);

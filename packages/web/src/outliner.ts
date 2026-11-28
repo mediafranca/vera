@@ -891,14 +891,15 @@ export async function askLibrarian(
  * La conversación durable con el agente, no una tarjeta de solicitud.
  *
  * Los turnos más antiguos quedan arriba y el compositor permanece abajo. Cada
- * turno conserva el contexto desde el que nació, aunque la conversación cruce
- * varias páginas. El nombre visible viene del participante efectivo: esta
- * superficie usa siempre el participante efectivo, sin rebautizar a nadie
- * desde el cliente.
+ * turno conserva el contexto desde el que nació y cada conversación mantiene
+ * un alcance durable: biblioteca, página o bloque. El nombre visible viene del
+ * participante efectivo: esta superficie usa siempre el participante efectivo,
+ * sin rebautizar a nadie desde el cliente.
  */
 export async function openLibrarianConversation(
   page: PageView,
   callbacks: OutlinerCallbacks,
+  initialScope: { kind: 'library' | 'page' | 'block'; pageId?: string; blockId?: string } = { kind: 'library' },
 ): Promise<void> {
   const already = document.querySelector<HTMLDialogElement>('.librarian-conversation-dialog');
   if (already !== null) {
@@ -911,7 +912,7 @@ export async function openLibrarianConversation(
   let conversations: LibrarianConversationSummary[];
   try {
     [view, conversations] = await Promise.all([
-      api.librarianConversation(), api.librarianConversations(),
+      api.librarianConversation(undefined, initialScope), api.librarianConversations(),
     ]);
   }
   catch {
@@ -933,7 +934,7 @@ export async function openLibrarianConversation(
   const name = document.createElement('strong');
   name.textContent = view.agent.name;
   const scope = document.createElement('span');
-  scope.textContent = `conversación en Vera · contexto actual: ${page.title}`;
+  scope.textContent = 'conversación en Vera';
   words.append(name, scope);
   identity.append(mark, words);
   const sessionControls = document.createElement('div');
@@ -946,7 +947,11 @@ export async function openLibrarianConversation(
   newSession.type = 'button';
   newSession.textContent = 'Nueva';
   newSession.title = 'Iniciar otra conversación';
-  sessionControls.append(sessionLabel, sessionSelect, newSession);
+  const archiveSession = document.createElement('button');
+  archiveSession.type = 'button';
+  archiveSession.textContent = 'Archivar';
+  archiveSession.title = 'Archivar esta conversación sin borrar su procedencia';
+  sessionControls.append(sessionLabel, sessionSelect, newSession, archiveSession);
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'librarian-conversation-close';
@@ -1077,6 +1082,7 @@ export async function openLibrarianConversation(
     return details;
   };
 
+  const optimistic: Array<{ key: string; text: string; createdAt: number }> = [];
   const renderTurns = (next: LibrarianConversationView, follow = false): void => {
     const nearEnd = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 80;
     stream.replaceChildren();
@@ -1091,9 +1097,6 @@ export async function openLibrarianConversation(
       const asked = turn('human', next.human.name, request.text, `${where} · ${when(request.createdAt)}`, request.recording);
       asked.append(contextReceipt(request));
       stream.append(asked);
-      for (const event of request.events) {
-        stream.append(turn('status', next.agent.name, event.text, `${event.kind} · ${when(event.createdAt)}`));
-      }
       if (request.reply !== null) {
         const replied = turn('agent', next.agent.name, request.reply.text, when(request.reply.createdAt));
         if (request.dialectic?.status === 'open' && request.dialectic.openingRequest === request.id) {
@@ -1105,8 +1108,11 @@ export async function openLibrarianConversation(
           bypass.textContent = 'Resolver directamente esta vez';
           bypass.addEventListener('click', () => {
             bypass.disabled = true;
+            const current = selectedScope();
             void api.askLibrarian({
-              pageId: page.id,
+              pageId: current.pageId,
+              scopeKind: current.kind,
+              ...(current.blockId === undefined ? {} : { blockId: current.blockId }),
               conversationId: request.conversationId,
               text: 'Esta vez necesito resolver la tarea directamente.',
               dialecticBypass: true,
@@ -1122,11 +1128,20 @@ export async function openLibrarianConversation(
         }
         stream.append(replied);
       } else {
+        for (const event of request.events) {
+          stream.append(turn('status', next.agent.name, event.text, `${event.kind} · ${when(event.createdAt)}`));
+        }
         const reason = request.status === 'failed' && request.failureReason !== null
           ? `${librarianRequestState(request, next.agent.name)} · ${request.failureReason}`
           : librarianRequestState(request, next.agent.name);
         stream.append(turn('status', next.agent.name, reason, saySeconds(Math.max(0, Date.now() - request.createdAt))));
       }
+    }
+    for (const pending of optimistic) {
+      stream.append(turn('human', next.human.name, pending.text, `enviado · ${when(pending.createdAt)}`));
+      const working = turn('status', next.agent.name, `${next.agent.name} recibió el mensaje`, 'iniciando');
+      working.classList.add('pending');
+      stream.append(working);
     }
     if (follow || nearEnd) stream.scrollTop = stream.scrollHeight;
   };
@@ -1136,7 +1151,7 @@ export async function openLibrarianConversation(
   const composer = document.createElement('textarea');
   composer.className = 'librarian-conversation-composer';
   composer.rows = 3;
-  composer.placeholder = `Escribe a ${view.agent.name} sobre «${page.title}»…`;
+  composer.placeholder = `Escribe a ${view.agent.name}…`;
   composer.autocomplete = 'off';
   composer.setAttribute('aria-label', `Mensaje para ${view.agent.name}`);
   const composerShell = document.createElement('div');
@@ -1144,7 +1159,7 @@ export async function openLibrarianConversation(
   const formBar = document.createElement('div');
   formBar.className = 'librarian-conversation-form-bar';
   const context = document.createElement('span');
-  context.textContent = `Contexto: ${page.title}`;
+  context.textContent = 'Contexto: Biblioteca';
   const send = document.createElement('button');
   send.type = 'submit';
   send.className = 'librarian-dialog-primary';
@@ -1173,7 +1188,9 @@ export async function openLibrarianConversation(
     sessionSelect.replaceChildren(...conversations.map((conversation) => {
       const option = document.createElement('option');
       option.value = conversation.id;
-      option.textContent = conversation.title;
+      option.textContent = conversation.status === 'closed'
+        ? `Archivado · ${conversation.title} · ${when(conversation.createdAt)}`
+        : conversation.title;
       option.selected = conversation.id === view.conversation?.id;
       return option;
     }));
@@ -1182,6 +1199,22 @@ export async function openLibrarianConversation(
     sessionSelect.hidden = only;
     sessionLabel.hidden = !only;
     sessionLabel.textContent = view.conversation?.title ?? 'Conversación nueva';
+    archiveSession.disabled = view.conversation === null;
+    const currentTitle = view.conversation?.title ?? (initialScope.kind === 'library' ? 'Biblioteca' : page.title);
+    scope.textContent = `conversación en Vera · ${currentTitle}`;
+    context.textContent = `Contexto: ${currentTitle}`;
+    composer.placeholder = `Escribe a ${view.agent.name} en «${currentTitle}»…`;
+  };
+
+  const selectedScope = (): { kind: 'library' | 'page' | 'block'; pageId: string; blockId?: string } => {
+    const selected = view.conversation;
+    if (selected?.scopeKind === 'page' && selected.scopePageId !== null) {
+      return { kind: 'page', pageId: selected.scopePageId };
+    }
+    if (selected?.scopeKind === 'block' && selected.scopePageId !== null && selected.scopeBlockId !== null) {
+      return { kind: 'block', pageId: selected.scopePageId, blockId: selected.scopeBlockId };
+    }
+    return { kind: 'library', pageId: page.id };
   };
 
   const refresh = async (follow = false): Promise<void> => {
@@ -1213,7 +1246,8 @@ export async function openLibrarianConversation(
   });
   newSession.addEventListener('click', () => {
     newSession.disabled = true;
-    void api.createLibrarianConversation().then(async (created) => {
+    const current = selectedScope();
+    void api.createLibrarianConversation(current).then(async (created) => {
       view = await api.librarianConversation(created.id);
       conversations = await api.librarianConversations();
       renderTurns(view, true);
@@ -1223,6 +1257,20 @@ export async function openLibrarianConversation(
       newSession.disabled = false;
     });
   });
+  archiveSession.addEventListener('click', () => {
+    const selected = view.conversation;
+    if (selected === null) return;
+    archiveSession.disabled = true;
+    const current = selectedScope();
+    void api.closeLibrarianConversation(selected.id).then(async () => {
+      view = await api.librarianConversation(undefined, current);
+      conversations = await api.librarianConversations();
+      renderTurns(view, true);
+      renderSessions();
+    }).catch(() => toast('no se pudo archivar la conversación')).finally(() => {
+      if (archiveSession.isConnected) archiveSession.disabled = view.conversation === null;
+    });
+  });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = composer.value.trim();
@@ -1230,22 +1278,30 @@ export async function openLibrarianConversation(
       composer.focus();
       return;
     }
-    composer.disabled = true;
-    send.disabled = true;
+    const pending = { key: crypto.randomUUID(), text, createdAt: Date.now() };
+    optimistic.push(pending);
+    composer.value = '';
+    renderTurns(view, true);
+    const current = selectedScope();
     void api.askLibrarian({
-      pageId: page.id, text,
+      pageId: current.pageId, text, scopeKind: current.kind,
+      ...(current.blockId === undefined ? {} : { blockId: current.blockId }),
       ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),
     }).then(async (request) => {
+      const at = optimistic.findIndex((item) => item.key === pending.key);
+      if (at >= 0) optimistic.splice(at, 1);
       await callbacks.onLibrarianRequested?.(request.id);
       showLibrarianActivity([request], callbacks.librarianName);
-      composer.value = '';
       await refresh(true);
       callbacks.onReload(null);
-    }).catch(() => toast('no se pudo guardar el mensaje')).finally(() => {
-      composer.disabled = false;
-      send.disabled = false;
-      composer.focus();
+    }).catch(() => {
+      const at = optimistic.findIndex((item) => item.key === pending.key);
+      if (at >= 0) optimistic.splice(at, 1);
+      if (composer.value === '') composer.value = text;
+      renderTurns(view, true);
+      toast('no se pudo guardar el mensaje');
     });
+    composer.focus();
   });
   composer.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
@@ -1297,8 +1353,11 @@ export async function openLibrarianConversation(
       if ('error' in captured) throw new Error(captured.error);
       const transcribed = await voice.transcript(captured.id);
       if ('error' in transcribed) throw new Error(transcribed.error);
+      const current = selectedScope();
       const request = await api.askLibrarian({
-        pageId: page.id,
+        pageId: current.pageId,
+        scopeKind: current.kind,
+        ...(current.blockId === undefined ? {} : { blockId: current.blockId }),
         text: transcribed.text,
         recordingId: captured.id,
         ...(view.conversation === null ? {} : { conversationId: view.conversation.id }),

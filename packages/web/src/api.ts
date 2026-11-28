@@ -323,6 +323,9 @@ export interface LibrarianConversationView {
     human: string;
     agent: string;
     title: string;
+    scopeKind: 'library' | 'page' | 'block';
+    scopePageId: string | null;
+    scopeBlockId: string | null;
     status: 'active' | 'closed';
     createdAt: number;
   };
@@ -1211,7 +1214,7 @@ export const api = {
     return response.blob();
   },
 
-  askLibrarian: (said: { pageId: string; blockId?: string; text: string; conversationId?: string; recordingId?: string; dialecticBypass?: boolean }) =>
+  askLibrarian: (said: { pageId: string; blockId?: string; scopeKind?: 'library' | 'page' | 'block'; text: string; conversationId?: string; recordingId?: string; dialecticBypass?: boolean }) =>
     json<LibrarianRequestView>('/librarian/requests', {
       method: 'POST',
       body: JSON.stringify(said),
@@ -1239,18 +1242,34 @@ export const api = {
   ),
 
   /** La conversación durable completa; el contexto de cada turno sigue visible. */
-  librarianConversation: (id?: string) => json<LibrarianConversationView>(
-    id === undefined ? '/librarian/conversation' : `/librarian/conversation?id=${encodeURIComponent(id)}`,
-  ),
+  librarianConversation: (id?: string, scope?: { kind: 'library' | 'page' | 'block'; pageId?: string; blockId?: string }) => {
+    const query = new URLSearchParams();
+    if (id !== undefined) query.set('id', id);
+    else if (scope !== undefined) {
+      query.set('scope', scope.kind);
+      if (scope.pageId !== undefined) query.set('page', scope.pageId);
+      if (scope.blockId !== undefined) query.set('block', scope.blockId);
+    }
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`;
+    return json<LibrarianConversationView>(`/librarian/conversation${suffix}`);
+  },
 
   librarianConversations: () => json<LibrarianConversationSummary[]>('/librarian/conversations'),
 
-  createLibrarianConversation: (title?: string) => json<LibrarianConversationSummary>('/librarian/conversations', {
-    method: 'POST', body: JSON.stringify(title === undefined ? {} : { title }),
+  createLibrarianConversation: (scope: { kind: 'library' | 'page' | 'block'; pageId?: string; blockId?: string }, title?: string) => json<LibrarianConversationSummary>('/librarian/conversations', {
+    method: 'POST', body: JSON.stringify({
+      ...(title === undefined ? {} : { title }), scopeKind: scope.kind,
+      ...(scope.pageId === undefined ? {} : { pageId: scope.pageId }),
+      ...(scope.blockId === undefined ? {} : { blockId: scope.blockId }),
+    }),
   }),
 
   activateLibrarianConversation: (id: string) => json<LibrarianConversationSummary>(
     `/librarian/conversations/${encodeURIComponent(id)}/activate`, { method: 'POST' },
+  ),
+
+  closeLibrarianConversation: (id: string) => json<LibrarianConversationSummary>(
+    `/librarian/conversations/${encodeURIComponent(id)}/close`, { method: 'POST' },
   ),
 
   /*

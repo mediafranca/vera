@@ -26,6 +26,8 @@ describe('administración del bibliotecario embebido', () => {
 
   it('hace visibles revisión activa, rollback y separación del runtime', () => {
     assert.match(administration, /Construir borrador/);
+    assert.match(administration, /Aplicar páginas actuales/);
+    assert.match(administration, /buildAgentManifest\(agent\.agent\.id\)[\s\S]*activateAgentManifest\(agent\.agent\.id, built\.manifest\.id\)/);
     assert.match(administration, /Volver a esta versión/);
     assert.match(administration, /el modelo y el runtime pueden cambiar/);
     assert.match(administration, /Ejecuciones observadas · sólo lectura/);

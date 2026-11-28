@@ -1489,6 +1489,41 @@ const addLibrarianProposalDecisions: Migration = {
   },
 };
 
+/** 42 — conversaciones separadas por biblioteca, página o bloque. */
+const addScopedLibrarianConversations: Migration = {
+  version: 42,
+  name: 'conversaciones bibliotecarias por alcance',
+  apply(db) {
+    const table = db.prepare(
+      "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='agent_conversations'",
+    ).get();
+    if (table === undefined) return;
+    const columns = db.prepare('PRAGMA table_info(agent_conversations)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'scope_kind')) {
+      db.exec("ALTER TABLE agent_conversations ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'library' CHECK (scope_kind IN ('library','page','block'))");
+    }
+    if (!columns.some((column) => column.name === 'scope_page_id')) {
+      db.exec('ALTER TABLE agent_conversations ADD COLUMN scope_page_id TEXT REFERENCES pages (id) ON DELETE SET NULL');
+    }
+    if (!columns.some((column) => column.name === 'scope_block_id')) {
+      db.exec('ALTER TABLE agent_conversations ADD COLUMN scope_block_id TEXT REFERENCES blocks (id) ON DELETE SET NULL');
+    }
+    db.exec("UPDATE agent_conversations SET title='Biblioteca' WHERE status='active' AND scope_kind='library'");
+    db.exec(`
+      DROP INDEX IF EXISTS agent_conversation_pair;
+      CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_library
+        ON agent_conversations(graph_id,human_id,agent_id)
+        WHERE status='active' AND scope_kind='library';
+      CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_page
+        ON agent_conversations(graph_id,human_id,agent_id,scope_page_id)
+        WHERE status='active' AND scope_kind='page';
+      CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_block
+        ON agent_conversations(graph_id,human_id,agent_id,scope_block_id)
+        WHERE status='active' AND scope_kind='block';
+    `);
+  },
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   addWalkedChannel,
   addPageOriginCreatedAt,
@@ -1531,10 +1566,39 @@ export const MIGRATIONS: readonly Migration[] = [
   addStructuredLibrarianInscription,
   addLibrarianContextPolicy,
   addLibrarianProposalDecisions,
+  addScopedLibrarianConversations,
 ];
 
 /** La versión a la que llega una base nueva sin correr una sola migración. */
 export const SCHEMA_VERSION = MIGRATIONS.reduce((top, m) => Math.max(top, m.version), 0);
+
+/**
+ * Índices que nombran columnas nuevas nacen después de migrar.
+ *
+ * `schema.sql` se ejecuta antes de las migraciones incluso sobre una base
+ * existente; allí SQLite todavía no conoce `scope_kind`. Esta reparación
+ * idempotente corre cuando toda base ya tiene la forma de destino.
+ */
+function ensureCurrentIndexes(db: DatabaseSync): void {
+  const conversations = db.prepare(
+    "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='agent_conversations'",
+  ).get();
+  if (conversations === undefined) return;
+  const columns = db.prepare('PRAGMA table_info(agent_conversations)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'scope_kind')) return;
+  db.exec(`
+    DROP INDEX IF EXISTS agent_conversation_pair;
+    CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_library
+      ON agent_conversations(graph_id,human_id,agent_id)
+      WHERE status='active' AND scope_kind='library';
+    CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_page
+      ON agent_conversations(graph_id,human_id,agent_id,scope_page_id)
+      WHERE status='active' AND scope_kind='page';
+    CREATE UNIQUE INDEX IF NOT EXISTS agent_conversation_block
+      ON agent_conversations(graph_id,human_id,agent_id,scope_block_id)
+      WHERE status='active' AND scope_kind='block';
+  `);
+}
 
 function userVersion(db: DatabaseSync): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined;
@@ -1574,12 +1638,16 @@ export function isFreshDatabase(db: DatabaseSync): boolean {
 export function migrate(db: DatabaseSync, fresh: boolean): void {
   if (fresh) {
     setUserVersion(db, SCHEMA_VERSION);
+    ensureCurrentIndexes(db);
     return;
   }
 
   const from = userVersion(db);
   const pending = MIGRATIONS.filter((m) => m.version > from).sort((a, b) => a.version - b.version);
-  if (pending.length === 0) return;
+  if (pending.length === 0) {
+    ensureCurrentIndexes(db);
+    return;
+  }
 
   for (const migration of pending) {
     // Fuera de la transacción a propósito: SQLite ignora este PRAGMA dentro de
@@ -1607,4 +1675,5 @@ export function migrate(db: DatabaseSync, fresh: boolean): void {
       db.exec('PRAGMA foreign_keys = ON');
     }
   }
+  ensureCurrentIndexes(db);
 }
