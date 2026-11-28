@@ -101,11 +101,32 @@ describe('páginas que se pueden presentar', () => {
     );
     assert.match(source, /medium\.matches\('\.table-scroll, table'\)/);
     assert.match(source, /medium\.matches\('img, svg'\)/);
+    assert.match(source, /medium\.matches\('\.executable-svg'\)\) return 'svg'/);
     assert.match(source, /accessories\.length > 2/);
     assert.match(source, /presentation-primary-medium/);
     assert.match(
       readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8'),
       /presentation-medium="table"[\s\S]*?overflow: auto;[\s\S]*?\.body table \{[\s\S]*?font-size: clamp\(0\.9rem, 1\.5vw, 1\.2rem\) !important;[\s\S]*?word-break: normal !important;[\s\S]*?min-width: clamp\(8rem, 12vw, 10rem\);/,
+    );
+  });
+
+  it('deja completos y desplazables los diagramas y SVG más altos que el escenario', () => {
+    const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    assert.match(
+      styles,
+      /section\.presentation-spatial:is\([\s\S]*?presentation-medium="diagram"[\s\S]*?presentation-medium="svg"[\s\S]*?\) \{\s*overflow-y: auto;/,
+    );
+    assert.match(
+      styles,
+      /presentation-medium="diagram"\] \.mermaid-figure iframe \{\s*max-height: none !important;/,
+    );
+    assert.match(
+      styles,
+      /presentation-medium="svg"\] \.executable\.executable-svg iframe \{[\s\S]*?height: auto !important;[\s\S]*?max-height: none !important;/,
+    );
+    assert.match(
+      styles,
+      /> \.presentation-block > \.body \{\s*height: auto !important;[\s\S]*?min-height: calc\(100dvh/,
     );
   });
 
