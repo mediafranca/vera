@@ -4,6 +4,12 @@ import type { Change, ContributionLineage, ParticipantId } from '@vera/core';
 import type { Store } from '@vera/store';
 
 export type LibrarianRequestStatus = 'queued' | 'working' | 'answered' | 'failed' | 'cancelled';
+export type LibrarianConversationScopeKind = 'library' | 'page' | 'block';
+export interface LibrarianConversationScope {
+  kind: LibrarianConversationScopeKind;
+  pageId?: string | null;
+  blockId?: string | null;
+}
 
 export interface LibrarianRequest {
   id: string;
@@ -50,6 +56,9 @@ export interface LibrarianConversation {
   human: ParticipantId;
   agent: ParticipantId;
   title: string;
+  scopeKind: LibrarianConversationScopeKind;
+  scopePageId: string | null;
+  scopeBlockId: string | null;
   status: 'active' | 'closed';
   createdAt: number;
 }
@@ -110,6 +119,31 @@ function defaultConversationTitle(store: Store, human: ParticipantId, agent: Par
   return `${participantName(store, human)} y ${participantName(store, agent)}`;
 }
 
+function scopeWhere(scope: LibrarianConversationScope): { clause: string; values: Array<string> } {
+  if (scope.kind === 'library') return { clause: "scope_kind='library'", values: [] };
+  if (scope.kind === 'page' && typeof scope.pageId === 'string') {
+    return { clause: "scope_kind='page' AND scope_page_id=?", values: [scope.pageId] };
+  }
+  if (scope.kind === 'block' && typeof scope.blockId === 'string') {
+    return { clause: "scope_kind='block' AND scope_block_id=?", values: [scope.blockId] };
+  }
+  throw new Error('el alcance de la conversación está incompleto');
+}
+
+function scopeTitle(store: Store, scope: LibrarianConversationScope): string {
+  if (scope.kind === 'library') return 'Biblioteca';
+  const page = typeof scope.pageId === 'string'
+    ? store.db.prepare('SELECT title FROM pages WHERE graph_id=? AND id=?').get(store.graphId, scope.pageId) as { title: string } | undefined
+    : undefined;
+  if (scope.kind === 'page') return page?.title ?? 'Página retirada';
+  const block = typeof scope.blockId === 'string'
+    ? store.db.prepare(`SELECT b.content FROM blocks b JOIN pages p ON p.id=b.page_id
+        WHERE p.graph_id=? AND b.id=?`).get(store.graphId, scope.blockId) as { content: string } | undefined
+    : undefined;
+  const excerpt = (block?.content ?? 'bloque retirado').replace(/\s+/g, ' ').trim().slice(0, 56);
+  return `${page?.title ?? 'Página retirada'} / ${excerpt || 'bloque vacío'}`;
+}
+
 function repairLegacyConversationTitle(store: Store, row: ConversationRow): ConversationRow {
   if (row.title !== LEGACY_CONVERSATION_TITLE) return row;
   const title = defaultConversationTitle(store, row.human_id, row.agent_id);
@@ -118,17 +152,19 @@ function repairLegacyConversationTitle(store: Store, row: ConversationRow): Conv
   return { ...row, title };
 }
 
-function conversation(store: Store, human: ParticipantId, agent: ParticipantId, now: number): string {
+function conversation(store: Store, human: ParticipantId, agent: ParticipantId, scope: LibrarianConversationScope, now: number): string {
+  const scoped = scopeWhere(scope);
   const existing = store.db.prepare(`SELECT id FROM agent_conversations
-    WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).get(
-    store.graphId, human, agent,
+    WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active' AND ${scoped.clause}`).get(
+    store.graphId, human, agent, ...scoped.values,
   ) as { id: string } | undefined;
   if (existing !== undefined) return existing.id;
   const id = `conversation:${randomUUID()}`;
   store.db.prepare(`INSERT INTO agent_conversations
-    (id, graph_id, human_id, agent_id, title, status, created_at)
-    VALUES (?, ?, ?, ?, ?, 'active', ?)`).run(
-    id, store.graphId, human, agent, defaultConversationTitle(store, human, agent), now,
+    (id, graph_id, human_id, agent_id, title, scope_kind, scope_page_id, scope_block_id, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`).run(
+    id, store.graphId, human, agent, scopeTitle(store, scope), scope.kind,
+    scope.pageId ?? null, scope.blockId ?? null, now,
   );
   return id;
 }
@@ -137,20 +173,24 @@ export function createLibrarianConversation(store: Store, input: {
   human: ParticipantId;
   agent: ParticipantId;
   title: string;
+  scope?: LibrarianConversationScope;
   now?: number;
 }): LibrarianConversation {
   const now = input.now ?? Date.now();
   const id = `conversation:${randomUUID()}`;
+  const scope = input.scope ?? { kind: 'library' as const };
+  const scoped = scopeWhere(scope);
   store.db.exec('BEGIN');
   try {
     store.db.prepare(`UPDATE agent_conversations SET status='closed'
-      WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).run(
-      store.graphId, input.human, input.agent,
+      WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active' AND ${scoped.clause}`).run(
+      store.graphId, input.human, input.agent, ...scoped.values,
     );
     store.db.prepare(`INSERT INTO agent_conversations
-      (id, graph_id, human_id, agent_id, title, status, created_at)
-      VALUES (?, ?, ?, ?, ?, 'active', ?)`).run(
-      id, store.graphId, input.human, input.agent, input.title, now,
+      (id, graph_id, human_id, agent_id, title, scope_kind, scope_page_id, scope_block_id, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`).run(
+      id, store.graphId, input.human, input.agent, input.title, scope.kind,
+      scope.pageId ?? null, scope.blockId ?? null, now,
     );
     store.db.exec('COMMIT');
   } catch (error) {
@@ -161,7 +201,7 @@ export function createLibrarianConversation(store: Store, input: {
 }
 
 export function librarianConversation(store: Store, id: string): LibrarianConversation | undefined {
-  const row = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
+  const row = store.db.prepare(`SELECT id, human_id, agent_id, title, scope_kind, scope_page_id, scope_block_id, status, created_at
     FROM agent_conversations WHERE graph_id=? AND id=?`).get(store.graphId, id) as ConversationRow | undefined;
   return row === undefined ? undefined : fromConversationRow(repairLegacyConversationTitle(store, row));
 }
@@ -171,9 +211,9 @@ export function librarianConversations(
   human: ParticipantId,
   agent: ParticipantId,
 ): LibrarianConversation[] {
-  const rows = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
-    FROM agent_conversations WHERE graph_id=? AND human_id=? AND agent_id=?
-    ORDER BY status='active' DESC, created_at DESC`).all(
+  const rows = store.db.prepare(`SELECT c.id, c.human_id, c.agent_id, c.title, c.scope_kind, c.scope_page_id, c.scope_block_id, c.status, c.created_at
+    FROM agent_conversations c WHERE graph_id=? AND human_id=? AND agent_id=?
+    ORDER BY COALESCE((SELECT MAX(r.created_at) FROM agent_requests r WHERE r.conversation_id=c.id), c.created_at) DESC`).all(
     store.graphId, human, agent,
   ) as unknown as ConversationRow[];
   return rows.map((row) => fromConversationRow(repairLegacyConversationTitle(store, row)));
@@ -186,11 +226,14 @@ export function activateLibrarianConversation(store: Store, input: {
 }): LibrarianConversation | undefined {
   const selected = librarianConversation(store, input.id);
   if (selected === undefined || selected.human !== input.human || selected.agent !== input.agent) return undefined;
+  if ((selected.scopeKind === 'page' && selected.scopePageId === null) ||
+    (selected.scopeKind === 'block' && selected.scopeBlockId === null)) return undefined;
+  const scoped = scopeWhere({ kind: selected.scopeKind, pageId: selected.scopePageId, blockId: selected.scopeBlockId });
   store.db.exec('BEGIN');
   try {
     store.db.prepare(`UPDATE agent_conversations SET status='closed'
-      WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).run(
-      store.graphId, input.human, input.agent,
+      WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active' AND ${scoped.clause}`).run(
+      store.graphId, input.human, input.agent, ...scoped.values,
     );
     store.db.prepare(`UPDATE agent_conversations SET status='active' WHERE graph_id=? AND id=?`).run(
       store.graphId, input.id,
@@ -203,6 +246,17 @@ export function activateLibrarianConversation(store: Store, input: {
   return librarianConversation(store, input.id);
 }
 
+export function closeLibrarianConversation(store: Store, input: {
+  id: string;
+  human: ParticipantId;
+  agent: ParticipantId;
+}): LibrarianConversation | undefined {
+  const selected = librarianConversation(store, input.id);
+  if (selected === undefined || selected.human !== input.human || selected.agent !== input.agent) return undefined;
+  store.db.prepare("UPDATE agent_conversations SET status='closed' WHERE graph_id=? AND id=?").run(store.graphId, input.id);
+  return librarianConversation(store, input.id);
+}
+
 export function createLibrarianRequest(store: Store, input: {
   askedBy: ParticipantId;
   agent: ParticipantId;
@@ -212,16 +266,20 @@ export function createLibrarianRequest(store: Store, input: {
   sourceBlockId?: string | null;
   recordingId?: string | null;
   conversationId?: string;
+  scope?: LibrarianConversationScope;
   contextSnapshot: string;
   now?: number;
 }): LibrarianRequest {
   const now = input.now ?? Date.now();
   const id = `agent-request:${randomUUID()}`;
+  const scope = input.scope ?? (input.sourceBlockId === undefined || input.sourceBlockId === null
+    ? { kind: 'page' as const, pageId: input.sourcePageId }
+    : { kind: 'block' as const, pageId: input.sourcePageId, blockId: input.sourceBlockId });
   const selected = input.conversationId === undefined ? undefined : librarianConversation(store, input.conversationId);
   const conversationId = selected !== undefined && selected.status === 'active' &&
     selected.human === input.askedBy && selected.agent === input.agent
     ? selected.id
-    : conversation(store, input.askedBy, input.agent, now);
+    : conversation(store, input.askedBy, input.agent, scope, now);
   store.db.prepare(`INSERT INTO agent_requests (
     id, conversation_id, graph_id, asked_by, modality, text, source_page_id,
     source_block_id, recording_id, context_snapshot, retry_of, status, dispatch_status,
@@ -246,6 +304,9 @@ interface ConversationRow {
   human_id: ParticipantId;
   agent_id: ParticipantId;
   title: string;
+  scope_kind: LibrarianConversationScopeKind;
+  scope_page_id: string | null;
+  scope_block_id: string | null;
   status: 'active' | 'closed';
   created_at: number;
 }
@@ -255,6 +316,9 @@ const fromConversationRow = (row: ConversationRow): LibrarianConversation => ({
   human: row.human_id,
   agent: row.agent_id,
   title: row.title,
+  scopeKind: row.scope_kind,
+  scopePageId: row.scope_page_id,
+  scopeBlockId: row.scope_block_id,
   status: row.status,
   createdAt: row.created_at,
 });
@@ -264,11 +328,21 @@ export function activeLibrarianConversation(
   store: Store,
   human: ParticipantId,
   agent: ParticipantId,
+  scope?: LibrarianConversationScope,
 ): LibrarianConversation | undefined {
-  const row = store.db.prepare(`SELECT id, human_id, agent_id, title, status, created_at
+  if (scope === undefined) {
+    const latest = store.db.prepare(`SELECT c.id, c.human_id, c.agent_id, c.title, c.scope_kind, c.scope_page_id, c.scope_block_id, c.status, c.created_at
+      FROM agent_conversations c WHERE c.graph_id=? AND c.human_id=? AND c.agent_id=? AND c.status='active'
+      ORDER BY COALESCE((SELECT MAX(r.created_at) FROM agent_requests r WHERE r.conversation_id=c.id), c.created_at) DESC LIMIT 1`).get(
+      store.graphId, human, agent,
+    ) as ConversationRow | undefined;
+    return latest === undefined ? undefined : fromConversationRow(repairLegacyConversationTitle(store, latest));
+  }
+  const scoped = scopeWhere(scope);
+  const row = store.db.prepare(`SELECT id, human_id, agent_id, title, scope_kind, scope_page_id, scope_block_id, status, created_at
     FROM agent_conversations
-    WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active'`).get(
-    store.graphId, human, agent,
+    WHERE graph_id=? AND human_id=? AND agent_id=? AND status='active' AND ${scoped.clause}`).get(
+    store.graphId, human, agent, ...scoped.values,
   ) as ConversationRow | undefined;
   return row === undefined ? undefined : fromConversationRow(repairLegacyConversationTitle(store, row));
 }

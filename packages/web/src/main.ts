@@ -3805,7 +3805,7 @@ function wireTheme(): void {
         : `${corpus.librarian.name} no está disponible en esta superficie.`);
       return;
     }
-    void openLibrarianConversation(openView, callbacksFor(openView));
+    void openLibrarianConversation(openView, callbacksFor(openView), { kind: 'library' });
   });
 
   // Atrás y adelante son los del navegador, no un rastro propio: cada documento

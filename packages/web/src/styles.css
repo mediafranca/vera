@@ -308,6 +308,9 @@
   color: var(--text-dim);
   background: transparent;
 }
+.librarian-conversation-turn.status.pending {
+  animation: librarian-pending-pulse 1.2s ease-in-out infinite;
+}
 .librarian-conversation-turn > header {
   display: flex;
   flex-wrap: wrap;
@@ -496,6 +499,11 @@
     transform: scale(1.06);
     filter: drop-shadow(0 0 0.3rem color-mix(in srgb, var(--accent) 42%, transparent));
   }
+}
+
+@keyframes librarian-pending-pulse {
+  0%, 100% { opacity: .58; }
+  50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

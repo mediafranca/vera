@@ -2,8 +2,9 @@
 -- agent-conversation.allium
 
 -- Scope: Conversation with a named agent from inside Vera
--- Includes: One conversation reached by voice, command, block or conversation
---   page; explicit graph context; request lifecycle; attributed replies;
+-- Includes: Conversations scoped to the library, a page or a block and reached
+--   by voice, command, block or conversation page; explicit graph context;
+--   request lifecycle; attributed replies;
 --   authenticated dispatch to the named agent; truthful waiting, cancellation,
 --   retry, inspectable interpretation, causal provenance and separately
 --   reviewable proposals
@@ -27,10 +28,17 @@ contract ConversationWithAgent {
     ask: (request: ConversationRequest) -> AgentReply
     propose: (reply: AgentReply, changes: List<core/Change>) -> OperationProposal
 
-    @invariant FourEntrancesOneConversation
-        -- Audio, command, block and conversation page are entrances to the same
-        -- conversation model. Moving between them does not silently start a new
-        -- identity, lose prior turns or create four incompatible histories.
+    @invariant EntranceChoosesTheConversationScope
+        -- The global entrance speaks in the library conversation, a page
+        -- entrance in that page's conversation, and a block entrance in that
+        -- block's conversation. Audio and typing remain modalities of the chosen
+        -- conversation; they never collapse unrelated contexts into one thread.
+
+    @invariant ASubmittedTurnAppearsBeforeWorkBegins
+        -- Once Vera has accepted a request, the human turn leaves the composer
+        -- and appears in the thread immediately. A visible pending state then
+        -- becomes durable stages or the final reply; the composer never remains
+        -- glowing with text that was already submitted.
 
     @invariant ContextIsShownBeforeItIsSent
         -- A request records exactly the pages and blocks delivered to the agent,
@@ -160,6 +168,7 @@ contract ConversationWithAgent {
 ------------------------------------------------------------
 
 enum ConversationStatus { active | closed }
+enum ConversationScopeKind { library | page | block }
 enum RequestModality { audio | command | block | conversation_page }
 enum RequestStatus { queued | working | answered | failed | cancelled }
 enum ProposalStatus { proposed | accepted | rejected }
@@ -174,6 +183,9 @@ entity Conversation {
     human: core/Participant
     agent: core/Participant
     title: String
+    scope_kind: ConversationScopeKind
+    scope_page: core/Page?
+    scope_block: core/Block?
     status: ConversationStatus
     created_at: Timestamp
     requests: ConversationRequest with conversation = this
@@ -181,6 +193,18 @@ entity Conversation {
     invariant HumanAndAgentRemainDistinct {
         human != agent and human.kind = human and agent.kind = agent
     }
+
+    invariant ScopeHasExactlyItsSurvivingAnchor {
+        (scope_kind = library and scope_page = null and scope_block = null)
+        or (scope_kind = page and scope_block = null)
+        or (scope_kind = block and (scope_block = null
+            or (scope_page != null and scope_block.page = scope_page)))
+    }
+
+    @guidance
+        -- Retirar una página o un bloque no retira la conversación que prueba lo
+        -- ocurrido allí. El ancla puede quedar nula; el título durable conserva
+        -- el contexto humano sin resucitar el objeto retirado.
 }
 
 entity ConversationRequest {
@@ -262,23 +286,30 @@ entity OperationProposal {
 ------------------------------------------------------------
 
 rule HumanStartsConversation {
-    when: StartConversation(human, agent, graph, title)
+    when: StartConversation(human, agent, graph, title, scope_kind, scope_page, scope_block)
 
     requires: human.kind = human
     requires: agent.kind = agent
     requires: human != agent
     requires: exists core/Membership{graph: graph, participant: human}
     requires: exists core/Membership{graph: graph, participant: agent}
+    requires: scope_page = null or scope_page.graph = graph
+    requires: scope_block = null or scope_block.page.graph = graph
 
     ensures: Conversation.created(
         graph: graph,
         human: human,
         agent: agent,
         title: title,
+        scope_kind: scope_kind,
+        scope_page: scope_page,
+        scope_block: scope_block,
         status: active,
         created_at: now
     )
 }
+
+open question "¿Cuántas conversaciones cerradas o cuánto tiempo de historia debe mostrar el selector antes de archivarlas fuera de su lista inmediata, y debe existir alguna purga automática si las consecuencias y la procedencia de esos turnos aún sobreviven?"
 
 rule HumanClosesConversation {
     when: CloseConversation(human, conversation)

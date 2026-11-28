@@ -107,8 +107,13 @@ function manifestHistory(agent: AgentAdministrationView, refresh: () => Promise<
   const section = document.createElement('section'); section.className = 'agent-manifest-history';
   const heading = document.createElement('h2'); heading.textContent = 'Manifiestos';
   const explanation = document.createElement('p'); explanation.className = 'settings-note';
-  explanation.textContent = 'Las páginas constitutivas son las fuentes vivas y editables. Un manifiesto es su compilación versionada e inmutable: el runtime carga una versión concreta y puede volver a una anterior.';
+  explanation.textContent = 'Las páginas constitutivas son las fuentes vivas y editables —incluido el estilo de escritura. Un manifiesto es su compilación versionada e inmutable: el runtime cambia sólo cuando su principal aplica una revisión concreta y siempre puede volver a una anterior.';
   const actions = document.createElement('div'); actions.className = 'agent-manifest-actions';
+  actions.append(control('Aplicar páginas actuales', async () => {
+    const built = await api.buildAgentManifest(agent.agent.id);
+    await api.activateAgentManifest(agent.agent.id, built.manifest.id);
+    await refresh();
+  }, 'primary'));
   actions.append(control('Construir borrador', async () => { await api.buildAgentManifest(agent.agent.id); await refresh(); }, 'primary'));
   const list = document.createElement('ol');
   for (const manifest of agent.manifests) {

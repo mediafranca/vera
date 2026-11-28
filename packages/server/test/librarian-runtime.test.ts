@@ -783,7 +783,7 @@ describe('runtime embebido de la bibliotecaria', () => {
       'un bloque de la inscripción escondió nuevamente un outline Markdown');
 
       const proposalRequest = await call('/librarian/requests', { method: 'POST', body: {
-        pageId: pictos, conversationId: answered.conversationId,
+        pageId: pictos,
         text: 'Corrige los metadatos de la página PICTOS y deja una propuesta revisable.',
       } });
       let proposed: Record<string, any> | null = null;
@@ -797,7 +797,8 @@ describe('runtime embebido de la bibliotecaria', () => {
         kind: 'set_property', page: pictos, propertyKey: 'concepto', propertyValue: 'PICTOS',
       }]);
       assert.equal(prompts.length, 4);
-      assert.match(prompts[2] ?? '', /Historial efectivo de la conversación:[\s\S]*Bitácora de hoy/);
+      assert.match(prompts[2] ?? '', /Alcance durable de esta conversación: Página: PICTOS/);
+      assert.match(prompts[2] ?? '', /Historial efectivo de la conversación:\\n\(primer turno/);
     } finally {
       await running.close();
       await new Promise<void>((resolve, reject) => inference.close((error) => error === undefined ? resolve() : reject(error)));

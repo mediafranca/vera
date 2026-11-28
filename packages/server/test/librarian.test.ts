@@ -334,7 +334,7 @@ describe('solicitudes al bibliotecario', () => {
   });
 
   it('lee la conversación durable completa en orden cronológico', async () => {
-    const result = await call('/librarian/conversation');
+    const result = await call(`/librarian/conversation?scope=page&page=${encodeURIComponent(page)}`);
     assert.equal(result.status, 200, JSON.stringify(result.json));
     assert.equal((result.json['human'] as Record<string, unknown>)['name'], 'Herbert');
     assert.equal((result.json['agent'] as Record<string, unknown>)['name'], 'Cotito');
@@ -346,6 +346,29 @@ describe('solicitudes al bibliotecario', () => {
       assert.ok(Number(turns[index - 1]?.['createdAt']) <= Number(turns[index]?.['createdAt']));
     }
     assert.equal((await call('/librarian/conversation', { secret })).status, 403);
+  });
+
+  it('separa biblioteca, página y bloque en hilos activos distintos', async () => {
+    const library = await call('/librarian/conversations', {
+      method: 'POST', body: { scopeKind: 'library' },
+    });
+    assert.equal(library.status, 201, JSON.stringify(library.json));
+    assert.equal(library.json['title'], 'Biblioteca');
+
+    const pageThread = await call(`/librarian/conversation?scope=page&page=${encodeURIComponent(page)}`);
+    const blockThread = await call(`/librarian/conversation?scope=block&page=${encodeURIComponent(page)}&block=${encodeURIComponent(block)}`);
+    const libraryThread = await call('/librarian/conversation?scope=library');
+    const ids = [pageThread, blockThread, libraryThread]
+      .map((reply) => (reply.json['conversation'] as Record<string, unknown>)['id']);
+    assert.equal(new Set(ids).size, 3);
+    assert.equal((pageThread.json['conversation'] as Record<string, unknown>)['title'], 'Página para preguntar');
+    assert.match(String((blockThread.json['conversation'] as Record<string, unknown>)['title']), /^Página para preguntar \/ Este bloque/);
+    const libraryId = (libraryThread.json['conversation'] as Record<string, unknown>)['id'] as string;
+    assert.equal((await call(`/librarian/conversations/${encodeURIComponent(libraryId)}/close`, { method: 'POST' })).status, 200);
+    assert.equal((await call('/librarian/conversation?scope=library')).json['conversation'], null);
+    const archived = (await call('/librarian/conversations')).json as unknown as Array<Record<string, unknown>>;
+    assert.equal(archived.find((conversation) => conversation['id'] === libraryId)?.['status'], 'closed');
+    assert.equal((await call('/librarian/conversation?scope=block')).status, 400);
   });
 
   it('quien hizo el pedido puede eliminar la conversación auxiliar', async () => {
@@ -361,9 +384,10 @@ describe('solicitudes al bibliotecario', () => {
   it('guarda varias sesiones, las reactiva y conserva hitos públicos de progreso', async () => {
     const before = await call('/librarian/conversations');
     assert.equal(before.status, 200);
-    const previous = (before.json as unknown as Record<string, unknown>[])[0]?.['id'] as string;
+    const previous = (before.json as unknown as Record<string, unknown>[])
+      .find((conversation) => conversation['scopeKind'] === 'page' && conversation['scopePageId'] === page)?.['id'] as string;
     const created = await call('/librarian/conversations', {
-      method: 'POST', body: { title: 'Segundo hilo' },
+      method: 'POST', body: { title: 'Segundo hilo', scopeKind: 'page', pageId: page },
     });
     assert.equal(created.status, 201, JSON.stringify(created.json));
     const conversationId = created.json['id'] as string;
