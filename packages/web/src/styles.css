@@ -2665,16 +2665,6 @@ html.presenting body {
   overflow-y: visible;
 }
 
-.vera-presentation .presentation-spatial[data-presentation-medium="diagram"] .mermaid-figure iframe {
-  max-height: none !important;
-}
-
-.vera-presentation .presentation-spatial[data-presentation-medium="svg"] .executable.executable-svg iframe {
-  width: 100% !important;
-  height: auto !important;
-  max-height: none !important;
-}
-
 .vera-presentation .presentation-spatial .body .executable iframe {
   width: 100% !important;
   height: 100% !important;
@@ -2684,6 +2674,21 @@ html.presenting body {
   border-radius: 0 !important;
   outline: 0 !important;
   box-shadow: none !important;
+}
+
+/* El esquema también puede ser descendiente de una lámina documental, junto a
+   un título y varios párrafos. En ese caso la lámina ya desplaza su contenido,
+   pero el máximo genérico del iframe seguía cortando la figura por dentro. La
+   marca se aplica a cualquier lámina que contenga Mermaid o SVG, no sólo a las
+   que tienen un único medio espacial. */
+.vera-presentation .presentation-tall-medium .mermaid-figure iframe {
+  max-height: none !important;
+}
+
+.vera-presentation .presentation-tall-medium .executable.executable-svg iframe {
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
 }
 
 /* Una página externa incrustada ocupa el escenario como cualquier otro medio.

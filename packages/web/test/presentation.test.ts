@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 
-import { presentationLocation, presentationRevision } from '../src/presentation.ts';
+import {
+  containsTallPresentationMedium,
+  presentationLocation,
+  presentationRevision,
+} from '../src/presentation.ts';
 import {
   presentationThemeTitle,
   scopedPresentationStylesheet,
@@ -110,19 +114,25 @@ describe('páginas que se pueden presentar', () => {
     );
   });
 
-  it('deja completos y desplazables los diagramas y SVG más altos que el escenario', () => {
+  it('deja completos y desplazables los diagramas y SVG altos, incluso entre otros bloques', () => {
     const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+    const nestedMermaid = {
+      querySelector: (selector: string) => selector === '.mermaid-figure, .executable-svg' ? {} : null,
+    };
+    const proseOnly = { querySelector: () => null };
+    assert.equal(containsTallPresentationMedium(nestedMermaid as never), true);
+    assert.equal(containsTallPresentationMedium(proseOnly as never), false);
     assert.match(
       styles,
       /section\.presentation-spatial:is\([\s\S]*?presentation-medium="diagram"[\s\S]*?presentation-medium="svg"[\s\S]*?\) \{\s*overflow-y: auto;/,
     );
     assert.match(
       styles,
-      /presentation-medium="diagram"\] \.mermaid-figure iframe \{\s*max-height: none !important;/,
+      /presentation-tall-medium \.mermaid-figure iframe \{\s*max-height: none !important;/,
     );
     assert.match(
       styles,
-      /presentation-medium="svg"\] \.executable\.executable-svg iframe \{[\s\S]*?height: auto !important;[\s\S]*?max-height: none !important;/,
+      /presentation-tall-medium \.executable\.executable-svg iframe \{[\s\S]*?height: auto !important;[\s\S]*?max-height: none !important;/,
     );
     assert.match(
       styles,
